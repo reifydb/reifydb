@@ -2,25 +2,25 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useCommandExecutor, getConnection, clearConnection, Shape} from '../../../src';
-import {waitForDatabaseHttp} from '../setup';
+import {useCommandExecutor, get_connection, clear_connection, Shape} from '../../../src';
+import {wait_for_database_http} from '../setup';
 
 describe('useCommandExecutor Hook (JSON HTTP)', () => {
     beforeAll(async () => {
-        await waitForDatabaseHttp();
-        const conn = getConnection({url: process.env.REIFYDB_HTTP_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
+        await wait_for_database_http();
+        const conn = get_connection({url: process.env.REIFYDB_HTTP_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
         await conn.connect();
     }, 30000);
 
 
     afterAll(() => {
-        clearConnection();
+        clear_connection();
     });
 
     it('should execute a simple command', async () => {
         const {result} = renderHook(() => useCommandExecutor());
 
-        expect(result.current.isExecuting).toBe(false);
+        expect(result.current.is_executing).toBe(false);
         expect(result.current.results).toBeUndefined();
 
         act(() => {
@@ -31,10 +31,10 @@ describe('useCommandExecutor Hook (JSON HTTP)', () => {
             );
         });
 
-        expect(result.current.isExecuting).toBe(true);
+        expect(result.current.is_executing).toBe(true);
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
             expect(result.current.results).toBeDefined();
         });
 
@@ -64,7 +64,7 @@ describe('useCommandExecutor Hook (JSON HTTP)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
             expect(result.current.results).toBeDefined();
         });
 
@@ -86,7 +86,7 @@ describe('useCommandExecutor Hook (JSON HTTP)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
             expect(result.current.results).toBeDefined();
         });
 
@@ -101,7 +101,7 @@ describe('useCommandExecutor Hook (JSON HTTP)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
             expect(result.current.error).toBeDefined();
         });
 
@@ -129,7 +129,7 @@ describe('useCommandExecutor Hook (JSON HTTP)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
         });
 
         expect(result.current.results).toHaveLength(1);
@@ -144,7 +144,7 @@ describe('useCommandExecutor Hook (JSON HTTP)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
         });
 
         expect(result.current.error).toBeUndefined();
@@ -171,8 +171,8 @@ describe('useCommandExecutor Hook (JSON HTTP)', () => {
         });
 
         await waitFor(() => {
-            expect(result1.current.isExecuting).toBe(false);
-            expect(result2.current.isExecuting).toBe(false);
+            expect(result1.current.is_executing).toBe(false);
+            expect(result2.current.is_executing).toBe(false);
         });
 
         expect(result1.current.results![0].rows[0]).toEqual({value: 100});
@@ -190,13 +190,13 @@ describe('useCommandExecutor Hook (JSON HTTP)', () => {
             );
         });
 
-        expect(result.current.isExecuting).toBe(true);
+        expect(result.current.is_executing).toBe(true);
 
         act(() => {
-            result.current.cancelCommand();
+            result.current.cancel_command();
         });
 
-        expect(result.current.isExecuting).toBe(false);
+        expect(result.current.is_executing).toBe(false);
         expect(result.current.error).toBe('Command cancelled');
     });
 });

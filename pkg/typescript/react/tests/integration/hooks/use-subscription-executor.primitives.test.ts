@@ -3,47 +3,47 @@
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useSubscriptionExecutor, getConnection, clearConnection, Shape} from '../../../src';
-import {waitForDatabase} from '../setup';
+import {useSubscriptionExecutor, get_connection, clear_connection, Shape} from '../../../src';
+import {wait_for_database} from '../setup';
 import {
-    createTestTableForHook
+    create_test_table_for_hook
 } from './subscription-test-helpers';
 
 describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
     beforeAll(async () => {
-        await waitForDatabase();
-        const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
+        await wait_for_database();
+        const conn = get_connection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 
     afterAll(async () => {
-        await clearConnection();
+        await clear_connection();
     });
 
     describe('Number Types', () => {
         it('should transform Int4 to number', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'prim_int4',
                 ['id Int4', 'value Int4']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), value: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, value: 42}]`,
+                    `INSERT test::${table_name} [{id: 1, value: 42}]`,
                     null,
                     []
                 );
@@ -62,27 +62,27 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
 
         it('should transform Int8 to number', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'prim_int8',
                 ['id Int4', 'bigValue Int8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), bigValue: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, bigValue: 9007199254740991}]`,
+                    `INSERT test::${table_name} [{id: 1, bigValue: 9007199254740991}]`,
                     null,
                     []
                 );
@@ -100,27 +100,27 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
 
         it('should transform Float4 to number', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'prim_float4',
                 ['id Int4', 'floatValue Float4']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), floatValue: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, floatValue: 3.14}]`,
+                    `INSERT test::${table_name} [{id: 1, floatValue: 3.14}]`,
                     null,
                     []
                 );
@@ -137,27 +137,27 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
 
         it('should transform Float8 to number', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'prim_float8',
                 ['id Int4', 'doubleValue Float8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), doubleValue: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, doubleValue: 2.718281828459045}]`,
+                    `INSERT test::${table_name} [{id: 1, doubleValue: 2.718281828459045}]`,
                     null,
                     []
                 );
@@ -176,27 +176,27 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
     describe('String Types', () => {
         it('should transform Utf8 to string', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'prim_utf8',
                 ['id Int4', 'name Utf8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, name: 'Alice'}]`,
+                    `INSERT test::${table_name} [{id: 1, name: 'Alice'}]`,
                     null,
                     []
                 );
@@ -213,27 +213,27 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
 
         it('should handle unicode strings', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'prim_unicode',
                 ['id Int4', 'text Utf8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), text: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, text: 'Hello 世界 🌍'}]`,
+                    `INSERT test::${table_name} [{id: 1, text: 'Hello 世界 🌍'}]`,
                     null,
                     []
                 );
@@ -251,27 +251,27 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
     describe('Boolean Types', () => {
         it('should transform Boolean to boolean', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'prim_bool',
                 ['id Int4', 'isActive Boolean']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), isActive: Shape.boolean()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, isActive: true}, {id: 2, isActive: false}]`,
+                    `INSERT test::${table_name} [{id: 1, isActive: true}, {id: 2, isActive: false}]`,
                     null,
                     []
                 );
@@ -292,14 +292,14 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
     describe('Mixed Primitive Objects', () => {
         it('should handle mixed primitive types', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'prim_mixed',
                 ['id Int4', 'name Utf8', 'score Float8', 'isValid Boolean']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({
                         id: Shape.number(),
@@ -311,13 +311,13 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, name: 'Alice', score: 95.5, isValid: true}]`,
+                    `INSERT test::${table_name} [{id: 1, name: 'Alice', score: 95.5, isValid: true}]`,
                     null,
                     []
                 );
@@ -344,14 +344,14 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
     describe('Operations with Transformations', () => {
         it('should apply transformations to INSERT operations', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'trans_insert',
                 ['id Int4', 'name Utf8', 'value Float8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({
                         id: Shape.number(),
@@ -362,13 +362,13 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, name: 'test', value: 1.5}]`,
+                    `INSERT test::${table_name} [{id: 1, name: 'test', value: 1.5}]`,
                     null,
                     []
                 );
@@ -388,34 +388,34 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
 
         it('should apply transformations to UPDATE operations', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'trans_update',
                 ['id Int4', 'value Int4']
             );
 
             // Pre-populate
-            const client = getConnection().getClient();
+            const client = get_connection().get_client();
             await client!.command(
-                `INSERT test::${tableName} [{id: 1, value: 10}]`,
+                `INSERT test::${table_name} [{id: 1, value: 10}]`,
                 null,
                 []
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), value: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
                 await client!.command(
-                    `UPDATE test::${tableName} { value: 20 } FILTER id == 1`,
+                    `UPDATE test::${table_name} { value: 20 } FILTER id == 1`,
                     null,
                     []
                 );
@@ -435,34 +435,34 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
 
         it('should apply transformations to REMOVE operations', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'trans_remove',
                 ['id Int4', 'name Utf8']
             );
 
             // Pre-populate
-            const client = getConnection().getClient();
+            const client = get_connection().get_client();
             await client!.command(
-                `INSERT test::${tableName} [{id: 1, name: 'to_remove'}]`,
+                `INSERT test::${table_name} [{id: 1, name: 'to_remove'}]`,
                 null,
                 []
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
                 await client!.command(
-                    `DELETE test::${tableName} FILTER id == 1`,
+                    `DELETE test::${table_name} FILTER id == 1`,
                     null,
                     []
                 );
@@ -482,29 +482,29 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
 
         it('should maintain type consistency across multiple operations', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'trans_consistency',
                 ['id Int4', 'count Int4']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), count: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
-            const client = getConnection().getClient();
+            const client = get_connection().get_client();
 
             // INSERT
             await act(async () => {
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, count: 0}]`,
+                    `INSERT test::${table_name} [{id: 1, count: 0}]`,
                     null,
                     []
                 );
@@ -517,7 +517,7 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
             // UPDATE
             await act(async () => {
                 await client!.command(
-                    `UPDATE test::${tableName} { count: 5 } FILTER id == 1`,
+                    `UPDATE test::${table_name} { count: 5 } FILTER id == 1`,
                     null,
                     []
                 );
@@ -530,7 +530,7 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
             // REMOVE
             await act(async () => {
                 await client!.command(
-                    `DELETE test::${tableName} FILTER id == 1`,
+                    `DELETE test::${table_name} FILTER id == 1`,
                     null,
                     []
                 );
@@ -553,14 +553,14 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
     describe('Edge Cases', () => {
         it('should handle undefined values with primitives', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'prim_null',
                 ['id Int4', 'optionalValue Int4']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({
                         id: Shape.number(),
@@ -570,13 +570,13 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, optionalValue: 42}]`,
+                    `INSERT test::${table_name} [{id: 1, optionalValue: 42}]`,
                     null,
                     []
                 );
@@ -591,29 +591,29 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
 
         it('should handle large batches with transformations', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'prim_batch',
                 ['id Int4', 'value Float8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), value: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             // Insert 100 rows at once
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 const rows = Array.from({length: 100}, (_, i) => `{id: ${i}, value: ${i * 1.5}}`).join(', ');
                 await client!.command(
-                    `INSERT test::${tableName} [${rows}]`,
+                    `INSERT test::${table_name} [${rows}]`,
                     null,
                     []
                 );

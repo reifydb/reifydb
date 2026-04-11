@@ -9,95 +9,95 @@ import {useConnection} from './use-connection';
 export interface AdminResult<T = any> {
     columns: Column[];
     rows: T[];
-    executionTimeMs: number;
-    rowsAffected?: number;
+    execution_time_ms: number;
+    rows_affected?: number;
 }
 
 export interface AdminState<T = any> {
-    isExecuting: boolean;
+    is_executing: boolean;
     results: AdminResult<T>[] | undefined;
     error: string | undefined;
-    executionTime: number | undefined;
+    execution_time: number | undefined;
 }
 
 export interface AdminExecutorOptions {
-    connectionConfig?: ConnectionConfig;
+    connection_config?: ConnectionConfig;
 }
 
 export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
-    const {client} = useConnection(options?.connectionConfig);
+    const {client} = useConnection(options?.connection_config);
 
     const [state, setState] = useState<AdminState<T>>({
-        isExecuting: false,
+        is_executing: false,
         results: undefined,
         error: undefined,
-        executionTime: undefined,
+        execution_time: undefined,
     });
 
     // Stable refs so the callback never recreates
-    const clientRef = useRef(client);
-    clientRef.current = client;
+    const client_ref = useRef(client);
+    client_ref.current = client;
 
-    const isMountedRef = useRef(false);
+    const is_mounted_ref = useRef(false);
     useEffect(() => {
-        isMountedRef.current = true;
-        return () => { isMountedRef.current = false; };
+        is_mounted_ref.current = true;
+        return () => { is_mounted_ref.current = false; };
     }, []);
 
     // Counter to detect superseded executions
-    const executionIdRef = useRef(0);
+    const execution_id_ref = useRef(0);
 
     // Stash pending call if client isn't ready yet
-    const pendingRef = useRef<{statements: string | string[], params?: any, shapes?: readonly ShapeNode[]} | null>(null);
+    const pending_ref = useRef<{statements: string | string[], params?: any, shapes?: readonly ShapeNode[]} | null>(null);
 
     const admin = useCallback(
         (statements: string | string[], params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
-            const currentClient = clientRef.current;
+            const current_client = client_ref.current;
             // If no client yet, stash the request for replay when client connects
-            if (!currentClient) {
-                pendingRef.current = {statements, params, shapes};
-                setState(prev => ({...prev, isExecuting: true, error: undefined}));
+            if (!current_client) {
+                pending_ref.current = {statements, params, shapes};
+                setState(prev => ({...prev, is_executing: true, error: undefined}));
                 return Promise.resolve();
             }
 
-            pendingRef.current = null;
-            const thisExecution = ++executionIdRef.current;
+            pending_ref.current = null;
+            const this_execution = ++execution_id_ref.current;
 
-            setState(prev => ({...prev, isExecuting: true, error: undefined}));
+            setState(prev => ({...prev, is_executing: true, error: undefined}));
 
-            const startTime = Date.now();
+            const start_time = Date.now();
 
             return (async () => {
                 try {
-                    const frameResults = await currentClient.admin(statements, params || null, shapes || []) || [];
+                    const frame_results = await current_client.admin(statements, params || null, shapes || []) || [];
 
                     // If this execution was superseded by a newer one, discard results
-                    if (executionIdRef.current !== thisExecution) return;
+                    if (execution_id_ref.current !== this_execution) return;
 
-                    const executionTime = Date.now() - startTime;
+                    const execution_time = Date.now() - start_time;
 
                     // Process each frame into a AdminResult
-                    const results: AdminResult<T>[] = frameResults.map((frame: any) => {
+                    const results: AdminResult<T>[] = frame_results.map((frame: any) => {
                         if (Array.isArray(frame) && frame.length > 0) {
-                            const firstRow = frame[0];
+                            const first_row = frame[0];
                             let columns: Column[] = [];
 
                             // Check if we have Value objects or plain objects
-                            const hasValueObjects = firstRow && typeof firstRow === 'object' &&
-                                Object.values(firstRow).some(v => v && typeof v === 'object' && 'type' in v);
+                            const has_value_objects = first_row && typeof first_row === 'object' &&
+                                Object.values(first_row).some(v => v && typeof v === 'object' && 'type' in v);
 
-                            if (hasValueObjects) {
-                                columns = Object.keys(firstRow).map((key) => {
-                                    const value = firstRow[key];
-                                    const dataType = value?.type || 'Utf8';
+                            if (has_value_objects) {
+                                columns = Object.keys(first_row).map((key) => {
+                                    const value = first_row[key];
+                                    const data_type = value?.type || 'Utf8';
                                     return {
                                         name: key,
-                                        type: dataType,
+                                        type: data_type,
                                         payload: [],
                                     };
                                 });
                             } else {
-                                columns = Object.keys(firstRow).map((key) => ({
+                                columns = Object.keys(first_row).map((key) => ({
                                     name: key,
                                     type: 'Utf8',
                                     payload: [],
@@ -107,47 +107,47 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                             return {
                                 columns,
                                 rows: frame as T[],
-                                executionTimeMs: executionTime,
+                                execution_time_ms: execution_time,
                             };
                         } else {
                             return {
                                 columns: [],
                                 rows: [],
-                                executionTimeMs: executionTime,
-                                rowsAffected: typeof frame === 'number' ? frame : undefined,
+                                execution_time_ms: execution_time,
+                                rows_affected: typeof frame === 'number' ? frame : undefined,
                             };
                         }
                     });
 
-                    if (!isMountedRef.current) return;
+                    if (!is_mounted_ref.current) return;
                     setState({
-                        isExecuting: false,
+                        is_executing: false,
                         results,
                         error: undefined,
-                        executionTime,
+                        execution_time,
                     });
                 } catch (err) {
-                    if (executionIdRef.current !== thisExecution) return;
+                    if (execution_id_ref.current !== this_execution) return;
 
-                    const executionTime = Date.now() - startTime;
-                    let errorMessage = 'Admin execution failed';
+                    const execution_time = Date.now() - start_time;
+                    let error_message = 'Admin execution failed';
 
                     if (err instanceof Error) {
-                        errorMessage = err.message;
+                        error_message = err.message;
                     } else if (typeof err === 'string') {
-                        errorMessage = err;
+                        error_message = err;
                     } else if (err && typeof err === 'object' && 'message' in err) {
-                        errorMessage = (err as { message: string }).message;
+                        error_message = (err as { message: string }).message;
                     }
 
-                    console.error('Admin execution failed:', errorMessage);
+                    console.error('Admin execution failed:', error_message);
 
-                    if (!isMountedRef.current) return;
+                    if (!is_mounted_ref.current) return;
                     setState(prev => ({
                         ...prev,
-                        isExecuting: false,
-                        error: errorMessage,
-                        executionTime,
+                        is_executing: false,
+                        error: error_message,
+                        execution_time,
                     }));
 
                 }
@@ -158,28 +158,28 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
 
     // Replay pending request when client becomes available
     useEffect(() => {
-        if (client && pendingRef.current) {
-            const {statements, params, shapes} = pendingRef.current;
+        if (client && pending_ref.current) {
+            const {statements, params, shapes} = pending_ref.current;
             admin(statements, params, shapes);
         }
     }, [client, admin]);
 
-    const cancelAdmin = useCallback(() => {
+    const cancel_admin = useCallback(() => {
         // Bump execution ID so any in-flight request is ignored on completion
-        executionIdRef.current++;
+        execution_id_ref.current++;
         setState((prev) => ({
             ...prev,
-            isExecuting: false,
+            is_executing: false,
             error: 'Admin cancelled',
         }));
     }, []);
 
     return {
-        isExecuting: state.isExecuting,
+        is_executing: state.is_executing,
         results: state.results,
         error: state.error,
-        executionTime: state.executionTime,
+        execution_time: state.execution_time,
         admin,
-        cancelAdmin,
+        cancel_admin,
     };
 }

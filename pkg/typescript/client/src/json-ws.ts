@@ -17,45 +17,45 @@ import type {
 import {
     ReifyError
 } from "./types";
-import {encodeParams} from "./encoder";
+import {encode_params} from "./encoder";
 
 export interface JsonWsClientOptions {
     url: string;
-    timeoutMs?: number;
+    timeout_ms?: number;
     token?: string;
-    maxReconnectAttempts?: number;
-    reconnectDelayMs?: number;
+    max_reconnect_attempts?: number;
+    reconnect_delay_ms?: number;
     unwrap?: boolean;
     signal?: AbortSignal;
 }
 
 type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | LogoutResponse;
 
-async function createWebSocket(url: string): Promise<WebSocket> {
+async function create_web_socket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
         return new WebSocket(url);
     } else {
         //@ts-ignore
-        const wsModule = await import("ws");
-        return new wsModule.WebSocket(url);
+        const ws_module = await import("ws");
+        return new ws_module.WebSocket(url);
     }
 }
 
 export class JsonWebsocketClient {
     private options: JsonWsClientOptions;
-    private nextId: number;
+    private next_id: number;
     private socket: WebSocket;
     private pending = new Map<string, (response: ResponsePayload) => void>();
-    private reconnectAttempts: number = 0;
-    private shouldReconnect: boolean = true;
-    private isReconnecting: boolean = false;
+    private reconnect_attempts: number = 0;
+    private should_reconnect: boolean = true;
+    private is_reconnecting: boolean = false;
 
     private constructor(socket: WebSocket, options: JsonWsClientOptions) {
         this.options = options;
-        this.nextId = 1;
+        this.next_id = 1;
         this.socket = socket;
 
-        this.setupSocketHandlers();
+        this.setup_socket_handlers();
     }
 
     static async connect(options: JsonWsClientOptions): Promise<JsonWebsocketClient> {
@@ -63,48 +63,48 @@ export class JsonWebsocketClient {
             throw new Error("AbortError");
         }
         
-        const socket = await createWebSocket(options.url);
+        const socket = await create_web_socket(options.url);
 
         if (socket.readyState !== 1) {
-            const connectionTimeoutMs = 30000;
+            const connection_timeout_ms = 30000;
             await new Promise<void>((resolve, reject) => {
-                const connectionTimeout = setTimeout(() => {
+                const connection_timeout = setTimeout(() => {
                     cleanup();
                     socket.close();
-                    reject(new Error(`WebSocket connection timeout after ${connectionTimeoutMs}ms`));
-                }, connectionTimeoutMs);
+                    reject(new Error(`WebSocket connection timeout after ${connection_timeout_ms}ms`));
+                }, connection_timeout_ms);
 
-                const onAbort = () => {
+                const on_abort = () => {
                     cleanup();
                     socket.close();
                     reject(new Error("AbortError"));
                 };
 
-                const onOpen = () => {
+                const on_open = () => {
                     cleanup();
                     resolve();
                 };
 
-                const onError = () => {
+                const on_error = () => {
                     cleanup();
                     reject(new Error("WebSocket connection failed"));
                 };
 
                 const cleanup = () => {
-                    clearTimeout(connectionTimeout);
-                    socket.removeEventListener("open", onOpen);
-                    socket.removeEventListener("error", onError);
+                    clearTimeout(connection_timeout);
+                    socket.removeEventListener("open", on_open);
+                    socket.removeEventListener("error", on_error);
                     if (options.signal) {
-                        options.signal.removeEventListener("abort", onAbort);
+                        options.signal.removeEventListener("abort", on_abort);
                     }
                 };
 
                 if (options.signal) {
-                    options.signal.addEventListener("abort", onAbort);
+                    options.signal.addEventListener("abort", on_abort);
                 }
 
-                socket.addEventListener("open", onOpen);
-                socket.addEventListener("error", onError);
+                socket.addEventListener("open", on_open);
+                socket.addEventListener("error", on_error);
             });
         }
 
@@ -124,23 +124,23 @@ export class JsonWebsocketClient {
         statements: string | string[],
         params?: any,
     ): Promise<any> {
-        const id = `req-${this.nextId++}`;
+        const id = `req-${this.next_id++}`;
 
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const statement_array = Array.isArray(statements) ? statements : [statements];
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
         return this.send({
             id,
             type: "Admin",
             payload: {
-                statements: outputStatements,
-                params: encodedParams,
+                statements: output_statements,
+                params: encoded_params,
                 format: "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
@@ -151,23 +151,23 @@ export class JsonWebsocketClient {
         statements: string | string[],
         params?: any,
     ): Promise<any> {
-        const id = `req-${this.nextId++}`;
+        const id = `req-${this.next_id++}`;
 
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const statement_array = Array.isArray(statements) ? statements : [statements];
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
         return this.send({
             id,
             type: "Command",
             payload: {
-                statements: outputStatements,
-                params: encodedParams,
+                statements: output_statements,
+                params: encoded_params,
                 format: "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
@@ -178,23 +178,23 @@ export class JsonWebsocketClient {
         statements: string | string[],
         params?: any,
     ): Promise<any> {
-        const id = `req-${this.nextId++}`;
+        const id = `req-${this.next_id++}`;
 
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const statement_array = Array.isArray(statements) ? statements : [statements];
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
         return this.send({
             id,
             type: "Query",
             payload: {
-                statements: outputStatements,
-                params: encodedParams,
+                statements: output_statements,
+                params: encoded_params,
                 format: "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
@@ -219,11 +219,11 @@ export class JsonWebsocketClient {
         }
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("ReifyDB query timeout"));
-            }, timeoutMs);
+            }, timeout_ms);
 
             this.pending.set(id, (res) => {
                 clearTimeout(timeout);
@@ -244,16 +244,16 @@ export class JsonWebsocketClient {
         return response.payload.body;
     }
 
-    async loginWithPassword(identity: string, password: string): Promise<LoginResult> {
+    async login_with_password(identity: string, password: string): Promise<LoginResult> {
         return this.login("password", identity, {password});
     }
 
-    async loginWithToken(identity: string, token: string): Promise<LoginResult> {
+    async login_with_token(identity: string, token: string): Promise<LoginResult> {
         return this.login("token", identity, {token});
     }
 
     async login(method: string, identity: string, credentials: Record<string, string>): Promise<LoginResult> {
-        const id = `auth-${this.nextId++}`;
+        const id = `auth-${this.next_id++}`;
 
         const request: AuthRequest = {
             id,
@@ -262,11 +262,11 @@ export class JsonWebsocketClient {
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Login timeout"));
-            }, timeoutMs);
+            }, timeout_ms);
 
             this.pending.set(id, (res) => {
                 clearTimeout(timeout);
@@ -299,14 +299,14 @@ export class JsonWebsocketClient {
             return;
         }
 
-        const id = `logout-${this.nextId++}`;
+        const id = `logout-${this.next_id++}`;
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Logout timeout"));
-            }, timeoutMs);
+            }, timeout_ms);
 
             this.pending.set(id, (res) => {
                 clearTimeout(timeout);
@@ -324,66 +324,66 @@ export class JsonWebsocketClient {
     }
 
     disconnect() {
-        this.shouldReconnect = false;
+        this.should_reconnect = false;
         this.socket.close();
     }
 
-    private handleDisconnect() {
-        this.rejectAllPendingRequests();
+    private handle_disconnect() {
+        this.reject_all_pending_requests();
 
-        if (!this.shouldReconnect || this.isReconnecting) {
+        if (!this.should_reconnect || this.is_reconnecting) {
             return;
         }
 
-        const maxAttempts = this.options.maxReconnectAttempts ?? 5;
-        if (this.reconnectAttempts >= maxAttempts) {
-            console.error(`Max reconnection attempts (${maxAttempts}) reached`);
+        const max_attempts = this.options.max_reconnect_attempts ?? 5;
+        if (this.reconnect_attempts >= max_attempts) {
+            console.error(`Max reconnection attempts (${max_attempts}) reached`);
             return;
         }
 
-        this.attemptReconnect();
+        this.attempt_reconnect();
     }
 
-    private async attemptReconnect() {
-        this.isReconnecting = true;
-        this.reconnectAttempts++;
+    private async attempt_reconnect() {
+        this.is_reconnecting = true;
+        this.reconnect_attempts++;
 
-        const baseDelay = this.options.reconnectDelayMs ?? 1000;
-        const delay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
+        const base_delay = this.options.reconnect_delay_ms ?? 1000;
+        const delay = base_delay * Math.pow(2, this.reconnect_attempts - 1);
 
         console.log(`Attempting reconnection in ${delay}ms`);
 
         await new Promise(resolve => setTimeout(resolve, delay));
 
         try {
-            const socket = await createWebSocket(this.options.url);
+            const socket = await create_web_socket(this.options.url);
 
             if (socket.readyState !== 1) {
-                const connectionTimeoutMs = 30000;
+                const connection_timeout_ms = 30000;
                 await new Promise<void>((resolve, reject) => {
-                    const connectionTimeout = setTimeout(() => {
-                        socket.removeEventListener("open", onOpen);
-                        socket.removeEventListener("error", onError);
+                    const connection_timeout = setTimeout(() => {
+                        socket.removeEventListener("open", on_open);
+                        socket.removeEventListener("error", on_error);
                         socket.close();
-                        reject(new Error(`WebSocket reconnection timeout after ${connectionTimeoutMs}ms`));
-                    }, connectionTimeoutMs);
+                        reject(new Error(`WebSocket reconnection timeout after ${connection_timeout_ms}ms`));
+                    }, connection_timeout_ms);
 
-                    const onOpen = () => {
-                        clearTimeout(connectionTimeout);
-                        socket.removeEventListener("open", onOpen);
-                        socket.removeEventListener("error", onError);
+                    const on_open = () => {
+                        clearTimeout(connection_timeout);
+                        socket.removeEventListener("open", on_open);
+                        socket.removeEventListener("error", on_error);
                         resolve();
                     };
 
-                    const onError = () => {
-                        clearTimeout(connectionTimeout);
-                        socket.removeEventListener("open", onOpen);
-                        socket.removeEventListener("error", onError);
+                    const on_error = () => {
+                        clearTimeout(connection_timeout);
+                        socket.removeEventListener("open", on_open);
+                        socket.removeEventListener("error", on_error);
                         reject(new Error("WebSocket connection failed"));
                     };
 
-                    socket.addEventListener("open", onOpen);
-                    socket.addEventListener("error", onError);
+                    socket.addEventListener("open", on_open);
+                    socket.addEventListener("error", on_error);
                 });
             }
 
@@ -392,16 +392,16 @@ export class JsonWebsocketClient {
             }
 
             this.socket = socket;
-            this.setupSocketHandlers();
-            this.reconnectAttempts = 0;
-            this.isReconnecting = false;
+            this.setup_socket_handlers();
+            this.reconnect_attempts = 0;
+            this.is_reconnecting = false;
         } catch (error) {
-            this.isReconnecting = false;
-            this.handleDisconnect();
+            this.is_reconnecting = false;
+            this.handle_disconnect();
         }
     }
 
-    private setupSocketHandlers() {
+    private setup_socket_handlers() {
         this.socket.onmessage = (event) => {
             const msg = JSON.parse(event.data);
 
@@ -425,11 +425,11 @@ export class JsonWebsocketClient {
         };
 
         this.socket.onclose = () => {
-            this.handleDisconnect();
+            this.handle_disconnect();
         };
     }
 
-    private rejectAllPendingRequests() {
+    private reject_all_pending_requests() {
         const error: ErrorResponse = {
             id: "connection-error",
             type: "Err",

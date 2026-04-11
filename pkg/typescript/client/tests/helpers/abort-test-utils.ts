@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {vi} from 'vitest';
 
-export function mockFetchSuccess(body: any, status = 200): typeof fetch {
+export function mock_fetch_success(body: any, status = 200): typeof fetch {
     return vi.fn().mockResolvedValue({
         ok: status >= 200 && status < 300,
         status,
@@ -11,7 +11,7 @@ export function mockFetchSuccess(body: any, status = 200): typeof fetch {
     });
 }
 
-export function mockFetchThatRespectsSignal(): typeof fetch {
+export function mock_fetch_that_respects_signal(): typeof fetch {
     return vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
         return new Promise((resolve, reject) => {
             if (init?.signal?.aborted) {
@@ -50,7 +50,7 @@ export interface MockSocket {
     _listeners: Record<string, Function[]>;
 }
 
-export function createMockSocket(): MockSocket {
+export function create_mock_socket(): MockSocket {
     const listeners: Record<string, Function[]> = {};
     return {
         readyState: 0,
@@ -72,11 +72,11 @@ export function createMockSocket(): MockSocket {
     };
 }
 
-export function setupWindowWebSocket(mockSocket: MockSocket) {
-    vi.stubGlobal('WebSocket', vi.fn().mockReturnValue(mockSocket));
+export function setup_window_web_socket(mock_socket: MockSocket) {
+    vi.stubGlobal('WebSocket', vi.fn().mockReturnValue(mock_socket));
     vi.stubGlobal('window', {WebSocket: globalThis.WebSocket});
 }
 
-export function teardownWindowWebSocket() {
+export function teardown_window_web_socket() {
     vi.unstubAllGlobals();
 }

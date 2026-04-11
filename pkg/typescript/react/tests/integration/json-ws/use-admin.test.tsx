@@ -3,8 +3,8 @@
 
 import {afterAll, beforeAll, afterEach, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useAdminOne, useAdminMany, ConnectionProvider, getConnection, clearConnection, Shape} from '../../../src';
-import {waitForDatabase} from '../setup';
+import {useAdminOne, useAdminMany, ConnectionProvider, get_connection, clear_connection, Shape} from '../../../src';
+import {wait_for_database} from '../setup';
 // @ts-ignore
 import React from "react";
 
@@ -14,15 +14,15 @@ describe('useAdmin Hooks (JSON WS)', () => {
     );
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
     afterEach(async () => {
-        await clearConnection();
+        await clear_connection();
     });
 
     afterAll(async () => {
-        await clearConnection();
+        await clear_connection();
     });
 
     describe('useAdminOne', () => {
@@ -36,11 +36,11 @@ describe('useAdmin Hooks (JSON WS)', () => {
                 ), {wrapper}
             );
 
-            expect(result.current.isExecuting).toBe(true);
+            expect(result.current.is_executing).toBe(true);
             expect(result.current.result).toBeUndefined();
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
                 expect(result.current.result).toBeDefined();
             });
 
@@ -61,7 +61,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
 
@@ -75,7 +75,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({num: 1});
@@ -95,7 +95,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({result: 10});
@@ -122,7 +122,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             const person = result.current.result!.rows[0];
@@ -138,7 +138,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
                 expect(result.current.error).toBeDefined();
             });
 
@@ -151,7 +151,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.error).toBeUndefined();
@@ -177,7 +177,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
                 expect(result.current.results).toBeDefined();
             });
 
@@ -197,7 +197,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(1);
@@ -220,7 +220,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results![0].rows[0]).toEqual({first: 10});
@@ -243,7 +243,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results![0].rows[0]).toEqual({value: 100});
@@ -257,7 +257,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(1);
@@ -285,7 +285,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(3);
@@ -310,7 +310,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.error).toBeDefined();
@@ -335,8 +335,8 @@ describe('useAdmin Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result1.current.isExecuting).toBe(false);
-                expect(result2.current.isExecuting).toBe(false);
+                expect(result1.current.is_executing).toBe(false);
+                expect(result2.current.is_executing).toBe(false);
             });
 
             expect(result1.current.result!.rows[0]).toEqual({value: 100});
@@ -357,7 +357,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({value: 999});
@@ -365,25 +365,25 @@ describe('useAdmin Hooks (JSON WS)', () => {
 
         it('should support config override in hooks', async () => {
             const shape = Shape.object({test: Shape.string()});
-            const overrideConfig = {url: process.env.REIFYDB_WS_URL!, options: {timeoutMs: 2000}};
+            const override_config = {url: process.env.REIFYDB_WS_URL!, options: {timeout_ms: 2000}};
 
             const {result, unmount} = renderHook(() =>
                 useAdminOne(
                     `MAP {test: 'override'}`,
                     undefined,
                     shape,
-                    {connectionConfig: overrideConfig}
+                    {connection_config: override_config}
                 )
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({test: 'override'});
 
             unmount();
-            await clearConnection(overrideConfig);
+            await clear_connection(override_config);
         });
     });
 });

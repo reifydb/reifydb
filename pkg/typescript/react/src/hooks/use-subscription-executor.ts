@@ -7,7 +7,7 @@ import { useConnection } from './use-connection';
 import type { ConnectionConfig } from '../connection/connection';
 
 export interface SubscriptionExecutorOptions {
-    connectionConfig?: ConnectionConfig;
+    connection_config?: ConnectionConfig;
 }
 
 export interface ChangeEvent<T> {
@@ -19,140 +19,140 @@ export interface ChangeEvent<T> {
 export interface SubscriptionState<T> {
     data: T[];
     changes: ChangeEvent<T>[];
-    isSubscribed: boolean;
-    isSubscribing: boolean;
+    is_subscribed: boolean;
+    is_subscribing: boolean;
     error: string | undefined;
-    subscriptionId: string | undefined;
+    subscription_id: string | undefined;
 }
 
 export function useSubscriptionExecutor<T = any>(
     options?: SubscriptionExecutorOptions
 ) {
-    const { client } = useConnection(options?.connectionConfig);
+    const { client } = useConnection(options?.connection_config);
 
     const [state, setState] = useState<SubscriptionState<T>>({
         data: [],
         changes: [],
-        isSubscribed: false,
-        isSubscribing: false,
+        is_subscribed: false,
+        is_subscribing: false,
         error: undefined,
-        subscriptionId: undefined
+        subscription_id: undefined
     });
 
     // Use a ref for client to avoid recreating callbacks when client changes
-    const clientRef = useRef(client);
+    const client_ref = useRef(client);
 
     const subscriptionIdRef = useRef<string | undefined>(undefined);
-    const queryRef = useRef<string | undefined>(undefined);
-    const paramsRef = useRef<any>(undefined);
-    const shapeRef = useRef<ShapeNode | undefined>(undefined);
+    const query_ref = useRef<string | undefined>(undefined);
+    const params_ref = useRef<any>(undefined);
+    const shape_ref = useRef<ShapeNode | undefined>(undefined);
 
-    // Keep clientRef in sync with client
+    // Keep client_ref in sync with client
     useEffect(() => {
-        clientRef.current = client;
+        client_ref.current = client;
     }, [client]);
 
     // Helper to add change event
-    const addChangeEvent = useCallback((
+    const add_change_event = useCallback((
         operation: 'INSERT' | 'UPDATE' | 'REMOVE',
         rows: T[]
     ) => {
         setState(prev => {
-            const newChange: ChangeEvent<T> = {
+            const new_change: ChangeEvent<T> = {
                 operation,
                 rows,
                 timestamp: Date.now()
             };
 
-            const newChanges = [...prev.changes, newChange];
+            const new_changes = [...prev.changes, new_change];
 
             return {
                 ...prev,
                 data: prev.data,
-                changes: newChanges
+                changes: new_changes
             };
         });
     }, []);
 
     // Separate callbacks for each operation type
-    const handleInsert = useCallback((rows: T[]) => {
-        addChangeEvent('INSERT', rows);
-    }, [addChangeEvent]);
+    const handle_insert = useCallback((rows: T[]) => {
+        add_change_event('INSERT', rows);
+    }, [add_change_event]);
 
-    const handleUpdate = useCallback((rows: T[]) => {
-        addChangeEvent('UPDATE', rows);
-    }, [addChangeEvent]);
+    const handle_update = useCallback((rows: T[]) => {
+        add_change_event('UPDATE', rows);
+    }, [add_change_event]);
 
-    const handleRemove = useCallback((rows: T[]) => {
-        addChangeEvent('REMOVE', rows);
-    }, [addChangeEvent]);
+    const handle_remove = useCallback((rows: T[]) => {
+        add_change_event('REMOVE', rows);
+    }, [add_change_event]);
 
     const subscribe = useCallback(async (
         query: string,
         params?: any,
         shape?: ShapeNode
     ) => {
-        const currentClient = clientRef.current;
-        if (!currentClient) {
+        const current_client = client_ref.current;
+        if (!current_client) {
             setState(prev => ({ ...prev, error: 'Client not connected' }));
             return;
         }
 
-        if (!('subscribe' in currentClient)) {
+        if (!('subscribe' in current_client)) {
             setState(prev => ({ ...prev, error: 'Subscriptions require a WebSocket connection' }));
             return;
         }
 
         // Store refs for reconnection
-        queryRef.current = query;
-        paramsRef.current = params;
-        shapeRef.current = shape;
+        query_ref.current = query;
+        params_ref.current = params;
+        shape_ref.current = shape;
 
         setState(prev => ({
             ...prev,
-            isSubscribing: true,
+            is_subscribing: true,
             error: undefined
         }));
 
         try {
-            const subId = await currentClient.subscribe(query, params, shape, {
-                onInsert: handleInsert,
-                onUpdate: handleUpdate,
-                onRemove: handleRemove
+            const sub_id = await current_client.subscribe(query, params, shape, {
+                on_insert: handle_insert,
+                on_update: handle_update,
+                on_remove: handle_remove
             });
 
-            subscriptionIdRef.current = subId;
+            subscriptionIdRef.current = sub_id;
             setState(prev => ({
                 ...prev,
-                isSubscribing: false,
-                isSubscribed: true,
-                subscriptionId: subId
+                is_subscribing: false,
+                is_subscribed: true,
+                subscription_id: sub_id
             }));
         } catch (err: any) {
             setState(prev => ({
                 ...prev,
-                isSubscribing: false,
+                is_subscribing: false,
                 error: err.message || 'Subscription failed'
             }));
         }
-    }, [handleInsert, handleUpdate, handleRemove]);
+    }, [handle_insert, handle_update, handle_remove]);
 
     const unsubscribe = useCallback(async () => {
-        const currentClient = clientRef.current;
-        if (!currentClient || !subscriptionIdRef.current) return;
-        if (!('unsubscribe' in currentClient)) return;
+        const current_client = client_ref.current;
+        if (!current_client || !subscriptionIdRef.current) return;
+        if (!('unsubscribe' in current_client)) return;
 
         try {
-            await currentClient.unsubscribe(subscriptionIdRef.current);
+            await current_client.unsubscribe(subscriptionIdRef.current);
             subscriptionIdRef.current = undefined;
-            queryRef.current = undefined;
-            paramsRef.current = undefined;
-            shapeRef.current = undefined;
+            query_ref.current = undefined;
+            params_ref.current = undefined;
+            shape_ref.current = undefined;
 
             setState(prev => ({
                 ...prev,
-                isSubscribed: false,
-                subscriptionId: undefined
+                is_subscribed: false,
+                subscription_id: undefined
             }));
         } catch (err: any) {
             setState(prev => ({
@@ -162,19 +162,19 @@ export function useSubscriptionExecutor<T = any>(
         }
     }, []);
 
-    const clearChanges = useCallback(() => {
+    const clear_changes = useCallback(() => {
         setState(prev => ({ ...prev, changes: [] }));
     }, []);
 
-    const clearData = useCallback(() => {
+    const clear_data = useCallback(() => {
         setState(prev => ({ ...prev, data: [] }));
     }, []);
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
-            if (subscriptionIdRef.current && clientRef.current && 'unsubscribe' in clientRef.current) {
-                clientRef.current.unsubscribe(subscriptionIdRef.current).catch(console.error);
+            if (subscriptionIdRef.current && client_ref.current && 'unsubscribe' in client_ref.current) {
+                client_ref.current.unsubscribe(subscriptionIdRef.current).catch(console.error);
             }
         };
     }, []);
@@ -183,7 +183,7 @@ export function useSubscriptionExecutor<T = any>(
         state,
         subscribe,
         unsubscribe,
-        clearChanges,
-        clearData
+        clear_changes,
+        clear_data
     };
 }

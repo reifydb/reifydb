@@ -3,8 +3,8 @@
 
 import {afterAll, beforeAll, afterEach, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useCommandOne, useCommandMany, ConnectionProvider, getConnection, clearConnection, Shape} from '../../../src';
-import {waitForDatabase} from '../setup';
+import {useCommandOne, useCommandMany, ConnectionProvider, get_connection, clear_connection, Shape} from '../../../src';
+import {wait_for_database} from '../setup';
 // @ts-ignore
 import React from "react";
 
@@ -15,16 +15,16 @@ describe('useCommand Hooks', () => {
     );
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
     afterEach(async () => {
         // Clear all connections after each test to prevent interference
-        await clearConnection();
+        await clear_connection();
     });
 
     afterAll(async () => {
-        await clearConnection();
+        await clear_connection();
     });
 
     describe('useCommandOne', () => {
@@ -38,11 +38,11 @@ describe('useCommand Hooks', () => {
                 ), {wrapper}
             );
 
-            expect(result.current.isExecuting).toBe(true);
+            expect(result.current.is_executing).toBe(true);
             expect(result.current.result).toBeUndefined();
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
                 expect(result.current.result).toBeDefined();
             });
 
@@ -63,7 +63,7 @@ describe('useCommand Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
 
@@ -77,7 +77,7 @@ describe('useCommand Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({num: 1});
@@ -98,7 +98,7 @@ describe('useCommand Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({result: 10});
@@ -126,7 +126,7 @@ describe('useCommand Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             const person = result.current.result!.rows[0];
@@ -142,7 +142,7 @@ describe('useCommand Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
                 expect(result.current.error).toBeDefined();
             });
 
@@ -155,7 +155,7 @@ describe('useCommand Hooks', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.error).toBeUndefined();
@@ -181,7 +181,7 @@ describe('useCommand Hooks', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
                 expect(result.current.results).toBeDefined();
             });
 
@@ -201,7 +201,7 @@ describe('useCommand Hooks', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(1);
@@ -224,7 +224,7 @@ describe('useCommand Hooks', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results![0].rows[0]).toEqual({first: 10});
@@ -247,7 +247,7 @@ describe('useCommand Hooks', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results![0].rows[0]).toEqual({value: 100});
@@ -261,7 +261,7 @@ describe('useCommand Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(1);
@@ -290,7 +290,7 @@ describe('useCommand Hooks', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(3);
@@ -315,7 +315,7 @@ describe('useCommand Hooks', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             // When one command fails, the entire batch fails
@@ -341,8 +341,8 @@ describe('useCommand Hooks', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result1.current.isExecuting).toBe(false);
-                expect(result2.current.isExecuting).toBe(false);
+                expect(result1.current.is_executing).toBe(false);
+                expect(result2.current.is_executing).toBe(false);
             });
 
             expect(result1.current.result!.rows[0]).toEqual({value: 100});
@@ -363,7 +363,7 @@ describe('useCommand Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({value: 999});
@@ -371,7 +371,7 @@ describe('useCommand Hooks', () => {
 
         it('should support config override in hooks', async () => {
             const shape = Shape.object({test: Shape.string()});
-            const overrideConfig = {url: process.env.REIFYDB_WS_URL!, options: {timeoutMs: 2000}};
+            const override_config = {url: process.env.REIFYDB_WS_URL!, options: {timeout_ms: 2000}};
 
             // Use override config (different timeout to ensure it's treated as a separate connection)
             const {result, unmount} = renderHook(() =>
@@ -379,19 +379,19 @@ describe('useCommand Hooks', () => {
                     `MAP {test: 'override'}`,
                     undefined,
                     shape,
-                    {connectionConfig: overrideConfig}
+                    {connection_config: override_config}
                 )
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({test: 'override'});
             
             // Clean up the override connection
             unmount();
-            await clearConnection(overrideConfig);
+            await clear_connection(override_config);
         });
     });
 });

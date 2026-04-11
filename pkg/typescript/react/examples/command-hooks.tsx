@@ -13,7 +13,7 @@ import {
 // Example: Creating a user management component
 function UserManager() {
     // Shape for user data
-    const userShape = Shape.object({
+    const user_shape = Shape.object({
         id: Shape.number(),
         name: Shape.string(),
         email: Shape.string(),
@@ -21,28 +21,28 @@ function UserManager() {
     });
 
     // Query to get all users
-    const { result: users, error: queryError } = useQueryOne(
+    const { result: users, error: query_error } = useQueryOne(
         `FROM users SELECT *`,
         undefined,
-        Shape.array(userShape)
+        Shape.array(user_shape)
     );
 
     // Command to add a new user
     const { 
-        result: addResult, 
-        error: addError, 
-        isExecuting: isAdding 
+        result: add_result, 
+        error: add_error, 
+        is_executing: is_adding 
     } = useCommandOne(
         `INSERT INTO users VALUES {name: :name, email: :email, created: CURRENT_TIMESTAMP}`,
         { name: 'New User', email: 'user@example.com' },
-        userShape
+        user_shape
     );
 
     // Command to delete a user
     const { 
-        result: deleteResult, 
-        error: deleteError,
-        isExecuting: isDeleting 
+        result: delete_result, 
+        error: delete_error,
+        is_executing: is_deleting 
     } = useCommandOne(
         `DELETE FROM users WHERE id = :id`,
         { id: 1 }
@@ -60,17 +60,17 @@ function UserManager() {
             ))}
 
             {/* Show command status */}
-            {isAdding && <p>Adding user...</p>}
-            {isDeleting && <p>Deleting user...</p>}
+            {is_adding && <p>Adding user...</p>}
+            {is_deleting && <p>Deleting user...</p>}
             
             {/* Show errors */}
-            {queryError && <p>Query error: {queryError}</p>}
-            {addError && <p>Add error: {addError}</p>}
-            {deleteError && <p>Delete error: {deleteError}</p>}
+            {query_error && <p>Query error: {query_error}</p>}
+            {add_error && <p>Add error: {add_error}</p>}
+            {delete_error && <p>Delete error: {delete_error}</p>}
             
             {/* Show affected rows */}
-            {addResult?.rowsAffected && <p>Added {addResult.rowsAffected} user(s)</p>}
-            {deleteResult?.rowsAffected && <p>Deleted {deleteResult.rowsAffected} user(s)</p>}
+            {add_result?.rows_affected && <p>Added {add_result.rows_affected} user(s)</p>}
+            {delete_result?.rows_affected && <p>Deleted {delete_result.rows_affected} user(s)</p>}
         </div>
     );
 }
@@ -80,7 +80,7 @@ function DatabaseSetup() {
     const { 
         results, 
         error, 
-        isExecuting 
+        is_executing 
     } = useCommandMany([
         `CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY,
@@ -92,7 +92,7 @@ function DatabaseSetup() {
         `INSERT INTO users VALUES {id: 1, name: 'Admin', email: 'admin@example.com', created: CURRENT_TIMESTAMP}`
     ]);
 
-    if (isExecuting) return <p>Setting up database...</p>;
+    if (is_executing) return <p>Setting up database...</p>;
     if (error) return <p>Setup error: {error}</p>;
     
     return (
@@ -101,7 +101,7 @@ function DatabaseSetup() {
             <p>Executed {results?.length} commands</p>
             {results?.map((result, i) => (
                 <div key={i}>
-                    Command {i + 1}: {result.rowsAffected ?? 0} rows affected
+                    Command {i + 1}: {result.rows_affected ?? 0} rows affected
                 </div>
             ))}
         </div>
@@ -110,16 +110,16 @@ function DatabaseSetup() {
 
 // Example: Using with custom connection config
 function CustomConnectionExample() {
-    const customConfig = {
+    const custom_config = {
         url: 'ws://localhost:8091',
-        options: { timeoutMs: 5000 }
+        options: { timeout_ms: 5000 }
     };
 
     const { result, error } = useCommandOne(
         `UPDATE settings SET value = :value WHERE key = :key`,
         { key: 'theme', value: 'dark' },
         undefined,
-        { connectionConfig: customConfig }
+        { connection_config: custom_config }
     );
 
     return (

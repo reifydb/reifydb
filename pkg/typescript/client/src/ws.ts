@@ -33,19 +33,19 @@ import type {
 import {
     ReifyError
 } from "./types";
-import {encodeParams} from "./encoder";
+import {encode_params} from "./encoder";
 
 export interface WsClientOptions {
     url: string;
-    timeoutMs?: number;
+    timeout_ms?: number;
     token?: string;
-    maxReconnectAttempts?: number;
-    reconnectDelayMs?: number;
+    max_reconnect_attempts?: number;
+    reconnect_delay_ms?: number;
     signal?: AbortSignal;
 }
 
 interface SubscriptionState<T = any> {
-    subscriptionId: string;
+    subscription_id: string;
     query: string;
     params?: any;
     shape?: ShapeNode;
@@ -54,33 +54,33 @@ interface SubscriptionState<T = any> {
 
 type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse | LogoutResponse;
 
-async function createWebSocket(url: string): Promise<WebSocket> {
+async function create_web_socket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
         return new WebSocket(url);
     } else {
         //@ts-ignore
-        const wsModule = await import("ws");
-        return new wsModule.WebSocket(url);
+        const ws_module = await import("ws");
+        return new ws_module.WebSocket(url);
     }
 }
 
 
 export class WsClient {
     private options: WsClientOptions;
-    private nextId: number;
+    private next_id: number;
     private socket: WebSocket;
     private pending = new Map<string, (response: ResponsePayload) => void>();
-    private reconnectAttempts: number = 0;
-    private shouldReconnect: boolean = true;
-    private isReconnecting: boolean = false;
+    private reconnect_attempts: number = 0;
+    private should_reconnect: boolean = true;
+    private is_reconnecting: boolean = false;
     private subscriptions = new Map<string, SubscriptionState>();
 
     private constructor(socket: WebSocket, options: WsClientOptions) {
         this.options = options;
-        this.nextId = 1;
+        this.next_id = 1;
         this.socket = socket;
 
-        this.setupSocketHandlers();
+        this.setup_socket_handlers();
     }
 
     static async connect(options: WsClientOptions): Promise<WsClient> {
@@ -88,49 +88,49 @@ export class WsClient {
             throw new Error("AbortError");
         }
 
-        const socket = await createWebSocket(options.url);
+        const socket = await create_web_socket(options.url);
 
         // Wait for connection to open if not already open, with timeout
         if (socket.readyState !== 1) {
-            const connectionTimeoutMs = 30000; // 30 second connection timeout
+            const connection_timeout_ms = 30000; // 30 second connection timeout
             await new Promise<void>((resolve, reject) => {
-                const connectionTimeout = setTimeout(() => {
+                const connection_timeout = setTimeout(() => {
                     cleanup();
                     socket.close();
-                    reject(new Error(`WebSocket connection timeout after ${connectionTimeoutMs}ms`));
-                }, connectionTimeoutMs);
+                    reject(new Error(`WebSocket connection timeout after ${connection_timeout_ms}ms`));
+                }, connection_timeout_ms);
 
-                const onAbort = () => {
+                const on_abort = () => {
                     cleanup();
                     socket.close();
                     reject(new Error("AbortError"));
                 };
 
-                const onOpen = () => {
+                const on_open = () => {
                     cleanup();
                     resolve();
                 };
 
-                const onError = () => {
+                const on_error = () => {
                     cleanup();
                     reject(new Error("WebSocket connection failed"));
                 };
 
                 const cleanup = () => {
-                    clearTimeout(connectionTimeout);
-                    socket.removeEventListener("open", onOpen);
-                    socket.removeEventListener("error", onError);
+                    clearTimeout(connection_timeout);
+                    socket.removeEventListener("open", on_open);
+                    socket.removeEventListener("error", on_error);
                     if (options.signal) {
-                        options.signal.removeEventListener("abort", onAbort);
+                        options.signal.removeEventListener("abort", on_abort);
                     }
                 };
 
                 if (options.signal) {
-                    options.signal.addEventListener("abort", onAbort);
+                    options.signal.addEventListener("abort", on_abort);
                 }
                 
-                socket.addEventListener("open", onOpen);
-                socket.addEventListener("error", onError);
+                socket.addEventListener("open", on_open);
+                socket.addEventListener("error", on_error);
             });
         }
 
@@ -158,39 +158,39 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const id = `req-${this.nextId++}`;
+        const id = `req-${this.next_id++}`;
 
         // Normalize statements to array
-        const statementArray = Array.isArray(statements) ? statements : [statements];
+        const statement_array = Array.isArray(statements) ? statements : [statements];
         // When multiple array elements, mark each with OUTPUT so results are returned.
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
         // Encode params without shape assumptions
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
         const result = await this.send({
             id,
             type: "Admin",
             payload: {
-                statements: outputStatements,
-                params: encodedParams
+                statements: output_statements,
+                params: encoded_params
             },
         });
 
         // Transform each frame with its corresponding shape
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
+        const transformed_frames = result.map((frame: any, frame_index: number) => {
+            const frame_shape = shapes[frame_index];
+            if (!frame_shape) {
                 return frame; // No shape for this frame, return as-is
             }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
+            return frame.map((row: any) => this.transform_result(row, frame_shape));
         });
 
-        return transformedFrames as FrameResults<S>;
+        return transformed_frames as FrameResults<S>;
     }
 
     /**
@@ -204,39 +204,39 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const id = `req-${this.nextId++}`;
+        const id = `req-${this.next_id++}`;
 
         // Normalize statements to array
-        const statementArray = Array.isArray(statements) ? statements : [statements];
+        const statement_array = Array.isArray(statements) ? statements : [statements];
         // When multiple array elements, mark each with OUTPUT so results are returned.
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
         // Encode params without shape assumptions
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
         const result = await this.send({
             id,
             type: "Command",
             payload: {
-                statements: outputStatements,
-                params: encodedParams
+                statements: output_statements,
+                params: encoded_params
             },
         });
 
         // Transform each frame with its corresponding shape
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
+        const transformed_frames = result.map((frame: any, frame_index: number) => {
+            const frame_shape = shapes[frame_index];
+            if (!frame_shape) {
                 return frame; // No shape for this frame, return as-is
             }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
+            return frame.map((row: any) => this.transform_result(row, frame_shape));
         });
 
-        return transformedFrames as FrameResults<S>;
+        return transformed_frames as FrameResults<S>;
     }
 
 
@@ -251,39 +251,39 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const id = `req-${this.nextId++}`;
+        const id = `req-${this.next_id++}`;
 
         // Normalize statements to array
-        const statementArray = Array.isArray(statements) ? statements : [statements];
+        const statement_array = Array.isArray(statements) ? statements : [statements];
         // When multiple array elements, mark each with OUTPUT so results are returned.
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
         // Encode params without shape assumptions
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
         const result = await this.send({
             id,
             type: "Query",
             payload: {
-                statements: outputStatements,
-                params: encodedParams
+                statements: output_statements,
+                params: encoded_params
             },
         });
 
         // Transform each frame with its corresponding shape
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
+        const transformed_frames = result.map((frame: any, frame_index: number) => {
+            const frame_shape = shapes[frame_index];
+            if (!frame_shape) {
                 return frame; // No shape for this frame, return as-is
             }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
+            return frame.map((row: any) => this.transform_result(row, frame_shape));
         });
 
-        return transformedFrames as FrameResults<S>;
+        return transformed_frames as FrameResults<S>;
     }
 
     async subscribe<T = any>(
@@ -292,7 +292,7 @@ export class WsClient {
         shape: ShapeNode | undefined,
         callbacks: SubscriptionCallbacks<T>
     ): Promise<string> {
-        const id = `sub-${this.nextId++}`;
+        const id = `sub-${this.next_id++}`;
 
         const request: SubscribeRequest = {
             id,
@@ -305,18 +305,18 @@ export class WsClient {
                 if (response.type === "Err") {
                     reject(new ReifyError(response));
                 } else if (response.type === "Subscribed") {
-                    const subscriptionId = response.payload.subscription_id;
+                    const subscription_id = response.payload.subscription_id;
 
                     // Store subscription state
-                    this.subscriptions.set(subscriptionId, {
-                        subscriptionId,
+                    this.subscriptions.set(subscription_id, {
+                        subscription_id,
                         query,
                         params,
                         shape,
                         callbacks
                     });
 
-                    resolve(subscriptionId);
+                    resolve(subscription_id);
                 } else {
                     reject(new Error("Unexpected response type"));
                 }
@@ -326,13 +326,13 @@ export class WsClient {
         });
     }
 
-    async unsubscribe(subscriptionId: string): Promise<void> {
-        const id = `unsub-${this.nextId++}`;
+    async unsubscribe(subscription_id: string): Promise<void> {
+        const id = `unsub-${this.next_id++}`;
 
         const request: UnsubscribeRequest = {
             id,
             type: "Unsubscribe",
-            payload: {subscription_id: subscriptionId}
+            payload: {subscription_id: subscription_id}
         };
 
         return new Promise((resolve, reject) => {
@@ -340,7 +340,7 @@ export class WsClient {
                 if (response.type === "Err") {
                     reject(new ReifyError(response));
                 } else if (response.type === "Unsubscribed") {
-                    this.subscriptions.delete(subscriptionId);
+                    this.subscriptions.delete(subscription_id);
                     resolve();
                 } else {
                     reject(new Error("Unexpected response type"));
@@ -369,11 +369,11 @@ export class WsClient {
         }
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("ReifyDB query timeout"));
-            }, timeoutMs);
+            }, timeout_ms);
 
             this.pending.set(id, (res) => {
                 clearTimeout(timeout);
@@ -394,66 +394,66 @@ export class WsClient {
 
         const frames = response.payload.body?.frames || [];
         return frames.map((frame: any) =>
-            columnsToRows(frame.columns)
+            columns_to_rows(frame.columns)
         );
     }
 
 
-    private transformResult(row: any, resultShape: any): any {
+    private transform_result(row: any, result_shape: any): any {
         // Handle object shape with primitive or value properties
-        if (resultShape && resultShape.kind === 'object' && resultShape.properties) {
-            const transformedRow: any = {};
+        if (result_shape && result_shape.kind === 'object' && result_shape.properties) {
+            const transformed_row: any = {};
             for (const [key, value] of Object.entries(row)) {
-                const propertyShape = resultShape.properties[key];
-                if (propertyShape && propertyShape.kind === 'primitive') {
+                const property_shape = result_shape.properties[key];
+                if (property_shape && property_shape.kind === 'primitive') {
                     // Convert Value objects to primitives for primitive shape properties
                     // Check if it's a Value instance by checking for valueOf method
                     if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
-                        const rawValue = (value as any).valueOf();
-                        transformedRow[key] = this.coerceToPrimitiveType(rawValue, propertyShape.type);
+                        const raw_value = (value as any).valueOf();
+                        transformed_row[key] = this.coerce_to_primitive_type(raw_value, property_shape.type);
                     } else {
-                        transformedRow[key] = this.coerceToPrimitiveType(value, propertyShape.type);
+                        transformed_row[key] = this.coerce_to_primitive_type(value, property_shape.type);
                     }
-                } else if (propertyShape && propertyShape.kind === 'value') {
+                } else if (property_shape && property_shape.kind === 'value') {
                     // Keep Value objects as-is for value shape properties
-                    transformedRow[key] = value;
+                    transformed_row[key] = value;
                 } else {
                     // Recursively transform nested structures
-                    transformedRow[key] = propertyShape ? this.transformResult(value, propertyShape) : value;
+                    transformed_row[key] = property_shape ? this.transform_result(value, property_shape) : value;
                 }
             }
-            return transformedRow;
+            return transformed_row;
         }
 
         // Handle primitive shape transformation
-        if (resultShape && resultShape.kind === 'primitive') {
+        if (result_shape && result_shape.kind === 'primitive') {
             // Single primitive value - extract from Value object if needed
             // Check if it's a Value instance by checking for valueOf method
             if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                return this.coerceToPrimitiveType(row.valueOf(), resultShape.type);
+                return this.coerce_to_primitive_type(row.valueOf(), result_shape.type);
             }
-            return this.coerceToPrimitiveType(row, resultShape.type);
+            return this.coerce_to_primitive_type(row, result_shape.type);
         }
 
         // Handle value shape transformation - keep Value objects as-is
-        if (resultShape && resultShape.kind === 'value') {
+        if (result_shape && result_shape.kind === 'value') {
             return row;
         }
 
         // Handle array shape
-        if (resultShape && resultShape.kind === 'array') {
+        if (result_shape && result_shape.kind === 'array') {
             if (Array.isArray(row)) {
-                return row.map((item: any) => this.transformResult(item, resultShape.items));
+                return row.map((item: any) => this.transform_result(item, result_shape.items));
             }
             return row;
         }
 
         // Handle optional shape
-        if (resultShape && resultShape.kind === 'optional') {
+        if (result_shape && result_shape.kind === 'optional') {
             if (row === undefined || row === null) {
                 return undefined;
             }
-            return this.transformResult(row, resultShape.shape);
+            return this.transform_result(row, result_shape.shape);
         }
 
         // Default: return as-is
@@ -465,14 +465,14 @@ export class WsClient {
      * This handles cases where the server returns a smaller integer type
      * but the shape expects a bigint type (Int8, Int16, Uint8, Uint16).
      */
-    private coerceToPrimitiveType(value: any, shapeType: string): any {
+    private coerce_to_primitive_type(value: any, shape_type: string): any {
         if (value === undefined || value === null) {
             return value;
         }
 
         // Bigint types: Int8, Int16, Uint8, Uint16
-        const bigintTypes = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-        if (bigintTypes.includes(shapeType)) {
+        const bigint_types = ['Int8', 'Int16', 'Uint8', 'Uint16'];
+        if (bigint_types.includes(shape_type)) {
             if (typeof value === 'bigint') {
                 return value;
             }
@@ -487,16 +487,16 @@ export class WsClient {
         return value;
     }
 
-    async loginWithPassword(identity: string, password: string): Promise<LoginResult> {
+    async login_with_password(identity: string, password: string): Promise<LoginResult> {
         return this.login("password", identity, {password});
     }
 
-    async loginWithToken(identity: string, token: string): Promise<LoginResult> {
+    async login_with_token(identity: string, token: string): Promise<LoginResult> {
         return this.login("token", identity, {token});
     }
 
     async login(method: string, identity: string, credentials: Record<string, string>): Promise<LoginResult> {
-        const id = `auth-${this.nextId++}`;
+        const id = `auth-${this.next_id++}`;
 
         const request: AuthRequest = {
             id,
@@ -505,11 +505,11 @@ export class WsClient {
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Login timeout"));
-            }, timeoutMs);
+            }, timeout_ms);
 
             this.pending.set(id, (res) => {
                 clearTimeout(timeout);
@@ -542,14 +542,14 @@ export class WsClient {
             return;
         }
 
-        const id = `logout-${this.nextId++}`;
+        const id = `logout-${this.next_id++}`;
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Logout timeout"));
-            }, timeoutMs);
+            }, timeout_ms);
 
             this.pending.set(id, (res) => {
                 clearTimeout(timeout);
@@ -567,67 +567,67 @@ export class WsClient {
     }
 
     disconnect() {
-        this.shouldReconnect = false;
+        this.should_reconnect = false;
         this.subscriptions.clear();
         this.socket.close();
     }
 
-    private handleDisconnect() {
-        this.rejectAllPendingRequests();
+    private handle_disconnect() {
+        this.reject_all_pending_requests();
 
-        if (!this.shouldReconnect || this.isReconnecting) {
+        if (!this.should_reconnect || this.is_reconnecting) {
             return;
         }
 
-        const maxAttempts = this.options.maxReconnectAttempts ?? 5;
-        if (this.reconnectAttempts >= maxAttempts) {
-            console.error(`Max reconnection attempts (${maxAttempts}) reached`);
+        const max_attempts = this.options.max_reconnect_attempts ?? 5;
+        if (this.reconnect_attempts >= max_attempts) {
+            console.error(`Max reconnection attempts (${max_attempts}) reached`);
             return;
         }
 
-        this.attemptReconnect();
+        this.attempt_reconnect();
     }
 
-    private async attemptReconnect() {
-        this.isReconnecting = true;
-        this.reconnectAttempts++;
+    private async attempt_reconnect() {
+        this.is_reconnecting = true;
+        this.reconnect_attempts++;
 
-        const baseDelay = this.options.reconnectDelayMs ?? 1000;
-        const delay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
+        const base_delay = this.options.reconnect_delay_ms ?? 1000;
+        const delay = base_delay * Math.pow(2, this.reconnect_attempts - 1);
 
         console.log(`Attempting reconnection in ${delay}ms`);
 
         await new Promise(resolve => setTimeout(resolve, delay));
 
         try {
-            const socket = await createWebSocket(this.options.url);
+            const socket = await create_web_socket(this.options.url);
 
             if (socket.readyState !== 1) {
-                const connectionTimeoutMs = 30000; // 30 second connection timeout
+                const connection_timeout_ms = 30000; // 30 second connection timeout
                 await new Promise<void>((resolve, reject) => {
-                    const connectionTimeout = setTimeout(() => {
-                        socket.removeEventListener("open", onOpen);
-                        socket.removeEventListener("error", onError);
+                    const connection_timeout = setTimeout(() => {
+                        socket.removeEventListener("open", on_open);
+                        socket.removeEventListener("error", on_error);
                         socket.close();
-                        reject(new Error(`WebSocket reconnection timeout after ${connectionTimeoutMs}ms`));
-                    }, connectionTimeoutMs);
+                        reject(new Error(`WebSocket reconnection timeout after ${connection_timeout_ms}ms`));
+                    }, connection_timeout_ms);
 
-                    const onOpen = () => {
-                        clearTimeout(connectionTimeout);
-                        socket.removeEventListener("open", onOpen);
-                        socket.removeEventListener("error", onError);
+                    const on_open = () => {
+                        clearTimeout(connection_timeout);
+                        socket.removeEventListener("open", on_open);
+                        socket.removeEventListener("error", on_error);
                         resolve();
                     };
 
-                    const onError = () => {
-                        clearTimeout(connectionTimeout);
-                        socket.removeEventListener("open", onOpen);
-                        socket.removeEventListener("error", onError);
+                    const on_error = () => {
+                        clearTimeout(connection_timeout);
+                        socket.removeEventListener("open", on_open);
+                        socket.removeEventListener("error", on_error);
                         reject(new Error("WebSocket connection failed"));
                     };
 
-                    socket.addEventListener("open", onOpen);
-                    socket.addEventListener("error", onError);
+                    socket.addEventListener("open", on_open);
+                    socket.addEventListener("error", on_error);
                 });
             }
 
@@ -636,25 +636,25 @@ export class WsClient {
             }
 
             this.socket = socket;
-            this.setupSocketHandlers();
-            this.reconnectAttempts = 0;
-            this.isReconnecting = false;
+            this.setup_socket_handlers();
+            this.reconnect_attempts = 0;
+            this.is_reconnecting = false;
 
             // Re-establish all active subscriptions
-            await this.resubscribeAll();
+            await this.resubscribe_all();
         } catch (error) {
-            this.isReconnecting = false;
-            this.handleDisconnect();
+            this.is_reconnecting = false;
+            this.handle_disconnect();
         }
     }
 
-    private async resubscribeAll(): Promise<void> {
-        const subscriptionsToReestablish = Array.from(this.subscriptions.values());
+    private async resubscribe_all(): Promise<void> {
+        const subscriptions_to_reestablish = Array.from(this.subscriptions.values());
 
         // Clear current subscriptions map (will be repopulated)
         this.subscriptions.clear();
 
-        for (const state of subscriptionsToReestablish) {
+        for (const state of subscriptions_to_reestablish) {
             try {
                 // Re-subscribe with same parameters
                 // Cast to avoid overload resolution issues in internal call
@@ -665,7 +665,7 @@ export class WsClient {
         }
     }
 
-    private handleChangeMessage(msg: ChangeMessage): void {
+    private handle_change_message(msg: ChangeMessage): void {
         const {subscription_id, body} = msg.payload;
         const state = this.subscriptions.get(subscription_id);
 
@@ -679,34 +679,34 @@ export class WsClient {
         const frame = frames[0];
 
         // Extract _op column to determine operation type
-        const opColumn = frame.columns.find((c: any) => c.name === "_op");
-        if (!opColumn || opColumn.payload.length === 0) {
-            console.error('Missing or empty _op column:', { opColumn, frame });
+        const op_column = frame.columns.find((c: any) => c.name === "_op");
+        if (!op_column || op_column.payload.length === 0) {
+            console.error('Missing or empty _op column:', { op_column, frame });
             return;
         }
 
-        // Transform frame to rows using existing transformResult logic
-        const rows = this.frameToRows(frame, state.shape);
+        // Transform frame to rows using existing transform_result logic
+        const rows = this.frame_to_rows(frame, state.shape);
 
         // Group rows by operation type (defensive - usually all same type)
         // Process in order to maintain sequential execution
         const batches: Array<{ op: 'INSERT' | 'UPDATE' | 'REMOVE'; rows: any[] }> = [];
 
         for (let i = 0; i < rows.length; i++) {
-            const opValue = parseInt(opColumn.payload[i]);
+            const op_value = parseInt(op_column.payload[i]);
             const operation: 'INSERT' | 'UPDATE' | 'REMOVE' =
-                opValue === 1 ? 'INSERT' :
-                    opValue === 2 ? 'UPDATE' :
-                        opValue === 3 ? 'REMOVE' : 'INSERT';
+                op_value === 1 ? 'INSERT' :
+                    op_value === 2 ? 'UPDATE' :
+                        op_value === 3 ? 'REMOVE' : 'INSERT';
 
             // Remove _op from this row
-            const {_op, ...cleanRow} = rows[i];
+            const {_op, ...clean_row} = rows[i];
 
             // Batch consecutive rows of same operation type
             if (batches.length > 0 && batches[batches.length - 1].op === operation) {
-                batches[batches.length - 1].rows.push(cleanRow);
+                batches[batches.length - 1].rows.push(clean_row);
             } else {
-                batches.push({op: operation, rows: [cleanRow]});
+                batches.push({op: operation, rows: [clean_row]});
             }
         }
 
@@ -714,26 +714,26 @@ export class WsClient {
         for (const batch of batches) {
             switch (batch.op) {
                 case 'INSERT':
-                    state.callbacks.onInsert?.(batch.rows);
+                    state.callbacks.on_insert?.(batch.rows);
                     break;
                 case 'UPDATE':
-                    state.callbacks.onUpdate?.(batch.rows);
+                    state.callbacks.on_update?.(batch.rows);
                     break;
                 case 'REMOVE':
-                    state.callbacks.onRemove?.(batch.rows);
+                    state.callbacks.on_remove?.(batch.rows);
                     break;
             }
         }
     }
 
-    private frameToRows(frame: any, shape?: ShapeNode): any[] {
+    private frame_to_rows(frame: any, shape?: ShapeNode): any[] {
         // Convert frame columns to array of row objects
         if (!frame.columns || frame.columns.length === 0) return [];
 
-        const rowCount = frame.columns[0].payload.length;
+        const row_count = frame.columns[0].payload.length;
         const rows: any[] = [];
 
-        for (let i = 0; i < rowCount; i++) {
+        for (let i = 0; i < row_count; i++) {
             const row: any = {};
             for (const col of frame.columns) {
                 row[col.name] = decode({type: col.type, value: col.payload[i]});
@@ -743,20 +743,20 @@ export class WsClient {
 
         // Apply shape transformation if provided
         if (shape) {
-            return rows.map(row => this.transformResult(row, shape));
+            return rows.map(row => this.transform_result(row, shape));
         }
 
         return rows;
     }
 
-    private setupSocketHandlers() {
+    private setup_socket_handlers() {
         this.socket.onmessage = (event) => {
             const msg = JSON.parse(event.data);
 
             // Handle server-initiated messages (no id)
             if (!msg.id) {
                 if (msg.type === "Change") {
-                    this.handleChangeMessage(msg);
+                    this.handle_change_message(msg);
                 }
                 return;
             }
@@ -777,11 +777,11 @@ export class WsClient {
         };
 
         this.socket.onclose = () => {
-            this.handleDisconnect();
+            this.handle_disconnect();
         };
     }
 
-    private rejectAllPendingRequests() {
+    private reject_all_pending_requests() {
         const error: ErrorResponse = {
             id: "connection-error",
             type: "Err",
@@ -802,9 +802,9 @@ export class WsClient {
 }
 
 
-function columnsToRows(columns: Column[]): Record<string, Value>[] {
-    const rowCount = columns[0]?.payload.length ?? 0;
-    return Array.from({length: rowCount}, (_, i) => {
+function columns_to_rows(columns: Column[]): Record<string, Value>[] {
+    const row_count = columns[0]?.payload.length ?? 0;
+    return Array.from({length: row_count}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
             row[col.name] = decode({type: col.type, value: col.payload[i]});

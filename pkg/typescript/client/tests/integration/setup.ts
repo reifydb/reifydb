@@ -3,17 +3,17 @@
 import {Client} from "../../src";
 
 
-export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<void> {
-    for (let i = 0; i < maxRetries; i++) {
+export async function wait_for_database(max_retries = 30, delay = 1000): Promise<void> {
+    for (let i = 0; i < max_retries; i++) {
         let url = process.env.REIFYDB_WS_URL;
         let client = null;
         try {
-            client = await Client.connect_ws(url, {timeoutMs: 5000});
+            client = await Client.connect_ws(url, {timeout_ms: 5000});
             // await client.query('MAP 1;');
             return;
         } catch (error) {
-            if (i === maxRetries - 1) {
-                throw new Error(`${url} not ready after ${maxRetries} attempts`);
+            if (i === max_retries - 1) {
+                throw new Error(`${url} not ready after ${max_retries} attempts`);
             }
             await new Promise(resolve => setTimeout(resolve, delay));
         } finally {

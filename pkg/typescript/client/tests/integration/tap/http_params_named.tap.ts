@@ -10,7 +10,7 @@ describe('Named Parameters - Primitive Types', () => {
 
     beforeAll(async () => {
         httpClient = Client.connect_http(process.env.REIFYDB_HTTP_URL, {
-            timeoutMs: 10000,
+            timeout_ms: 10000,
             token: process.env.REIFYDB_TOKEN
         });
     });

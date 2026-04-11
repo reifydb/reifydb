@@ -3,21 +3,21 @@
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useSubscriptionExecutor, getConnection, clearConnection, Shape} from '../../../src';
-import {waitForDatabase} from '../setup';
+import {useSubscriptionExecutor, get_connection, clear_connection, Shape} from '../../../src';
+import {wait_for_database} from '../setup';
 import {
-    createTestTableForHook,
+    create_test_table_for_hook,
 } from './subscription-test-helpers';
 
 describe('useSubscriptionExecutor Hook', () => {
     beforeAll(async () => {
-        await waitForDatabase();
-        const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
+        await wait_for_database();
+        const conn = get_connection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 
     afterAll(async () => {
-        await clearConnection();
+        await clear_connection();
     });
 
     describe('Initial State', () => {
@@ -26,113 +26,113 @@ describe('useSubscriptionExecutor Hook', () => {
 
             expect(result.current.state.data).toEqual([]);
             expect(result.current.state.changes).toEqual([]);
-            expect(result.current.state.isSubscribed).toBe(false);
-            expect(result.current.state.isSubscribing).toBe(false);
+            expect(result.current.state.is_subscribed).toBe(false);
+            expect(result.current.state.is_subscribing).toBe(false);
             expect(result.current.state.error).toBeUndefined();
-            expect(result.current.state.subscriptionId).toBeUndefined();
+            expect(result.current.state.subscription_id).toBeUndefined();
         });
     });
 
     describe('Subscription Lifecycle', () => {
         it('should successfully subscribe to a query', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_basic',
                 ['id Int4', 'name Utf8']
             );
 
-            expect(result.current.state.isSubscribing).toBe(false);
-            expect(result.current.state.isSubscribed).toBe(false);
+            expect(result.current.state.is_subscribing).toBe(false);
+            expect(result.current.state.is_subscribed).toBe(false);
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
-            expect(result.current.state.isSubscribing).toBe(false);
+            expect(result.current.state.is_subscribing).toBe(false);
             expect(result.current.state.error).toBeUndefined();
         });
 
-        it('should set subscriptionId when subscription succeeds', async () => {
+        it('should set subscription_id when subscription succeeds', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_id',
                 ['id Int4']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.subscriptionId).toBeDefined();
+                expect(result.current.state.subscription_id).toBeDefined();
             });
 
-            expect(typeof result.current.state.subscriptionId).toBe('string');
-            expect(result.current.state.subscriptionId!.length).toBeGreaterThan(0);
+            expect(typeof result.current.state.subscription_id).toBe('string');
+            expect(result.current.state.subscription_id!.length).toBeGreaterThan(0);
         });
 
-        it('should unsubscribe and reset subscriptionId', async () => {
+        it('should unsubscribe and reset subscription_id', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_unsub',
                 ['id Int4']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
-            const subscriptionId = result.current.state.subscriptionId;
-            expect(subscriptionId).toBeDefined();
+            const subscription_id = result.current.state.subscription_id;
+            expect(subscription_id).toBeDefined();
 
             await act(async () => {
                 await result.current.unsubscribe();
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(false);
+                expect(result.current.state.is_subscribed).toBe(false);
             });
 
-            expect(result.current.state.subscriptionId).toBeUndefined();
+            expect(result.current.state.subscription_id).toBeUndefined();
         });
 
         it('should clean up subscription on unmount', async () => {
             const {result, unmount} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_cleanup',
                 ['id Int4']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             // Unmount should trigger cleanup
@@ -144,28 +144,28 @@ describe('useSubscriptionExecutor Hook', () => {
 
         it('should preserve data/changes after unsubscribe', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_preserve',
                 ['id Int4', 'value Utf8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), value: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             // Trigger an INSERT
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, value: 'test'}]`,
+                    `INSERT test::${table_name} [{id: 1, value: 'test'}]`,
                     null,
                     []
                 );
@@ -190,29 +190,29 @@ describe('useSubscriptionExecutor Hook', () => {
     describe('State Management', () => {
         it('should accumulate change events with timestamps', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_changes',
                 ['id Int4', 'name Utf8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             const beforeInsert = Date.now();
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, name: 'alice'}]`,
+                    `INSERT test::${table_name} [{id: 1, name: 'alice'}]`,
                     null,
                     []
                 );
@@ -229,29 +229,29 @@ describe('useSubscriptionExecutor Hook', () => {
             expect(change.timestamp).toBeLessThanOrEqual(Date.now());
         });
 
-        it('should clear changes when clearChanges() is called', async () => {
+        it('should clear changes when clear_changes() is called', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_clear_changes',
                 ['id Int4']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1}]`,
+                    `INSERT test::${table_name} [{id: 1}]`,
                     null,
                     []
                 );
@@ -262,34 +262,34 @@ describe('useSubscriptionExecutor Hook', () => {
             });
 
             act(() => {
-                result.current.clearChanges();
+                result.current.clear_changes();
             });
 
             expect(result.current.state.changes).toEqual([]);
         });
 
-        it('should clear data when clearData() is called', async () => {
+        it('should clear data when clear_data() is called', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_clear_data',
                 ['id Int4']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             // Even though data doesn't accumulate, we can still clear it
             act(() => {
-                result.current.clearData();
+                result.current.clear_data();
             });
 
             expect(result.current.state.data).toEqual([]);
@@ -297,29 +297,29 @@ describe('useSubscriptionExecutor Hook', () => {
 
         it('should NOT modify data array on INSERT (data accumulation removed)', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_no_accumulate',
                 ['id Int4', 'name Utf8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             expect(result.current.state.data).toEqual([]);
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}]`,
+                    `INSERT test::${table_name} [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}]`,
                     null,
                     []
                 );
@@ -343,27 +343,27 @@ describe('useSubscriptionExecutor Hook', () => {
     describe('Operation Callbacks', () => {
         it('should track INSERT operations in changes array', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_insert',
                 ['id Int4', 'value Utf8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), value: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, value: 'hello'}]`,
+                    `INSERT test::${table_name} [{id: 1, value: 'hello'}]`,
                     null,
                     []
                 );
@@ -381,34 +381,34 @@ describe('useSubscriptionExecutor Hook', () => {
 
         it('should track UPDATE operations in changes array', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_update',
                 ['id Int4', 'value Utf8']
             );
 
             // Pre-populate with data
-            const client = getConnection().getClient();
+            const client = get_connection().get_client();
             await client!.command(
-                `INSERT test::${tableName} [{id: 1, value: 'original'}]`,
+                `INSERT test::${table_name} [{id: 1, value: 'original'}]`,
                 null,
                 []
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), value: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
                 await client!.command(
-                    `UPDATE test::${tableName} { value: 'updated' } FILTER id == 1`,
+                    `UPDATE test::${table_name} { value: 'updated' } FILTER id == 1`,
                     null,
                     []
                 );
@@ -427,7 +427,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
         it('should track REMOVE operations in changes array', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_remove',
                 ['id Int4', 'value Utf8']
             );
@@ -435,21 +435,21 @@ describe('useSubscriptionExecutor Hook', () => {
             // Subscribe first so that the INSERT is tracked as a change
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), value: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             // Insert data after subscription is active
-            const client = getConnection().getClient();
+            const client = get_connection().get_client();
             await act(async () => {
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, value: 'to_delete'}]`,
+                    `INSERT test::${table_name} [{id: 1, value: 'to_delete'}]`,
                     null,
                     []
                 );
@@ -464,7 +464,7 @@ describe('useSubscriptionExecutor Hook', () => {
             // Now delete the row
             await act(async () => {
                 await client!.command(
-                    `DELETE test::${tableName} FILTER id == 1`,
+                    `DELETE test::${table_name} FILTER id == 1`,
                     null,
                     []
                 );
@@ -482,28 +482,28 @@ describe('useSubscriptionExecutor Hook', () => {
 
         it('should track multiple operation types in sequence', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_multi_ops',
                 ['id Int4', 'name Utf8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             // INSERT
-            const client = getConnection().getClient();
+            const client = get_connection().get_client();
             await act(async () => {
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, name: 'alice'}]`,
+                    `INSERT test::${table_name} [{id: 1, name: 'alice'}]`,
                     null,
                     []
                 );
@@ -516,7 +516,7 @@ describe('useSubscriptionExecutor Hook', () => {
             // UPDATE
             await act(async () => {
                 await client!.command(
-                    `UPDATE test::${tableName} { name: 'alice_updated' } FILTER id == 1`,
+                    `UPDATE test::${table_name} { name: 'alice_updated' } FILTER id == 1`,
                     null,
                     []
                 );
@@ -529,7 +529,7 @@ describe('useSubscriptionExecutor Hook', () => {
             // REMOVE
             await act(async () => {
                 await client!.command(
-                    `DELETE test::${tableName} FILTER id == 1`,
+                    `DELETE test::${table_name} FILTER id == 1`,
                     null,
                     []
                 );
@@ -546,28 +546,28 @@ describe('useSubscriptionExecutor Hook', () => {
 
         it('should batch multiple rows in single operation', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_batch',
                 ['id Int4', 'value Utf8']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName}`,
+                    `from test::${table_name}`,
                     null,
                     Shape.object({id: Shape.number(), value: Shape.string()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             // Insert multiple rows in one operation
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, value: 'first'}, {id: 2, value: 'second'}, {id: 3, value: 'third'}]`,
+                    `INSERT test::${table_name} [{id: 1, value: 'first'}, {id: 2, value: 'second'}, {id: 3, value: 'third'}]`,
                     null,
                     []
                 );
@@ -603,8 +603,8 @@ describe('useSubscriptionExecutor Hook', () => {
                 expect(result.current.state.error).toBeDefined();
             });
 
-            expect(result.current.state.isSubscribing).toBe(false);
-            expect(result.current.state.isSubscribed).toBe(false);
+            expect(result.current.state.is_subscribing).toBe(false);
+            expect(result.current.state.is_subscribed).toBe(false);
         });
 
         it('should handle invalid query syntax', async () => {
@@ -622,7 +622,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 expect(result.current.state.error).toBeDefined();
             });
 
-            expect(result.current.state.isSubscribing).toBe(false);
+            expect(result.current.state.is_subscribing).toBe(false);
         });
 
         it('should handle non-existent table', async () => {
@@ -641,7 +641,7 @@ describe('useSubscriptionExecutor Hook', () => {
             });
         });
 
-        it('should set isSubscribing=false on error', async () => {
+        it('should set is_subscribing=false on error', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
 
             await act(async () => {
@@ -653,7 +653,7 @@ describe('useSubscriptionExecutor Hook', () => {
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribing).toBe(false);
+                expect(result.current.state.is_subscribing).toBe(false);
             });
 
             expect(result.current.state.error).toBeDefined();
@@ -665,11 +665,11 @@ describe('useSubscriptionExecutor Hook', () => {
             const {result: result1} = renderHook(() => useSubscriptionExecutor());
             const {result: result2} = renderHook(() => useSubscriptionExecutor());
 
-            const table1 = await createTestTableForHook(
+            const table1 = await create_test_table_for_hook(
                 'sub_multi1',
                 ['id Int4']
             );
-            const table2 = await createTestTableForHook(
+            const table2 = await create_test_table_for_hook(
                 'sub_multi2',
                 ['id Int4']
             );
@@ -688,13 +688,13 @@ describe('useSubscriptionExecutor Hook', () => {
             });
 
             await waitFor(() => {
-                expect(result1.current.state.isSubscribed).toBe(true);
-                expect(result2.current.state.isSubscribed).toBe(true);
+                expect(result1.current.state.is_subscribed).toBe(true);
+                expect(result2.current.state.is_subscribed).toBe(true);
             });
 
             // Trigger different operations on each
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(`INSERT test::${table1} [{id: 100}]`, null, []);
                 await client!.command(`INSERT test::${table2} [{id: 200}]`, null, []);
             });
@@ -710,21 +710,21 @@ describe('useSubscriptionExecutor Hook', () => {
 
         it('should handle empty result sets', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_empty',
                 ['id Int4']
             );
 
             await act(async () => {
                 await result.current.subscribe(
-                    `from test::${tableName} filter id > 1000`,
+                    `from test::${table_name} filter id > 1000`,
                     null,
                     Shape.object({id: Shape.number()})
                 );
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             expect(result.current.state.data).toEqual([]);
@@ -733,23 +733,23 @@ describe('useSubscriptionExecutor Hook', () => {
 
         it('should handle subscription without shape', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
-            const tableName = await createTestTableForHook(
+            const table_name = await create_test_table_for_hook(
                 'sub_no_shape',
                 ['id Int4', 'value Utf8']
             );
 
             await act(async () => {
-                await result.current.subscribe(`from test::${tableName}`);
+                await result.current.subscribe(`from test::${table_name}`);
             });
 
             await waitFor(() => {
-                expect(result.current.state.isSubscribed).toBe(true);
+                expect(result.current.state.is_subscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = getConnection().getClient();
+                const client = get_connection().get_client();
                 await client!.command(
-                    `INSERT test::${tableName} [{id: 1, value: 'test'}]`,
+                    `INSERT test::${table_name} [{id: 1, value: 'test'}]`,
                     null,
                     []
                 );

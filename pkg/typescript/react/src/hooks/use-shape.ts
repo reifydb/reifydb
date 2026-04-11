@@ -7,7 +7,7 @@ import {useQueryExecutor} from './use-query-executor';
 
 export interface ColumnInfo {
     name: string;
-    dataType: string;
+    data_type: string;
 }
 
 export interface TableInfo {
@@ -15,25 +15,25 @@ export interface TableInfo {
     columns: ColumnInfo[];
 }
 
-const namespaceShape = Shape.object({
+const namespace_shape = Shape.object({
     id: Shape.number(),
     name: Shape.string(),
 });
 
-const tableShape = Shape.object({
+const table_shape = Shape.object({
     id: Shape.number(),
     namespace_id: Shape.number(),
     name: Shape.string(),
     primary_key_id: Shape.number(),
 });
 
-const viewShape = Shape.object({
+const view_shape = Shape.object({
     id: Shape.number(),
     namespace_id: Shape.number(),
     name: Shape.string(),
 });
 
-const columnShape = Shape.object({
+const column_shape = Shape.object({
     id: Shape.number(),
     shape_id: Shape.number(),
     shape_type: Shape.number(),
@@ -43,105 +43,105 @@ const columnShape = Shape.object({
     auto_increment: Shape.boolean(),
 });
 
-type NamespaceRow = InferShape<typeof namespaceShape>;
-type TableRow = InferShape<typeof tableShape>;
-type ViewRow = InferShape<typeof viewShape>;
-type ColumnRow = InferShape<typeof columnShape>;
+type NamespaceRow = InferShape<typeof namespace_shape>;
+type TableRow = InferShape<typeof table_shape>;
+type ViewRow = InferShape<typeof view_shape>;
+type ColumnRow = InferShape<typeof column_shape>;
 
 export function useShape(): [boolean, TableInfo[], string | undefined] {
-    const {isExecuting, results, error, query} = useQueryExecutor();
-    const [shape, setShape] = useState<TableInfo[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const {is_executing, results, error, query} = useQueryExecutor();
+    const [shape, set_shape] = useState<TableInfo[]>([]);
+    const [is_loading, set_is_loading] = useState(true);
 
     useEffect(() => {
         if (!query) return;
 
-        const fetchShape = async () => {
-            setIsLoading(true);
+        const fetch_shape = async () => {
+            set_is_loading(true);
 
             try {
                 await query(
                     `OUTPUT FROM system::namespaces; OUTPUT FROM system::tables; OUTPUT FROM system::views; OUTPUT FROM system::columns;`,
                     undefined,
-                    [namespaceShape, tableShape, viewShape, columnShape]
+                    [namespace_shape, table_shape, view_shape, column_shape]
                 );
             } catch (err) {
                 console.error('Failed to fetch shape:', err);
             }
         };
 
-        fetchShape();
+        fetch_shape();
     }, [query]);
 
     useEffect(() => {
         if (!results || results.length < 4) {
-            setIsLoading(isExecuting);
+            set_is_loading(is_executing);
             return;
         }
 
-        const tablesResult = results[1];
-        const viewsResult = results[2];
-        const columnsResult = results[3];
+        const tables_result = results[1];
+        const views_result = results[2];
+        const columns_result = results[3];
 
-        if (!tablesResult?.rows || !viewsResult?.rows || !columnsResult?.rows) {
-            setIsLoading(false);
+        if (!tables_result?.rows || !views_result?.rows || !columns_result?.rows) {
+            set_is_loading(false);
             return;
         }
 
-        const namespacesResult = results[0];
-        const namespaces = namespacesResult.rows as unknown as NamespaceRow[];
-        const tables = tablesResult.rows as unknown as TableRow[];
-        const views = viewsResult.rows as unknown as ViewRow[];
-        const columns = columnsResult.rows as unknown as ColumnRow[];
+        const namespaces_result = results[0];
+        const namespaces = namespaces_result.rows as unknown as NamespaceRow[];
+        const tables = tables_result.rows as unknown as TableRow[];
+        const views = views_result.rows as unknown as ViewRow[];
+        const columns = columns_result.rows as unknown as ColumnRow[];
 
-        const namespaceMap = new Map<number, string>();
+        const namespace_map = new Map<number, string>();
         namespaces.forEach((ns) => {
             const id = ns.id?.valueOf() as number;
             const name = ns.name?.valueOf() as string;
             if (id !== undefined && name) {
-                namespaceMap.set(id, name);
+                namespace_map.set(id, name);
             }
         });
 
-        const tableInfoMap = new Map<number, TableInfo>();
+        const table_info_map = new Map<number, TableInfo>();
 
         tables.forEach((table) => {
-            const tableId = table.id?.valueOf() as number;
-            const namespaceId = table.namespace_id?.valueOf() as number;
-            const tableName = table.name?.valueOf() as string;
+            const table_id = table.id?.valueOf() as number;
+            const namespace_id = table.namespace_id?.valueOf() as number;
+            const table_name = table.name?.valueOf() as string;
 
-            if (tableId === undefined || !tableName || namespaceId === undefined) return;
+            if (table_id === undefined || !table_name || namespace_id === undefined) return;
 
-            const namespace = namespaceMap.get(namespaceId);
+            const namespace = namespace_map.get(namespace_id);
             if (!namespace) return;
 
-            const fullTableName = `${namespace}::${tableName}`;
+            const full_table_name = `${namespace}::${table_name}`;
 
-            tableInfoMap.set(tableId, {
-                name: fullTableName,
+            table_info_map.set(table_id, {
+                name: full_table_name,
                 columns: [],
             });
         });
 
         views.forEach((view) => {
-            const viewId = view.id?.valueOf() as number;
-            const namespaceId = view.namespace_id?.valueOf() as number;
-            const viewName = view.name?.valueOf() as string;
+            const view_id = view.id?.valueOf() as number;
+            const namespace_id = view.namespace_id?.valueOf() as number;
+            const view_name = view.name?.valueOf() as string;
 
-            if (viewId === undefined || !viewName || namespaceId === undefined) return;
+            if (view_id === undefined || !view_name || namespace_id === undefined) return;
 
-            const namespace = namespaceMap.get(namespaceId);
+            const namespace = namespace_map.get(namespace_id);
             if (!namespace) return;
 
-            const fullViewName = `${namespace}::${viewName}`;
+            const full_view_name = `${namespace}::${view_name}`;
 
-            tableInfoMap.set(viewId, {
-                name: fullViewName,
+            table_info_map.set(view_id, {
+                name: full_view_name,
                 columns: [],
             });
         });
 
-        const typeMap: Record<number, string> = {
+        const type_map: Record<number, string> = {
             0: 'None',
             1: 'Float4',
             2: 'Float8',
@@ -172,45 +172,45 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
         };
 
         // Create a map to collect columns with their positions
-        const tableColumnsMap = new Map<number, Array<{name: string; dataType: string; position: number}>>();
+        const table_columns_map = new Map<number, Array<{name: string; data_type: string; position: number}>>();
 
         columns.forEach((column) => {
-            const shapeId = column.shape_id?.valueOf() as number;
-            const shapeType = column.shape_type?.valueOf() as number;
-            const columnName = column.name?.valueOf() as string;
-            const typeId = column.type?.valueOf() as number;
+            const shape_id = column.shape_id?.valueOf() as number;
+            const shape_type = column.shape_type?.valueOf() as number;
+            const column_name = column.name?.valueOf() as string;
+            const type_id = column.type?.valueOf() as number;
             const position = column.position?.valueOf() as number;
 
-            if (shapeId === undefined || !columnName || typeId === undefined) return;
-            if (shapeType !== 0 && shapeType !== 1) return;
+            if (shape_id === undefined || !column_name || type_id === undefined) return;
+            if (shape_type !== 0 && shape_type !== 1) return;
 
-            if (!tableColumnsMap.has(shapeId)) {
-                tableColumnsMap.set(shapeId, []);
+            if (!table_columns_map.has(shape_id)) {
+                table_columns_map.set(shape_id, []);
             }
 
-            tableColumnsMap.get(shapeId)!.push({
-                name: columnName,
-                dataType: typeMap[typeId] || `Unknown(${typeId})`,
+            table_columns_map.get(shape_id)!.push({
+                name: column_name,
+                data_type: type_map[type_id] || `Unknown(${type_id})`,
                 position: position ?? 0,
             });
         });
 
         // Sort columns by position and add to table info
-        tableColumnsMap.forEach((cols, shapeId) => {
-            const tableInfo = tableInfoMap.get(shapeId);
-            if (tableInfo) {
+        table_columns_map.forEach((cols, shape_id) => {
+            const table_info = table_info_map.get(shape_id);
+            if (table_info) {
                 cols.sort((a, b) => a.position - b.position);
-                tableInfo.columns = cols.map((c) => ({name: c.name, dataType: c.dataType}));
+                table_info.columns = cols.map((c) => ({name: c.name, data_type: c.data_type}));
             }
         });
 
-        const shapeArray = Array.from(tableInfoMap.values())
+        const shape_array = Array.from(table_info_map.values())
             .filter((table) => table.name !== 'reifydb::flows')
             .sort((a, b) => a.name.localeCompare(b.name));
 
-        setShape(shapeArray);
-        setIsLoading(false);
-    }, [results, isExecuting]);
+        set_shape(shape_array);
+        set_is_loading(false);
+    }, [results, is_executing]);
 
-    return [isLoading, shape, error];
+    return [is_loading, shape, error];
 }

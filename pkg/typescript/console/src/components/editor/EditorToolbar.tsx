@@ -9,34 +9,34 @@ const TX_TYPES: TransactionType[] = ['query', 'command', 'admin'];
 interface EditorToolbarProps {
   onRun: () => void;
   onClear: () => void;
-  isExecuting: boolean;
+  is_executing: boolean;
   connectionLabel: string;
-  connectionStatus: ConnectionStatus;
-  connectionLocked?: boolean;
+  connection_status: ConnectionStatus;
+  connection_locked?: boolean;
   onToggleConnectionPanel: () => void;
-  connectionMode: 'wasm' | 'websocket';
-  transactionType: TransactionType;
+  connection_mode: 'wasm' | 'websocket';
+  transaction_type: TransactionType;
   onTransactionTypeChange: (type: TransactionType) => void;
 }
 
 export function EditorToolbar({
   onRun,
   onClear,
-  isExecuting,
+  is_executing,
   connectionLabel,
-  connectionStatus,
-  connectionLocked,
+  connection_status,
+  connection_locked,
   onToggleConnectionPanel,
-  connectionMode,
-  transactionType,
+  connection_mode,
+  transaction_type,
   onTransactionTypeChange,
 }: EditorToolbarProps) {
   return (
     <div className="rdb-editor-toolbar">
       <div className="rdb-editor-toolbar__left">
-        {connectionLocked ? (
+        {connection_locked ? (
           <span className="rdb-editor-toolbar__connection rdb-editor-toolbar__connection--locked">
-            <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connectionStatus}`}>●</span>
+            <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connection_status}`}>●</span>
             <span>[{connectionLabel}]</span>
           </span>
         ) : (
@@ -44,16 +44,16 @@ export function EditorToolbar({
             className="rdb-editor-toolbar__connection"
             onClick={onToggleConnectionPanel}
           >
-            <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connectionStatus}`}>●</span>
+            <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connection_status}`}>●</span>
             <span>[{connectionLabel}]</span>
           </button>
         )}
-        {connectionMode === 'websocket' && (
+        {connection_mode === 'websocket' && (
           <div className="rdb-editor-toolbar__tx-type">
             {TX_TYPES.map((t) => (
               <button
                 key={t}
-                className={`rdb-editor-toolbar__tx-type-btn${t === transactionType ? ' rdb-editor-toolbar__tx-type-btn--active' : ''}`}
+                className={`rdb-editor-toolbar__tx-type-btn${t === transaction_type ? ' rdb-editor-toolbar__tx-type-btn--active' : ''}`}
                 onClick={() => onTransactionTypeChange(t)}
               >
                 {t}
@@ -67,16 +67,16 @@ export function EditorToolbar({
         <button
           className="rdb-editor-toolbar__btn rdb-editor-toolbar__btn--secondary"
           onClick={onClear}
-          disabled={isExecuting}
+          disabled={is_executing}
         >
           Clear
         </button>
         <button
           className="rdb-editor-toolbar__btn"
           onClick={onRun}
-          disabled={isExecuting}
+          disabled={is_executing}
         >
-          {isExecuting ? 'Running...' : 'Run'}
+          {is_executing ? 'Running...' : 'Run'}
         </button>
       </div>
     </div>

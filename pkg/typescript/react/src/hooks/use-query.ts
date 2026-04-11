@@ -7,7 +7,7 @@ import {ConnectionConfig} from '../connection/connection';
 import {useQueryExecutor, type QueryResult, type QueryExecutorOptions} from './use-query-executor';
 
 export interface QueryOptions extends QueryExecutorOptions {
-    connectionConfig?: ConnectionConfig;
+    connection_config?: ConnectionConfig;
 }
 
 // Single query hook - returns a single result
@@ -17,12 +17,12 @@ export function useQueryOne<S extends ShapeNode = any>(
     shape?: S,
     options?: QueryOptions
 ): {
-    isExecuting: boolean;
+    is_executing: boolean;
     result: QueryResult<S extends ShapeNode ? InferShape<S> : any> | undefined;
     error: string | undefined;
 } {
     const {
-        isExecuting,
+        is_executing,
         results,
         error,
         query
@@ -39,7 +39,7 @@ export function useQueryOne<S extends ShapeNode = any>(
         return results && results.length > 0 ? results[0] : undefined;
     }, [results]);
 
-    return {isExecuting, result, error};
+    return {is_executing, result, error};
 }
 
 // Multiple query hook - returns multiple results
@@ -49,12 +49,12 @@ export function useQueryMany<S extends readonly ShapeNode[] = readonly ShapeNode
     shapes?: S,
     options?: QueryOptions
 ): {
-    isExecuting: boolean;
+    is_executing: boolean;
     results: QueryResult<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>[] | undefined;
     error: string | undefined;
 } {
     const {
-        isExecuting,
+        is_executing,
         results,
         error,
         query
@@ -64,5 +64,5 @@ export function useQueryMany<S extends readonly ShapeNode[] = readonly ShapeNode
         query(statements, params, shapes);
     }, [statements, params, query]);
 
-    return {isExecuting, results, error};
+    return {is_executing, results, error};
 }

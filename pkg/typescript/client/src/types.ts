@@ -112,9 +112,9 @@ export interface ChangeMessage {
 export type SubscriptionOperation = 'INSERT' | 'UPDATE' | 'REMOVE';
 
 export interface SubscriptionCallbacks<T = any> {
-    onInsert?: (rows: T[]) => void;
-    onUpdate?: (rows: T[]) => void;
-    onRemove?: (rows: T[]) => void;
+    on_insert?: (rows: T[]) => void;
+    on_update?: (rows: T[]) => void;
+    on_remove?: (rows: T[]) => void;
 }
 
 export interface AuthRequest {

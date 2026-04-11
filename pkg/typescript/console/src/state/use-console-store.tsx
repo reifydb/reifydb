@@ -13,13 +13,13 @@ const ConsoleContext = createContext<ConsoleContextValue | null>(null);
 
 interface ConsoleProviderProps {
   children: ReactNode;
-  initialCode?: string;
+  initial_code?: string;
 }
 
-export function ConsoleProvider({ children, initialCode }: ConsoleProviderProps) {
+export function ConsoleProvider({ children, initial_code }: ConsoleProviderProps) {
   const [state, dispatch] = useReducer(consoleReducer, {
     ...initialConsoleState,
-    code: initialCode ?? '',
+    code: initial_code ?? '',
   });
 
   return (

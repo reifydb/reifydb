@@ -42,9 +42,9 @@ const SOURCE_TYPE_VIEW = 2;
 const SOURCE_TYPE_VTABLE = 3;
 const SOURCE_TYPE_RINGBUFFER = 4;
 
-function resolveTypeName(typeId: number): string {
-  const isOptional = (typeId & 0x80) !== 0;
-  const baseId = typeId & 0x7f;
+function resolveTypeName(type_id: number): string {
+  const isOptional = (type_id & 0x80) !== 0;
+  const baseId = type_id & 0x7f;
   const name = TYPE_NAMES[baseId] ?? `Unknown(${baseId})`;
   return isOptional ? `${name}?` : name;
 }

@@ -5,12 +5,12 @@ import { useCallback } from 'react';
 import { formatValue } from '../../format/value';
 
 interface ResultsStatusBarProps {
-  rowCount: number;
-  executionTime: number;
+  row_count: number;
+  execution_time: number;
   data?: Record<string, unknown>[];
 }
 
-export function ResultsStatusBar({ rowCount, executionTime, data }: ResultsStatusBarProps) {
+export function ResultsStatusBar({ row_count, execution_time, data }: ResultsStatusBarProps) {
   const copyAsCsv = useCallback(() => {
     if (!data || data.length === 0) return;
     const columns = Object.keys(data[0]);
@@ -41,8 +41,8 @@ export function ResultsStatusBar({ rowCount, executionTime, data }: ResultsStatu
   return (
     <div className="rdb-status-bar">
       <div className="rdb-status-bar__info">
-        <span>{rowCount} row{rowCount !== 1 ? 's' : ''}</span>
-        <span>({executionTime}ms)</span>
+        <span>{row_count} row{row_count !== 1 ? 's' : ''}</span>
+        <span>({execution_time}ms)</span>
       </div>
       <div className="rdb-status-bar__actions">
         <button className="rdb-status-bar__btn" onClick={copyAsCsv} title="Copy as CSV">

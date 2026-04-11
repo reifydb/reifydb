@@ -8,7 +8,7 @@ export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'er
 
 export interface ConnectionPanelProps {
   mode: ConnectionMode;
-  wsUrl: string;
+  ws_url: string;
   status: ConnectionStatus;
   error: string | null;
   onModeChange: (mode: ConnectionMode) => void;
@@ -20,7 +20,7 @@ export interface ConnectionPanelProps {
 
 export function ConnectionPanel({
   mode,
-  wsUrl,
+  ws_url,
   status,
   error,
   onModeChange,
@@ -77,7 +77,7 @@ export function ConnectionPanel({
             <input
               className="rdb-connection-panel__url-input"
               type="text"
-              value={wsUrl}
+              value={ws_url}
               onChange={(e) => onUrlChange(e.target.value)}
               placeholder="ws://localhost:8090"
               disabled={isWsConnected || isWsConnecting}
@@ -92,7 +92,7 @@ export function ConnectionPanel({
               <button
                 className="rdb-connection-panel__action-btn"
                 onClick={onConnect}
-                disabled={isWsConnecting || !wsUrl.trim()}
+                disabled={isWsConnecting || !ws_url.trim()}
               >
                 {isWsConnecting ? '[connecting...]' : '[connect]'}
               </button>

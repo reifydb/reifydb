@@ -3,45 +3,45 @@
 
 import {useContext, useEffect, useState} from 'react';
 import {ConnectionConfig} from '../connection/connection';
-import {getConnection} from '../connection/connection-pool';
+import {get_connection} from '../connection/connection-pool';
 import {ConnectionContext} from '../connection/connection-context';
 import {WsClient, HttpClient, JsonHttpClient, JsonWebsocketClient} from '@reifydb/client';
 
 interface ConnectionState {
     client: WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient | null;
-    isConnected: boolean;
-    isConnecting: boolean;
-    connectionError: string | null;
+    is_connected: boolean;
+    is_connecting: boolean;
+    connection_error: string | null;
 }
 
-export function useConnection(overrideConfig?: ConnectionConfig) {
-    const contextConnection = useContext(ConnectionContext);
+export function useConnection(override_config?: ConnectionConfig) {
+    const context_connection = useContext(ConnectionContext);
 
     // Use override config if provided, otherwise use context, otherwise get default
     const [connection] = useState(() => {
-        if (overrideConfig) {
-            return getConnection(overrideConfig);
+        if (override_config) {
+            return get_connection(override_config);
         }
-        if (contextConnection) {
-            return contextConnection;
+        if (context_connection) {
+            return context_connection;
         }
-        return getConnection();
+        return get_connection();
     });
 
-    const [state, setState] = useState<ConnectionState>(() => connection.getState());
+    const [state, setState] = useState<ConnectionState>(() => connection.get_state());
 
     useEffect(() => {
         // Get initial state immediately
-        const currentState = connection.getState();
-        setState(currentState);
+        const current_state = connection.get_state();
+        setState(current_state);
 
         // Subscribe to connection state changes
-        const unsubscribe = connection.subscribe((newState) => {
+        const unsubscribe = connection.subscribe((new_state) => {
             setState({
-                client: newState.client,
-                isConnected: newState.isConnected,
-                isConnecting: newState.isConnecting,
-                connectionError: newState.connectionError,
+                client: new_state.client,
+                is_connected: new_state.is_connected,
+                is_connecting: new_state.is_connecting,
+                connection_error: new_state.connection_error,
             });
         });
 

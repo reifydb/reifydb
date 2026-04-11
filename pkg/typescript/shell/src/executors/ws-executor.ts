@@ -37,11 +37,11 @@ export class WsExecutor implements Executor {
       return {
         success: true,
         data: [],
-        executionTime: 0,
+        execution_time: 0,
       };
     }
 
-    const startTime = performance.now();
+    const start_time = performance.now();
 
     try {
       // Execute via admin endpoint with no shape transformation
@@ -66,26 +66,26 @@ export class WsExecutor implements Executor {
       return {
         success: true,
         data,
-        executionTime: Math.round(endTime - startTime),
+        execution_time: Math.round(endTime - start_time),
       };
     } catch (error) {
       const endTime = performance.now();
 
       // Extract error message from ReifyError if present
-      let errorMessage: string;
+      let error_message: string;
       if (error && typeof error === 'object' && 'diagnostic' in error) {
         const diagnostic = (error as { diagnostic: { message: string } }).diagnostic;
-        errorMessage = diagnostic.message;
+        error_message = diagnostic.message;
       } else if (error instanceof Error) {
-        errorMessage = error.message;
+        error_message = error.message;
       } else {
-        errorMessage = String(error);
+        error_message = String(error);
       }
 
       return {
         success: false,
-        error: errorMessage,
-        executionTime: Math.round(endTime - startTime),
+        error: error_message,
+        execution_time: Math.round(endTime - start_time),
       };
     }
   }
@@ -110,10 +110,10 @@ export class WsExecutor implements Executor {
     }
   }
 
-  async getShape(tableName: string): Promise<string | null> {
+  async getShape(table_name: string): Promise<string | null> {
     try {
       const frames = await this.client.admin(
-        `FROM system::columns FILTER table = "${tableName}" MAP { name, type }`,
+        `FROM system::columns FILTER table = "${table_name}" MAP { name, type }`,
         null,
         []
       );
@@ -124,7 +124,7 @@ export class WsExecutor implements Executor {
           const r = row as Record<string, unknown>;
           return `  ${this.extractValue(r.name)}: ${this.extractValue(r.type)}`;
         }).join(',\n');
-        return `${tableName} {\n${columns}\n}`;
+        return `${table_name} {\n${columns}\n}`;
       }
       return null;
     } catch {

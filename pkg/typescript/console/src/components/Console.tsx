@@ -26,11 +26,11 @@ export type RdbTheme = 'light' | 'dark';
 
 export interface ConsoleProps {
   executor: Executor;
-  initialCode?: string;
-  historyKey?: string;
+  initial_code?: string;
+  history_key?: string;
   connection?: ConnectionConfig;
   theme?: RdbTheme;
-  monacoTheme?: string | editor.IStandaloneThemeData;
+  monaco_theme?: string | editor.IStandaloneThemeData;
 }
 
 const TABS = [
@@ -41,15 +41,15 @@ const TABS = [
 
 const WS_URL_STORAGE_KEY = 'rdb-console-ws-url';
 
-function ConsoleInner({ executor, historyKey, connection, theme = 'light', monacoTheme }: { executor: Executor; historyKey?: string; connection?: ConnectionConfig; theme?: RdbTheme; monacoTheme?: string | editor.IStandaloneThemeData }) {
+function ConsoleInner({ executor, history_key, connection, theme = 'light', monaco_theme }: { executor: Executor; history_key?: string; connection?: ConnectionConfig; theme?: RdbTheme; monaco_theme?: string | editor.IStandaloneThemeData }) {
   const { state, dispatch } = useConsoleStore();
-  const connectionLocked = connection != null;
-  const lockedWsUrl = connection?.mode === 'websocket' ? connection.url : null;
+  const connection_locked = connection != null;
+  const locked_ws_url = connection?.mode === 'websocket' ? connection.url : null;
 
-  const [connectionMode, setConnectionMode] = useState<ConnectionMode>(
+  const [connection_mode, set_connection_mode] = useState<ConnectionMode>(
     connection ? connection.mode : 'wasm',
   );
-  const [wsUrl, setWsUrl] = useState(() => {
+  const [ws_url, set_ws_url] = useState(() => {
     if (connection?.mode === 'websocket') return connection.url;
     try {
       return localStorage.getItem(WS_URL_STORAGE_KEY) || 'ws://localhost:8090';
@@ -57,37 +57,37 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
       return 'ws://localhost:8090';
     }
   });
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
+  const [connection_status, set_connection_status] = useState<ConnectionStatus>(
     connection?.mode === 'websocket' ? 'connecting' : 'connected',
   );
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [activeExecutor, setActiveExecutor] = useState<Executor>(executor);
-  const [transactionType, setTransactionType] = useState<TransactionType>('query');
-  const [showConnectionPanel, setShowConnectionPanel] = useState(false);
-  const wsClientRef = useRef<{ disconnect(): void } | null>(null);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [connection_error, set_connection_error] = useState<string | null>(null);
+  const [active_executor, set_active_executor] = useState<Executor>(executor);
+  const [transaction_type, set_transaction_type] = useState<TransactionType>('query');
+  const [show_connection_panel, set_show_connection_panel] = useState(false);
+  const ws_client_ref = useRef<{ disconnect(): void } | null>(null);
+  const reconnect_timer_ref = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Persist wsUrl to localStorage (only when not locked)
+  // Persist ws_url to localStorage (only when not locked)
   useEffect(() => {
-    if (connectionLocked) return;
+    if (connection_locked) return;
     try {
-      localStorage.setItem(WS_URL_STORAGE_KEY, wsUrl);
+      localStorage.setItem(WS_URL_STORAGE_KEY, ws_url);
     } catch {
       // ignore
     }
-  }, [wsUrl, connectionLocked]);
+  }, [ws_url, connection_locked]);
 
-  // Keep activeExecutor in sync if prop changes while in wasm mode
+  // Keep active_executor in sync if prop changes while in wasm mode
   useEffect(() => {
-    if (connectionMode === 'wasm') {
-      setActiveExecutor(executor);
+    if (connection_mode === 'wasm') {
+      set_active_executor(executor);
     }
-  }, [executor, connectionMode]);
+  }, [executor, connection_mode]);
 
   // Auto-connect for locked websocket mode
   useEffect(() => {
-    if (!lockedWsUrl) return;
-    const url = lockedWsUrl;
+    if (!locked_ws_url) return;
+    const url = locked_ws_url;
 
     let cancelled = false;
     let backoff = 1000;
@@ -95,32 +95,32 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
 
     async function connect() {
       if (cancelled) return;
-      setConnectionStatus('connecting');
-      setConnectionError(null);
+      set_connection_status('connecting');
+      set_connection_error(null);
 
       try {
-        if (wsClientRef.current) {
-          wsClientRef.current.disconnect();
-          wsClientRef.current = null;
+        if (ws_client_ref.current) {
+          ws_client_ref.current.disconnect();
+          ws_client_ref.current = null;
         }
 
-        const client = await Client.connect_ws(url, { timeoutMs: 30_000 });
+        const client = await Client.connect_ws(url, { timeout_ms: 30_000 });
         if (cancelled) {
           client.disconnect();
           return;
         }
-        wsClientRef.current = client;
-        const wsExecutor = new WsExecutor(client as unknown as WsClient);
-        wsExecutor.transactionType = transactionType;
-        setActiveExecutor(wsExecutor);
-        setConnectionStatus('connected');
+        ws_client_ref.current = client;
+        const ws_executor = new WsExecutor(client as unknown as WsClient);
+        ws_executor.transaction_type = transaction_type;
+        set_active_executor(ws_executor);
+        set_connection_status('connected');
         backoff = 1000; // reset backoff on success
       } catch (err) {
         if (cancelled) return;
-        setConnectionStatus('error');
-        setConnectionError(err instanceof Error ? err.message : String(err));
+        set_connection_status('error');
+        set_connection_error(err instanceof Error ? err.message : String(err));
         // Auto-reconnect with backoff
-        reconnectTimerRef.current = setTimeout(() => {
+        reconnect_timer_ref.current = setTimeout(() => {
           connect();
         }, backoff);
         backoff = Math.min(backoff * 2, maxBackoff);
@@ -131,109 +131,109 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
 
     return () => {
       cancelled = true;
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
+      if (reconnect_timer_ref.current) {
+        clearTimeout(reconnect_timer_ref.current);
+        reconnect_timer_ref.current = null;
       }
-      if (wsClientRef.current) {
-        wsClientRef.current.disconnect();
-        wsClientRef.current = null;
+      if (ws_client_ref.current) {
+        ws_client_ref.current.disconnect();
+        ws_client_ref.current = null;
       }
     };
-  }, [lockedWsUrl]);
+  }, [locked_ws_url]);
 
   // Load history on mount
   useEffect(() => {
-    const entries = loadHistory(historyKey);
+    const entries = loadHistory(history_key);
     if (entries.length > 0) {
       dispatch({ type: 'LOAD_HISTORY', entries });
     }
-  }, [historyKey, dispatch]);
+  }, [history_key, dispatch]);
 
   // Save history on change
   useEffect(() => {
-    saveHistory(state.history, historyKey);
-  }, [state.history, historyKey]);
+    saveHistory(state.history, history_key);
+  }, [state.history, history_key]);
 
   const handleConnect = useCallback(async () => {
-    if (!wsUrl.trim()) return;
-    setConnectionStatus('connecting');
-    setConnectionError(null);
+    if (!ws_url.trim()) return;
+    set_connection_status('connecting');
+    set_connection_error(null);
 
     try {
       // Disconnect previous WS client if any
-      if (wsClientRef.current) {
-        wsClientRef.current.disconnect();
-        wsClientRef.current = null;
+      if (ws_client_ref.current) {
+        ws_client_ref.current.disconnect();
+        ws_client_ref.current = null;
       }
 
-      const client = await Client.connect_ws(wsUrl, { timeoutMs: 30_000 });
-      wsClientRef.current = client;
-      const wsExecutor = new WsExecutor(client as unknown as WsClient);
-      wsExecutor.transactionType = transactionType;
-      setActiveExecutor(wsExecutor);
-      setConnectionStatus('connected');
+      const client = await Client.connect_ws(ws_url, { timeout_ms: 30_000 });
+      ws_client_ref.current = client;
+      const ws_executor = new WsExecutor(client as unknown as WsClient);
+      ws_executor.transaction_type = transaction_type;
+      set_active_executor(ws_executor);
+      set_connection_status('connected');
     } catch (err) {
-      setConnectionStatus('error');
-      setConnectionError(err instanceof Error ? err.message : String(err));
+      set_connection_status('error');
+      set_connection_error(err instanceof Error ? err.message : String(err));
     }
-  }, [wsUrl, transactionType]);
+  }, [ws_url, transaction_type]);
 
-  const handleDisconnect = useCallback(() => {
-    if (wsClientRef.current) {
-      wsClientRef.current.disconnect();
-      wsClientRef.current = null;
+  const handle_disconnect = useCallback(() => {
+    if (ws_client_ref.current) {
+      ws_client_ref.current.disconnect();
+      ws_client_ref.current = null;
     }
-    setActiveExecutor(executor);
-    setConnectionMode('wasm');
-    setConnectionStatus('connected');
-    setConnectionError(null);
+    set_active_executor(executor);
+    set_connection_mode('wasm');
+    set_connection_status('connected');
+    set_connection_error(null);
   }, [executor]);
 
   const handleTransactionTypeChange = useCallback((type: TransactionType) => {
-    setTransactionType(type);
-    if (activeExecutor instanceof WsExecutor) {
-      activeExecutor.transactionType = type;
+    set_transaction_type(type);
+    if (active_executor instanceof WsExecutor) {
+      active_executor.transaction_type = type;
     }
-  }, [activeExecutor]);
+  }, [active_executor]);
 
   const handleModeChange = useCallback((mode: ConnectionMode) => {
-    if (mode === 'wasm' && connectionMode === 'websocket') {
+    if (mode === 'wasm' && connection_mode === 'websocket') {
       // Switching back to wasm — disconnect if connected
-      if (wsClientRef.current) {
-        wsClientRef.current.disconnect();
-        wsClientRef.current = null;
+      if (ws_client_ref.current) {
+        ws_client_ref.current.disconnect();
+        ws_client_ref.current = null;
       }
-      setActiveExecutor(executor);
-      setConnectionStatus('connected');
-      setConnectionError(null);
-    } else if (mode === 'websocket' && connectionMode === 'wasm') {
+      set_active_executor(executor);
+      set_connection_status('connected');
+      set_connection_error(null);
+    } else if (mode === 'websocket' && connection_mode === 'wasm') {
       // Switching to websocket mode — not connected yet
-      setConnectionStatus('disconnected');
-      setConnectionError(null);
+      set_connection_status('disconnected');
+      set_connection_error(null);
     }
-    setConnectionMode(mode);
-  }, [connectionMode, executor]);
+    set_connection_mode(mode);
+  }, [connection_mode, executor]);
 
   const resolvedMonacoThemeName = useMemo(() => {
-    if (!monacoTheme) return undefined;
-    if (typeof monacoTheme === 'string') return monacoTheme;
+    if (!monaco_theme) return undefined;
+    if (typeof monaco_theme === 'string') return monaco_theme;
     return 'rdb-custom';
-  }, [monacoTheme]);
+  }, [monaco_theme]);
 
   const resolvedMonacoThemeData = useMemo(() => {
-    if (!monacoTheme || typeof monacoTheme === 'string') return undefined;
-    return monacoTheme;
-  }, [monacoTheme]);
+    if (!monaco_theme || typeof monaco_theme === 'string') return undefined;
+    return monaco_theme;
+  }, [monaco_theme]);
 
-  const connectionLabel = connectionMode === 'wasm' ? 'wasm' : wsUrl;
+  const connectionLabel = connection_mode === 'wasm' ? 'wasm' : ws_url;
 
   const handleRun = useCallback(async () => {
-    if (state.isExecuting || !state.code.trim()) return;
+    if (state.is_executing || !state.code.trim()) return;
     dispatch({ type: 'EXECUTE_START' });
 
     try {
-      const result = await activeExecutor.execute(state.code);
+      const result = await active_executor.execute(state.code);
       if (result.success) {
         dispatch({ type: 'EXECUTE_SUCCESS', result, query: state.code });
       } else {
@@ -245,13 +245,13 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
         result: {
           success: false,
           error: err instanceof Error ? err.message : String(err),
-          executionTime: 0,
+          execution_time: 0,
         },
         query: state.code,
       });
     }
 
-  }, [state.isExecuting, state.code, activeExecutor, dispatch]);
+  }, [state.is_executing, state.code, active_executor, dispatch]);
 
   const handleClear = useCallback(() => {
     dispatch({ type: 'CLEAR_RESULTS' });
@@ -267,26 +267,26 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
         <EditorToolbar
           onRun={handleRun}
           onClear={handleClear}
-          isExecuting={state.isExecuting}
+          is_executing={state.is_executing}
           connectionLabel={connectionLabel}
-          connectionStatus={connectionStatus}
-          connectionLocked={connectionLocked}
-          onToggleConnectionPanel={() => setShowConnectionPanel((v) => !v)}
-          connectionMode={connectionMode}
-          transactionType={transactionType}
+          connection_status={connection_status}
+          connection_locked={connection_locked}
+          onToggleConnectionPanel={() => set_show_connection_panel((v) => !v)}
+          connection_mode={connection_mode}
+          transaction_type={transaction_type}
           onTransactionTypeChange={handleTransactionTypeChange}
         />
-        {!connectionLocked && showConnectionPanel && (
+        {!connection_locked && show_connection_panel && (
           <ConnectionPanel
-            mode={connectionMode}
-            wsUrl={wsUrl}
-            status={connectionStatus}
-            error={connectionError}
+            mode={connection_mode}
+            ws_url={ws_url}
+            status={connection_status}
+            error={connection_error}
             onModeChange={handleModeChange}
-            onUrlChange={setWsUrl}
+            onUrlChange={set_ws_url}
             onConnect={handleConnect}
-            onDisconnect={handleDisconnect}
-            onClose={() => setShowConnectionPanel(false)}
+            onDisconnect={handle_disconnect}
+            onClose={() => set_show_connection_panel(false)}
           />
         )}
       </div>
@@ -316,7 +316,7 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
         ) : state.activeTab === 'history' ? (
           <HistoryPanel entries={state.history} onSelect={handleSelectHistory} />
         ) : (
-          <ShapeBrowser executor={activeExecutor} />
+          <ShapeBrowser executor={active_executor} />
         )}
       </div>
     </div>
@@ -331,10 +331,10 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
   );
 }
 
-export function Console({ executor, initialCode, historyKey, connection, theme, monacoTheme }: ConsoleProps) {
+export function Console({ executor, initial_code, history_key, connection, theme, monaco_theme }: ConsoleProps) {
   return (
-    <ConsoleProvider initialCode={initialCode}>
-      <ConsoleInner executor={executor} historyKey={historyKey} connection={connection} theme={theme} monacoTheme={monacoTheme} />
+    <ConsoleProvider initial_code={initial_code}>
+      <ConsoleInner executor={executor} history_key={history_key} connection={connection} theme={theme} monaco_theme={monaco_theme} />
     </ConsoleProvider>
   );
 }

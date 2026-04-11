@@ -16,11 +16,11 @@ import type {
 import {
     ReifyError
 } from "./types";
-import {encodeParams} from "./encoder";
+import {encode_params} from "./encoder";
 
 export interface HttpClientOptions {
     url: string;
-    timeoutMs?: number;
+    timeout_ms?: number;
     token?: string;
 }
 
@@ -39,25 +39,25 @@ export class HttpClient {
         return new HttpClient(options);
     }
 
-    async loginWithPassword(identity: string, password: string, reqOpts?: RequestOptions): Promise<LoginResult> {
-        return this.login("password", identity, {password}, reqOpts);
+    async login_with_password(identity: string, password: string, req_opts?: RequestOptions): Promise<LoginResult> {
+        return this.login("password", identity, {password}, req_opts);
     }
 
-    async loginWithToken(identity: string, token: string, reqOpts?: RequestOptions): Promise<LoginResult> {
-        return this.login("token", identity, {token}, reqOpts);
+    async login_with_token(identity: string, token: string, req_opts?: RequestOptions): Promise<LoginResult> {
+        return this.login("token", identity, {token}, req_opts);
     }
 
-    async login(method: string, identity: string, credentials: Record<string, string>, reqOpts?: RequestOptions): Promise<LoginResult> {
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
+    async login(method: string, identity: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginResult> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
         
         let signal = controller.signal;
-        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
-        } else if (reqOpts?.signal) {
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
             // Polyfill or fallback if AbortSignal.any is missing
-            reqOpts.signal.addEventListener('abort', () => controller.abort());
+            req_opts.signal.addEventListener('abort', () => controller.abort());
         }
 
         try {
@@ -85,20 +85,20 @@ export class HttpClient {
         }
     }
 
-    async logout(reqOpts?: RequestOptions): Promise<void> {
+    async logout(req_opts?: RequestOptions): Promise<void> {
         if (!this.options.token) {
             return;
         }
 
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
 
         let signal = controller.signal;
-        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
-        } else if (reqOpts?.signal) {
-            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
         }
 
         try {
@@ -129,96 +129,96 @@ export class HttpClient {
         statements: string | string[],
         params: any,
         shapes: S,
-        reqOpts?: RequestOptions
+        req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const statement_array = Array.isArray(statements) ? statements : [statements];
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
-        const result = await this.send('admin', outputStatements, encodedParams, reqOpts);
+        const result = await this.send('admin', output_statements, encoded_params, req_opts);
 
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
+        const transformed_frames = result.map((frame: any, frame_index: number) => {
+            const frame_shape = shapes[frame_index];
+            if (!frame_shape) {
                 return frame;
             }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
+            return frame.map((row: any) => this.transform_result(row, frame_shape));
         });
 
-        return transformedFrames as FrameResults<S>;
+        return transformed_frames as FrameResults<S>;
     }
 
     async command<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
         shapes: S,
-        reqOpts?: RequestOptions
+        req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const statement_array = Array.isArray(statements) ? statements : [statements];
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
-        const result = await this.send('command', outputStatements, encodedParams, reqOpts);
+        const result = await this.send('command', output_statements, encoded_params, req_opts);
 
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
+        const transformed_frames = result.map((frame: any, frame_index: number) => {
+            const frame_shape = shapes[frame_index];
+            if (!frame_shape) {
                 return frame;
             }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
+            return frame.map((row: any) => this.transform_result(row, frame_shape));
         });
 
-        return transformedFrames as FrameResults<S>;
+        return transformed_frames as FrameResults<S>;
     }
 
     async query<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
         shapes: S,
-        reqOpts?: RequestOptions
+        req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const statement_array = Array.isArray(statements) ? statements : [statements];
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
-        const result = await this.send('query', outputStatements, encodedParams, reqOpts);
+        const result = await this.send('query', output_statements, encoded_params, req_opts);
 
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
+        const transformed_frames = result.map((frame: any, frame_index: number) => {
+            const frame_shape = shapes[frame_index];
+            if (!frame_shape) {
                 return frame;
             }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
+            return frame.map((row: any) => this.transform_result(row, frame_shape));
         });
 
-        return transformedFrames as FrameResults<S>;
+        return transformed_frames as FrameResults<S>;
     }
 
-    private async send(endpoint: string, statements: string[], params: any, reqOpts?: RequestOptions): Promise<any> {
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
+    private async send(endpoint: string, statements: string[], params: any, req_opts?: RequestOptions): Promise<any> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
 
         let signal = controller.signal;
-        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
-        } else if (reqOpts?.signal) {
-            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
         }
 
         const headers: Record<string, string> = {
@@ -245,12 +245,12 @@ export class HttpClient {
 
             clearTimeout(timeout);
 
-            const responseBody = await response.text();
+            const response_body = await response.text();
             let parsed: any;
             try {
-                parsed = JSON.parse(responseBody);
+                parsed = JSON.parse(response_body);
             } catch {
-                throw new Error(`Invalid JSON response: ${responseBody}`);
+                throw new Error(`Invalid JSON response: ${response_body}`);
             }
 
             if (!response.ok) {
@@ -261,12 +261,12 @@ export class HttpClient {
                         payload: {diagnostic: parsed.diagnostic}
                     });
                 }
-                throw new Error(parsed.error || `HTTP ${response.status}: ${responseBody}`);
+                throw new Error(parsed.error || `HTTP ${response.status}: ${response_body}`);
             }
 
             const frames = parsed.frames || [];
             return frames.map((frame: any) =>
-                columnsToRows(frame.columns)
+                columns_to_rows(frame.columns)
             );
         } catch (err: any) {
             clearTimeout(timeout);
@@ -277,62 +277,62 @@ export class HttpClient {
         }
     }
 
-    private transformResult(row: any, resultShape: any): any {
-        if (resultShape && resultShape.kind === 'object' && resultShape.properties) {
-            const transformedRow: any = {};
+    private transform_result(row: any, result_shape: any): any {
+        if (result_shape && result_shape.kind === 'object' && result_shape.properties) {
+            const transformed_row: any = {};
             for (const [key, value] of Object.entries(row)) {
-                const propertyShape = resultShape.properties[key];
-                if (propertyShape && propertyShape.kind === 'primitive') {
+                const property_shape = result_shape.properties[key];
+                if (property_shape && property_shape.kind === 'primitive') {
                     if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
-                        const rawValue = (value as any).valueOf();
-                        transformedRow[key] = this.coerceToPrimitiveType(rawValue, propertyShape.type);
+                        const raw_value = (value as any).valueOf();
+                        transformed_row[key] = this.coerce_to_primitive_type(raw_value, property_shape.type);
                     } else {
-                        transformedRow[key] = this.coerceToPrimitiveType(value, propertyShape.type);
+                        transformed_row[key] = this.coerce_to_primitive_type(value, property_shape.type);
                     }
-                } else if (propertyShape && propertyShape.kind === 'value') {
-                    transformedRow[key] = value;
+                } else if (property_shape && property_shape.kind === 'value') {
+                    transformed_row[key] = value;
                 } else {
-                    transformedRow[key] = propertyShape ? this.transformResult(value, propertyShape) : value;
+                    transformed_row[key] = property_shape ? this.transform_result(value, property_shape) : value;
                 }
             }
-            return transformedRow;
+            return transformed_row;
         }
 
-        if (resultShape && resultShape.kind === 'primitive') {
+        if (result_shape && result_shape.kind === 'primitive') {
             if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                return this.coerceToPrimitiveType(row.valueOf(), resultShape.type);
+                return this.coerce_to_primitive_type(row.valueOf(), result_shape.type);
             }
-            return this.coerceToPrimitiveType(row, resultShape.type);
+            return this.coerce_to_primitive_type(row, result_shape.type);
         }
 
-        if (resultShape && resultShape.kind === 'value') {
+        if (result_shape && result_shape.kind === 'value') {
             return row;
         }
 
-        if (resultShape && resultShape.kind === 'array') {
+        if (result_shape && result_shape.kind === 'array') {
             if (Array.isArray(row)) {
-                return row.map((item: any) => this.transformResult(item, resultShape.items));
+                return row.map((item: any) => this.transform_result(item, result_shape.items));
             }
             return row;
         }
 
-        if (resultShape && resultShape.kind === 'optional') {
+        if (result_shape && result_shape.kind === 'optional') {
             if (row === undefined || row === null) {
                 return undefined;
             }
-            return this.transformResult(row, resultShape.shape);
+            return this.transform_result(row, result_shape.shape);
         }
 
         return row;
     }
 
-    private coerceToPrimitiveType(value: any, shapeType: string): any {
+    private coerce_to_primitive_type(value: any, shape_type: string): any {
         if (value === undefined || value === null) {
             return value;
         }
 
-        const bigintTypes = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-        if (bigintTypes.includes(shapeType)) {
+        const bigint_types = ['Int8', 'Int16', 'Uint8', 'Uint16'];
+        if (bigint_types.includes(shape_type)) {
             if (typeof value === 'bigint') {
                 return value;
             }
@@ -348,9 +348,9 @@ export class HttpClient {
     }
 }
 
-function columnsToRows(columns: Column[]): Record<string, Value>[] {
-    const rowCount = columns[0]?.payload.length ?? 0;
-    return Array.from({length: rowCount}, (_, i) => {
+function columns_to_rows(columns: Column[]): Record<string, Value>[] {
+    const row_count = columns[0]?.payload.length ?? 0;
+    return Array.from({length: row_count}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
             row[col.name] = decode({type: col.type, value: col.payload[i]});

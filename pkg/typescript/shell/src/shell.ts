@@ -55,7 +55,7 @@ export class Shell {
     // Initialize components
     this.terminal = new TerminalAdapter(container, options.theme);
     this.lineEditor = new LineEditor(this.terminal);
-    this.history = new CommandHistory(options.historyStorage, options.historyKey);
+    this.history = new CommandHistory(options.historyStorage, options.history_key);
     this.multiline = new MultilineBuffer();
     this.formatter = new OutputFormatter(this.terminal, this.displayMode);
 

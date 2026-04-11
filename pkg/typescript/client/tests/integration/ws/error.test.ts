@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
-import {waitForDatabase} from "../setup";
+import {wait_for_database} from "../setup";
 import {Client, WsClient} from "../../../src";
 import {Shape} from "@reifydb/core";
 
 
 describe('Error', () => {
-    let wsClient: WsClient;
+    let ws_client: WsClient;
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
 
     beforeEach(async () => {
         try {
-            wsClient = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
-                timeoutMs: 10000,
+            ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
+                timeout_ms: 10000,
                 token: process.env.REIFYDB_TOKEN
             });
         } catch (error) {
@@ -27,20 +27,20 @@ describe('Error', () => {
     }, 15000);
 
     afterEach(async () => {
-        if (wsClient) {
+        if (ws_client) {
             try {
-                wsClient.disconnect();
+                ws_client.disconnect();
             } catch (error) {
                 console.error('⚠️ Error during disconnect:', error);
             }
-            wsClient = null;
+            ws_client = null;
         }
     });
 
     describe('admin', () => {
         it('out of range', async () => {
             await expect(
-                wsClient.admin(
+                ws_client.admin(
                     "MAP {result: cast(129, int1)};",
                     {},
                     [Shape.object({result: Shape.int1Value()})]
@@ -69,7 +69,7 @@ describe('Error', () => {
     describe('command', () => {
         it('out of range', async () => {
             await expect(
-                wsClient.command(
+                ws_client.command(
                     "MAP {result: cast(129, int1)};",
                     {},
                     [Shape.object({result: Shape.int1Value()})]
@@ -99,7 +99,7 @@ describe('Error', () => {
     describe('query', () => {
         it('out of range', async () => {
             await expect(
-                wsClient.query(
+                ws_client.query(
                     "MAP {result: cast(129, int1)};",
                     {},
                     [Shape.object({result: Shape.int1Value()})]

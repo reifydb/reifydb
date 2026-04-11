@@ -5,7 +5,7 @@ import type { ExecutionResult, HistoryEntry } from '../types';
 
 export interface ConsoleState {
   code: string;
-  isExecuting: boolean;
+  is_executing: boolean;
   result: ExecutionResult | null;
   history: HistoryEntry[];
   activeTab: 'results' | 'history' | 'shape';
@@ -30,7 +30,7 @@ export function consoleReducer(state: ConsoleState, action: ConsoleAction): Cons
       return { ...state, code: action.code };
 
     case 'EXECUTE_START':
-      return { ...state, isExecuting: true, result: null };
+      return { ...state, is_executing: true, result: null };
 
     case 'EXECUTE_SUCCESS': {
       const entry: HistoryEntry = {
@@ -38,12 +38,12 @@ export function consoleReducer(state: ConsoleState, action: ConsoleAction): Cons
         query: action.query,
         timestamp: Date.now(),
         success: true,
-        rowCount: action.result.data?.length,
-        executionTime: action.result.executionTime,
+        row_count: action.result.data?.length,
+        execution_time: action.result.execution_time,
       };
       return {
         ...state,
-        isExecuting: false,
+        is_executing: false,
         result: action.result,
         history: [entry, ...state.history],
         activeTab: 'results',
@@ -56,11 +56,11 @@ export function consoleReducer(state: ConsoleState, action: ConsoleAction): Cons
         query: action.query,
         timestamp: Date.now(),
         success: false,
-        executionTime: action.result.executionTime,
+        execution_time: action.result.execution_time,
       };
       return {
         ...state,
-        isExecuting: false,
+        is_executing: false,
         result: action.result,
         history: [entry, ...state.history],
         activeTab: 'results',
@@ -89,7 +89,7 @@ export function consoleReducer(state: ConsoleState, action: ConsoleAction): Cons
 
 export const initialConsoleState: ConsoleState = {
   code: '',
-  isExecuting: false,
+  is_executing: false,
   result: null,
   history: [],
   activeTab: 'results',

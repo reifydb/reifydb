@@ -3,8 +3,8 @@
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useShape, getConnection, clearConnection, Client, ConnectionProvider} from '../../../src';
-import {waitForDatabaseHttp} from '../setup';
+import {useShape, get_connection, clear_connection, Client, ConnectionProvider} from '../../../src';
+import {wait_for_database_http} from '../setup';
 // @ts-ignore
 import React from 'react';
 
@@ -18,11 +18,11 @@ describe('useShape Hook (HTTP)', () => {
     );
 
     beforeAll(async () => {
-        await waitForDatabaseHttp();
+        await wait_for_database_http();
 
         // Create test namespace and tables
         const url = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
-        setupClient = Client.connect_http(url, {timeoutMs: 10000, token: process.env.REIFYDB_TOKEN});
+        setupClient = Client.connect_http(url, {timeout_ms: 10000, token: process.env.REIFYDB_TOKEN});
 
         // Create namespace
         await setupClient.admin(`CREATE NAMESPACE ${TEST_NAMESPACE}`, {}, []);
@@ -110,7 +110,7 @@ describe('useShape Hook (HTTP)', () => {
                 // Ignore cleanup errors
             }
         }
-        await clearConnection();
+        await clear_connection();
     });
 
     it('should return loading state initially', async () => {
@@ -125,14 +125,14 @@ describe('useShape Hook (HTTP)', () => {
 
         await waitFor(
             () => {
-                expect(result.current[0]).toBe(false); // isLoading
+                expect(result.current[0]).toBe(false); // is_loading
             },
             {timeout: 10000}
         );
 
-        const [isLoading, shape, error] = result.current;
+        const [is_loading, shape, error] = result.current;
 
-        expect(isLoading).toBe(false);
+        expect(is_loading).toBe(false);
         expect(error).toBeUndefined();
         expect(shape.length).toBeGreaterThan(0);
 
@@ -166,7 +166,7 @@ describe('useShape Hook (HTTP)', () => {
         expect(integersTable).toBeDefined();
         expect(integersTable!.columns).toHaveLength(12);
 
-        const columnTypeMap = new Map(integersTable!.columns.map((c) => [c.name, c.dataType]));
+        const columnTypeMap = new Map(integersTable!.columns.map((c) => [c.name, c.data_type]));
 
         expect(columnTypeMap.get('col_int1')).toBe('Int1');
         expect(columnTypeMap.get('col_int2')).toBe('Int2');
@@ -198,7 +198,7 @@ describe('useShape Hook (HTTP)', () => {
         expect(floatsTable).toBeDefined();
         expect(floatsTable!.columns).toHaveLength(3);
 
-        const columnTypeMap = new Map(floatsTable!.columns.map((c) => [c.name, c.dataType]));
+        const columnTypeMap = new Map(floatsTable!.columns.map((c) => [c.name, c.data_type]));
 
         expect(columnTypeMap.get('col_float4')).toBe('Float4');
         expect(columnTypeMap.get('col_float8')).toBe('Float8');
@@ -221,7 +221,7 @@ describe('useShape Hook (HTTP)', () => {
         expect(textTable).toBeDefined();
         expect(textTable!.columns).toHaveLength(2);
 
-        const columnTypeMap = new Map(textTable!.columns.map((c) => [c.name, c.dataType]));
+        const columnTypeMap = new Map(textTable!.columns.map((c) => [c.name, c.data_type]));
 
         expect(columnTypeMap.get('col_utf8')).toBe('Utf8');
         expect(columnTypeMap.get('col_blob')).toBe('Blob');
@@ -243,7 +243,7 @@ describe('useShape Hook (HTTP)', () => {
         expect(temporalTable).toBeDefined();
         expect(temporalTable!.columns).toHaveLength(4);
 
-        const columnTypeMap = new Map(temporalTable!.columns.map((c) => [c.name, c.dataType]));
+        const columnTypeMap = new Map(temporalTable!.columns.map((c) => [c.name, c.data_type]));
 
         expect(columnTypeMap.get('col_date')).toBe('Date');
         expect(columnTypeMap.get('col_datetime')).toBe('DateTime');
@@ -267,7 +267,7 @@ describe('useShape Hook (HTTP)', () => {
         expect(identifiersTable).toBeDefined();
         expect(identifiersTable!.columns).toHaveLength(2);
 
-        const columnTypeMap = new Map(identifiersTable!.columns.map((c) => [c.name, c.dataType]));
+        const columnTypeMap = new Map(identifiersTable!.columns.map((c) => [c.name, c.data_type]));
 
         expect(columnTypeMap.get('col_uuid4')).toBe('Uuid4');
         expect(columnTypeMap.get('col_uuid7')).toBe('Uuid7');
@@ -289,7 +289,7 @@ describe('useShape Hook (HTTP)', () => {
         expect(miscTable).toBeDefined();
         expect(miscTable!.columns).toHaveLength(1);
         expect(miscTable!.columns[0].name).toBe('col_boolean');
-        expect(miscTable!.columns[0].dataType).toBe('Boolean');
+        expect(miscTable!.columns[0].data_type).toBe('Boolean');
     });
 
     it('should preserve column order by position', async () => {

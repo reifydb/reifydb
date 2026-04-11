@@ -12,12 +12,12 @@ import type { RdbTheme } from './Console';
 
 export interface SnippetProps {
   executor: Executor;
-  initialCode: string;
+  initial_code: string;
   title?: string;
   description?: string;
   className?: string;
   theme?: RdbTheme;
-  monacoTheme?: string | editor.IStandaloneThemeData;
+  monaco_theme?: string | editor.IStandaloneThemeData;
 }
 
 interface QueryResult {
@@ -27,16 +27,16 @@ interface QueryResult {
 
 export function Snippet({
   executor,
-  initialCode,
+  initial_code,
   title = 'reifydb playground',
   description,
   className,
   theme = 'light',
-  monacoTheme,
+  monaco_theme,
 }: SnippetProps) {
-  const [code, setCode] = useState(initialCode);
+  const [code, setCode] = useState(initial_code);
   const [result, setResult] = useState<QueryResult | null>(null);
-  const [isExecuting, setIsExecuting] = useState(false);
+  const [is_executing, setIsExecuting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -44,15 +44,15 @@ export function Snippet({
   const handleRunRef = useRef<() => void>(() => {});
 
   const resolvedMonacoThemeName = useMemo(() => {
-    if (!monacoTheme) return undefined;
-    if (typeof monacoTheme === 'string') return monacoTheme;
+    if (!monaco_theme) return undefined;
+    if (typeof monaco_theme === 'string') return monaco_theme;
     return 'rdb-custom';
-  }, [monacoTheme]);
+  }, [monaco_theme]);
 
   const resolvedMonacoThemeData = useMemo(() => {
-    if (!monacoTheme || typeof monacoTheme === 'string') return undefined;
-    return monacoTheme;
-  }, [monacoTheme]);
+    if (!monaco_theme || typeof monaco_theme === 'string') return undefined;
+    return monaco_theme;
+  }, [monaco_theme]);
 
   const resolvedTheme = resolvedMonacoThemeName ?? (theme === 'light' ? 'premium-light' : 'premium-dark');
 
@@ -75,7 +75,7 @@ export function Snippet({
   }, []);
 
   const handleRun = useCallback(async () => {
-    if (isExecuting) return;
+    if (is_executing) return;
     setResult(null);
     setIsExecuting(true);
     await new Promise(r => setTimeout(r, 0));
@@ -92,14 +92,14 @@ export function Snippet({
     } finally {
       setIsExecuting(false);
     }
-  }, [code, executor, isExecuting]);
+  }, [code, executor, is_executing]);
 
   handleRunRef.current = handleRun;
 
   const handleReset = useCallback(() => {
-    setCode(initialCode);
+    setCode(initial_code);
     setResult(null);
-  }, [initialCode]);
+  }, [initial_code]);
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(code);
@@ -251,14 +251,14 @@ export function Snippet({
               {/* Toolbar */}
               <div className="rdb-snippet__toolbar">
                 <span className="rdb-snippet__hint">
-                  {isExecuting ? '$ running...' : '$ ctrl+enter to run'}
+                  {is_executing ? '$ running...' : '$ ctrl+enter to run'}
                 </span>
                 <button
                   onClick={handleRun}
-                  disabled={isExecuting}
-                  className={`rdb-snippet__run-btn${isExecuting ? ' rdb-snippet__run-btn--loading' : ''}`}
+                  disabled={is_executing}
+                  className={`rdb-snippet__run-btn${is_executing ? ' rdb-snippet__run-btn--loading' : ''}`}
                 >
-                  {isExecuting ? 'Running...' : 'Run'}
+                  {is_executing ? 'Running...' : 'Run'}
                 </button>
               </div>
 
@@ -367,14 +367,14 @@ export function Snippet({
           {/* Toolbar */}
           <div className="rdb-snippet__toolbar">
             <span className="rdb-snippet__hint">
-              {isExecuting ? '$ running...' : '$ ctrl+enter to run'}
+              {is_executing ? '$ running...' : '$ ctrl+enter to run'}
             </span>
             <button
               onClick={handleRun}
-              disabled={isExecuting}
-              className={`rdb-snippet__run-btn${isExecuting ? ' rdb-snippet__run-btn--loading' : ''}`}
+              disabled={is_executing}
+              className={`rdb-snippet__run-btn${is_executing ? ' rdb-snippet__run-btn--loading' : ''}`}
             >
-              {isExecuting ? 'Running...' : 'Run'}
+              {is_executing ? 'Running...' : 'Run'}
             </button>
           </div>
         </>

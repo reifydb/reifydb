@@ -22,7 +22,7 @@ export function HistoryEntryRow({ entry, onClick }: HistoryEntryProps) {
       <div className="rdb-history__entry-meta">
         <span>{formatTimestamp(entry.timestamp)}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span>{entry.executionTime}ms</span>
+          <span>{entry.execution_time}ms</span>
           <span
             className={`rdb-history__entry-indicator ${
               entry.success

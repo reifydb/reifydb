@@ -6,11 +6,11 @@ import type {
 import {
     ReifyError
 } from "./types";
-import {encodeParams} from "./encoder";
+import {encode_params} from "./encoder";
 
 export interface JsonHttpClientOptions {
     url: string;
-    timeoutMs?: number;
+    timeout_ms?: number;
     token?: string;
     unwrap?: boolean;
 }
@@ -30,24 +30,24 @@ export class JsonHttpClient {
         return new JsonHttpClient(options);
     }
 
-    async loginWithPassword(identity: string, password: string, reqOpts?: RequestOptions): Promise<LoginResult> {
-        return this.login("password", identity, {password}, reqOpts);
+    async login_with_password(identity: string, password: string, req_opts?: RequestOptions): Promise<LoginResult> {
+        return this.login("password", identity, {password}, req_opts);
     }
 
-    async loginWithToken(identity: string, token: string, reqOpts?: RequestOptions): Promise<LoginResult> {
-        return this.login("token", identity, {token}, reqOpts);
+    async login_with_token(identity: string, token: string, req_opts?: RequestOptions): Promise<LoginResult> {
+        return this.login("token", identity, {token}, req_opts);
     }
 
-    async login(method: string, identity: string, credentials: Record<string, string>, reqOpts?: RequestOptions): Promise<LoginResult> {
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
+    async login(method: string, identity: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginResult> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
 
         let signal = controller.signal;
-        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
-        } else if (reqOpts?.signal) {
-            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
         }
 
         try {
@@ -75,20 +75,20 @@ export class JsonHttpClient {
         }
     }
 
-    async logout(reqOpts?: RequestOptions): Promise<void> {
+    async logout(req_opts?: RequestOptions): Promise<void> {
         if (!this.options.token) {
             return;
         }
 
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
 
         let signal = controller.signal;
-        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
-        } else if (reqOpts?.signal) {
-            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
         }
 
         try {
@@ -118,64 +118,64 @@ export class JsonHttpClient {
     async admin(
         statements: string | string[],
         params?: any,
-        reqOpts?: RequestOptions
+        req_opts?: RequestOptions
     ): Promise<any> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const statement_array = Array.isArray(statements) ? statements : [statements];
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
-        return this.send('admin', outputStatements, encodedParams, reqOpts);
+        return this.send('admin', output_statements, encoded_params, req_opts);
     }
 
     async command(
         statements: string | string[],
         params?: any,
-        reqOpts?: RequestOptions
+        req_opts?: RequestOptions
     ): Promise<any> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const statement_array = Array.isArray(statements) ? statements : [statements];
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
-        return this.send('command', outputStatements, encodedParams, reqOpts);
+        return this.send('command', output_statements, encoded_params, req_opts);
     }
 
     async query(
         statements: string | string[],
         params?: any,
-        reqOpts?: RequestOptions
+        req_opts?: RequestOptions
     ): Promise<any> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+        const statement_array = Array.isArray(statements) ? statements : [statements];
+        const output_statements = statement_array.length > 1
+            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            : statement_array;
 
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
-        return this.send('query', outputStatements, encodedParams, reqOpts);
+        return this.send('query', output_statements, encoded_params, req_opts);
     }
 
-    private async send(endpoint: string, statements: string[], params: any, reqOpts?: RequestOptions): Promise<any> {
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
+    private async send(endpoint: string, statements: string[], params: any, req_opts?: RequestOptions): Promise<any> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
 
         let signal = controller.signal;
-        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
-        } else if (reqOpts?.signal) {
-            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
         }
 
         const headers: Record<string, string> = {
@@ -191,13 +191,13 @@ export class JsonHttpClient {
             body.params = params;
         }
 
-        const queryParams = new URLSearchParams({format: 'json'});
+        const query_params = new URLSearchParams({format: 'json'});
         if (this.options.unwrap) {
-            queryParams.set('unwrap', 'true');
+            query_params.set('unwrap', 'true');
         }
 
         try {
-            const response = await fetch(`${this.options.url}/v1/${endpoint}?${queryParams}`, {
+            const response = await fetch(`${this.options.url}/v1/${endpoint}?${query_params}`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(body),
@@ -207,12 +207,12 @@ export class JsonHttpClient {
 
             clearTimeout(timeout);
 
-            const responseBody = await response.text();
+            const response_body = await response.text();
             let parsed: any;
             try {
-                parsed = JSON.parse(responseBody);
+                parsed = JSON.parse(response_body);
             } catch {
-                throw new Error(`Invalid JSON response: ${responseBody}`);
+                throw new Error(`Invalid JSON response: ${response_body}`);
             }
 
             if (!response.ok) {
@@ -223,7 +223,7 @@ export class JsonHttpClient {
                         payload: {diagnostic: parsed.diagnostic}
                     });
                 }
-                throw new Error(parsed.error || `HTTP ${response.status}: ${responseBody}`);
+                throw new Error(parsed.error || `HTTP ${response.status}: ${response_body}`);
             }
 
             return parsed;

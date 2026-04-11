@@ -33,8 +33,8 @@ export function ResultsPanel({ result }: ResultsPanelProps) {
     <>
       <ResultsTable data={data} />
       <ResultsStatusBar
-        rowCount={data.length}
-        executionTime={result.executionTime}
+        row_count={data.length}
+        execution_time={result.execution_time}
         data={data}
       />
     </>

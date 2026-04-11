@@ -18,11 +18,11 @@ export interface LoginResult {
  * The WASM engine returns typed values as `{type, value}` pairs.
  * This function walks the result tree and decodes each pair using `@reifydb/core`'s `decode()`.
  */
-export function transformToValueInstances(result: unknown): unknown {
+export function transform_to_value_instances(result: unknown): unknown {
   if (result === null || result === undefined) return result;
   if (typeof result !== 'object') return result;
   if (Array.isArray(result)) {
-    return result.map(transformToValueInstances);
+    return result.map(transform_to_value_instances);
   }
   const obj = result as Record<string, unknown>;
   if ('type' in obj && 'value' in obj && Object.keys(obj).length === 2) {
@@ -30,7 +30,7 @@ export function transformToValueInstances(result: unknown): unknown {
   }
   const transformed: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
-    transformed[key] = transformToValueInstances(value);
+    transformed[key] = transform_to_value_instances(value);
   }
   return transformed;
 }
@@ -49,37 +49,37 @@ export class WasmDB {
   }
 
   admin(rql: string): unknown {
-    return transformToValueInstances(this.db.admin(rql));
+    return transform_to_value_instances(this.db.admin(rql));
   }
 
-  adminWithParams(rql: string, params: unknown): unknown {
-    return transformToValueInstances(this.db.adminWithParams(rql, params));
+  admin_with_params(rql: string, params: unknown): unknown {
+    return transform_to_value_instances(this.db.adminWithParams(rql, params));
   }
 
   command(rql: string): unknown {
-    return transformToValueInstances(this.db.command(rql));
+    return transform_to_value_instances(this.db.command(rql));
   }
 
-  commandWithParams(rql: string, params: unknown): unknown {
-    return transformToValueInstances(this.db.commandWithParams(rql, params));
+  command_with_params(rql: string, params: unknown): unknown {
+    return transform_to_value_instances(this.db.commandWithParams(rql, params));
   }
 
   query(rql: string): unknown {
-    return transformToValueInstances(this.db.query(rql));
+    return transform_to_value_instances(this.db.query(rql));
   }
 
-  queryWithParams(rql: string, params: unknown): unknown {
-    return transformToValueInstances(this.db.queryWithParams(rql, params));
+  query_with_params(rql: string, params: unknown): unknown {
+    return transform_to_value_instances(this.db.queryWithParams(rql, params));
   }
 
-  loginWithPassword(identifier: string, password: string): LoginResult {
+  login_with_password(identifier: string, password: string): LoginResult {
     const raw = this.db.loginWithPassword(identifier, password);
     const result = { token: raw.token, identity: raw.identity };
     raw.free();
     return result;
   }
 
-  loginWithToken(token: string): LoginResult {
+  login_with_token(token: string): LoginResult {
     const raw = this.db.loginWithToken(token);
     const result = { token: raw.token, identity: raw.identity };
     raw.free();
@@ -103,15 +103,15 @@ export class WasmDB {
  *
  * @example
  * ```typescript
- * import { createWasmDB } from '@reifydb/wasm';
+ * import { create_wasm_db } from '@reifydb/wasm';
  *
- * const db = await createWasmDB();
+ * const db = await create_wasm_db();
  * db.admin('CREATE NAMESPACE demo');
  * const results = db.query('FROM demo.users');
  * db.free();
  * ```
  */
-export async function createWasmDB(): Promise<WasmDB> {
+export async function create_wasm_db(): Promise<WasmDB> {
   const mod = await import('../wasm/reifydb_webassembly.js');
   return new WasmDB(new mod.WasmDB());
 }

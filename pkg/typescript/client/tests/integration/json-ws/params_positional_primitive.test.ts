@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
-import {waitForDatabase} from "../setup";
+import {wait_for_database} from "../setup";
 import {Client, JsonWebsocketClient} from "../../../src";
 import {expectSingleResult} from "./test-helper";
 
 describe('Positional Parameters (Primitive)', () => {
-    let wsClient: JsonWebsocketClient;
+    let ws_client: JsonWebsocketClient;
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
     beforeEach(async () => {
         try {
-            wsClient = await Client.connect_json_ws(process.env.REIFYDB_WS_URL, {
-                timeoutMs: 10000,
+            ws_client = await Client.connect_json_ws(process.env.REIFYDB_WS_URL, {
+                timeout_ms: 10000,
                 token: process.env.REIFYDB_TOKEN
             });
         } catch (error) {
@@ -25,16 +25,16 @@ describe('Positional Parameters (Primitive)', () => {
     }, 15000);
 
     afterEach(async () => {
-        if (wsClient) {
-            try { wsClient.disconnect(); } catch (error) { console.error('Error during disconnect:', error); }
-            wsClient = null;
+        if (ws_client) {
+            try { ws_client.disconnect(); } catch (error) { console.error('Error during disconnect:', error); }
+            ws_client = null;
         }
     });
 
     describe('admin', () => {
 
         it('Boolean', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [true]
             );
@@ -43,7 +43,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int1', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [42]
             );
@@ -52,7 +52,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int2', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [1234]
             );
@@ -61,7 +61,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int4', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [12345678]
             );
@@ -70,7 +70,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [BigInt("42")]
             );
@@ -79,7 +79,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int16', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [BigInt("170141183460469231731687303715884105727")]
             );
@@ -88,7 +88,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint1', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [255]
             );
@@ -97,7 +97,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint2', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [65535]
             );
@@ -106,7 +106,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint4', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [4294967295]
             );
@@ -115,7 +115,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [BigInt("255")]
             );
@@ -124,7 +124,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint16', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [BigInt("340282366920938463463374607431768211455")]
             );
@@ -133,7 +133,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Float4', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [3.14]
             );
@@ -142,7 +142,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Float8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [3.141592653589793]
             );
@@ -154,7 +154,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Decimal', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 ["123.456789"]
             );
@@ -163,7 +163,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Utf8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 ["Hello, World!"]
             );
@@ -173,7 +173,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [data]
             );
@@ -185,7 +185,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [date]
             );
@@ -197,7 +197,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Time', async () => {
             const time = new Date('1970-01-01T14:30:00.123Z');
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [time]
             );
@@ -209,7 +209,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [datetime]
             );
@@ -220,7 +220,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Duration', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 ["P1DT2H30M"]
             );
@@ -230,7 +230,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [uuid]
             );
@@ -240,7 +240,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [uuid]
             );
@@ -250,7 +250,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [identityId]
             );
@@ -263,7 +263,7 @@ describe('Positional Parameters (Primitive)', () => {
     describe('command', () => {
 
         it('Boolean', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [true]
             );
@@ -272,7 +272,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int1', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [42]
             );
@@ -281,7 +281,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int2', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [1234]
             );
@@ -290,7 +290,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int4', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [12345678]
             );
@@ -299,7 +299,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [BigInt("42")]
             );
@@ -308,7 +308,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int16', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [BigInt("170141183460469231731687303715884105727")]
             );
@@ -317,7 +317,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint1', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [255]
             );
@@ -326,7 +326,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint2', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [65535]
             );
@@ -335,7 +335,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint4', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [4294967295]
             );
@@ -344,7 +344,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [BigInt("255")]
             );
@@ -353,7 +353,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint16', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [BigInt("340282366920938463463374607431768211455")]
             );
@@ -362,7 +362,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Float4', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [3.14]
             );
@@ -371,7 +371,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Float8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [3.141592653589793]
             );
@@ -383,7 +383,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Decimal', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 ["123.456789"]
             );
@@ -392,7 +392,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Utf8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 ["Hello, World!"]
             );
@@ -402,7 +402,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [data]
             );
@@ -414,7 +414,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [date]
             );
@@ -426,7 +426,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Time', async () => {
             const time = new Date('1970-01-01T14:30:00.123Z');
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [time]
             );
@@ -438,7 +438,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [datetime]
             );
@@ -449,7 +449,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Duration', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 ["P1DT2H30M"]
             );
@@ -459,7 +459,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [uuid]
             );
@@ -469,7 +469,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [uuid]
             );
@@ -479,7 +479,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [identityId]
             );
@@ -492,7 +492,7 @@ describe('Positional Parameters (Primitive)', () => {
     describe('query', () => {
 
         it('Boolean', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [true]
             );
@@ -501,7 +501,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int1', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [42]
             );
@@ -510,7 +510,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int2', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [1234]
             );
@@ -519,7 +519,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int4', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [12345678]
             );
@@ -528,7 +528,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [BigInt("42")]
             );
@@ -537,7 +537,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Int16', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [BigInt("170141183460469231731687303715884105727")]
             );
@@ -546,7 +546,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint1', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [255]
             );
@@ -555,7 +555,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint2', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [65535]
             );
@@ -564,7 +564,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint4', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [4294967295]
             );
@@ -573,7 +573,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [BigInt("255")]
             );
@@ -582,7 +582,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Uint16', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [BigInt("340282366920938463463374607431768211455")]
             );
@@ -591,7 +591,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Float4', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [3.14]
             );
@@ -600,7 +600,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Float8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [3.141592653589793]
             );
@@ -612,7 +612,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Decimal', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 ["123.456789"]
             );
@@ -621,7 +621,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Utf8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 ["Hello, World!"]
             );
@@ -631,7 +631,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [data]
             );
@@ -643,7 +643,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [date]
             );
@@ -655,7 +655,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Time', async () => {
             const time = new Date('1970-01-01T14:30:00.123Z');
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [time]
             );
@@ -667,7 +667,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [datetime]
             );
@@ -678,7 +678,7 @@ describe('Positional Parameters (Primitive)', () => {
         }, 1000);
 
         it('Duration', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 ["P1DT2H30M"]
             );
@@ -688,7 +688,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [uuid]
             );
@@ -698,7 +698,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [uuid]
             );
@@ -708,7 +708,7 @@ describe('Positional Parameters (Primitive)', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [identityId]
             );

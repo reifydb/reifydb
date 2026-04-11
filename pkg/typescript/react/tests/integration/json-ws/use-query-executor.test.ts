@@ -2,26 +2,26 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useQueryExecutor, getConnection, clearConnection, Shape} from '../../../src';
-import {waitForDatabase} from '../setup';
+import {useQueryExecutor, get_connection, clear_connection, Shape} from '../../../src';
+import {wait_for_database} from '../setup';
 
 describe('useQueryExecutor Hook (JSON WS)', () => {
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
         // Ensure we're connected before tests
-        const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
+        const conn = get_connection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
         await conn.connect();
     }, 30000);
 
 
     afterAll(() => {
-        clearConnection();
+        clear_connection();
     });
 
     it('should execute a simple query', async () => {
         const {result} = renderHook(() => useQueryExecutor());
 
-        expect(result.current.isExecuting).toBe(false);
+        expect(result.current.is_executing).toBe(false);
         expect(result.current.results).toBeUndefined();
 
         // Execute query with shape for primitive result
@@ -33,11 +33,11 @@ describe('useQueryExecutor Hook (JSON WS)', () => {
             );
         });
 
-        expect(result.current.isExecuting).toBe(true);
+        expect(result.current.is_executing).toBe(true);
 
         // Wait for results
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
             expect(result.current.results).toBeDefined();
         });
 
@@ -68,7 +68,7 @@ describe('useQueryExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
             expect(result.current.results).toBeDefined();
         });
 
@@ -91,7 +91,7 @@ describe('useQueryExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
             expect(result.current.results).toBeDefined();
         });
 
@@ -107,7 +107,7 @@ describe('useQueryExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
             expect(result.current.error).toBeDefined();
         });
 
@@ -137,7 +137,7 @@ describe('useQueryExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
         });
 
         // Should only have results from second query
@@ -154,7 +154,7 @@ describe('useQueryExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
+            expect(result.current.is_executing).toBe(false);
         });
 
         expect(result.current.error).toBeUndefined();
@@ -182,8 +182,8 @@ describe('useQueryExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result1.current.isExecuting).toBe(false);
-            expect(result2.current.isExecuting).toBe(false);
+            expect(result1.current.is_executing).toBe(false);
+            expect(result2.current.is_executing).toBe(false);
         });
 
         // Each hook should have its own results
@@ -203,14 +203,14 @@ describe('useQueryExecutor Hook (JSON WS)', () => {
             );
         });
 
-        expect(result.current.isExecuting).toBe(true);
+        expect(result.current.is_executing).toBe(true);
 
         // Cancel it
         act(() => {
-            result.current.cancelQuery();
+            result.current.cancel_query();
         });
 
-        expect(result.current.isExecuting).toBe(false);
+        expect(result.current.is_executing).toBe(false);
         expect(result.current.error).toBe('Query cancelled');
     });
 });

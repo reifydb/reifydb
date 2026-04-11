@@ -7,38 +7,38 @@ import { Connection, ConnectionConfig, DEFAULT_CONFIG } from './connection';
  * Singleton default connection instance.
  * This ensures a single global connection that gets reused and updated.
  */
-let defaultConnection: Connection | null = null;
+let default_connection: Connection | null = null;
 
 /**
  * Get the singleton connection instance.
- * If a config is provided, the connection's config will be updated via setConfig().
+ * If a config is provided, the connection's config will be updated via set_config().
  * @param config - Optional connection configuration
  * @returns The singleton Connection instance
  */
-export function getConnection(config?: ConnectionConfig): Connection {
+export function get_connection(config?: ConnectionConfig): Connection {
     // Create singleton on first call
-    if (!defaultConnection) {
-        const mergedConfig = {...DEFAULT_CONFIG, ...config};
-        defaultConnection = new Connection(mergedConfig);
+    if (!default_connection) {
+        const merged_config = {...DEFAULT_CONFIG, ...config};
+        default_connection = new Connection(merged_config);
         // Start connection immediately - don't wait for React's useEffect
-        defaultConnection.connect().catch(err => {
+        default_connection.connect().catch(err => {
             console.error('[ConnectionPool] Eager connect failed:', err);
         });
     } else if (config) {
         // Only update config when explicitly provided, to avoid
         // stripping fields (e.g. token) that were set on creation.
-        defaultConnection.setConfig({...DEFAULT_CONFIG, ...config});
+        default_connection.set_config({...DEFAULT_CONFIG, ...config});
     }
 
-    return defaultConnection;
+    return default_connection;
 }
 
 /**
  * Clear the singleton connection
  */
-export async function clearConnection(): Promise<void> {
-    if (defaultConnection) {
-        await defaultConnection.disconnect();
-        defaultConnection = null;
+export async function clear_connection(): Promise<void> {
+    if (default_connection) {
+        await default_connection.disconnect();
+        default_connection = null;
     }
 }

@@ -13,7 +13,7 @@ describe('ReifyDB Client Integration Tests', () => {
 
         beforeAll(async () => {
             httpClient = Client.connect_http(HTTP_URL, {
-                timeoutMs: 10000,
+                timeout_ms: 10000,
                 token: AUTH_TOKEN
             });
         });

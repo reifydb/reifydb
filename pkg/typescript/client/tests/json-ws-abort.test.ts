@@ -3,22 +3,22 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {JsonWebsocketClient} from '../src/json-ws';
 import {
-    createMockSocket,
+    create_mock_socket,
     MockSocket,
-    setupWindowWebSocket,
-    teardownWindowWebSocket,
+    setup_window_web_socket,
+    teardown_window_web_socket,
 } from './helpers/abort-test-utils';
 
 describe('JsonWebsocketClient abort signal', () => {
-    let mockSocket: MockSocket;
+    let mock_socket: MockSocket;
 
     beforeEach(() => {
-        mockSocket = createMockSocket();
-        setupWindowWebSocket(mockSocket);
+        mock_socket = create_mock_socket();
+        setup_window_web_socket(mock_socket);
     });
 
     afterEach(() => {
-        teardownWindowWebSocket();
+        teardown_window_web_socket();
         vi.restoreAllMocks();
     });
 
@@ -37,26 +37,26 @@ describe('JsonWebsocketClient abort signal', () => {
         it('throws AbortError when signal aborts during connection wait', async () => {
             const controller = new AbortController();
 
-            const connectPromise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
 
             // Let connect() reach the addEventListener registration
             await Promise.resolve();
             controller.abort();
 
-            await expect(connectPromise).rejects.toThrow('AbortError');
-            expect(mockSocket.close).toHaveBeenCalled();
+            await expect(connect_promise).rejects.toThrow('AbortError');
+            expect(mock_socket.close).toHaveBeenCalled();
         });
 
         it('connects successfully when signal is provided but not aborted', async () => {
             const controller = new AbortController();
 
-            const connectPromise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
 
             // Simulate socket opening
             await Promise.resolve();
-            mockSocket._emit('open');
+            mock_socket._emit('open');
 
-            const client = await connectPromise;
+            const client = await connect_promise;
             expect(client).toBeDefined();
             client.disconnect();
         });
@@ -65,12 +65,12 @@ describe('JsonWebsocketClient abort signal', () => {
             const controller = new AbortController();
             const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
 
-            const connectPromise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
 
             await Promise.resolve();
-            mockSocket._emit('open');
+            mock_socket._emit('open');
 
-            const client = await connectPromise;
+            const client = await connect_promise;
             expect(removeEventListenerSpy).toHaveBeenCalledWith('abort', expect.any(Function));
             client.disconnect();
         });
@@ -78,42 +78,42 @@ describe('JsonWebsocketClient abort signal', () => {
         it('throws AbortError on post-connection race condition', async () => {
             const controller = new AbortController();
 
-            const connectPromise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
 
             await Promise.resolve();
             // Fire open event and then immediately abort — the post-await check should catch it
-            mockSocket._emit('open');
+            mock_socket._emit('open');
             controller.abort();
 
-            await expect(connectPromise).rejects.toThrow('AbortError');
-            expect(mockSocket.close).toHaveBeenCalled();
+            await expect(connect_promise).rejects.toThrow('AbortError');
+            expect(mock_socket.close).toHaveBeenCalled();
         });
 
         it('cleans up socket event listeners on successful connection', async () => {
             const controller = new AbortController();
 
-            const connectPromise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
 
             await Promise.resolve();
-            mockSocket._emit('open');
+            mock_socket._emit('open');
 
-            const client = await connectPromise;
-            expect(mockSocket.removeEventListener).toHaveBeenCalledWith('open', expect.any(Function));
-            expect(mockSocket.removeEventListener).toHaveBeenCalledWith('error', expect.any(Function));
+            const client = await connect_promise;
+            expect(mock_socket.removeEventListener).toHaveBeenCalledWith('open', expect.any(Function));
+            expect(mock_socket.removeEventListener).toHaveBeenCalledWith('error', expect.any(Function));
             client.disconnect();
         });
 
         it('cleans up socket event listeners on abort', async () => {
             const controller = new AbortController();
 
-            const connectPromise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
 
             await Promise.resolve();
             controller.abort();
 
-            await expect(connectPromise).rejects.toThrow('AbortError');
-            expect(mockSocket.removeEventListener).toHaveBeenCalledWith('open', expect.any(Function));
-            expect(mockSocket.removeEventListener).toHaveBeenCalledWith('error', expect.any(Function));
+            await expect(connect_promise).rejects.toThrow('AbortError');
+            expect(mock_socket.removeEventListener).toHaveBeenCalledWith('open', expect.any(Function));
+            expect(mock_socket.removeEventListener).toHaveBeenCalledWith('error', expect.any(Function));
         });
     });
 });

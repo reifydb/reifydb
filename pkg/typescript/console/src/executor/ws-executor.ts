@@ -56,7 +56,7 @@ function toDiagnostic(error: ReifyError): Diagnostic {
 
 export class WsExecutor implements Executor {
   private client: WsClient;
-  transactionType: TransactionType = 'admin';
+  transaction_type: TransactionType = 'admin';
 
   constructor(client: WsClient) {
     this.client = client;
@@ -67,13 +67,13 @@ export class WsExecutor implements Executor {
     const query = trimmed.endsWith(';') ? trimmed.slice(0, -1).trim() : trimmed;
 
     if (!query) {
-      return { success: true, data: [], executionTime: 0 };
+      return { success: true, data: [], execution_time: 0 };
     }
 
-    const startTime = performance.now();
+    const start_time = performance.now();
     try {
-      const frames = await this.client[this.transactionType](query, null, []);
-      const executionTime = Math.round(performance.now() - startTime);
+      const frames = await this.client[this.transaction_type](query, null, []);
+      const execution_time = Math.round(performance.now() - start_time);
       const results = frames[0] ?? [];
 
       const data = results.map((row: unknown) => {
@@ -87,14 +87,14 @@ export class WsExecutor implements Executor {
         return row as Record<string, unknown>;
       });
 
-      return { success: true, data, executionTime };
+      return { success: true, data, execution_time };
     } catch (error) {
-      const executionTime = Math.round(performance.now() - startTime);
+      const execution_time = Math.round(performance.now() - start_time);
       if (error instanceof ReifyError) {
-        return { success: false, error: error.message, diagnostic: toDiagnostic(error), executionTime };
+        return { success: false, error: error.message, diagnostic: toDiagnostic(error), execution_time };
       }
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      return { success: false, error: errorMessage, executionTime };
+      const error_message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: error_message, execution_time };
     }
   }
 

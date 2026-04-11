@@ -5,30 +5,30 @@ import {afterEach, afterAll, beforeAll, beforeEach, describe, expect, it} from '
 import {renderHook, act, waitFor} from '@testing-library/react';
 // @ts-ignore
 import React from 'react';
-import {useConnection, ConnectionProvider, clearConnection, getConnection} from '../../../src';
-import {waitForDatabase} from '../setup';
+import {useConnection, ConnectionProvider, clear_connection, get_connection} from '../../../src';
+import {wait_for_database} from '../setup';
 
 describe.sequential('useConnection Hook', () => {
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
     beforeEach(async () => {
         // Clear all connections before each test to ensure clean state
-        await clearConnection();
+        await clear_connection();
         // Seed the connection pool with the correct URL
-        getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
+        get_connection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
     });
 
     afterEach(async () => {
         // Clear all connections after each test
-        await clearConnection();
+        await clear_connection();
         // Small delay to ensure cleanup is complete
         await new Promise(resolve => setTimeout(resolve, 100));
     });
 
     afterAll(async () => {
-        await clearConnection();
+        await clear_connection();
     });
 
     it.sequential('should connect manually without provider', async () => {
@@ -40,12 +40,12 @@ describe.sequential('useConnection Hook', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isConnected).toBe(true);
-            expect(result.current.isConnecting).toBe(false);
+            expect(result.current.is_connected).toBe(true);
+            expect(result.current.is_connecting).toBe(false);
         }, {timeout: 5000});
 
         expect(result.current.client).toBeTruthy();
-        expect(result.current.connectionError).toBeNull();
+        expect(result.current.connection_error).toBeNull();
     });
 
     it.sequential('should auto-connect with ConnectionProvider', async () => {
@@ -57,12 +57,12 @@ describe.sequential('useConnection Hook', () => {
 
         // Wait for connection
         await waitFor(() => {
-            expect(result.current.isConnected).toBe(true);
-            expect(result.current.isConnecting).toBe(false);
+            expect(result.current.is_connected).toBe(true);
+            expect(result.current.is_connecting).toBe(false);
         }, {timeout: 5000});
 
         expect(result.current.client).toBeTruthy();
-        expect(result.current.connectionError).toBeNull();
+        expect(result.current.connection_error).toBeNull();
     });
 
     it.sequential('should handle manual disconnect', async () => {
@@ -74,14 +74,14 @@ describe.sequential('useConnection Hook', () => {
         });
 
         // Wait for initial connection
-        await waitFor(() => expect(result.current.isConnected).toBe(true));
+        await waitFor(() => expect(result.current.is_connected).toBe(true));
 
         // Disconnect
         await act(async () => {
             await result.current.disconnect();
         });
 
-        expect(result.current.isConnected).toBe(false);
+        expect(result.current.is_connected).toBe(false);
         expect(result.current.client).toBeNull();
     });
 
@@ -94,14 +94,14 @@ describe.sequential('useConnection Hook', () => {
         });
 
         // Wait for initial connection
-        await waitFor(() => expect(result.current.isConnected).toBe(true));
+        await waitFor(() => expect(result.current.is_connected).toBe(true));
 
         // Disconnect
         await act(async () => {
             await result.current.disconnect();
         });
 
-        expect(result.current.isConnected).toBe(false);
+        expect(result.current.is_connected).toBe(false);
 
         // Reconnect
         await act(async () => {
@@ -109,7 +109,7 @@ describe.sequential('useConnection Hook', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isConnected).toBe(true);
+            expect(result.current.is_connected).toBe(true);
             expect(result.current.client).toBeTruthy();
         });
     });
@@ -123,7 +123,7 @@ describe.sequential('useConnection Hook', () => {
         });
 
         // Wait for initial connection
-        await waitFor(() => expect(result.current.isConnected).toBe(true));
+        await waitFor(() => expect(result.current.is_connected).toBe(true));
 
         const initialClient = result.current.client;
 
@@ -134,7 +134,7 @@ describe.sequential('useConnection Hook', () => {
 
         // Should still have the same client
         expect(result.current.client).toBe(initialClient);
-        expect(result.current.isConnected).toBe(true);
+        expect(result.current.is_connected).toBe(true);
     });
 
     it.sequential('should handle connection with custom URL', async () => {
@@ -146,7 +146,7 @@ describe.sequential('useConnection Hook', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.isConnected).toBe(true);
+            expect(result.current.is_connected).toBe(true);
             expect(result.current.client).toBeTruthy();
         });
     });
@@ -161,8 +161,8 @@ describe.sequential('useConnection Hook', () => {
 
         // Wait for connection
         await waitFor(() => {
-            expect(result1.current.isConnected).toBe(true);
-            expect(result2.current.isConnected).toBe(true);
+            expect(result1.current.is_connected).toBe(true);
+            expect(result2.current.is_connected).toBe(true);
         });
 
         // Both should have the same client instance from context

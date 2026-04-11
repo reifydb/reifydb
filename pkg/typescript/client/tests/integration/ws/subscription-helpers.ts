@@ -7,7 +7,7 @@ import type { ShapeNode, InferShape } from '@reifydb/core';
 /**
  * Create a unique test table name to avoid conflicts
  */
-export function createTestTableName(prefix: string = 'test'): string {
+export function create_test_table_name(prefix: string = 'test'): string {
     return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
@@ -15,9 +15,9 @@ export function createTestTableName(prefix: string = 'test'): string {
  * Helper to create a test table with shape
  * Creates a 'test' namespace if it doesn't exist and uses test::table_name
  */
-export async function createTestTable(
+export async function create_test_table(
     client: WsClient,
-    tableName: string,
+    table_name: string,
     columns: string[]
 ): Promise<void> {
     // Ensure namespace exists
@@ -27,13 +27,13 @@ export async function createTestTable(
         // Ignore if already exists
     }
 
-    const columnDefs = columns.map(col => {
+    const column_defs = columns.map(col => {
         const [name, type] = col.split(' ');
         return `${name}: ${type.toLowerCase()}`;
     }).join(', ');
 
     await client.admin(
-        `create table test::${tableName} { ${columnDefs} }`,
+        `create table test::${table_name} { ${column_defs} }`,
         null,
         []
     );
@@ -44,44 +44,44 @@ export async function createTestTable(
  */
 // Overload 1: With shape (type inferred)
 // @ts-ignore
-export function waitForCallback<S extends ShapeNode>(
+export function wait_for_callback<S extends ShapeNode>(
     shape: S,
-    timeoutMs?: number
+    timeout_ms?: number
 ): {
     promise: Promise<InferShape<S>[]>,
     callback: (rows: InferShape<S>[]) => void
 };
 
 // Overload 2: Without shape (explicit type)
-export function waitForCallback<T = any>(
-    timeoutMs?: number
+export function wait_for_callback<T = any>(
+    timeout_ms?: number
 ): {
     promise: Promise<T[]>,
     callback: (rows: T[]) => void
 };
 
 // Implementation
-export function waitForCallback<S extends ShapeNode = any>(
-    shapeOrTimeout?: S | number,
-    timeoutMs: number = 500
+export function wait_for_callback<S extends ShapeNode = any>(
+    shape_or_timeout?: S | number,
+    timeout_ms: number = 500
 ): {
     promise: Promise<any[]>,
     callback: (rows: any[]) => void
 } {
     // Handle overload parameters
-    const timeout = typeof shapeOrTimeout === 'number' ? shapeOrTimeout : timeoutMs;
+    const timeout = typeof shape_or_timeout === 'number' ? shape_or_timeout : timeout_ms;
 
     let resolve: (rows: any[]) => void;
     let reject: (err: Error) => void;
-    let timeoutId: ReturnType<typeof setTimeout>;
+    let timeout_id: ReturnType<typeof setTimeout>;
 
     const promise = new Promise<any[]>((res, rej) => {
         resolve = (rows) => {
-            clearTimeout(timeoutId);
+            clearTimeout(timeout_id);
             res(rows);
         };
         reject = rej;
-        timeoutId = setTimeout(() => rej(new Error('Callback timeout')), timeout);
+        timeout_id = setTimeout(() => rej(new Error('Callback timeout')), timeout);
     });
 
     const callback = (rows: any[]) => {
@@ -95,81 +95,81 @@ export function waitForCallback<S extends ShapeNode = any>(
  * Create a callback tracker for testing multiple invocations
  */
 // Overload 1: With shape (type inferred)
-export function createCallbackTracker<S extends ShapeNode>(
+export function create_callback_tracker<S extends ShapeNode>(
     shape: S
 ): {
     callback: (rows: InferShape<S>[]) => void;
-    getCalls: () => InferShape<S>[][];
-    getCallCount: () => number;
-    getAllRows: () => InferShape<S>[];
+    get_calls: () => InferShape<S>[][];
+    get_call_count: () => number;
+    get_all_rows: () => InferShape<S>[];
     clear: () => void;
-    waitForCall: (timeoutMs?: number) => Promise<InferShape<S>[]>;
-    waitForRows: (count: number, timeoutMs?: number) => Promise<void>;
+    wait_for_call: (timeout_ms?: number) => Promise<InferShape<S>[]>;
+    wait_for_rows: (count: number, timeout_ms?: number) => Promise<void>;
 };
 
 // Overload 2: Without shape (explicit type)
-export function createCallbackTracker<T = any>(): {
+export function create_callback_tracker<T = any>(): {
     callback: (rows: T[]) => void;
-    getCalls: () => T[][];
-    getCallCount: () => number;
-    getAllRows: () => T[];
+    get_calls: () => T[][];
+    get_call_count: () => number;
+    get_all_rows: () => T[];
     clear: () => void;
-    waitForCall: (timeoutMs?: number) => Promise<T[]>;
-    waitForRows: (count: number, timeoutMs?: number) => Promise<void>;
+    wait_for_call: (timeout_ms?: number) => Promise<T[]>;
+    wait_for_rows: (count: number, timeout_ms?: number) => Promise<void>;
 };
 
 // Implementation
-export function createCallbackTracker<S extends ShapeNode = any>(
+export function create_callback_tracker<S extends ShapeNode = any>(
     shape?: S
 ) {
     const calls: any[][] = [];
-    let pendingResolve: ((rows: any[]) => void) | null = null;
+    let pending_resolve: ((rows: any[]) => void) | null = null;
 
     return {
         callback: (rows: any[]) => {
             calls.push(rows);
-            if (pendingResolve) {
-                const fn = pendingResolve;
-                pendingResolve = null;
+            if (pending_resolve) {
+                const fn = pending_resolve;
+                pending_resolve = null;
                 fn(rows);
             }
         },
-        getCalls: () => calls,
-        getCallCount: () => calls.length,
-        getAllRows: () => calls.flat(),
+        get_calls: () => calls,
+        get_call_count: () => calls.length,
+        get_all_rows: () => calls.flat(),
         clear: () => {
             calls.length = 0;
         },
-        waitForCall: (timeoutMs: number = 5000): Promise<any[]> => {
+        wait_for_call: (timeout_ms: number = 5000): Promise<any[]> => {
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    pendingResolve = null;
-                    reject(new Error(`Callback timeout after ${timeoutMs}ms`));
-                }, timeoutMs);
+                    pending_resolve = null;
+                    reject(new Error(`Callback timeout after ${timeout_ms}ms`));
+                }, timeout_ms);
 
-                pendingResolve = (rows) => {
+                pending_resolve = (rows) => {
                     clearTimeout(timeout);
                     resolve(rows);
                 };
             });
         },
-        waitForRows: (count: number, timeoutMs: number = 5000): Promise<void> => {
+        wait_for_rows: (count: number, timeout_ms: number = 5000): Promise<void> => {
             return new Promise((resolve, reject) => {
                 if (calls.flat().length >= count) { resolve(); return; }
                 const timeout = setTimeout(() => {
-                    pendingResolve = null;
-                    reject(new Error(`Timed out waiting for ${count} rows (got ${calls.flat().length}) after ${timeoutMs}ms`));
-                }, timeoutMs);
+                    pending_resolve = null;
+                    reject(new Error(`Timed out waiting for ${count} rows (got ${calls.flat().length}) after ${timeout_ms}ms`));
+                }, timeout_ms);
                 const check = () => {
                     if (calls.flat().length >= count) {
                         clearTimeout(timeout);
-                        pendingResolve = null;
+                        pending_resolve = null;
                         resolve();
                     } else {
-                        pendingResolve = check;
+                        pending_resolve = check;
                     }
                 };
-                pendingResolve = check;
+                pending_resolve = check;
             });
         }
     };

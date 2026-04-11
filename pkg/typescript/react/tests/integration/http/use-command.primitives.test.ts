@@ -2,18 +2,18 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useCommandOne, useCommandMany, getConnection, clearConnection, Shape} from '../../../src';
-import {waitForDatabaseHttp} from '../setup';
+import {useCommandOne, useCommandMany, get_connection, clear_connection, Shape} from '../../../src';
+import {wait_for_database_http} from '../setup';
 
 describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
     beforeAll(async () => {
-        await waitForDatabaseHttp();
-        const conn = getConnection({url: process.env.REIFYDB_HTTP_URL, token: process.env.REIFYDB_TOKEN});
+        await wait_for_database_http();
+        const conn = get_connection({url: process.env.REIFYDB_HTTP_URL, token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 
     afterAll(() => {
-        clearConnection();
+        clear_connection();
     });
 
     describe('Primitive Type - With Shape Returns JS Primitives', () => {
@@ -29,7 +29,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].name).toBe('John Doe');
@@ -47,7 +47,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.error).toBeUndefined();
@@ -66,7 +66,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].empty).toBe('');
@@ -85,7 +85,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].age).toBe(25);
@@ -103,7 +103,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].price).toBe(19.99);
@@ -120,7 +120,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].value).toBeCloseTo(3.141592653589793);
@@ -137,7 +137,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].amount).toBe('123.456789');
@@ -155,7 +155,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].count).toBe(100);
@@ -173,7 +173,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].temperature).toBe(-40.5);
@@ -190,7 +190,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].zero).toBe(0);
@@ -209,7 +209,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].active).toBe(true);
@@ -227,7 +227,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].enabled).toBe(false);
@@ -246,7 +246,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.isExecuting).toBe(false);
+                    expect(result.current.is_executing).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].missing).toBeUndefined();
@@ -270,7 +270,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0].name).toBe('Alice');
@@ -291,7 +291,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0].age).toBe(30);
@@ -312,7 +312,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0].active).toBe(true);
@@ -334,7 +334,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0].required).toBe('present');
@@ -355,7 +355,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0].result).toBe('Parameter Value');
@@ -387,7 +387,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             const data = result.current.result!.rows[0];
@@ -410,7 +410,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             // @ts-ignore
@@ -434,7 +434,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results![0].rows[0].value).toBe('hello');
