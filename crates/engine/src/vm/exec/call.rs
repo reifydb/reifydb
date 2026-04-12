@@ -15,12 +15,11 @@ use reifydb_core::{
 use reifydb_routine::{function::FunctionContext, procedure::context::ProcedureContext};
 use reifydb_rql::{
 	compiler::{CompilationResult, Compiled},
-	expression::{CallExpression, ConstantExpression, Expression, IdentExpression},
 	instruction::{CompiledClosure, CompiledFunction, ScopeType},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
-	error::{ProcedureErrorKind, TypeError},
+	error::{Error as ReifyError, ProcedureErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
 	value::{Value, frame::frame::Frame},
@@ -29,7 +28,7 @@ use reifydb_type::{
 use super::stack::strip_dollar_prefix;
 use crate::{
 	Result,
-	expression::{context::EvalSession, eval::evaluate},
+	error::EngineError,
 	policy::PolicyEvaluator,
 	vm::{
 		services::Services,
@@ -47,7 +46,7 @@ pub(crate) struct CallContext<'a, 'b> {
 
 /// Collect the return value from a function/procedure/closure execution.
 /// This pattern was previously copy-pasted 4 times in the Call handler.
-fn collect_call_result(vm: &mut Vm, func_result: &mut Vec<Frame>) -> Variable {
+pub(crate) fn collect_call_result(vm: &mut Vm, func_result: &mut Vec<Frame>) -> Variable {
 	match mem::replace(&mut vm.control_flow, ControlFlow::Normal) {
 		ControlFlow::Return(c) => Variable::Scalar(c.unwrap_or(Columns::scalar(Value::none()))),
 		_ => {
@@ -142,7 +141,7 @@ impl Vm {
 					tx,
 					params,
 				};
-				self.call_builtin_or_error(ctx, args, name, func_name, is_procedure_call, arity)
+				self.call_builtin_or_error(ctx, args, name, func_name, is_procedure_call)
 			}
 		}
 	}
@@ -386,7 +385,6 @@ impl Vm {
 		name: &Fragment,
 		func_name: &str,
 		is_procedure_call: bool,
-		arity: usize,
 	) -> Result<()> {
 		// Runtime-registered native procedure (no catalog entry needed)
 		if let Some(proc_impl) = ctx.services.get_procedure(func_name) {
@@ -448,35 +446,28 @@ impl Vm {
 			.into());
 		}
 
-		// Built-in function: evaluate via column evaluator
-		let vm_session = EvalSession {
-			params: ctx.params,
-			symbols: &self.symbols,
-			functions: &ctx.services.functions,
-			runtime_context: &ctx.services.runtime_context,
-			arena: None,
-			identity: ctx.tx.identity(),
-			is_aggregate_context: false,
-		};
-		let evaluation_context = vm_session.eval_empty();
+		let function = ctx.services.functions.get(func_name).ok_or_else(|| {
+			ReifyError::from(EngineError::UnknownCallable {
+				name: func_name.to_string(),
+				fragment: name.clone(),
+			})
+		})?;
 
-		let mut arg_exprs = Vec::with_capacity(arity);
-		for arg in &args {
-			arg_exprs.push(value_to_expression(arg));
-		}
-
-		let proper_call = Expression::Call(CallExpression {
-			func: IdentExpression(name.clone()),
-			args: arg_exprs,
-			fragment: name.clone(),
-		});
-
-		let result_column = evaluate(&evaluation_context, &proper_call)?;
-		let value = if !result_column.data.is_empty() {
-			result_column.data.get_value(0)
-		} else {
-			Value::none()
-		};
+		let arg_columns: Vec<Column> = args
+			.into_iter()
+			.enumerate()
+			.map(|(i, v)| {
+				let mut data = ColumnData::with_capacity(v.get_type(), 1);
+				data.push_value(v);
+				Column::new(format!("arg{}", i), data)
+			})
+			.collect();
+		let columns_args = Columns::new(arg_columns);
+		let identity = ctx.tx.identity();
+		let fn_ctx = FunctionContext::new(name.clone(), &ctx.services.runtime_context, identity, 1);
+		let result_columns = function.call(&fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone()))?;
+		let value =
+			result_columns.into_iter().next().map(|col| col.data().get_value(0)).unwrap_or(Value::none());
 		self.stack.push(Variable::scalar(value));
 		Ok(())
 	}
@@ -508,28 +499,5 @@ impl Vm {
 			def: closure_def.clone(),
 			captured,
 		}));
-	}
-}
-
-fn value_to_expression(value: &Value) -> Expression {
-	match value {
-		Value::None {
-			..
-		} => Expression::Constant(ConstantExpression::None {
-			fragment: Fragment::None,
-		}),
-		Value::Boolean(b) => Expression::Constant(ConstantExpression::Bool {
-			fragment: Fragment::internal(if *b {
-				"true"
-			} else {
-				"false"
-			}),
-		}),
-		Value::Utf8(s) => Expression::Constant(ConstantExpression::Text {
-			fragment: Fragment::internal(s),
-		}),
-		_ => Expression::Constant(ConstantExpression::Number {
-			fragment: Fragment::internal(format!("{}", value)),
-		}),
 	}
 }

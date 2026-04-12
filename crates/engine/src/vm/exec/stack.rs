@@ -94,6 +94,6 @@ impl Vm {
 	}
 }
 
-pub(super) fn strip_dollar_prefix(name: &str) -> &str {
+pub(crate) fn strip_dollar_prefix(name: &str) -> &str {
 	name.strip_prefix('$').unwrap_or(name)
 }

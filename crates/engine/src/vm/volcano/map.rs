@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
@@ -13,6 +13,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, util::cowvec::CowVec};
 use tracing::instrument;
 
+use super::NoopNode;
 use crate::{
 	Result,
 	expression::{
@@ -20,12 +21,16 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalSession},
 	},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::{
+		query::{QueryContext, QueryNode},
+		udf_eval::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
+	},
 };
 
 pub(crate) struct MapNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
+	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
@@ -35,6 +40,7 @@ impl MapNode {
 		Self {
 			input,
 			expressions,
+			udf_names: Vec::new(),
 			headers: None,
 			context: None,
 		}
@@ -44,6 +50,15 @@ impl MapNode {
 impl QueryNode for MapNode {
 	#[instrument(name = "volcano::map::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
+			mem::replace(&mut self.input, Box::new(NoopNode)),
+			&self.expressions,
+			&ctx.symbols,
+		);
+		self.input = input;
+		self.expressions = expressions;
+		self.udf_names = udf_names;
+
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
@@ -73,7 +88,8 @@ impl QueryNode for MapNode {
 				runtime_context: &stored_ctx.services.runtime_context,
 				params: &stored_ctx.params,
 			};
-			let result = self.apply(&transform_ctx, columns)?;
+			let mut result = self.apply(&transform_ctx, columns)?;
+			strip_udf_columns(&mut result, &self.udf_names);
 
 			Ok(Some(result))
 		} else {
@@ -136,6 +152,8 @@ impl Transform for MapNode {
 pub(crate) struct MapWithoutInputNode {
 	expressions: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
+	/// When UDFs are present, stores the rewritten expressions and pre-computed UDF result columns.
+	udf_columns: Option<Columns>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
@@ -144,6 +162,7 @@ impl MapWithoutInputNode {
 		Self {
 			expressions,
 			headers: None,
+			udf_columns: None,
 			context: None,
 		}
 	}
@@ -151,7 +170,13 @@ impl MapWithoutInputNode {
 
 impl QueryNode for MapWithoutInputNode {
 	#[instrument(name = "volcano::map::noinput::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		// Extract and evaluate UDFs if present
+		if let Some((rewritten, udf_cols)) = evaluate_udfs_no_input(&self.expressions, ctx, rx)? {
+			self.expressions = rewritten;
+			self.udf_columns = Some(udf_cols);
+		}
+
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
@@ -178,7 +203,11 @@ impl QueryNode for MapWithoutInputNode {
 		let mut columns = vec![];
 
 		for compiled_expr in compiled {
-			let exec_ctx = session.eval_empty();
+			// If we have UDF result columns, include them so __udf_N column refs resolve
+			let exec_ctx = match &self.udf_columns {
+				Some(udf_cols) => session.eval(udf_cols.clone(), 1),
+				None => session.eval_empty(),
+			};
 
 			let column = compiled_expr.execute(&exec_ctx)?;
 

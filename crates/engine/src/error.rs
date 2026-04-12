@@ -178,6 +178,12 @@ pub enum EngineError {
 		fragment: Fragment,
 	},
 
+	#[error("Unknown callable: {name}")]
+	UnknownCallable {
+		name: String,
+		fragment: Fragment,
+	},
+
 	#[error("Generator function '{name}' not found")]
 	GeneratorNotFound {
 		name: String,
@@ -304,6 +310,23 @@ impl IntoDiagnostic for EngineError {
 				fragment,
 				label: Some("unknown function".to_string()),
 				help: Some("Check the function name and available functions".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			EngineError::UnknownCallable {
+				name,
+				fragment,
+			} => Diagnostic {
+				code: "CALLABLE_001".to_string(),
+				statement: None,
+				message: format!("Unknown callable: {}", name),
+				column: None,
+				fragment,
+				label: Some("unknown callable".to_string()),
+				help: Some(
+					"Check the name and available functions, procedures, and closures".to_string()
+				),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

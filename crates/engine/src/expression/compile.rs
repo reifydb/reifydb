@@ -21,7 +21,7 @@ use crate::{
 	expression::{
 		access::access_lookup,
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
-		call::call_eval_with_args,
+		call::call_builtin,
 		cast::cast_column_data,
 		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns},
 		constant::{constant_value, constant_value_of},
@@ -650,7 +650,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					arg_columns.push(compiled_arg.execute(ctx)?);
 				}
 				let arguments = Columns::new(arg_columns);
-				call_eval_with_args(ctx, &expr, arguments, ctx.functions)
+				call_builtin(ctx, &expr, arguments, ctx.functions)
 			})
 		}
 

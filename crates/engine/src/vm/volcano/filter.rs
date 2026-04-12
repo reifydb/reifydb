@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
@@ -17,19 +17,23 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{util::bitvec::BitVec, value::constraint::Constraint};
 use tracing::instrument;
 
-use super::decode_dictionary_columns;
+use super::{NoopNode, decode_dictionary_columns};
 use crate::{
 	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalSession},
 	},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::{
+		query::{QueryContext, QueryNode},
+		udf_eval::{UdfEvalNode, strip_udf_columns},
+	},
 };
 
 pub(crate) struct FilterNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
+	udf_names: Vec<String>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
@@ -38,6 +42,7 @@ impl FilterNode {
 		Self {
 			input,
 			expressions,
+			udf_names: Vec::new(),
 			context: None,
 		}
 	}
@@ -46,6 +51,15 @@ impl FilterNode {
 impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
+			mem::replace(&mut self.input, Box::new(NoopNode)),
+			&self.expressions,
+			&ctx.symbols,
+		);
+		self.input = input;
+		self.expressions = expressions;
+		self.udf_names = udf_names;
+
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
@@ -90,6 +104,7 @@ impl QueryNode for FilterNode {
 				// Decode dictionary columns back to actual values
 				decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
 
+				strip_udf_columns(&mut columns, &self.udf_names);
 				return Ok(Some(columns));
 			}
 
@@ -100,8 +115,9 @@ impl QueryNode for FilterNode {
 					runtime_context: &stored_ctx.services.runtime_context,
 					params: &stored_ctx.params,
 				};
-				let columns = self.apply(&transform_ctx, columns)?;
+				let mut columns = self.apply(&transform_ctx, columns)?;
 				if columns.row_count() > 0 {
+					strip_udf_columns(&mut columns, &self.udf_names);
 					return Ok(Some(columns));
 				}
 			} else {

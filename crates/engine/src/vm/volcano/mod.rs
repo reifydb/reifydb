@@ -43,6 +43,24 @@ pub(crate) fn decode_dictionary_columns(
 	Ok(())
 }
 
+use query::{QueryContext, QueryNode};
+use reifydb_core::value::column::headers::ColumnHeaders;
+
+/// Placeholder node used temporarily during `mem::replace` in initialize().
+pub(crate) struct NoopNode;
+
+impl QueryNode for NoopNode {
+	fn initialize<'a>(&mut self, _: &mut Transaction<'a>, _: &QueryContext) -> Result<()> {
+		Ok(())
+	}
+	fn next<'a>(&mut self, _: &mut Transaction<'a>, _: &mut QueryContext) -> Result<Option<Columns>> {
+		Ok(None)
+	}
+	fn headers(&self) -> Option<ColumnHeaders> {
+		None
+	}
+}
+
 pub mod aggregate;
 pub mod apply_transform;
 pub mod assert;
@@ -64,4 +82,5 @@ pub mod scan;
 pub mod sort;
 pub mod take;
 pub mod top_k;
+pub(crate) mod udf_eval;
 pub mod variable;

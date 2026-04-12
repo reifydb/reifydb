@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
@@ -13,6 +13,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, util::cowvec::CowVec};
 use tracing::instrument;
 
+use super::NoopNode;
 use crate::{
 	Result,
 	expression::{
@@ -20,7 +21,10 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalSession},
 	},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::{
+		query::{QueryContext, QueryNode},
+		udf_eval::{UdfEvalNode, strip_udf_columns},
+	},
 };
 
 /// PatchNode merges assignment values with original row values.
@@ -29,6 +33,7 @@ use crate::{
 pub(crate) struct PatchNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
+	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
@@ -38,6 +43,7 @@ impl PatchNode {
 		Self {
 			input,
 			expressions,
+			udf_names: Vec::new(),
 			headers: None,
 			context: None,
 		}
@@ -47,6 +53,15 @@ impl PatchNode {
 impl QueryNode for PatchNode {
 	#[instrument(name = "volcano::patch::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
+			mem::replace(&mut self.input, Box::new(NoopNode)),
+			&self.expressions,
+			&ctx.symbols,
+		);
+		self.input = input;
+		self.expressions = expressions;
+		self.udf_names = udf_names;
+
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
@@ -81,6 +96,8 @@ impl QueryNode for PatchNode {
 				});
 			}
 
+			let mut result = result;
+			strip_udf_columns(&mut result, &self.udf_names);
 			Ok(Some(result))
 		} else {
 			Ok(None)
