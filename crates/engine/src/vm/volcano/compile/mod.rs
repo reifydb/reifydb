@@ -131,9 +131,10 @@ pub(crate) fn compile<'a>(
 					.symbols
 					.get(name)
 					.and_then(|var| match var {
-						Variable::Scalar(cols) | Variable::Columns(cols) => {
-							cols.scalar_value().to_usize()
-						}
+						Variable::Columns {
+							columns: cols,
+							..
+						} => cols.scalar_value().to_usize(),
 						_ => None,
 					})
 					.unwrap_or_else(|| panic!("TAKE variable ${} must be a numeric value", name)),

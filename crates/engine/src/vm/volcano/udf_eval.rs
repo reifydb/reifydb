@@ -10,7 +10,10 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
-use reifydb_rql::{expression::Expression, instruction::ScopeType};
+use reifydb_rql::{
+	expression::Expression,
+	instruction::{Instruction, ScopeType},
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	params::Params,
@@ -138,22 +141,20 @@ impl QueryNode for UdfEvalNode {
 				arg_columns.push(compiled_arg.execute(&eval_ctx)?);
 			}
 
-			// Execute UDF body row-by-row via canonical VM
-			let mut results: Vec<Value> = Vec::with_capacity(row_count);
-			let mut func_symbols = stored_ctx.symbols.clone();
-
-			for row_idx in 0..row_count {
+			let result_column = if is_vectorizable(&call.udf.func_def.body) {
+				// Batch path: execute UDF body ONCE with batch_size = row_count
+				let mut func_symbols = stored_ctx.symbols.clone();
 				func_symbols.enter_scope(ScopeType::Function);
 
-				// Bind arguments to parameters
+				// Bind arguments as full Columns
 				for (param, arg_col) in call.udf.func_def.parameters.iter().zip(arg_columns.iter()) {
 					let param_name = strip_dollar_prefix(param.name.text()).to_string();
-					let value = arg_col.data().get_value(row_idx);
-					func_symbols.set(param_name, Variable::scalar(value), true)?;
+					let col_var = Variable::columns(Columns::new(vec![arg_col.clone()]));
+					func_symbols.set(param_name, col_var, true)?;
 				}
 
-				// Execute via canonical VM
-				let mut vm = Vm::new(func_symbols);
+				// Execute via columnar VM — one invocation for all rows
+				let mut vm = Vm::with_batch_size(func_symbols, row_count);
 				let mut func_result: Vec<Frame> = Vec::new();
 				vm.run(
 					&stored_ctx.services,
@@ -162,29 +163,79 @@ impl QueryNode for UdfEvalNode {
 					&Params::None,
 					&mut func_result,
 				)?;
+
+				// Extract result column from return value
 				let result_var = collect_call_result(&mut vm, &mut func_result);
-				let result = match result_var {
-					Variable::Scalar(c) => c.scalar_value(),
-					Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => c.scalar_value(),
-					_ => Value::none(),
-				};
+				match result_var {
+					Variable::Columns {
+						columns: c,
+						..
+					} if !c.is_empty() => c.columns.into_inner().into_iter().next().unwrap(),
+					_ => {
+						let data = ColumnData::none_typed(Type::Any, row_count);
+						Column {
+							name: call.udf.result_column.clone(),
+							data,
+						}
+					}
+				}
+			} else {
+				// Scalar fallback: execute UDF body row-by-row via canonical VM
+				let mut results: Vec<Value> = Vec::with_capacity(row_count);
+				let mut func_symbols = stored_ctx.symbols.clone();
 
-				func_symbols = vm.symbols;
-				let _ = func_symbols.exit_scope();
+				for row_idx in 0..row_count {
+					func_symbols.enter_scope(ScopeType::Function);
 
-				results.push(result);
-			}
+					for (param, arg_col) in
+						call.udf.func_def.parameters.iter().zip(arg_columns.iter())
+					{
+						let param_name = strip_dollar_prefix(param.name.text()).to_string();
+						let value = arg_col.data().get_value(row_idx);
+						func_symbols.set(param_name, Variable::scalar(value), true)?;
+					}
 
-			// Build result column — infer type from the first result value
-			let col_type = results.first().map(|v| v.get_type()).unwrap_or(Type::Any);
-			let mut data = ColumnData::none_typed(col_type, 0);
-			for value in &results {
-				data.push_value(value.clone());
-			}
+					let mut vm = Vm::new(func_symbols);
+					let mut func_result: Vec<Frame> = Vec::new();
+					vm.run(
+						&stored_ctx.services,
+						rx,
+						&call.udf.func_def.body,
+						&Params::None,
+						&mut func_result,
+					)?;
+					let result_var = collect_call_result(&mut vm, &mut func_result);
+					let result = match result_var {
+						Variable::Columns {
+							columns: c,
+							is_scalar: true,
+						} => c.scalar_value(),
+						Variable::Columns {
+							columns: c,
+							..
+						} if c.len() == 1 && c.row_count() == 1 => c.scalar_value(),
+						_ => Value::none(),
+					};
+
+					func_symbols = vm.symbols;
+					let _ = func_symbols.exit_scope();
+					results.push(result);
+				}
+
+				let col_type = results.first().map(|v| v.get_type()).unwrap_or(Type::Any);
+				let mut data = ColumnData::none_typed(col_type, 0);
+				for value in &results {
+					data.push_value(value.clone());
+				}
+				Column {
+					name: call.udf.result_column.clone(),
+					data,
+				}
+			};
 
 			columns.columns.make_mut().push(Column {
 				name: call.udf.result_column.clone(),
-				data,
+				data: result_column.data,
 			});
 		}
 
@@ -194,6 +245,35 @@ impl QueryNode for UdfEvalNode {
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.input.headers()
 	}
+}
+
+/// Check if a UDF body contains only instructions that the columnar VM can batch-execute.
+fn is_vectorizable(instructions: &[Instruction]) -> bool {
+	instructions.iter().all(|instr| {
+		matches!(
+			instr,
+			Instruction::PushConst(_)
+				| Instruction::PushNone | Instruction::Pop
+				| Instruction::Dup | Instruction::LoadVar(_)
+				| Instruction::StoreVar(_) | Instruction::DeclareVar(_)
+				| Instruction::FieldAccess { .. }
+				| Instruction::Add | Instruction::Sub
+				| Instruction::Mul | Instruction::Div
+				| Instruction::Rem | Instruction::Negate
+				| Instruction::LogicNot | Instruction::CmpEq
+				| Instruction::CmpNe | Instruction::CmpLt
+				| Instruction::CmpLe | Instruction::CmpGt
+				| Instruction::CmpGe | Instruction::LogicAnd
+				| Instruction::LogicOr | Instruction::LogicXor
+				| Instruction::Between | Instruction::InList { .. }
+				| Instruction::Cast(_) | Instruction::Jump(_)
+				| Instruction::JumpIfFalsePop(_)
+				| Instruction::JumpIfTruePop(_)
+				| Instruction::EnterScope(_) | Instruction::ExitScope
+				| Instruction::ReturnValue | Instruction::ReturnVoid
+				| Instruction::Nop | Instruction::Halt
+		)
+	})
 }
 
 /// Remove synthetic `__udf_N` columns from output so they never leak to the user.
@@ -254,8 +334,14 @@ pub(crate) fn evaluate_udfs_no_input(
 		vm.run(&ctx.services, rx, &udf.func_def.body, &Params::None, &mut func_result)?;
 		let result_var = collect_call_result(&mut vm, &mut func_result);
 		let value = match result_var {
-			Variable::Scalar(c) => c.scalar_value(),
-			Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => c.scalar_value(),
+			Variable::Columns {
+				columns: c,
+				is_scalar: true,
+			} => c.scalar_value(),
+			Variable::Columns {
+				columns: c,
+				..
+			} if c.len() == 1 && c.row_count() == 1 => c.scalar_value(),
 			_ => Value::none(),
 		};
 

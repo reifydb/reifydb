@@ -125,6 +125,14 @@ impl<T: Clone + PartialEq> CowVec<T> {
 		}
 	}
 
+	/// Extract the inner Vec, cloning if shared.
+	pub fn into_inner(self) -> Vec<T> {
+		match Arc::try_unwrap(self.inner) {
+			Ok(vec) => vec,
+			Err(arc) => (*arc).clone(),
+		}
+	}
+
 	pub fn as_slice(&self) -> &[T] {
 		&self.inner
 	}

@@ -36,9 +36,9 @@ pub struct Test<'a> {
 pub(crate) mod exec;
 pub mod executor;
 pub mod instruction;
-pub(crate) mod scalar;
 pub mod services;
 pub mod stack;
+pub(crate) mod value_ops;
 #[allow(clippy::module_inception)]
 pub mod vm;
 pub(crate) mod volcano;

@@ -6,7 +6,7 @@ use reifydb_type::error::{RuntimeErrorKind, TypeError};
 
 use crate::{
 	Result,
-	vm::{scalar, vm::Vm},
+	vm::{value_ops, vm::Vm},
 };
 
 const MAX_ITERATIONS: usize = 10_000;
@@ -31,7 +31,7 @@ impl Vm {
 	/// Jump if top-of-stack is falsy (pops the value). Returns true if the jump was taken.
 	pub(crate) fn exec_jump_if_false_pop(&mut self, addr: usize) -> Result<bool> {
 		let value = self.pop_value()?;
-		if !scalar::value_is_truthy(&value) {
+		if !value_ops::value_is_truthy(&value) {
 			self.ip = addr;
 			Ok(true)
 		} else {
@@ -42,7 +42,7 @@ impl Vm {
 	/// Jump if top-of-stack is truthy (pops the value). Returns true if the jump was taken.
 	pub(crate) fn exec_jump_if_true_pop(&mut self, addr: usize) -> Result<bool> {
 		let value = self.pop_value()?;
-		if scalar::value_is_truthy(&value) {
+		if value_ops::value_is_truthy(&value) {
 			self.ip = addr;
 			Ok(true)
 		} else {

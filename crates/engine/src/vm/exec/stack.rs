@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{internal_error, value::column::columns::Columns};
+use reifydb_core::{
+	internal_error,
+	value::column::{Column, columns::Columns, data::ColumnData},
+};
 use reifydb_type::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
-	value::{Value, frame::frame::Frame},
+	value::{Value, frame::frame::Frame, r#type::Type},
 };
 
 use crate::{
@@ -15,11 +18,32 @@ use crate::{
 
 impl Vm {
 	pub(crate) fn exec_push_const(&mut self, value: &Value) {
-		self.stack.push(Variable::scalar(value.clone()));
+		if self.batch_size > 1 {
+			let mut data = ColumnData::with_capacity(value.get_type(), self.batch_size);
+			for _ in 0..self.batch_size {
+				data.push_value(value.clone());
+			}
+			let col = Column::new(Fragment::internal("const"), data);
+			self.stack.push(Variable::Columns {
+				columns: Columns::new(vec![col]),
+				is_scalar: false,
+			});
+		} else {
+			self.stack.push(Variable::scalar(value.clone()));
+		}
 	}
 
 	pub(crate) fn exec_push_none(&mut self) {
-		self.stack.push(Variable::scalar(Value::none()));
+		if self.batch_size > 1 {
+			let data = ColumnData::none_typed(Type::Any, self.batch_size);
+			let col = Column::new(Fragment::internal("none"), data);
+			self.stack.push(Variable::Columns {
+				columns: Columns::new(vec![col]),
+				is_scalar: false,
+			});
+		} else {
+			self.stack.push(Variable::scalar(Value::none()));
+		}
 	}
 
 	pub(crate) fn exec_pop(&mut self) -> Result<()> {
@@ -40,14 +64,14 @@ impl Vm {
 			return;
 		};
 		match value {
-			Variable::Columns(c)
+			Variable::Columns {
+				columns: c,
+				..
+			}
 			| Variable::ForIterator {
 				columns: c,
 				..
 			} => {
-				result.push(Frame::from(c));
-			}
-			Variable::Scalar(c) => {
 				result.push(Frame::from(c));
 			}
 			Variable::Closure(_) => {
@@ -59,23 +83,32 @@ impl Vm {
 	pub(crate) fn exec_append(&mut self, target: &Fragment) -> Result<()> {
 		let clean_name = strip_dollar_prefix(target.text());
 		let columns = match self.stack.pop()? {
-			Variable::Columns(cols) => cols,
+			Variable::Columns {
+				columns: cols,
+				..
+			} => cols,
 			_ => {
 				return Err(internal_error!("APPEND requires columns/frame data on stack"));
 			}
 		};
 
 		match self.symbols.get(clean_name) {
-			Some(Variable::Columns(_)) => {
+			Some(Variable::Columns {
+				is_scalar: false,
+				..
+			}) => {
 				let mut existing = match self.symbols.get(clean_name).unwrap() {
-					Variable::Columns(f) => f.clone(),
+					Variable::Columns {
+						columns: f,
+						..
+					} => f.clone(),
 					_ => unreachable!(),
 				};
 				existing.append_columns(columns)?;
-				self.symbols.reassign(clean_name.to_string(), Variable::Columns(existing))?;
+				self.symbols.reassign(clean_name.to_string(), Variable::columns(existing))?;
 			}
 			None => {
-				self.symbols.set(clean_name.to_string(), Variable::Columns(columns), true)?;
+				self.symbols.set(clean_name.to_string(), Variable::columns(columns), true)?;
 			}
 			_ => {
 				return Err(TypeError::Runtime {

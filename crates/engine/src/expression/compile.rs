@@ -167,7 +167,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				}
 
 				match ctx.symbols.get(variable_name) {
-					Some(Variable::Scalar(columns)) => {
+					Some(Variable::Columns {
+						columns,
+						is_scalar: true,
+					}) => {
 						let value = columns.scalar_value();
 						let mut data =
 							ColumnData::with_capacity(value.get_type(), ctx.row_count);
@@ -179,7 +182,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 							data,
 						})
 					}
-					Some(Variable::Columns(_))
+					Some(Variable::Columns {
+						is_scalar: false,
+						..
+					})
 					| Some(Variable::ForIterator {
 						..
 					})
@@ -709,7 +715,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			CompiledExpr::new(move |ctx| {
 				if let Some(ref variable_name) = var_name {
 					match ctx.symbols.get(variable_name) {
-						Some(Variable::Columns(columns)) => {
+						Some(Variable::Columns {
+							columns,
+							is_scalar: false,
+						}) => {
 							let col = columns
 								.columns
 								.iter()
@@ -753,20 +762,22 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 								}
 							}
 						}
-						Some(Variable::Scalar(_)) | Some(Variable::Closure(_)) => {
-							Err(TypeError::Runtime {
-								kind: RuntimeErrorKind::FieldNotFound {
-									variable: variable_name.to_string(),
-									field: field_name.to_string(),
-									available: vec![],
-								},
-								message: format!(
-									"Field '{}' not found on variable '{}'",
-									field_name, variable_name
-								),
-							}
-							.into())
+						Some(Variable::Columns {
+							is_scalar: true,
+							..
+						})
+						| Some(Variable::Closure(_)) => Err(TypeError::Runtime {
+							kind: RuntimeErrorKind::FieldNotFound {
+								variable: variable_name.to_string(),
+								field: field_name.to_string(),
+								available: vec![],
+							},
+							message: format!(
+								"Field '{}' not found on variable '{}'",
+								field_name, variable_name
+							),
 						}
+						.into()),
 						Some(Variable::ForIterator {
 							..
 						}) => Err(TypeError::Runtime {

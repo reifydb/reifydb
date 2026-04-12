@@ -73,7 +73,10 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 		return extract_column_data(col, ctx);
 	}
 
-	if let Some(Variable::Scalar(scalar_cols)) = ctx.symbols.get(name)
+	if let Some(Variable::Columns {
+		columns: scalar_cols,
+		is_scalar: true,
+	}) = ctx.symbols.get(name)
 		&& let Some(col) = scalar_cols.columns.first()
 	{
 		return extract_column_data(col, ctx);

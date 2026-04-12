@@ -8,6 +8,7 @@ use std::{fs, io};
 use std::{mem, process::exit, time::Duration};
 
 #[cfg(target_os = "macos")]
+#[allow(deprecated)]
 use libc::{
 	__error, CTL_HW, HW_MEMSIZE, KERN_SUCCESS, MACH_TASK_BASIC_INFO, MACH_TASK_BASIC_INFO_COUNT, c_void,
 	mach_task_basic_info, mach_task_self, sysctl, task_info,

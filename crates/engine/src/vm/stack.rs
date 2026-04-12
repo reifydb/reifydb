@@ -3,7 +3,10 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::{internal, value::column::columns::Columns};
+use reifydb_core::{
+	internal,
+	value::column::{Column, columns::Columns},
+};
 use reifydb_rql::instruction::{CompiledClosure, CompiledFunction, ScopeType};
 use reifydb_type::{error, value::Value};
 
@@ -56,13 +59,15 @@ pub struct ClosureValue {
 	pub captured: HashMap<String, Variable>,
 }
 
-/// A variable can be either a scalar value, columnar data, a FOR loop iterator, or a closure
+/// A variable can be columnar data, a FOR loop iterator, or a closure.
 #[derive(Debug, Clone)]
 pub enum Variable {
-	/// A scalar value stored as a 1-column, 1-row Columns
-	Scalar(Columns),
-	/// Columnar data that requires explicit conversion to scalar
-	Columns(Columns),
+	/// Columnar data. When `is_scalar` is true, this holds a single value
+	/// (1-column, 1-row) and is treated as a scalar by APPEND, FROM, etc.
+	Columns {
+		columns: Columns,
+		is_scalar: bool,
+	},
 	/// A FOR loop iterator tracking position in a result set
 	ForIterator {
 		columns: Columns,
@@ -75,12 +80,71 @@ pub enum Variable {
 impl Variable {
 	/// Create a scalar variable from a single Value.
 	pub fn scalar(value: Value) -> Self {
-		Variable::Scalar(Columns::scalar(value))
+		Variable::Columns {
+			columns: Columns::scalar(value),
+			is_scalar: true,
+		}
 	}
 
-	/// Create a columns variable
+	/// Create a columns variable (non-scalar frame data).
 	pub fn columns(columns: Columns) -> Self {
-		Variable::Columns(columns)
+		Variable::Columns {
+			columns,
+			is_scalar: false,
+		}
+	}
+
+	/// Returns true if this variable represents a scalar value.
+	pub fn is_scalar(&self) -> bool {
+		matches!(
+			self,
+			Variable::Columns {
+				is_scalar: true,
+				..
+			}
+		)
+	}
+
+	/// Extract the inner Columns from any Columns-backed variant.
+	pub fn as_columns(&self) -> Option<&Columns> {
+		match self {
+			Variable::Columns {
+				columns,
+				..
+			}
+			| Variable::ForIterator {
+				columns,
+				..
+			} => Some(columns),
+			Variable::Closure(_) => None,
+		}
+	}
+
+	/// Extract the single Column from any Columns-backed variant, consuming self.
+	pub fn into_column(self) -> Result<Column> {
+		let cols = match self {
+			Variable::Columns {
+				columns: c,
+				..
+			}
+			| Variable::ForIterator {
+				columns: c,
+				..
+			} => c,
+			Variable::Closure(_) => Columns::scalar(Value::none()),
+		};
+		let actual = cols.len();
+		if actual == 1 {
+			Ok(cols.columns.into_inner().into_iter().next().unwrap())
+		} else {
+			Err(error::TypeError::Runtime {
+				kind: error::RuntimeErrorKind::ExpectedSingleColumn {
+					actual,
+				},
+				message: format!("Expected a single column but got {}", actual),
+			}
+			.into())
+		}
 	}
 }
 

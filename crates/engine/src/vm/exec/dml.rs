@@ -39,7 +39,7 @@ impl Vm {
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();
 		let columns = handler(services, &mut txn, params.clone(), &self.symbols)?;
-		self.stack.push(Variable::Columns(columns));
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 
@@ -57,7 +57,7 @@ impl Vm {
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();
 		let columns = handler(services, &mut txn, &mut self.symbols)?;
-		self.stack.push(Variable::Columns(columns));
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 }

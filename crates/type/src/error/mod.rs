@@ -365,6 +365,9 @@ pub enum RuntimeErrorKind {
 	AppendTargetNotFrame {
 		name: String,
 	},
+	ExpectedSingleColumn {
+		actual: usize,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]

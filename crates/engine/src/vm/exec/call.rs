@@ -48,11 +48,14 @@ pub(crate) struct CallContext<'a, 'b> {
 /// This pattern was previously copy-pasted 4 times in the Call handler.
 pub(crate) fn collect_call_result(vm: &mut Vm, func_result: &mut Vec<Frame>) -> Variable {
 	match mem::replace(&mut vm.control_flow, ControlFlow::Normal) {
-		ControlFlow::Return(c) => Variable::Scalar(c.unwrap_or(Columns::scalar(Value::none()))),
+		ControlFlow::Return(c) => Variable::Columns {
+			columns: c.unwrap_or(Columns::scalar(Value::none())),
+			is_scalar: true,
+		},
 		_ => {
 			if let Some(frame) = func_result.pop() {
 				if !frame.columns.is_empty() && !frame.columns[0].data.is_empty() {
-					Variable::Columns(frame.into())
+					Variable::columns(frame.into())
 				} else {
 					Variable::scalar(Value::none())
 				}
@@ -244,7 +247,7 @@ impl Vm {
 					let columns = proc_impl
 						.call(&proc_ctx, ctx.tx)
 						.map_err(|e| e.with_context(name.clone()))?;
-					self.stack.push(Variable::Columns(columns));
+					self.stack.push(Variable::columns(columns));
 					Ok(())
 				} else {
 					Err(internal_error!(
@@ -361,7 +364,7 @@ impl Vm {
 			)?;
 			if let Some(frame) = frames.into_iter().next() {
 				let cols: Columns = frame.into();
-				self.stack.push(Variable::Columns(cols));
+				self.stack.push(Variable::columns(cols));
 			} else {
 				self.stack.push(Variable::scalar(Value::none()));
 			}
@@ -406,7 +409,7 @@ impl Vm {
 				ctx.tx.set_identity(id);
 			}
 
-			self.stack.push(Variable::Columns(columns));
+			self.stack.push(Variable::columns(columns));
 			return Ok(());
 		}
 
@@ -430,7 +433,7 @@ impl Vm {
 				columns_args.row_count(),
 			);
 			let columns = generator.call(&fn_ctx, &columns_args)?;
-			self.stack.push(Variable::Columns(columns));
+			self.stack.push(Variable::columns(columns));
 			return Ok(());
 		}
 

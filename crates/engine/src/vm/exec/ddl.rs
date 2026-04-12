@@ -35,7 +35,7 @@ impl Vm {
 	{
 		let txn = require_admin_txn(tx)?;
 		let columns = handler(services, txn)?;
-		self.stack.push(Variable::Columns(columns));
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 
@@ -50,7 +50,7 @@ impl Vm {
 		F: FnOnce(&Services, &mut Transaction<'_>) -> Result<Columns>,
 	{
 		let columns = handler(services, tx)?;
-		self.stack.push(Variable::Columns(columns));
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 }

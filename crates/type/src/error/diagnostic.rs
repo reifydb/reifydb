@@ -1385,6 +1385,13 @@ impl IntoDiagnostic for TypeError {
 						"RUNTIME_008",
 						Some("APPEND can only target Frame variables. Use a new variable name or ensure the target was created by APPEND or FROM".to_string()),
 					),
+					RuntimeErrorKind::ExpectedSingleColumn { actual } => (
+						"RUNTIME_010",
+						Some(format!(
+							"Expected a single-column value but got {} columns. Use field access to select one column.",
+							actual
+						)),
+					),
 				};
 
 				let notes = match &kind {

@@ -34,7 +34,7 @@ impl Vm {
 		if let Some(columns) =
 			run_query_plan(services, &mut std_txn, plan.clone(), params.clone(), &mut self.symbols)?
 		{
-			self.stack.push(Variable::Columns(columns));
+			self.stack.push(Variable::columns(columns));
 		}
 		Ok(())
 	}

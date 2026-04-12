@@ -15,12 +15,15 @@ use crate::{
 impl Vm {
 	pub(crate) fn exec_for_init(&mut self, variable_name: &Fragment) -> Result<()> {
 		let columns = match self.stack.pop()? {
-			Variable::Columns(c)
+			Variable::Columns {
+				columns: c,
+				..
+			}
 			| Variable::ForIterator {
 				columns: c,
 				..
 			} => c,
-			Variable::Scalar(_) | Variable::Closure(_) => {
+			Variable::Closure(_) => {
 				return Err(internal_error!("ForInit expects Columns on data stack, got Scalar"));
 			}
 		};
@@ -71,7 +74,7 @@ impl Vm {
 				row_columns.push(Column::new(col.name.clone(), data));
 			}
 			let row_frame = Columns::new(row_columns);
-			self.symbols.set(clean_name.to_string(), Variable::Columns(row_frame), true)?;
+			self.symbols.set(clean_name.to_string(), Variable::columns(row_frame), true)?;
 		}
 
 		self.symbols.reassign(

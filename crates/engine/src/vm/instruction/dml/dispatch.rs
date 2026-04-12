@@ -110,7 +110,14 @@ pub(crate) fn dispatch(
 				for col in event_payload.columns.iter() {
 					let var_name = format!("event_{}", col.name.text());
 					let scalar = Columns::new(vec![col.clone()]);
-					vm.symbols.set(var_name, Variable::Scalar(scalar), true)?;
+					vm.symbols.set(
+						var_name,
+						Variable::Columns {
+							columns: scalar,
+							is_scalar: true,
+						},
+						true,
+					)?;
 				}
 
 				let mut handler_result = Vec::new();

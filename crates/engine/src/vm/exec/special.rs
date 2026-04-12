@@ -43,7 +43,7 @@ impl Vm {
 		self.dispatch_depth += 1;
 		let columns = dispatch(self, services, tx, node.clone(), params, depth)?;
 		self.dispatch_depth -= 1;
-		self.stack.push(Variable::Columns(columns));
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 
@@ -55,7 +55,7 @@ impl Vm {
 		params: &Params,
 	) -> Result<()> {
 		let columns = execute_migrate(self, services, tx, node.clone(), params)?;
-		self.stack.push(Variable::Columns(columns));
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 
@@ -67,7 +67,7 @@ impl Vm {
 		params: &Params,
 	) -> Result<()> {
 		let columns = execute_rollback_migration(self, services, tx, node.clone(), params)?;
-		self.stack.push(Variable::Columns(columns));
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 
@@ -86,7 +86,7 @@ impl Vm {
 			match compile_result {
 				Err(e) => {
 					// Compilation error -> assertion passes, push diagnostic
-					self.stack.push(Variable::Columns(diagnostic_to_columns(&e.0)));
+					self.stack.push(Variable::columns(diagnostic_to_columns(&e.0)));
 				}
 				Ok(CompilationResult::Ready(units)) => {
 					let mut caught_diagnostic = None;
@@ -108,7 +108,7 @@ impl Vm {
 						}
 					}
 					if let Some(diag) = caught_diagnostic {
-						self.stack.push(Variable::Columns(diagnostic_to_columns(&diag)));
+						self.stack.push(Variable::columns(diagnostic_to_columns(&diag)));
 					} else {
 						let msg = node
 							.message

@@ -51,13 +51,19 @@ impl QueryNode for VariableNode {
 
 		// Look up the variable in the stack
 		match ctx.symbols.get(variable_name) {
-			Some(Variable::Scalar(columns)) => {
+			Some(Variable::Columns {
+				columns,
+				is_scalar: true,
+			}) => {
 				let mut columns = columns.clone();
 				columns[0].name = Fragment::internal(variable_name);
 				self.executed = true;
 				Ok(Some(columns))
 			}
-			Some(Variable::Columns(frame_columns)) => {
+			Some(Variable::Columns {
+				columns: frame_columns,
+				is_scalar: false,
+			}) => {
 				// Return the frame directly
 				self.executed = true;
 

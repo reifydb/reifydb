@@ -140,7 +140,7 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 			("name", Value::none_of(Type::Utf8)),
 			("roles", Value::List(vec![])),
 		]);
-		symbols.set("identity".to_string(), Variable::Columns(columns), false)?;
+		symbols.set("identity".to_string(), Variable::columns(columns), false)?;
 		return Ok(());
 	}
 	if let Some(user) = catalog.find_identity(tx, identity)? {
@@ -151,7 +151,7 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 			("name", Value::Utf8(user.name)),
 			("roles", Value::List(role_values)),
 		]);
-		symbols.set("identity".to_string(), Variable::Columns(columns), false)?;
+		symbols.set("identity".to_string(), Variable::columns(columns), false)?;
 	}
 	Ok(())
 }

@@ -5,7 +5,7 @@ use reifydb_type::value::{Value, r#type::Type};
 
 use crate::{
 	Result,
-	vm::{scalar, stack::Variable, vm::Vm},
+	vm::{stack::Variable, value_ops, vm::Vm},
 };
 
 impl Vm {
@@ -13,8 +13,8 @@ impl Vm {
 		let upper = self.pop_value()?;
 		let lower = self.pop_value()?;
 		let value = self.pop_value()?;
-		let ge = scalar::scalar_ge(&value, &lower);
-		let le = scalar::scalar_le(&value, &upper);
+		let ge = value_ops::scalar_ge(&value, &lower);
+		let le = value_ops::scalar_le(&value, &upper);
 		let result = match (ge, le) {
 			(Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a && b),
 			_ => Value::none(),
@@ -38,7 +38,7 @@ impl Vm {
 		} else {
 			let found = list_items
 				.iter()
-				.any(|item| matches!(scalar::scalar_eq(&value, item), Value::Boolean(true)));
+				.any(|item| matches!(value_ops::scalar_eq(&value, item), Value::Boolean(true)));
 			let result = if negated {
 				!found
 			} else {
@@ -51,7 +51,7 @@ impl Vm {
 
 	pub(crate) fn exec_cast(&mut self, target: &Type) -> Result<()> {
 		let value = self.pop_value()?;
-		self.stack.push(Variable::scalar(scalar::scalar_cast(value, target.clone())?));
+		self.stack.push(Variable::scalar(value_ops::scalar_cast(value, target.clone())?));
 		Ok(())
 	}
 }

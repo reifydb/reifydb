@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::internal_error;
+use reifydb_core::{
+	internal_error,
+	value::column::{Column, columns::Columns, data::ColumnData},
+};
 use reifydb_type::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
@@ -17,23 +20,54 @@ impl Vm {
 	pub(crate) fn exec_load_var(&mut self, fragment: &Fragment) -> Result<()> {
 		let name = strip_dollar_prefix(fragment.text());
 		match self.symbols.get(name) {
-			Some(Variable::Scalar(c)) => {
-				self.stack.push(Variable::Scalar(c.clone()));
+			Some(Variable::Columns {
+				columns: c,
+				is_scalar: true,
+			}) => {
+				if self.batch_size > 1 {
+					// Broadcast scalar to batch_size rows
+					let value = c.scalar_value();
+					let mut data = ColumnData::with_capacity(value.get_type(), self.batch_size);
+					for _ in 0..self.batch_size {
+						data.push_value(value.clone());
+					}
+					let col = Column::new(Fragment::internal(name), data);
+					self.stack.push(Variable::Columns {
+						columns: Columns::new(vec![col]),
+						is_scalar: false,
+					});
+				} else {
+					self.stack.push(Variable::Columns {
+						columns: c.clone(),
+						is_scalar: true,
+					});
+				}
 			}
 			Some(Variable::Closure(c)) => {
 				self.stack.push(Variable::Closure(c.clone()));
 			}
-			Some(Variable::Columns(_)) => {
-				return Err(TypeError::Runtime {
-					kind: RuntimeErrorKind::VariableIsDataframe {
-						name: name.to_string(),
-					},
-					message: format!(
-						"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
-						name
-					),
+			Some(Variable::Columns {
+				columns: c,
+				is_scalar: false,
+			}) => {
+				if self.batch_size > 1 {
+					// In columnar mode, Columns variables are valid on the stack
+					self.stack.push(Variable::Columns {
+						columns: c.clone(),
+						is_scalar: false,
+					});
+				} else {
+					return Err(TypeError::Runtime {
+						kind: RuntimeErrorKind::VariableIsDataframe {
+							name: name.to_string(),
+						},
+						message: format!(
+							"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+							name
+						),
+					}
+					.into());
 				}
-				.into());
 			}
 			Some(Variable::ForIterator {
 				..
@@ -64,17 +98,32 @@ impl Vm {
 		let name = strip_dollar_prefix(fragment.text());
 		let sv = self.stack.pop()?;
 		let variable = match sv {
-			Variable::Scalar(c) => Variable::Scalar(c),
+			Variable::Columns {
+				columns: c,
+				is_scalar: true,
+			} => Variable::Columns {
+				columns: c,
+				is_scalar: true,
+			},
 			Variable::Closure(c) => Variable::Closure(c),
-			Variable::Columns(c)
+			Variable::Columns {
+				columns: c,
+				..
+			}
 			| Variable::ForIterator {
 				columns: c,
 				..
 			} => {
 				if c.len() == 1 && c.row_count() == 1 {
-					Variable::Scalar(c)
+					Variable::Columns {
+						columns: c,
+						is_scalar: true,
+					}
 				} else {
-					Variable::Columns(c)
+					Variable::Columns {
+						columns: c,
+						is_scalar: false,
+					}
 				}
 			}
 		};
@@ -86,7 +135,10 @@ impl Vm {
 		let var_name = strip_dollar_prefix(object.text());
 		let field_name = field.text();
 		match self.symbols.get(var_name) {
-			Some(Variable::Columns(columns)) => {
+			Some(Variable::Columns {
+				columns,
+				is_scalar: false,
+			}) => {
 				let col = columns.columns.iter().find(|c| c.name.text() == field_name);
 				match col {
 					Some(col) => {
@@ -114,7 +166,11 @@ impl Vm {
 					}
 				}
 			}
-			Some(Variable::Scalar(_)) | Some(Variable::Closure(_)) => {
+			Some(Variable::Columns {
+				is_scalar: true,
+				..
+			})
+			| Some(Variable::Closure(_)) => {
 				return Err(TypeError::Runtime {
 					kind: RuntimeErrorKind::FieldNotFound {
 						variable: var_name.to_string(),

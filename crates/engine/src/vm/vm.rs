@@ -4,14 +4,19 @@
 use std::sync::Arc;
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
-use reifydb_rql::instruction::Instruction;
+use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	params::Params,
+	util::bitvec::BitVec,
 	value::{Value, frame::frame::Frame},
 };
 
 use super::{
+	exec::{
+		mask::{LoopMaskState, MaskFrame, extract_bool_bitvec},
+		stack::strip_dollar_prefix,
+	},
 	instruction::{
 		ddl::{
 			alter::{
@@ -42,9 +47,9 @@ use super::{
 			table_delete::delete, table_insert::insert_table, table_update::update_table,
 		},
 	},
-	scalar,
 	services::Services,
 	stack::{ControlFlow, Stack, SymbolTable, Variable},
+	value_ops,
 };
 use crate::{
 	Result,
@@ -70,6 +75,14 @@ pub struct Vm {
 	pub symbols: SymbolTable,
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
+	/// Number of rows in the current batch. 1 = scalar mode.
+	pub(crate) batch_size: usize,
+	/// Current active execution mask. None means all rows are active.
+	pub(crate) active_mask: Option<BitVec>,
+	/// Stack of mask frames for nested masked conditionals.
+	pub(crate) mask_stack: Vec<MaskFrame>,
+	/// Stack of loop mask states for nested WHILE loops in columnar mode.
+	pub(crate) loop_mask_stack: Vec<LoopMaskState>,
 }
 
 impl Vm {
@@ -81,6 +94,25 @@ impl Vm {
 			symbols,
 			control_flow: ControlFlow::Normal,
 			dispatch_depth: 0,
+			batch_size: 1,
+			active_mask: None,
+			mask_stack: Vec::new(),
+			loop_mask_stack: Vec::new(),
+		}
+	}
+
+	pub fn with_batch_size(symbols: SymbolTable, batch_size: usize) -> Self {
+		Self {
+			ip: 0,
+			iteration_count: 0,
+			stack: Stack::new(),
+			symbols,
+			control_flow: ControlFlow::Normal,
+			dispatch_depth: 0,
+			batch_size,
+			active_mask: None,
+			mask_stack: Vec::new(),
+			loop_mask_stack: Vec::new(),
 		}
 	}
 
@@ -88,8 +120,14 @@ impl Vm {
 	/// 1x1 Columns variants.
 	pub(crate) fn pop_value(&mut self) -> Result<Value> {
 		match self.stack.pop()? {
-			Variable::Scalar(c) => Ok(c.scalar_value()),
-			Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => Ok(c.scalar_value()),
+			Variable::Columns {
+				columns: c,
+				is_scalar: true,
+			} => Ok(c.scalar_value()),
+			Variable::Columns {
+				columns: c,
+				..
+			} if c.len() == 1 && c.row_count() == 1 => Ok(c.scalar_value()),
 			_ => Err(internal_error!("Expected scalar value on stack")),
 		}
 	}
@@ -97,8 +135,10 @@ impl Vm {
 	/// Pop the top of stack as Columns. Works for any variant.
 	pub(crate) fn pop_as_columns(&mut self) -> Result<Columns> {
 		match self.stack.pop()? {
-			Variable::Scalar(c)
-			| Variable::Columns(c)
+			Variable::Columns {
+				columns: c,
+				..
+			}
 			| Variable::ForIterator {
 				columns: c,
 				..
@@ -116,6 +156,11 @@ impl Vm {
 		result: &mut Vec<Frame>,
 	) -> Result<()> {
 		while self.ip < instructions.len() {
+			// Check if current IP is a mask merge point (end of else-branch)
+			if self.batch_size > 1 && self.check_mask_merge_point()? {
+				// Merge happened; IP is already at end_addr, continue to execute it
+			}
+
 			match &instructions[self.ip] {
 				Instruction::Halt => return Ok(()),
 				Instruction::Nop => {}
@@ -126,31 +171,44 @@ impl Vm {
 				Instruction::Dup => self.exec_dup()?,
 
 				Instruction::LoadVar(f) => self.exec_load_var(f)?,
-				Instruction::StoreVar(f) => self.exec_store_var(f)?,
+				Instruction::StoreVar(f) => {
+					if self.batch_size > 1 && self.is_masked() {
+						let name = strip_dollar_prefix(f.text());
+						let value = self.stack.pop()?;
+						self.exec_store_var_masked(name, value)?;
+					} else if self.batch_size > 1 {
+						// Columnar mode without mask: store the full column
+						let name = strip_dollar_prefix(f.text());
+						let value = self.stack.pop()?;
+						self.symbols.reassign(name.to_string(), value)?;
+					} else {
+						self.exec_store_var(f)?;
+					}
+				}
 				Instruction::DeclareVar(f) => self.exec_declare_var(f)?,
 				Instruction::FieldAccess {
 					object,
 					field,
 				} => self.exec_field_access(object, field)?,
 
-				Instruction::Add => self.exec_binop(scalar::scalar_add)?,
-				Instruction::Sub => self.exec_binop(scalar::scalar_sub)?,
-				Instruction::Mul => self.exec_binop(scalar::scalar_mul)?,
-				Instruction::Div => self.exec_binop(scalar::scalar_div)?,
-				Instruction::Rem => self.exec_binop(scalar::scalar_rem)?,
+				Instruction::Add => self.exec_add()?,
+				Instruction::Sub => self.exec_sub()?,
+				Instruction::Mul => self.exec_mul()?,
+				Instruction::Div => self.exec_div()?,
+				Instruction::Rem => self.exec_rem()?,
 				Instruction::Negate => self.exec_negate()?,
 				Instruction::LogicNot => self.exec_logic_not()?,
 
-				Instruction::CmpEq => self.exec_cmp_op(scalar::scalar_eq)?,
-				Instruction::CmpNe => self.exec_cmp_op(scalar::scalar_ne)?,
-				Instruction::CmpLt => self.exec_cmp_op(scalar::scalar_lt)?,
-				Instruction::CmpLe => self.exec_cmp_op(scalar::scalar_le)?,
-				Instruction::CmpGt => self.exec_cmp_op(scalar::scalar_gt)?,
-				Instruction::CmpGe => self.exec_cmp_op(scalar::scalar_ge)?,
+				Instruction::CmpEq => self.exec_cmp_eq()?,
+				Instruction::CmpNe => self.exec_cmp_ne()?,
+				Instruction::CmpLt => self.exec_cmp_lt()?,
+				Instruction::CmpLe => self.exec_cmp_le()?,
+				Instruction::CmpGt => self.exec_cmp_gt()?,
+				Instruction::CmpGe => self.exec_cmp_ge()?,
 
-				Instruction::LogicAnd => self.exec_cmp_op(scalar::scalar_and)?,
-				Instruction::LogicOr => self.exec_cmp_op(scalar::scalar_or)?,
-				Instruction::LogicXor => self.exec_cmp_op(scalar::scalar_xor)?,
+				Instruction::LogicAnd => self.exec_cmp_op(value_ops::scalar_and)?,
+				Instruction::LogicOr => self.exec_cmp_op(value_ops::scalar_or)?,
+				Instruction::LogicXor => self.exec_cmp_op(value_ops::scalar_xor)?,
 				Instruction::Between => self.exec_between()?,
 				Instruction::InList {
 					count,
@@ -159,11 +217,50 @@ impl Vm {
 				Instruction::Cast(target) => self.exec_cast(target)?,
 
 				Instruction::Jump(addr) => {
-					self.exec_jump(*addr)?;
-					continue;
+					if self.batch_size > 1
+						&& (!self.mask_stack.is_empty() || !self.loop_mask_stack.is_empty())
+					{
+						if self.exec_jump_masked(*addr)? {
+							continue;
+						}
+					} else {
+						self.exec_jump(*addr)?;
+						continue;
+					}
 				}
 				Instruction::JumpIfFalsePop(addr) => {
-					if self.exec_jump_if_false_pop(*addr)? {
+					if self.batch_size > 1 {
+						// Check if this is a WHILE loop condition (next instruction is
+						// EnterScope(Loop))
+						let is_while_loop = instructions.get(self.ip + 1).is_some_and(|next| {
+							matches!(next, Instruction::EnterScope(ScopeType::Loop))
+						});
+
+						if is_while_loop
+							&& self.loop_mask_stack
+								.last()
+								.is_none_or(|s| s.loop_end_addr != *addr)
+						{
+							// First entry into a WHILE loop — handle specially
+							let var = self.stack.pop()?;
+							let bool_bv = extract_bool_bitvec(&var)?;
+							let parent = self.effective_mask();
+							let candidate = self.intersect_condition(&bool_bv);
+
+							if candidate == parent {
+								// All true — no mask needed, proceed normally
+							} else if candidate.none() {
+								// All false — skip the loop
+								self.ip = *addr;
+								continue;
+							} else {
+								// Mixed — enter loop mask
+								self.enter_loop_mask(*addr, candidate);
+							}
+						} else if self.exec_jump_if_false_pop_columnar(*addr)? {
+							continue;
+						}
+					} else if self.exec_jump_if_false_pop(*addr)? {
 						continue;
 					}
 				}
@@ -178,14 +275,22 @@ impl Vm {
 					exit_scopes,
 					addr,
 				} => {
-					self.exec_break(*exit_scopes, *addr)?;
+					if self.batch_size > 1 && !self.loop_mask_stack.is_empty() {
+						self.exec_break_masked(*exit_scopes, *addr)?;
+					} else {
+						self.exec_break(*exit_scopes, *addr)?;
+					}
 					continue;
 				}
 				Instruction::Continue {
 					exit_scopes,
 					addr,
 				} => {
-					self.exec_continue(*exit_scopes, *addr)?;
+					if self.batch_size > 1 && !self.loop_mask_stack.is_empty() {
+						self.exec_continue_masked(*exit_scopes, *addr)?;
+					} else {
+						self.exec_continue(*exit_scopes, *addr)?;
+					}
 					continue;
 				}
 
