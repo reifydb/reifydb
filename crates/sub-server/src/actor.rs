@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 	execution::ExecutionResult,
 };
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -29,6 +29,7 @@ pub struct ServerActor {
 	engine: StandardEngine,
 	auth_service: AuthService,
 	clock: Clock,
+	retry: RetryStrategy,
 }
 
 impl ServerActor {
@@ -37,6 +38,7 @@ impl ServerActor {
 			engine,
 			auth_service,
 			clock,
+			retry: RetryStrategy::default(),
 		}
 	}
 
@@ -46,11 +48,13 @@ impl ServerActor {
 		statements: Vec<String>,
 		params: Params,
 		reply: Reply<ServerResponse>,
-		execute: impl FnOnce(&StandardEngine, IdentityId, &str, Params) -> ExecutionResult,
+		execute: impl Fn(&StandardEngine, IdentityId, &str, Params) -> ExecutionResult,
 	) {
 		let combined = statements.join("; ");
 		let t = self.clock.instant();
-		let result = execute(&self.engine, identity, &combined, params);
+		let result = self.retry.execute(self.engine.rng(), &combined, || {
+			execute(&self.engine, identity, &combined, params.clone())
+		});
 		if let Some(err) = result.error {
 			reply.send(ServerResponse::EngineError {
 				diagnostic: Box::new(err.diagnostic()),

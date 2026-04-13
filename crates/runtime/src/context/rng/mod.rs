@@ -8,7 +8,7 @@
 use std::sync::{Arc, Mutex};
 
 use getrandom::fill as getrandom_fill;
-use rand::{Rng as RandRng, SeedableRng, rngs::StdRng};
+use rand::{Rng as RandRng, RngExt, SeedableRng, rngs::StdRng};
 
 /// A random number generator that can be either OS-backed or seeded/deterministic.
 #[derive(Clone, Default)]
@@ -116,6 +116,28 @@ impl Rng {
 				let mut rng = seeded.infra.lock().unwrap();
 				rng.fill_bytes(&mut buf);
 				buf
+			}
+		}
+	}
+
+	pub fn infra_u64_inclusive(&self, max_inclusive: u64) -> u64 {
+		if max_inclusive == 0 {
+			return 0;
+		}
+		match self {
+			Rng::Os => {
+				let mut buf = [0u8; 8];
+				getrandom_fill(&mut buf).expect("getrandom failed");
+				let raw = u64::from_le_bytes(buf);
+				if max_inclusive == u64::MAX {
+					raw
+				} else {
+					raw % (max_inclusive + 1)
+				}
+			}
+			Rng::Seeded(seeded) => {
+				let mut rng = seeded.infra.lock().unwrap();
+				rng.random_range(0..=max_inclusive)
 			}
 		}
 	}

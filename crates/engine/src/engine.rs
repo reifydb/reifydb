@@ -37,7 +37,10 @@ use reifydb_core::{
 	metric::ExecutionMetrics,
 };
 use reifydb_metric_old::metric::MetricReader;
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::{clock::Clock, rng::Rng},
+};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
@@ -124,6 +127,10 @@ impl StandardEngine {
 	/// Get the runtime clock for timestamp operations.
 	pub fn clock(&self) -> &Clock {
 		&self.executor.runtime_context.clock
+	}
+
+	pub fn rng(&self) -> &Rng {
+		&self.executor.runtime_context.rng
 	}
 
 	#[instrument(name = "engine::admin_as", level = "debug", skip(self, params), fields(rql = %rql))]
