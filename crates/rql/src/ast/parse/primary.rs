@@ -232,9 +232,9 @@ impl<'bump> Parser<'bump> {
 					Keyword::Let => Ok(Ast::Let(self.parse_let()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
 					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
-					Keyword::Fun => {
+					Keyword::Udf => {
 						// Only parse as function definition if next token is an identifier (the
-						// fun name). Otherwise fall through so `fun()` as a function
+						// udf name). Otherwise fall through so `udf()` as a function
 						// call still works.
 						if self.position + 1 < self.tokens.len()
 							&& matches!(

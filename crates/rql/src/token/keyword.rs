@@ -85,7 +85,7 @@ Break      => "BREAK",
 Continue   => "CONTINUE",
 Return     => "RETURN",
 
-Fun        => "FUN",
+Udf        => "UDF",
 Call       => "CALL",
 Apply      => "APPLY",
 Cast       => "CAST",
@@ -200,7 +200,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("BREAK", Keyword::Break);
 	map.insert("CONTINUE", Keyword::Continue);
 	map.insert("RETURN", Keyword::Return);
-	map.insert("FUN", Keyword::Fun);
+	map.insert("UDF", Keyword::Udf);
 	map.insert("CALL", Keyword::Call);
 	map.insert("CAST", Keyword::Cast);
 	map.insert("DESCRIBE", Keyword::Describe);
@@ -394,7 +394,7 @@ pub mod tests {
 	test_keyword_break => (Break, "BREAK"),
 	test_keyword_continue => (Continue, "CONTINUE"),
 	test_keyword_return => (Return, "RETURN"),
-	test_keyword_fun => (Fun, "FUN"),
+	test_keyword_udf => (Udf, "UDF"),
 	test_keyword_call => (Call, "CALL"),
 	test_keyword_describe => (Describe, "DESCRIBE"),
 	test_keyword_create => (Create, "CREATE"),
@@ -540,7 +540,7 @@ pub mod tests {
 	test_not_keyword_break => ( "break"),
 	test_not_keyword_continue => ( "continue"),
 	test_not_keyword_return => ( "return"),
-	test_not_keyword_fun => ( "fun"),
+	test_not_keyword_udf => ( "udf"),
 	test_not_keyword_call => ( "call"),
 	test_not_keyword_describe => ( "describe"),
 	test_not_keyword_create => ( "create"),

@@ -12,9 +12,9 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `fun name ($param: type, ...) : return_type { body }`
+	/// Parse `udf name ($param: type, ...) : return_type { body }`
 	pub(crate) fn parse_def_function(&mut self) -> Result<AstDefFunction<'bump>> {
-		let token = self.consume_keyword(Keyword::Fun)?;
+		let token = self.consume_keyword(Keyword::Udf)?;
 		let name = self.parse_as_identifier()?;
 
 		// Parse parameters: ($a: type, $b: type)
@@ -165,7 +165,7 @@ pub mod tests {
 	#[test]
 	fn test_function_no_params() {
 		let bump = Bump::new();
-		let source = "FUN hello () { MAP { \"message\": \"Hello\" } }";
+		let source = "UDF hello () { MAP { \"message\": \"Hello\" } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
@@ -182,7 +182,7 @@ pub mod tests {
 	#[test]
 	fn test_function_with_params() {
 		let bump = Bump::new();
-		let source = "FUN greet ($name) { MAP { \"message\": $name } }";
+		let source = "UDF greet ($name) { MAP { \"message\": $name } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
@@ -200,7 +200,7 @@ pub mod tests {
 	#[test]
 	fn test_function_with_typed_params() {
 		let bump = Bump::new();
-		let source = "FUN add ($a: int, $b: int) { $a + $b }";
+		let source = "UDF add ($a: int, $b: int) { $a + $b }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
@@ -228,7 +228,7 @@ pub mod tests {
 	#[test]
 	fn test_function_with_return_type() {
 		let bump = Bump::new();
-		let source = "FUN add ($a: int, $b: int) : int { $a + $b }";
+		let source = "UDF add ($a: int, $b: int) : int { $a + $b }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
@@ -247,7 +247,7 @@ pub mod tests {
 	#[test]
 	fn test_function_mixed_typed_params() {
 		let bump = Bump::new();
-		let source = "FUN example ($x, $y: int) { $x + $y }";
+		let source = "UDF example ($x, $y: int) { $x + $y }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);

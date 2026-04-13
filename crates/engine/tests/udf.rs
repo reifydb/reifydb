@@ -71,7 +71,7 @@ fn ints(frames: &[Frame]) -> Vec<i64> {
 fn test_batch_udf_logic_and() {
 	let t = setup();
 	let frames = t.query(r#"
-			FUN in_range ($x: int) { RETURN $x > 2 AND $x < 8 };
+			UDF in_range ($x: int) { RETURN $x > 2 AND $x < 8 };
 			FROM test::nums MAP { id, r: in_range(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(false), Some(true), Some(true), Some(true), Some(false)]);
@@ -81,13 +81,13 @@ fn test_batch_udf_logic_and() {
 fn test_batch_udf_logic_or_xor() {
 	let t = setup();
 	let frames = t.query(r#"
-			FUN or_check ($x: int) { RETURN $x == 0 OR $x == 10 };
+			UDF or_check ($x: int) { RETURN $x == 0 OR $x == 10 };
 			FROM test::nums MAP { id, r: or_check(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(true), Some(false), Some(false), Some(false), Some(true)]);
 
 	let frames = t.query(r#"
-			FUN xor_check ($x: int) { RETURN ($x > 2) XOR ($x > 5) };
+			UDF xor_check ($x: int) { RETURN ($x > 2) XOR ($x > 5) };
 			FROM test::nums MAP { id, r: xor_check(v) } SORT { id: ASC }
 		"#);
 	// v=[0,3,5,7,10]: (x>2) XOR (x>5)
@@ -99,7 +99,7 @@ fn test_batch_udf_logic_or_xor() {
 fn test_batch_udf_between() {
 	let t = setup();
 	let frames = t.query(r#"
-			FUN in_range ($x: int) { RETURN $x BETWEEN 3 AND 7 };
+			UDF in_range ($x: int) { RETURN $x BETWEEN 3 AND 7 };
 			FROM test::nums MAP { id, r: in_range(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(false), Some(true), Some(true), Some(true), Some(false)]);
@@ -109,13 +109,13 @@ fn test_batch_udf_between() {
 fn test_batch_udf_in_list() {
 	let t = setup();
 	let frames = t.query(r#"
-			FUN is_one_of ($x: int) { RETURN $x IN [0, 5, 10] };
+			UDF is_one_of ($x: int) { RETURN $x IN [0, 5, 10] };
 			FROM test::nums MAP { id, r: is_one_of(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(true), Some(false), Some(true), Some(false), Some(true)]);
 
 	let frames = t.query(r#"
-			FUN not_in ($x: int) { RETURN $x NOT IN [0, 10] };
+			UDF not_in ($x: int) { RETURN $x NOT IN [0, 10] };
 			FROM test::nums MAP { id, r: not_in(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(bools(&frames), vec![Some(false), Some(true), Some(true), Some(true), Some(false)]);
@@ -127,7 +127,7 @@ fn test_batch_udf_cast() {
 	// CAST to utf8 — every integer round-trips unambiguously, unlike CAST-to-boolean
 	// which in ReifyDB only accepts literal 0 or 1.
 	let frames = t.query(r#"
-			FUN as_utf8 ($x: int) { RETURN CAST($x, utf8) };
+			UDF as_utf8 ($x: int) { RETURN CAST($x, utf8) };
 			FROM test::nums MAP { id, r: as_utf8(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(strings(&frames), vec!["0", "3", "5", "7", "10"]);
@@ -139,8 +139,8 @@ fn test_batch_udf_calls_vectorizable_udf() {
 	// Outer UDF calls helper UDF. Inner body is vectorizable (arithmetic only), so
 	// the outer's batch path dispatches Call into the columnar user-function path.
 	let frames = t.query(r#"
-			FUN helper ($y: int) { RETURN $y * 2 };
-			FUN outer ($x: int) { RETURN helper($x) + 1 };
+			UDF helper ($y: int) { RETURN $y * 2 };
+			UDF outer ($x: int) { RETURN helper($x) + 1 };
 			FROM test::nums MAP { id, r: outer(v) } SORT { id: ASC }
 		"#);
 	// v = [0, 3, 5, 7, 10] → outer = v*2 + 1 = [1, 7, 11, 15, 21]
@@ -154,7 +154,7 @@ fn test_batch_udf_calls_non_vectorizable_udf() {
 	// whitelist, so the columnar Call path must fall back to per-row scalar
 	// execution.
 	let frames = t.query(r#"
-			FUN helper ($x: int) : int2 {
+			UDF helper ($x: int) : int2 {
 				LET $i = 0;
 				WHILE $i < 100 {
 					IF $i >= $x { BREAK };
@@ -162,7 +162,7 @@ fn test_batch_udf_calls_non_vectorizable_udf() {
 				};
 				RETURN $i
 			};
-			FUN outer ($x: int) : int2 { RETURN helper($x) };
+			UDF outer ($x: int) : int2 { RETURN helper($x) };
 			FROM test::nums MAP { id, r: outer(v) } SORT { id: ASC }
 		"#);
 	// helper($x) counts $i from 0 until $i >= $x, then returns $i.
@@ -174,7 +174,7 @@ fn test_batch_udf_calls_non_vectorizable_udf() {
 fn test_batch_udf_if_branches() {
 	let t = setup();
 	let frames = t.query(r#"
-			FUN classify ($x: int) {
+			UDF classify ($x: int) {
 				IF $x > 2 AND $x < 8 {
 					RETURN TRUE
 				}
