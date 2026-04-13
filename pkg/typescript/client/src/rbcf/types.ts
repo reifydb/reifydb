@@ -6,7 +6,7 @@ import type { Type } from "@reifydb/core";
 /**
  * A frame decoded from (or ready to encode to) RBCF bytes.
  * Shape matches the JSON-over-WS frame the existing client already consumes,
- * so columnsToRows + @reifydb/core's decode() work unchanged downstream.
+ * so columns_to_rows + @reifydb/core's decode() work unchanged downstream.
  */
 export interface WireColumn {
     name: string;

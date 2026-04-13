@@ -16,10 +16,7 @@ use axum::{
 	http::{HeaderMap, StatusCode, header},
 	response::{IntoResponse, Response},
 };
-use reifydb_core::{
-	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
-	value::frame::response::{ResponseFrame, convert_frames},
-};
+use reifydb_core::actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage};
 use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
@@ -29,6 +26,7 @@ use reifydb_sub_server::{
 	wire::WireParams,
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_wire_format::json::{ResponseFrame, convert_frames};
 use serde::{Deserialize, Serialize};
 
 use crate::{error::AppError, state::HttpServerState};

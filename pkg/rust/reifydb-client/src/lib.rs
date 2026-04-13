@@ -326,25 +326,6 @@ pub struct LogoutResponsePayload {
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClientFrame {
-	pub row_numbers: Vec<u64>,
-	#[serde(default)]
-	pub created_at: Vec<String>,
-	#[serde(default)]
-	pub updated_at: Vec<String>,
-	pub columns: Vec<ClientColumn>,
-}
-
-#[cfg(any(feature = "http", feature = "ws"))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClientColumn {
-	pub name: String,
-	pub r#type: Type,
-	pub payload: Vec<String>,
-}
-
-#[cfg(any(feature = "http", feature = "ws"))]
 /// Server-initiated push message (no request id).
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]

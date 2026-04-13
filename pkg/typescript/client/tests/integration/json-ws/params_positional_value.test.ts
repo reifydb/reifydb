@@ -12,7 +12,10 @@ import {
     Uuid4Value, Uuid7Value, NoneValue, IdentityIdValue
 } from "@reifydb/core";
 
-describe('Positional Parameters (Value)', () => {
+describe.each([
+    {encoding: "json"},
+    {encoding: "rbcf"},
+] as const)('Positional Parameters (Value) [$encoding]', ({encoding}) => {
     let ws_client: JsonWebsocketClient;
 
     beforeAll(async () => {
@@ -23,7 +26,8 @@ describe('Positional Parameters (Value)', () => {
         try {
             ws_client = await Client.connect_json_ws(process.env.REIFYDB_WS_URL, {
                 timeout_ms: 10000,
-                token: process.env.REIFYDB_TOKEN
+                token: process.env.REIFYDB_TOKEN,
+                encoding,
             });
         } catch (error) {
             console.error('WebSocket connection failed:', error);

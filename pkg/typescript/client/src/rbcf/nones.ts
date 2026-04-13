@@ -5,7 +5,7 @@
 // Mirrors Rust BitVec::from_raw used in crates/wire-format/src/encoding/plain.rs:encode_bitvec
 // and reifydb_type::util::bitvec::BitVec semantics.
 
-export function decodeBitvec(data: Uint8Array, len: number): boolean[] {
+export function decode_bitvec(data: Uint8Array, len: number): boolean[] {
     const out = new Array<boolean>(len);
     for (let i = 0; i < len; i++) {
         const byte = data[i >> 3] ?? 0;
@@ -14,9 +14,9 @@ export function decodeBitvec(data: Uint8Array, len: number): boolean[] {
     return out;
 }
 
-export function encodeBitvec(bits: boolean[]): Uint8Array {
-    const byteCount = (bits.length + 7) >> 3;
-    const out = new Uint8Array(byteCount);
+export function encode_bitvec(bits: boolean[]): Uint8Array {
+    const byte_count = (bits.length + 7) >> 3;
+    const out = new Uint8Array(byte_count);
     for (let i = 0; i < bits.length; i++) {
         if (bits[i]) out[i >> 3] |= 1 << (i & 7);
     }

@@ -16,7 +16,10 @@ const versionShape = Shape.object({
 // Infer the TypeScript type from the shape
 type VersionRow = InferShape<typeof versionShape>;
 
-describe('Shape Type Conversion', () => {
+describe.each([
+    {encoding: "json"},
+    {encoding: "rbcf"},
+] as const)('Shape Type Conversion [$encoding]', ({encoding}) => {
     let ws_client: WsClient;
 
     beforeAll(async () => {
@@ -27,7 +30,8 @@ describe('Shape Type Conversion', () => {
         try {
             ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
                 timeout_ms: 10000,
-                token: process.env.REIFYDB_TOKEN
+                token: process.env.REIFYDB_TOKEN,
+                encoding,
             });
         } catch (error) {
             console.error('❌ WebSocket connection failed:', error);

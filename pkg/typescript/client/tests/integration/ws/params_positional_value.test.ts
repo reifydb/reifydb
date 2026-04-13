@@ -13,7 +13,10 @@ import {
 } from "@reifydb/core";
 import { expectSingleValueResult } from "./test-helper";
 
-describe('Positional Parameters', () => {
+describe.each([
+    {encoding: "json"},
+    {encoding: "rbcf"},
+] as const)('Positional Parameters (value) [$encoding]', ({encoding}) => {
     let ws_client: WsClient;
 
 
@@ -25,7 +28,8 @@ describe('Positional Parameters', () => {
         try {
             ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
                 timeout_ms: 10000,
-                token: process.env.REIFYDB_TOKEN
+                token: process.env.REIFYDB_TOKEN,
+                encoding,
             });
         } catch (error) {
             console.error('❌ WebSocket connection failed:', error);

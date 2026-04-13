@@ -7,7 +7,6 @@ use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::id::SubscriptionId,
-	value::frame::response::convert_frames,
 };
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel};
 use reifydb_sub_server::{
@@ -24,6 +23,7 @@ use reifydb_type::{
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
+use reifydb_wire_format::json::convert_frames;
 use serde_json::{Value as JsonValue, from_str, json};
 use tokio::{
 	net::TcpStream,

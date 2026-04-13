@@ -5,7 +5,10 @@ import {wait_for_database} from "../setup";
 import {Client, WsClient} from "../../../src";
 import {Shape} from "@reifydb/core";
 
-describe('Concurrent requests', () => {
+describe.each([
+    {encoding: "json"},
+    {encoding: "rbcf"},
+] as const)('Concurrent requests [$encoding]', ({encoding}) => {
     let ws_client: WsClient;
 
     beforeAll(async () => {
@@ -17,7 +20,8 @@ describe('Concurrent requests', () => {
         try {
             ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
                 timeout_ms: 10000,
-                token: process.env.REIFYDB_TOKEN
+                token: process.env.REIFYDB_TOKEN,
+                encoding,
             });
         } catch (error) {
             console.error('❌ WebSocket connection failed:', error);

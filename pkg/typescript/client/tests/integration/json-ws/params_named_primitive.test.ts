@@ -5,7 +5,10 @@ import {wait_for_database} from "../setup";
 import {Client, JsonWebsocketClient} from "../../../src";
 import {expectSingleResult} from "./test-helper";
 
-describe('Named Parameters (Primitive)', () => {
+describe.each([
+    {encoding: "json"},
+    {encoding: "rbcf"},
+] as const)('Named Parameters (Primitive) [$encoding]', ({encoding}) => {
     let ws_client: JsonWebsocketClient;
 
     beforeAll(async () => {
@@ -16,7 +19,8 @@ describe('Named Parameters (Primitive)', () => {
         try {
             ws_client = await Client.connect_json_ws(process.env.REIFYDB_WS_URL, {
                 timeout_ms: 10000,
-                token: process.env.REIFYDB_TOKEN
+                token: process.env.REIFYDB_TOKEN,
+                encoding,
             });
         } catch (error) {
             console.error('WebSocket connection failed:', error);

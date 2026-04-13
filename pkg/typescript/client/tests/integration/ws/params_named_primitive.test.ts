@@ -11,7 +11,10 @@ import {
     expectSingleBigIntResult
 } from "./test-helper";
 
-describe('Named Parameters', () => {
+describe.each([
+    {encoding: "json"},
+    {encoding: "rbcf"},
+] as const)('Named Parameters (primitive) [$encoding]', ({encoding}) => {
     let ws_client: WsClient;
 
     beforeAll(async () => {
@@ -22,7 +25,8 @@ describe('Named Parameters', () => {
         try {
             ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
                 timeout_ms: 10000,
-                token: process.env.REIFYDB_TOKEN
+                token: process.env.REIFYDB_TOKEN,
+                encoding,
             });
         } catch (error) {
             console.error('❌ WebSocket connection failed:', error);

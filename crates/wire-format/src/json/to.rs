@@ -1,31 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::{Value, frame::frame::Frame, r#type::Type};
-use serde::{Deserialize, Serialize};
+use reifydb_type::value::{Value, frame::frame::Frame};
 
-/// A response frame containing query/command results.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResponseFrame {
-	pub row_numbers: Vec<u64>,
-	pub created_at: Vec<String>,
-	pub updated_at: Vec<String>,
-	pub columns: Vec<ResponseColumn>,
-}
+use crate::json::types::{ResponseColumn, ResponseFrame};
 
-/// A column in a response frame.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResponseColumn {
-	pub name: String,
-	#[serde(rename = "type")]
-	pub r#type: Type,
-	pub payload: Vec<String>,
-}
-
-/// Convert database result frames to response frames.
-///
-/// This function converts the internal `Frame` type to the serializable
-/// `ResponseFrame` type expected by clients.
+/// Convert database result frames to the JSON wire shape.
 pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 	let mut result = Vec::new();
 
@@ -65,4 +45,10 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 	}
 
 	result
+}
+
+/// Serialize frames to a JSON string of `[ResponseFrame, ...]`.
+pub fn frames_to_json(frames: &[Frame]) -> Result<String, serde_json::Error> {
+	let response_frames = convert_frames(frames);
+	serde_json::to_string(&response_frames)
 }

@@ -8,8 +8,8 @@ export class BinaryWriter {
     private view: DataView;
     private _length: number;
 
-    constructor(initialCapacity: number = 4096) {
-        this.buf = new Uint8Array(initialCapacity);
+    constructor(initial_capacity: number = 4096) {
+        this.buf = new Uint8Array(initial_capacity);
         this.view = new DataView(this.buf.buffer);
         this._length = 0;
     }
@@ -126,16 +126,16 @@ export class BinaryWriter {
     }
 
     // Overwrite a previously reserved region.
-    patchU8(offset: number, v: number): void {
+    patch_u8(offset: number, v: number): void {
         this.buf[offset] = v & 0xff;
     }
-    patchU16(offset: number, v: number): void {
+    patch_u16(offset: number, v: number): void {
         this.view.setUint16(offset, v, true);
     }
-    patchU32(offset: number, v: number): void {
+    patch_u32(offset: number, v: number): void {
         this.view.setUint32(offset, v >>> 0, true);
     }
-    patchBytes(offset: number, b: Uint8Array): void {
+    patch_bytes(offset: number, b: Uint8Array): void {
         this.buf.set(b, offset);
     }
 

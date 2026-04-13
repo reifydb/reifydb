@@ -12,4 +12,5 @@ pub mod encoding;
 pub mod error;
 pub mod format;
 pub mod heuristics;
+pub mod json;
 pub mod options;

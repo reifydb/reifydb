@@ -6,13 +6,14 @@
 //! Handles WebSocket subscription requests by creating database subscriptions
 //! and registering them with the registry and poller for real-time updates.
 
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::frame::response::convert_frames};
+use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_remote_proxy::{connect_remote, proxy_remote};
 use reifydb_sub_server::{
 	interceptor::{Protocol, RequestMetadata},
 	subscribe::{CreateSubscriptionError, CreateSubscriptionResult::*, create_subscription},
 };
 use reifydb_type::value::identity::IdentityId;
+use reifydb_wire_format::json::convert_frames;
 use serde_json::json;
 use tokio::spawn;
 use tracing::info;

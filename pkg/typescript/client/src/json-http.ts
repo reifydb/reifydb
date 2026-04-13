@@ -1,18 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+import {decode} from "@reifydb/core";
 import type {
+    Column,
     LoginResult,
 } from "./types";
 import {
     ReifyError
 } from "./types";
 import {encode_params} from "./encoder";
+import {rbcf} from "./rbcf";
 
 export interface JsonHttpClientOptions {
     url: string;
     timeout_ms?: number;
     token?: string;
     unwrap?: boolean;
+    /** Wire-format encoding for data frames. Defaults to "json". */
+    encoding?: "json" | "rbcf";
 }
 
 export interface RequestOptions {
@@ -178,9 +183,13 @@ export class JsonHttpClient {
             req_opts.signal.addEventListener('abort', () => controller.abort());
         }
 
+        const use_rbcf = this.options.encoding === "rbcf";
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
         };
+        if (use_rbcf) {
+            headers['Accept'] = 'application/rbcf, application/json';
+        }
 
         if (this.options.token) {
             headers['Authorization'] = `Bearer ${this.options.token}`;
@@ -191,7 +200,7 @@ export class JsonHttpClient {
             body.params = params;
         }
 
-        const query_params = new URLSearchParams({format: 'json'});
+        const query_params = new URLSearchParams({format: use_rbcf ? 'rbcf' : 'json'});
         if (this.options.unwrap) {
             query_params.set('unwrap', 'true');
         }
@@ -206,6 +215,16 @@ export class JsonHttpClient {
             });
 
             clearTimeout(timeout);
+
+            const content_type = response.headers?.get?.('content-type') ?? '';
+            const is_binary = use_rbcf && response.ok &&
+                (content_type.includes('application/rbcf') || content_type.includes('application/octet-stream'));
+
+            if (is_binary) {
+                const buf = await response.arrayBuffer();
+                const frames = rbcf.decode(new Uint8Array(buf));
+                return frames.map((frame: any) => columns_to_plain_rows(frame.columns));
+            }
 
             const response_body = await response.text();
             let parsed: any;
@@ -235,4 +254,16 @@ export class JsonHttpClient {
             throw err;
         }
     }
+}
+
+function columns_to_plain_rows(columns: Column[]): Record<string, any>[] {
+    const row_count = columns[0]?.payload.length ?? 0;
+    return Array.from({length: row_count}, (_, i) => {
+        const row: Record<string, any> = {};
+        for (const col of columns) {
+            const value = decode({type: col.type, value: col.payload[i]});
+            row[col.name] = value?.valueOf();
+        }
+        return row;
+    });
 }

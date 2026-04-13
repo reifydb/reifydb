@@ -5,13 +5,17 @@ import {Client, HttpClient} from "../../../src";
 import {Shape} from "@reifydb/core";
 
 
-describe('Statement', () => {
+describe.each([
+    {encoding: "json"},
+    {encoding: "rbcf"},
+] as const)('Statement [$encoding]', ({encoding}) => {
     let httpClient: HttpClient;
 
     beforeAll(async () => {
         httpClient = Client.connect_http(process.env.REIFYDB_HTTP_URL, {
             timeout_ms: 10000,
-            token: process.env.REIFYDB_TOKEN
+            token: process.env.REIFYDB_TOKEN,
+            encoding,
         });
     });
 

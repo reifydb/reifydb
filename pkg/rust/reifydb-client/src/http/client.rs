@@ -7,21 +7,21 @@ use reifydb_type::{
 	params::Params,
 	value::frame::frame::Frame,
 };
+use reifydb_wire_format::json::ResponseFrame;
 use reqwest::Client as ReqwestClient;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, json};
 
 use crate::{
-	AdminRequest, AdminResponse, AdminResult, ClientFrame, CommandRequest, CommandResponse, CommandResult,
-	Encoding, ErrResponse, LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload,
-	params_to_wire,
+	AdminRequest, AdminResponse, AdminResult, CommandRequest, CommandResponse, CommandResult, Encoding,
+	ErrResponse, LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 };
 
 /// HTTP-specific response format (server returns `{ "frames": [...] }`)
 #[derive(Debug, Deserialize)]
 struct HttpFrameResponse {
-	frames: Vec<ClientFrame>,
+	frames: Vec<ResponseFrame>,
 }
 
 impl HttpFrameResponse {

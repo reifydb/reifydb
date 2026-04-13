@@ -12,13 +12,17 @@ import {
 } from "@reifydb/core";
 import { expectSingleValueResult } from "./test-helper";
 
-describe('Named Parameters', () => {
+describe.each([
+    {encoding: "json"},
+    {encoding: "rbcf"},
+] as const)('Named Parameters (value) [$encoding]', ({encoding}) => {
     let httpClient: HttpClient;
 
     beforeAll(async () => {
         httpClient = Client.connect_http(process.env.REIFYDB_HTTP_URL, {
             timeout_ms: 10000,
-            token: process.env.REIFYDB_TOKEN
+            token: process.env.REIFYDB_TOKEN,
+            encoding,
         });
     });
 

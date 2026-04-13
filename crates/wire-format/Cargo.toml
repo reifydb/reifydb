@@ -11,6 +11,8 @@ reifydb-type = { workspace = true }
 num-bigint = { workspace = true }
 bigdecimal = { workspace = true }
 uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [[test]]
 name = "plain"

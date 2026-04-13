@@ -26,7 +26,7 @@ export enum ColumnEncoding {
     DeltaRle = 5,
 }
 
-export function dictIndexWidthFromFlags(flags: number): number {
+export function dict_index_width_from_flags(flags: number): number {
     switch ((flags >> 4) & 0x03) {
         case 0: return 1;
         case 1: return 2;
@@ -35,7 +35,7 @@ export function dictIndexWidthFromFlags(flags: number): number {
     }
 }
 
-export function dictIndexWidthToFlags(width: number): number {
+export function dict_index_width_to_flags(width: number): number {
     switch (width) {
         case 1: return 0 << 4;
         case 2: return 1 << 4;
@@ -84,13 +84,13 @@ const CODE_TO_NAME: Record<number, TypeName> = Object.fromEntries(
     Object.entries(TYPE_CODE).map(([k, v]) => [v, k as TypeName])
 );
 
-export function typeNameFromCode(code: number): TypeName {
+export function type_name_from_code(code: number): TypeName {
     const base = code & 0x7F;
     const name = CODE_TO_NAME[base];
     if (!name) throw new Error(`Unknown RBCF type code: ${code}`);
     return name;
 }
 
-export function isOptionCode(code: number): boolean {
+export function is_option_code(code: number): boolean {
     return (code & TYPE_OPTION_FLAG) !== 0;
 }

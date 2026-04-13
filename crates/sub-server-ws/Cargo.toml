@@ -26,6 +26,7 @@ reifydb-runtime = { workspace = true }
 reifydb-sub-subscription = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-type = { workspace = true }
+reifydb-wire-format = { workspace = true }
 
 dashmap = { workspace = true }
 tokio = { workspace = true }
