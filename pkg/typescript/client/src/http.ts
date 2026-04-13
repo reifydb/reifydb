@@ -17,11 +17,14 @@ import {
     ReifyError
 } from "./types";
 import {encode_params} from "./encoder";
+import {rbcf} from "./rbcf";
 
 export interface HttpClientOptions {
     url: string;
     timeout_ms?: number;
     token?: string;
+    /** Wire-format encoding for data frames. Defaults to "json". */
+    encoding?: "json" | "rbcf";
 }
 
 export interface RequestOptions {
@@ -221,9 +224,13 @@ export class HttpClient {
             req_opts.signal.addEventListener('abort', () => controller.abort());
         }
 
+        const use_rbcf = this.options.encoding === "rbcf";
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
         };
+        if (use_rbcf) {
+            headers['Accept'] = 'application/rbcf, application/json';
+        }
 
         if (this.options.token) {
             headers['Authorization'] = `Bearer ${this.options.token}`;
@@ -234,8 +241,12 @@ export class HttpClient {
             body.params = params;
         }
 
+        const url = use_rbcf
+            ? `${this.options.url}/v1/${endpoint}?format=rbcf`
+            : `${this.options.url}/v1/${endpoint}`;
+
         try {
-            const response = await fetch(`${this.options.url}/v1/${endpoint}`, {
+            const response = await fetch(url, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(body),
@@ -244,6 +255,16 @@ export class HttpClient {
             });
 
             clearTimeout(timeout);
+
+            const content_type = response.headers?.get?.('content-type') ?? '';
+            const is_binary = use_rbcf && response.ok &&
+                (content_type.includes('application/rbcf') || content_type.includes('application/octet-stream'));
+
+            if (is_binary) {
+                const buf = await response.arrayBuffer();
+                const frames = rbcf.decode(new Uint8Array(buf));
+                return frames.map((frame: any) => columns_to_rows(frame.columns));
+            }
 
             const response_body = await response.text();
             let parsed: any;

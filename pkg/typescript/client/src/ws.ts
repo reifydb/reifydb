@@ -34,6 +34,7 @@ import {
     ReifyError
 } from "./types";
 import {encode_params} from "./encoder";
+import {rbcf} from "./rbcf";
 
 export interface WsClientOptions {
     url: string;
@@ -42,6 +43,8 @@ export interface WsClientOptions {
     max_reconnect_attempts?: number;
     reconnect_delay_ms?: number;
     signal?: AbortSignal;
+    /** Wire-format encoding for data frames. Defaults to "json". */
+    encoding?: "json" | "rbcf";
 }
 
 interface SubscriptionState<T = any> {
@@ -55,13 +58,27 @@ interface SubscriptionState<T = any> {
 type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse | LogoutResponse;
 
 async function create_web_socket(url: string): Promise<WebSocket> {
+    let socket: WebSocket;
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
-        return new WebSocket(url);
+        socket = new WebSocket(url);
     } else {
         //@ts-ignore
         const ws_module = await import("ws");
-        return new ws_module.WebSocket(url);
+        socket = new ws_module.WebSocket(url);
     }
+    // Deliver binary frames as ArrayBuffer so the RBCF envelope parser sees a uniform shape
+    // across the browser native WebSocket and the node `ws` package.
+    try {
+        (socket as any).binaryType = "arraybuffer";
+    } catch {
+        // Some environments disallow setting before open — best effort.
+    }
+    return socket;
+}
+
+interface PendingEntry {
+    type: string;
+    handler: (response: ResponsePayload) => void;
 }
 
 
@@ -69,7 +86,7 @@ export class WsClient {
     private options: WsClientOptions;
     private next_id: number;
     private socket: WebSocket;
-    private pending = new Map<string, (response: ResponsePayload) => void>();
+    private pending = new Map<string, PendingEntry>();
     private reconnect_attempts: number = 0;
     private should_reconnect: boolean = true;
     private is_reconnecting: boolean = false;
@@ -301,24 +318,27 @@ export class WsClient {
         };
 
         return new Promise((resolve, reject) => {
-            this.pending.set(id, (response) => {
-                if (response.type === "Err") {
-                    reject(new ReifyError(response));
-                } else if (response.type === "Subscribed") {
-                    const subscription_id = response.payload.subscription_id;
+            this.pending.set(id, {
+                type: "Subscribe",
+                handler: (response) => {
+                    if (response.type === "Err") {
+                        reject(new ReifyError(response));
+                    } else if (response.type === "Subscribed") {
+                        const subscription_id = response.payload.subscription_id;
 
-                    // Store subscription state
-                    this.subscriptions.set(subscription_id, {
-                        subscription_id,
-                        query,
-                        params,
-                        shape,
-                        callbacks
-                    });
+                        // Store subscription state
+                        this.subscriptions.set(subscription_id, {
+                            subscription_id,
+                            query,
+                            params,
+                            shape,
+                            callbacks
+                        });
 
-                    resolve(subscription_id);
-                } else {
-                    reject(new Error("Unexpected response type"));
+                        resolve(subscription_id);
+                    } else {
+                        reject(new Error("Unexpected response type"));
+                    }
                 }
             });
 
@@ -336,14 +356,17 @@ export class WsClient {
         };
 
         return new Promise((resolve, reject) => {
-            this.pending.set(id, (response) => {
-                if (response.type === "Err") {
-                    reject(new ReifyError(response));
-                } else if (response.type === "Unsubscribed") {
-                    this.subscriptions.delete(subscription_id);
-                    resolve();
-                } else {
-                    reject(new Error("Unexpected response type"));
+            this.pending.set(id, {
+                type: "Unsubscribe",
+                handler: (response) => {
+                    if (response.type === "Err") {
+                        reject(new ReifyError(response));
+                    } else if (response.type === "Unsubscribed") {
+                        this.subscriptions.delete(subscription_id);
+                        resolve();
+                    } else {
+                        reject(new Error("Unexpected response type"));
+                    }
                 }
             });
 
@@ -368,6 +391,13 @@ export class WsClient {
             });
         }
 
+        if (this.options.encoding === "rbcf") {
+            req = {
+                ...req,
+                payload: { ...req.payload, format: "rbcf" },
+            } as AdminRequest | CommandRequest | QueryRequest;
+        }
+
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
             const timeout_ms = this.options.timeout_ms ?? 30_000;
             const timeout = setTimeout(() => {
@@ -375,9 +405,12 @@ export class WsClient {
                 reject(new Error("ReifyDB query timeout"));
             }, timeout_ms);
 
-            this.pending.set(id, (res) => {
-                clearTimeout(timeout);
-                resolve(res);
+            this.pending.set(id, {
+                type: req.type,
+                handler: (res) => {
+                    clearTimeout(timeout);
+                    resolve(res);
+                }
             });
 
             this.socket.send(JSON.stringify(req));
@@ -511,9 +544,12 @@ export class WsClient {
                 reject(new Error("Login timeout"));
             }, timeout_ms);
 
-            this.pending.set(id, (res) => {
-                clearTimeout(timeout);
-                resolve(res);
+            this.pending.set(id, {
+                type: "Auth",
+                handler: (res) => {
+                    clearTimeout(timeout);
+                    resolve(res);
+                }
             });
 
             this.socket.send(JSON.stringify(request));
@@ -551,9 +587,12 @@ export class WsClient {
                 reject(new Error("Logout timeout"));
             }, timeout_ms);
 
-            this.pending.set(id, (res) => {
-                clearTimeout(timeout);
-                resolve(res);
+            this.pending.set(id, {
+                type: "Logout",
+                handler: (res) => {
+                    clearTimeout(timeout);
+                    resolve(res);
+                }
             });
 
             this.socket.send(JSON.stringify({id, type: "Logout"}));
@@ -751,7 +790,27 @@ export class WsClient {
 
     private setup_socket_handlers() {
         this.socket.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
+            const data = event.data;
+
+            // Binary path: RBCF envelope [u32 LE id_len][id UTF-8 bytes][RBCF payload].
+            // Only Admin/Command/Query responses arrive as binary; errors and subscription
+            // pushes are always JSON text.
+            if (data instanceof ArrayBuffer) {
+                this.handle_binary_message(new Uint8Array(data));
+                return;
+            }
+            if (typeof data !== "string") {
+                // Node `ws` without binaryType setting — convert Buffer-like to ArrayBuffer.
+                const buf = data as { buffer?: ArrayBuffer; byteOffset?: number; byteLength?: number };
+                if (buf && typeof buf.byteLength === "number" && buf.buffer instanceof ArrayBuffer) {
+                    const u8 = new Uint8Array(buf.buffer, buf.byteOffset ?? 0, buf.byteLength);
+                    this.handle_binary_message(u8);
+                    return;
+                }
+                return;
+            }
+
+            const msg = JSON.parse(data);
 
             // Handle server-initiated messages (no id)
             if (!msg.id) {
@@ -763,13 +822,13 @@ export class WsClient {
 
             const {id, type, payload} = msg;
 
-            const handler = this.pending.get(id);
-            if (!handler) {
+            const entry = this.pending.get(id);
+            if (!entry) {
                 return;
             }
 
             this.pending.delete(id);
-            handler({id, type, payload});
+            entry.handler({id, type, payload});
         };
 
         this.socket.onerror = (err) => {
@@ -794,10 +853,49 @@ export class WsClient {
             }
         };
 
-        for (const handler of this.pending.values()) {
-            handler(error);
+        for (const entry of this.pending.values()) {
+            entry.handler(error);
         }
         this.pending.clear();
+    }
+
+    private handle_binary_message(bytes: Uint8Array) {
+        // Parse envelope: [u32 LE id_len][id bytes][RBCF payload].
+        if (bytes.length < 4) return;
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const id_len = view.getUint32(0, true);
+        if (bytes.length < 4 + id_len) return;
+        const id = new TextDecoder("utf-8").decode(bytes.subarray(4, 4 + id_len));
+        const rbcf_bytes = bytes.subarray(4 + id_len);
+
+        const entry = this.pending.get(id);
+        if (!entry) return;
+        this.pending.delete(id);
+
+        let frames: any[];
+        try {
+            frames = rbcf.decode(rbcf_bytes);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            entry.handler({
+                id,
+                type: "Err",
+                payload: {
+                    diagnostic: { code: "RBCF_DECODE", message: msg, notes: [] }
+                }
+            } as ErrorResponse);
+            return;
+        }
+
+        // Synthesize a response that looks like the JSON path so downstream logic is unchanged.
+        entry.handler({
+            id,
+            type: entry.type,
+            payload: {
+                content_type: "application/rbcf",
+                body: { frames },
+            },
+        } as ResponsePayload);
     }
 }
 

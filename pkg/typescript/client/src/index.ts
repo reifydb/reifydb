@@ -47,6 +47,8 @@ export class Client {
     }
 }
 
+export {rbcf} from "./rbcf";
+export type {WireFrame, WireColumn} from "./rbcf";
 export {ReifyError, asFrameResults} from "@reifydb/core";
 export type {FrameResults, SingleFrameResult, Diagnostic, Fragment, DiagnosticColumn} from "@reifydb/core";
 export {WsClient} from "./ws";

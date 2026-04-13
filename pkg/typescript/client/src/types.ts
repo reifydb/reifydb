@@ -13,7 +13,7 @@ export interface AdminRequest {
     payload: {
         statements: string[];
         params?: Params;
-        format?: string;
+        format?: "json" | "rbcf";
         unwrap?: boolean;
     }
 }
@@ -33,7 +33,7 @@ export interface CommandRequest {
     payload: {
         statements: string[];
         params?: Params;
-        format?: string;
+        format?: "json" | "rbcf";
         unwrap?: boolean;
     }
 }
@@ -53,7 +53,7 @@ export interface QueryRequest {
     payload: {
         statements: string[];
         params?: Params;
-        format?: string;
+        format?: "json" | "rbcf";
         unwrap?: boolean;
     }
 }
