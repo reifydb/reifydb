@@ -30,77 +30,77 @@ use super::stack::strip_dollar_prefix;
 use crate::{
 	Result,
 	error::EngineError,
-	expression::{cast::cast_column_data, context::EvalContext},
+	expression::cast::cast_column_data,
 	policy::PolicyEvaluator,
 	vm::{
 		exec::broadcast::broadcast_many,
 		services::Services,
 		stack::{ClosureValue, ControlFlow, Variable},
-		vm::Vm,
+		vm::{EMPTY_PARAMS, Vm},
 		volcano::udf::is_vectorizable,
 	},
 };
 
-/// Groups the shared (services, tx, params) triple passed to call-family methods.
+/// Groups the shared (services, tx) pair passed to call-family methods.
 pub(crate) struct CallContext<'a, 'b> {
 	pub services: &'a Arc<Services>,
 	pub tx: &'a mut Transaction<'b>,
-	pub params: &'a Params,
 }
 
-/// Collect the return value from a function/procedure/closure execution.
-/// This pattern was previously copy-pasted 4 times in the Call handler.
-/// Coerce every column inside `result` to the declared function return type.
-/// Used by call sites so that mixed-width scalar execution paths collapse to a
-/// single column type before the result flows back to the caller.
-pub(crate) fn coerce_return_value(result: Variable, return_type: Option<&TypeConstraint>) -> Result<Variable> {
-	let Some(tc) = return_type else {
-		return Ok(result);
-	};
-	let target = tc.get_type();
-	match result {
-		Variable::Columns {
-			columns,
-			is_scalar,
-		} => {
-			let ctx = EvalContext::testing();
-			let coerced: Vec<Column> = columns
-				.columns
-				.iter()
-				.map(|col| {
-					let data = cast_column_data(&ctx, &col.data, target.clone(), col.name.clone())?;
-					Ok(Column::new(col.name.clone(), data))
-				})
-				.collect::<Result<Vec<_>>>()?;
-			Ok(Variable::Columns {
-				columns: Columns::new(coerced),
-				is_scalar,
-			})
+impl<'a> Vm<'a> {
+	/// Coerce every column inside `result` to the declared function return type.
+	/// Used by call sites so that mixed-width scalar execution paths collapse to a
+	/// single column type before the result flows back to the caller.
+	pub(crate) fn coerce_return_value(
+		&self,
+		result: Variable,
+		return_type: Option<&TypeConstraint>,
+	) -> Result<Variable> {
+		let Some(tc) = return_type else {
+			return Ok(result);
+		};
+		let target = tc.get_type();
+		match result {
+			Variable::Columns {
+				columns,
+			} => {
+				let ctx = self.eval_ctx();
+				let coerced: Vec<Column> = columns
+					.columns
+					.iter()
+					.map(|col| {
+						let data = cast_column_data(
+							&ctx,
+							&col.data,
+							target.clone(),
+							col.name.clone(),
+						)?;
+						Ok(Column::new(col.name.clone(), data))
+					})
+					.collect::<Result<Vec<_>>>()?;
+				Ok(Variable::columns(Columns::new(coerced)))
+			}
+			other => Ok(other),
 		}
-		other => Ok(other),
 	}
-}
 
-/// Coerce a single scalar `Value` to `target` by wrapping in a 1-row column,
-/// casting, and extracting. Slow-path helper used by the per-row fallback so
-/// that the accumulator column's element type stays uniform.
-fn coerce_value(value: Value, target: &Type) -> Result<Value> {
-	let mut data = ColumnData::with_capacity(value.get_type(), 1);
-	data.push_value(value);
-	let ctx = EvalContext::testing();
-	let cast = cast_column_data(&ctx, &data, target.clone(), Fragment::internal("coerce_return"))?;
-	Ok(cast.get_value(0))
+	/// Coerce a single scalar `Value` to `target` by wrapping in a 1-row column,
+	/// casting, and extracting. Slow-path helper used by the per-row fallback so
+	/// that the accumulator column's element type stays uniform.
+	fn coerce_value(&self, value: Value, target: &Type) -> Result<Value> {
+		let mut data = ColumnData::with_capacity(value.get_type(), 1);
+		data.push_value(value);
+		let ctx = self.eval_ctx();
+		let cast = cast_column_data(&ctx, &data, target.clone(), Fragment::internal("coerce_return"))?;
+		Ok(cast.get_value(0))
+	}
 }
 
 pub(crate) fn collect_call_result(vm: &mut Vm, func_result: &mut Vec<Frame>) -> Variable {
 	match mem::replace(&mut vm.control_flow, ControlFlow::Normal) {
 		ControlFlow::Return(c) => {
 			let columns = c.unwrap_or(Columns::scalar(Value::none()));
-			let is_scalar = columns.row_count() <= 1;
-			Variable::Columns {
-				columns,
-				is_scalar,
-			}
+			Variable::columns(columns)
 		}
 		_ => {
 			if let Some(frame) = func_result.pop() {
@@ -116,12 +116,11 @@ pub(crate) fn collect_call_result(vm: &mut Vm, func_result: &mut Vec<Frame>) -> 
 	}
 }
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_call(
 		&mut self,
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
-		params: &Params,
 		name: &Fragment,
 		arity: u8,
 		is_procedure_call: bool,
@@ -135,12 +134,12 @@ impl Vm {
 		// they stay on the scalar path.
 		if self.batch_size > 1 {
 			if let Some(func_def) = self.symbols.get_function(func_name).cloned() {
-				return self.call_user_function_columnar(services, tx, params, &func_def, arity, name);
+				return self.call_user_function_columnar(services, tx, &func_def, arity, name);
 			}
 			if let Some(closure_val) = self.symbols.get(strip_dollar_prefix(func_name)).cloned()
 				&& let Variable::Closure(closure) = closure_val
 			{
-				return self.call_closure_columnar(services, tx, params, closure, arity);
+				return self.call_closure_columnar(services, tx, closure, arity);
 			}
 		}
 
@@ -152,14 +151,14 @@ impl Vm {
 
 		// 1. User-defined function (DEF)
 		if let Some(func_def) = self.symbols.get_function(func_name).cloned() {
-			return self.call_user_function(services, tx, params, &func_def, args, name);
+			return self.call_user_function(services, tx, &func_def, args, name);
 		}
 
 		// 2. Closure variable
 		if let Some(closure_val) = self.symbols.get(strip_dollar_prefix(func_name)).cloned()
 			&& let Variable::Closure(closure) = closure_val
 		{
-			return self.call_closure(services, tx, params, closure, args);
+			return self.call_closure(services, tx, closure, args);
 		}
 
 		// 3. Catalog procedure
@@ -173,7 +172,6 @@ impl Vm {
 				let ctx = CallContext {
 					services,
 					tx,
-					params,
 				};
 				self.call_local_procedure(ctx, &proc_def, args, name, func_name)
 			}
@@ -181,7 +179,6 @@ impl Vm {
 				let ctx = CallContext {
 					services,
 					tx,
-					params,
 				};
 				self.call_test_procedure(ctx, &proc_def, args, name, func_name)
 			}
@@ -205,7 +202,6 @@ impl Vm {
 				let ctx = CallContext {
 					services,
 					tx,
-					params,
 				};
 				self.call_builtin_or_error(ctx, args, name, func_name, is_procedure_call)
 			}
@@ -216,7 +212,6 @@ impl Vm {
 		&mut self,
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
-		params: &Params,
 		func_def: &CompiledFunction,
 		arity: usize,
 		name: &Fragment,
@@ -228,7 +223,6 @@ impl Vm {
 			self.run_function_body_batch(
 				services,
 				tx,
-				params,
 				&func_def.body,
 				&func_def.parameters,
 				arg_columns,
@@ -240,7 +234,6 @@ impl Vm {
 			self.run_function_body_per_row(
 				services,
 				tx,
-				params,
 				&func_def.body,
 				&func_def.parameters,
 				arg_columns,
@@ -255,7 +248,6 @@ impl Vm {
 		&mut self,
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
-		params: &Params,
 		closure: ClosureValue,
 		arity: usize,
 	) -> Result<()> {
@@ -266,7 +258,6 @@ impl Vm {
 			self.run_function_body_batch(
 				services,
 				tx,
-				params,
 				&closure.def.body,
 				&closure.def.parameters,
 				arg_columns,
@@ -278,7 +269,6 @@ impl Vm {
 			self.run_function_body_per_row(
 				services,
 				tx,
-				params,
 				&closure.def.body,
 				&closure.def.parameters,
 				arg_columns,
@@ -303,7 +293,6 @@ impl Vm {
 		&mut self,
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
-		params: &Params,
 		body: &[Instruction],
 		parameters: &[FunctionParameter],
 		arg_columns: Vec<Column>,
@@ -328,12 +317,12 @@ impl Vm {
 
 		self.ip = 0;
 		let mut func_result = Vec::new();
-		self.run(services, tx, body, params, &mut func_result)?;
+		self.run_isolated_body(services, tx, body, &mut func_result)?;
 
 		let stack_value = collect_call_result(self, &mut func_result);
 		self.ip = saved_ip;
 		let _ = self.symbols.exit_scope();
-		let coerced = coerce_return_value(stack_value, return_type)?;
+		let coerced = self.coerce_return_value(stack_value, return_type)?;
 		self.stack.push(coerced);
 		Ok(())
 	}
@@ -343,7 +332,6 @@ impl Vm {
 		&mut self,
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
-		params: &Params,
 		body: &[Instruction],
 		parameters: &[FunctionParameter],
 		arg_columns: Vec<Column>,
@@ -365,22 +353,21 @@ impl Vm {
 			for (param, arg_col) in parameters.iter().zip(arg_columns.iter()) {
 				let param_name = strip_dollar_prefix(param.name.text()).to_string();
 				let value = arg_col.data().get_value(row_idx);
-				func_symbols.set(param_name, Variable::scalar(value), true)?;
+				func_symbols.set(
+					param_name.clone(),
+					Variable::scalar_named(&param_name, value),
+					true,
+				)?;
 			}
 
-			let mut vm = Vm::new(func_symbols);
+			let mut vm = Vm::from_services(func_symbols, services, &EMPTY_PARAMS, tx.identity());
 			let mut func_result: Vec<Frame> = Vec::new();
-			vm.run(services, tx, body, params, &mut func_result)?;
+			vm.run(services, tx, body, &mut func_result)?;
 			let result_var = collect_call_result(&mut vm, &mut func_result);
 			let value = match result_var {
 				Variable::Columns {
 					columns: c,
-					is_scalar: true,
-				} => c.scalar_value(),
-				Variable::Columns {
-					columns: c,
-					..
-				} if c.len() == 1 && c.row_count() == 1 => c.scalar_value(),
+				} if c.is_scalar() => c.scalar_value(),
 				_ => Value::none(),
 			};
 
@@ -400,7 +387,7 @@ impl Vm {
 
 		let mut data = ColumnData::with_capacity(col_type.clone(), row_count);
 		for value in results {
-			let coerced = coerce_value(value, &col_type)?;
+			let coerced = self.coerce_value(value, &col_type)?;
 			data.push_value(coerced);
 		}
 		let result_col = Column::new(name.clone(), data);
@@ -412,7 +399,6 @@ impl Vm {
 		&mut self,
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
-		params: &Params,
 		func_def: &CompiledFunction,
 		args: Vec<Value>,
 		_name: &Fragment,
@@ -422,17 +408,17 @@ impl Vm {
 
 		for (param, arg) in func_def.parameters.iter().zip(args.into_iter()) {
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
-			self.symbols.set(param_name, Variable::scalar(arg), true)?;
+			self.symbols.set(param_name.clone(), Variable::scalar_named(&param_name, arg), true)?;
 		}
 
 		self.ip = 0;
 		let mut func_result = Vec::new();
-		self.run(services, tx, &func_def.body, params, &mut func_result)?;
+		self.run_isolated_body(services, tx, &func_def.body, &mut func_result)?;
 
 		let stack_value = collect_call_result(self, &mut func_result);
 		self.ip = saved_ip;
 		let _ = self.symbols.exit_scope();
-		let coerced = coerce_return_value(stack_value, func_def.return_type.as_ref())?;
+		let coerced = self.coerce_return_value(stack_value, func_def.return_type.as_ref())?;
 		self.stack.push(coerced);
 		Ok(())
 	}
@@ -441,7 +427,6 @@ impl Vm {
 		&mut self,
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
-		params: &Params,
 		closure: ClosureValue,
 		args: Vec<Value>,
 	) -> Result<()> {
@@ -454,12 +439,12 @@ impl Vm {
 
 		for (param, arg) in closure.def.parameters.iter().zip(args.into_iter()) {
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
-			self.symbols.set(param_name, Variable::scalar(arg), true)?;
+			self.symbols.set(param_name.clone(), Variable::scalar_named(&param_name, arg), true)?;
 		}
 
 		self.ip = 0;
 		let mut closure_result = Vec::new();
-		self.run(services, tx, &closure.def.body, params, &mut closure_result)?;
+		self.run_isolated_body(services, tx, &closure.def.body, &mut closure_result)?;
 
 		let stack_value = collect_call_result(self, &mut closure_result);
 		self.ip = saved_ip;
@@ -584,13 +569,14 @@ impl Vm {
 		self.symbols.enter_scope(ScopeType::Function);
 
 		for (param_def, arg) in proc_params.iter().zip(args.into_iter()) {
-			self.symbols.set(param_def.name.clone(), Variable::scalar(arg), true)?;
+			let bare_name = strip_dollar_prefix(&param_def.name);
+			self.symbols.set(param_def.name.clone(), Variable::scalar_named(bare_name, arg), true)?;
 		}
 
 		let mut proc_result = Vec::new();
 		for compiled in compiled_list.iter() {
 			self.ip = 0;
-			self.run(ctx.services, ctx.tx, &compiled.instructions, ctx.params, &mut proc_result)?;
+			self.run(ctx.services, ctx.tx, &compiled.instructions, &mut proc_result)?;
 			if !self.control_flow.is_normal() {
 				break;
 			}

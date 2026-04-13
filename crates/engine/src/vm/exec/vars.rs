@@ -16,14 +16,13 @@ use crate::{
 	vm::{stack::Variable, vm::Vm},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_load_var(&mut self, fragment: &Fragment) -> Result<()> {
 		let name = strip_dollar_prefix(fragment.text());
 		match self.symbols.get(name) {
 			Some(Variable::Columns {
 				columns: c,
-				is_scalar: true,
-			}) => {
+			}) if c.is_scalar() => {
 				if self.batch_size > 1 {
 					// Broadcast scalar to batch_size rows
 					let value = c.scalar_value();
@@ -32,15 +31,9 @@ impl Vm {
 						data.push_value(value.clone());
 					}
 					let col = Column::new(Fragment::internal(name), data);
-					self.stack.push(Variable::Columns {
-						columns: Columns::new(vec![col]),
-						is_scalar: false,
-					});
+					self.stack.push(Variable::columns(Columns::new(vec![col])));
 				} else {
-					self.stack.push(Variable::Columns {
-						columns: c.clone(),
-						is_scalar: true,
-					});
+					self.stack.push(Variable::columns(c.clone()));
 				}
 			}
 			Some(Variable::Closure(c)) => {
@@ -48,14 +41,10 @@ impl Vm {
 			}
 			Some(Variable::Columns {
 				columns: c,
-				is_scalar: false,
 			}) => {
 				if self.batch_size > 1 {
 					// In columnar mode, Columns variables are valid on the stack
-					self.stack.push(Variable::Columns {
-						columns: c.clone(),
-						is_scalar: false,
-					});
+					self.stack.push(Variable::columns(c.clone()));
 				} else {
 					return Err(TypeError::Runtime {
 						kind: RuntimeErrorKind::VariableIsDataframe {
@@ -90,7 +79,7 @@ impl Vm {
 	pub(crate) fn exec_store_var(&mut self, fragment: &Fragment) -> Result<()> {
 		let name = strip_dollar_prefix(fragment.text());
 		let value = self.pop_value()?;
-		self.symbols.reassign(name.to_string(), Variable::scalar(value))?;
+		self.symbols.reassign(name.to_string(), Variable::scalar_named(name, value))?;
 		Ok(())
 	}
 
@@ -98,33 +87,18 @@ impl Vm {
 		let name = strip_dollar_prefix(fragment.text());
 		let sv = self.stack.pop()?;
 		let variable = match sv {
-			Variable::Columns {
-				columns: c,
-				is_scalar: true,
-			} => Variable::Columns {
-				columns: c,
-				is_scalar: true,
-			},
 			Variable::Closure(c) => Variable::Closure(c),
 			Variable::Columns {
-				columns: c,
-				..
+				columns: mut c,
 			}
 			| Variable::ForIterator {
-				columns: c,
+				columns: mut c,
 				..
 			} => {
-				if c.len() == 1 && c.row_count() == 1 {
-					Variable::Columns {
-						columns: c,
-						is_scalar: true,
-					}
-				} else {
-					Variable::Columns {
-						columns: c,
-						is_scalar: false,
-					}
+				if c.is_scalar() {
+					c.columns.make_mut()[0].name = Fragment::internal(name);
 				}
+				Variable::columns(c)
 			}
 		};
 		self.symbols.set(name.to_string(), variable, true)?;
@@ -137,8 +111,7 @@ impl Vm {
 		match self.symbols.get(var_name) {
 			Some(Variable::Columns {
 				columns,
-				is_scalar: false,
-			}) => {
+			}) if !columns.is_scalar() => {
 				let col = columns.columns.iter().find(|c| c.name.text() == field_name);
 				match col {
 					Some(col) => {
@@ -167,7 +140,6 @@ impl Vm {
 				}
 			}
 			Some(Variable::Columns {
-				is_scalar: true,
 				..
 			})
 			| Some(Variable::Closure(_)) => {

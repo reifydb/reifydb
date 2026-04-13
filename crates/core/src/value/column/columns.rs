@@ -267,6 +267,10 @@ impl Columns {
 		}
 	}
 
+	pub fn is_scalar(&self) -> bool {
+		self.len() == 1 && self.row_count() == 1
+	}
+
 	pub fn get_row(&self, index: usize) -> Vec<Value> {
 		self.iter().map(|col| col.data().get_value(index)).collect()
 	}

@@ -20,90 +20,6 @@ use crate::{
 	vm::{stack::SymbolTable, volcano::query::QueryContext},
 };
 
-/// Session-scoped evaluation context — holds the invariant fields
-/// within a given operator. Provides factory methods to produce `EvalContext`
-/// values that vary only in `columns` and `row_count`.
-#[derive(Clone, Copy)]
-pub struct EvalSession<'a> {
-	pub params: &'a Params,
-	pub symbols: &'a SymbolTable,
-	pub functions: &'a Functions,
-	pub runtime_context: &'a RuntimeContext,
-	pub arena: Option<&'a QueryArena>,
-	pub identity: IdentityId,
-	pub is_aggregate_context: bool,
-}
-
-impl<'a> EvalSession<'a> {
-	pub fn eval(&self, columns: Columns, row_count: usize) -> EvalContext<'a> {
-		EvalContext {
-			target: None,
-			columns,
-			row_count,
-			take: None,
-			params: self.params,
-			symbols: self.symbols,
-			is_aggregate_context: self.is_aggregate_context,
-			functions: self.functions,
-			runtime_context: self.runtime_context,
-			arena: self.arena,
-			identity: self.identity,
-		}
-	}
-
-	pub fn eval_empty(&self) -> EvalContext<'a> {
-		self.eval(Columns::empty(), 1)
-	}
-
-	pub fn eval_join(&self, columns: Columns) -> EvalContext<'a> {
-		let mut ctx = self.eval(columns, 1);
-		ctx.take = Some(1);
-		ctx
-	}
-
-	pub fn from_transform(ctx: &'a TransformContext, stored: &'a QueryContext) -> Self {
-		Self {
-			params: ctx.params,
-			symbols: &stored.symbols,
-			functions: ctx.functions,
-			runtime_context: ctx.runtime_context,
-			arena: None,
-			identity: stored.identity,
-			is_aggregate_context: false,
-		}
-	}
-
-	pub fn from_query(ctx: &'a QueryContext) -> Self {
-		Self {
-			params: &ctx.params,
-			symbols: &ctx.symbols,
-			functions: &ctx.services.functions,
-			runtime_context: &ctx.services.runtime_context,
-			arena: None,
-			identity: ctx.identity,
-			is_aggregate_context: false,
-		}
-	}
-
-	pub fn testing() -> EvalSession<'static> {
-		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
-		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
-		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
-		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> =
-			LazyLock::new(|| RuntimeContext::with_clock(Clock::Real));
-
-		EvalSession {
-			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
-			functions: &EMPTY_FUNCTIONS,
-			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
-			arena: None,
-			identity: IdentityId::root(),
-			is_aggregate_context: false,
-		}
-	}
-}
-
 pub struct EvalContext<'a> {
 	pub target: Option<TargetColumn>,
 	pub columns: Columns,
@@ -119,8 +35,85 @@ pub struct EvalContext<'a> {
 }
 
 impl<'a> EvalContext<'a> {
-	pub fn testing() -> Self {
-		EvalSession::testing().eval_empty()
+	pub fn testing() -> EvalContext<'static> {
+		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
+		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
+		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
+		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> =
+			LazyLock::new(|| RuntimeContext::with_clock(Clock::Real));
+
+		EvalContext {
+			target: None,
+			columns: Columns::empty(),
+			row_count: 1,
+			take: None,
+			params: &EMPTY_PARAMS,
+			symbols: &EMPTY_SYMBOL_TABLE,
+			is_aggregate_context: false,
+			functions: &EMPTY_FUNCTIONS,
+			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
+			arena: None,
+			identity: IdentityId::root(),
+		}
+	}
+
+	/// Sibling context with fresh `columns` / `row_count`, sharing all invariant refs.
+	pub fn with_eval(&self, columns: Columns, row_count: usize) -> EvalContext<'a> {
+		EvalContext {
+			target: None,
+			columns,
+			row_count,
+			take: None,
+			params: self.params,
+			symbols: self.symbols,
+			is_aggregate_context: self.is_aggregate_context,
+			functions: self.functions,
+			runtime_context: self.runtime_context,
+			arena: self.arena,
+			identity: self.identity,
+		}
+	}
+
+	pub fn with_eval_empty(&self) -> EvalContext<'a> {
+		self.with_eval(Columns::empty(), 1)
+	}
+
+	pub fn with_eval_join(&self, columns: Columns) -> EvalContext<'a> {
+		let mut ctx = self.with_eval(columns, 1);
+		ctx.take = Some(1);
+		ctx
+	}
+
+	pub fn from_query(ctx: &'a QueryContext) -> Self {
+		EvalContext {
+			target: None,
+			columns: Columns::empty(),
+			row_count: 1,
+			take: None,
+			params: &ctx.params,
+			symbols: &ctx.symbols,
+			is_aggregate_context: false,
+			functions: &ctx.services.functions,
+			runtime_context: &ctx.services.runtime_context,
+			arena: None,
+			identity: ctx.identity,
+		}
+	}
+
+	pub fn from_transform(ctx: &'a TransformContext, stored: &'a QueryContext) -> Self {
+		EvalContext {
+			target: None,
+			columns: Columns::empty(),
+			row_count: 1,
+			take: None,
+			params: ctx.params,
+			symbols: &stored.symbols,
+			is_aggregate_context: false,
+			functions: ctx.functions,
+			runtime_context: ctx.runtime_context,
+			arena: None,
+			identity: stored.identity,
+		}
 	}
 
 	pub(crate) fn saturation_policy(&self) -> ColumnSaturationStrategy {

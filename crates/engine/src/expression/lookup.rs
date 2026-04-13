@@ -75,8 +75,8 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 
 	if let Some(Variable::Columns {
 		columns: scalar_cols,
-		is_scalar: true,
 	}) = ctx.symbols.get(name)
+		&& scalar_cols.is_scalar()
 		&& let Some(col) = scalar_cols.columns.first()
 	{
 		return extract_column_data(col, ctx);
@@ -173,7 +173,7 @@ pub mod tests {
 	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 	use super::column_lookup;
-	use crate::{expression::context::EvalSession, vm::stack::SymbolTable};
+	use crate::{expression::context::EvalContext, vm::stack::SymbolTable};
 
 	#[test]
 	fn test_column_not_found_returns_correct_row_count() {
@@ -182,7 +182,7 @@ pub mod tests {
 			Columns::new(vec![Column::new("existing_col".to_string(), ColumnData::int4([1, 2, 3, 4, 5]))]);
 
 		let runtime_ctx = RuntimeContext::with_clock(Clock::Real);
-		let session = EvalSession {
+		let base = EvalContext {
 			params: &Params::None,
 			symbols: &SymbolTable::new(),
 			functions: &Functions::empty(),
@@ -190,8 +190,12 @@ pub mod tests {
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,
+			columns: Columns::empty(),
+			row_count: 1,
+			target: None,
+			take: None,
 		};
-		let ctx = session.eval(columns, 5);
+		let ctx = base.with_eval(columns, 5);
 
 		// Try to access a column that doesn't exist
 		let result = column_lookup(

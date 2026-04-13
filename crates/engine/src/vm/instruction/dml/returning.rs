@@ -19,7 +19,7 @@ use crate::{
 	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
 	vm::{services::Services, stack::SymbolTable},
 };
@@ -104,7 +104,7 @@ pub(crate) fn evaluate_returning(
 		.collect();
 
 	let row_count = input.row_count();
-	let session = EvalSession {
+	let base = EvalContext {
 		params: &Params::None,
 		symbols,
 		functions: &services.functions,
@@ -112,11 +112,15 @@ pub(crate) fn evaluate_returning(
 		arena: None,
 		identity: IdentityId::root(),
 		is_aggregate_context: false,
+		columns: Columns::empty(),
+		row_count: 1,
+		target: None,
+		take: None,
 	};
 
 	let mut new_columns = Vec::with_capacity(compiled.len());
 	for compiled_expr in &compiled {
-		let exec_ctx = session.eval(input.clone(), row_count);
+		let exec_ctx = base.with_eval(input.clone(), row_count);
 		let column = compiled_expr.execute(&exec_ctx)?;
 		new_columns.push(column);
 	}

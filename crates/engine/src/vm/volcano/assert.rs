@@ -11,7 +11,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	error::EngineError,
-	expression::{context::EvalSession, eval::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -48,11 +48,11 @@ impl QueryNode for AssertNode {
 
 		if let Some(columns) = self.input.next(rx, ctx)? {
 			let row_count = columns.row_count();
-			let session = EvalSession::from_query(stored_ctx);
+			let session = EvalContext::from_query(stored_ctx);
 
 			// Evaluate each assert expression
 			for assert_expr in &self.expressions {
-				let eval_ctx = session.eval(columns.clone(), row_count);
+				let eval_ctx = session.with_eval(columns.clone(), row_count);
 
 				let result = evaluate(&eval_ctx, assert_expr)?;
 
@@ -133,10 +133,10 @@ impl QueryNode for AssertWithoutInputNode {
 
 		debug_assert!(self.context.is_some(), "AssertWithoutInputNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
-		let session = EvalSession::from_query(stored_ctx);
+		let session = EvalContext::from_query(stored_ctx);
 
 		for assert_expr in &self.expressions {
-			let eval_ctx = session.eval_empty();
+			let eval_ctx = session.with_eval_empty();
 
 			let result = evaluate(&eval_ctx, assert_expr)?;
 

@@ -20,7 +20,7 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	expression::{cast::cast_column_data, context::EvalSession, eval::evaluate},
+	expression::{cast::cast_column_data, context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -413,7 +413,7 @@ impl InlineDataNode {
 			rows_data.push(row_map);
 		}
 
-		let session = EvalSession::from_query(ctx);
+		let session = EvalContext::from_query(ctx);
 
 		// Create columns - start with wide types
 		let mut columns = Vec::new();
@@ -429,7 +429,7 @@ impl InlineDataNode {
 					if column_fragment.is_none() {
 						column_fragment = Some(alias_expr.fragment.clone());
 					}
-					let eval_ctx = session.eval_empty();
+					let eval_ctx = session.with_eval_empty();
 
 					let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
 
@@ -484,7 +484,7 @@ impl InlineDataNode {
 					} else {
 						// Cast to the wide type
 						let temp_data = ColumnData::from(value.clone());
-						let eval_ctx = session.eval_empty();
+						let eval_ctx = session.with_eval_empty();
 
 						match cast_column_data(
 							&eval_ctx,
@@ -515,7 +515,7 @@ impl InlineDataNode {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
 				if optimal_type != Type::Int16 {
 					// Demote to the optimal type
-					let eval_ctx = session.eval(Columns::empty(), column_data.len());
+					let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
 
 					if let Ok(demoted) =
 						cast_column_data(&eval_ctx, &column_data, optimal_type, || {
@@ -543,7 +543,7 @@ impl InlineDataNode {
 	fn next_with_source(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
 		let source = ctx.source.as_ref().unwrap(); // Safe because headers is Some
 		let headers = self.headers.as_ref().unwrap(); // Safe because we're in this path
-		let session = EvalSession::from_query(ctx);
+		let session = EvalContext::from_query(ctx);
 
 		// Convert rows to HashMap for easier column lookup
 		let mut rows_data: Vec<HashMap<String, &AliasExpression>> = Vec::new();
@@ -577,7 +577,7 @@ impl InlineDataNode {
 					if column_fragment.is_none() {
 						column_fragment = Some(alias_expr.fragment.clone());
 					}
-					let mut eval_ctx = session.eval_empty();
+					let mut eval_ctx = session.with_eval_empty();
 					eval_ctx.target = table_column.map(|tc| TargetColumn::Partial {
 						source_name: Some(source.identifier().text().to_string()),
 						column_name: Some(tc.name.clone()),
@@ -646,7 +646,7 @@ impl InlineDataNode {
 			if table_column.is_none() {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
 				if optimal_type != Type::Int16 {
-					let eval_ctx = session.eval(Columns::empty(), column_data.len());
+					let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
 					if let Ok(demoted) =
 						cast_column_data(&eval_ctx, &column_data, optimal_type, || {
 							Fragment::none()

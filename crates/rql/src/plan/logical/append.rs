@@ -7,7 +7,7 @@ use reifydb_type::{err, error::Diagnostic, fragment::Fragment};
 use crate::{
 	Result,
 	ast::ast::{Ast, AstAppend, AstAppendSource, AstList},
-	bump::{BumpBox, BumpFragment},
+	bump::BumpBox,
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{AppendNode, AppendSourcePlan, Compiler, InlineDataNode, LogicalPlan},
 };
@@ -24,8 +24,7 @@ impl<'bump> Compiler<'bump> {
 				source,
 				..
 			} => {
-				let target_text = target.name();
-				let target = BumpFragment::internal(self.bump, target_text);
+				let target = target.token.fragment;
 
 				let source = match source {
 					AstAppendSource::Statement(statement) => {

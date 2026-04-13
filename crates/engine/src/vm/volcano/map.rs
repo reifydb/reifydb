@@ -19,7 +19,7 @@ use crate::{
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
 	vm::volcano::{
 		query::{QueryContext, QueryNode},
@@ -108,11 +108,11 @@ impl Transform for MapNode {
 			self.context.as_ref().expect("MapNode::apply() called before initialize()");
 
 		let row_count = input.row_count();
-		let session = EvalSession::from_transform(ctx, stored_ctx);
+		let session = EvalContext::from_transform(ctx, stored_ctx);
 		let mut new_columns = Vec::with_capacity(compiled.len());
 
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = session.eval(input.clone(), row_count);
+			let mut exec_ctx = session.with_eval(input.clone(), row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();
@@ -199,14 +199,14 @@ impl QueryNode for MapWithoutInputNode {
 			return Ok(None);
 		}
 
-		let session = EvalSession::from_query(stored_ctx);
+		let session = EvalContext::from_query(stored_ctx);
 		let mut columns = vec![];
 
 		for compiled_expr in compiled {
 			// If we have UDF result columns, include them so __udf_N column refs resolve
 			let exec_ctx = match &self.udf_columns {
-				Some(udf_cols) => session.eval(udf_cols.clone(), 1),
-				None => session.eval_empty(),
+				Some(udf_cols) => session.with_eval(udf_cols.clone(), 1),
+				None => session.with_eval_empty(),
 			};
 
 			let column = compiled_expr.execute(&exec_ctx)?;

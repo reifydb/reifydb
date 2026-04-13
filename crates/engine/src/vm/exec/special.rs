@@ -28,7 +28,7 @@ use crate::{
 	},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_dispatch(
 		&mut self,
 		services: &Arc<Services>,
@@ -52,9 +52,8 @@ impl Vm {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		node: &MigrateNode,
-		params: &Params,
 	) -> Result<()> {
-		let columns = execute_migrate(self, services, tx, node.clone(), params)?;
+		let columns = execute_migrate(self, services, tx, node.clone())?;
 		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
@@ -64,9 +63,8 @@ impl Vm {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		node: &RollbackMigrationNode,
-		params: &Params,
 	) -> Result<()> {
-		let columns = execute_rollback_migration(self, services, tx, node.clone(), params)?;
+		let columns = execute_rollback_migration(self, services, tx, node.clone())?;
 		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
@@ -76,7 +74,6 @@ impl Vm {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		node: &AssertBlockNode,
-		params: &Params,
 	) -> Result<()> {
 		let rql = &node.rql;
 		let compile_result = services.compiler.compile(tx, rql);
@@ -94,13 +91,8 @@ impl Vm {
 						let saved_ip = self.ip;
 						self.ip = 0;
 						let mut discard = Vec::new();
-						let exec_result = self.run(
-							services,
-							tx,
-							&unit.instructions,
-							params,
-							&mut discard,
-						);
+						let exec_result =
+							self.run(services, tx, &unit.instructions, &mut discard);
 						self.ip = saved_ip;
 						if let Err(e) = exec_result {
 							caught_diagnostic = Some(e.0);
@@ -145,7 +137,7 @@ impl Vm {
 				let saved_ip = self.ip;
 				self.ip = 0;
 				let mut discard = Vec::new();
-				let exec_result = self.run(services, tx, &unit.instructions, params, &mut discard);
+				let exec_result = self.run(services, tx, &unit.instructions, &mut discard);
 				self.ip = saved_ip;
 				if let Err(e) = exec_result {
 					last_error = Some(e);

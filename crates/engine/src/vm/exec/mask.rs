@@ -211,7 +211,7 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
 	}
 }
 
-impl Vm {
+impl<'a> Vm<'a> {
 	/// Returns the current effective mask as a BitVec.
 	/// If no mask is active, returns an all-true BitVec of batch_size.
 	pub(crate) fn effective_mask(&self) -> BitVec {

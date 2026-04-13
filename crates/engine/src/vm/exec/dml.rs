@@ -23,7 +23,7 @@ fn reject_query_txn(tx: &Transaction<'_>) -> Result<()> {
 	Ok(())
 }
 
-impl Vm {
+impl<'a> Vm<'a> {
 	/// Execute a DML operation that takes params and a read-only reference to the symbol table.
 	/// Used by Delete, Update, InsertRingBuffer, InsertSeries, etc.
 	pub(crate) fn exec_dml_with_params<F>(

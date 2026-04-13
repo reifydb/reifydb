@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{compiler::CompilationResult, nodes::MigrateNode};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{params::Params, value::Value};
+use reifydb_type::value::Value;
 
 use crate::{
 	Result,
@@ -22,7 +22,6 @@ pub(crate) fn execute_migrate(
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	plan: MigrateNode,
-	params: &Params,
 ) -> Result<Columns> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
@@ -82,7 +81,6 @@ pub(crate) fn execute_migrate(
 						services,
 						&mut Transaction::Admin(&mut *txn),
 						&compiled_unit.instructions,
-						params,
 						&mut migration_result,
 					)?;
 				}
@@ -100,7 +98,6 @@ pub(crate) fn execute_migrate(
 						services,
 						&mut Transaction::Admin(&mut *txn),
 						&compiled_unit.instructions,
-						params,
 						&mut migration_result,
 					)?;
 				}

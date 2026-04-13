@@ -11,7 +11,7 @@ use crate::{
 
 const MAX_ITERATIONS: usize = 10_000;
 
-impl Vm {
+impl<'a> Vm<'a> {
 	/// Jump to address. Returns true if the jump was taken (caller should `continue`).
 	pub(crate) fn exec_jump(&mut self, addr: usize) -> Result<()> {
 		self.iteration_count += 1;

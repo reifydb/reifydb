@@ -19,7 +19,7 @@ use crate::{
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
 	vm::volcano::{
 		query::{QueryContext, QueryNode},
@@ -145,10 +145,10 @@ impl Transform for PatchNode {
 
 		let patch_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
 
-		let session = EvalSession::from_transform(ctx, stored_ctx);
+		let session = EvalContext::from_transform(ctx, stored_ctx);
 		let mut patch_columns = Vec::with_capacity(self.expressions.len());
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = session.eval(input.clone(), row_count);
+			let mut exec_ctx = session.with_eval(input.clone(), row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();

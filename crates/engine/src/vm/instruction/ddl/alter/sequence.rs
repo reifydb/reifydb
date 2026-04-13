@@ -18,7 +18,7 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	expression::{context::EvalSession, eval::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::{services::Services, stack::SymbolTable},
 };
 
@@ -54,7 +54,7 @@ pub(crate) fn alter_table_sequence(
 	static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
-	let session = EvalSession {
+	let base = EvalContext {
 		params: &EMPTY_PARAMS,
 		symbols: &EMPTY_SYMBOL_TABLE,
 		functions: &services.functions,
@@ -62,8 +62,12 @@ pub(crate) fn alter_table_sequence(
 		arena: None,
 		identity: IdentityId::root(),
 		is_aggregate_context: false,
+		columns: Columns::empty(),
+		row_count: 1,
+		target: None,
+		take: None,
 	};
-	let mut eval_ctx = session.eval_empty();
+	let mut eval_ctx = base.with_eval_empty();
 	eval_ctx.target = Some(TargetColumn::Partial {
 		source_name: None,
 		column_name: None,

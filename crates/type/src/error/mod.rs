@@ -365,6 +365,12 @@ pub enum RuntimeErrorKind {
 	AppendTargetNotFrame {
 		name: String,
 	},
+	AppendColumnMismatch {
+		name: String,
+		existing: Vec<String>,
+		incoming: Vec<String>,
+		fragment: Fragment,
+	},
 	ExpectedSingleColumn {
 		actual: usize,
 	},

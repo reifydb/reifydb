@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_engine::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
 	vm::stack::SymbolTable,
 };
@@ -77,7 +77,7 @@ impl FilterOperator {
 			return Ok(Vec::new());
 		}
 
-		let session = EvalSession {
+		let session = EvalContext {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
@@ -85,8 +85,12 @@ impl FilterOperator {
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,
+			columns: Columns::empty(),
+			row_count: 1,
+			target: None,
+			take: None,
 		};
-		let exec_ctx = session.eval(columns.clone(), row_count);
+		let exec_ctx = session.with_eval(columns.clone(), row_count);
 
 		// Start with all rows passing
 		let mut mask = vec![true; row_count];

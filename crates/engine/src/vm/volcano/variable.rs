@@ -6,7 +6,6 @@ use std::sync::Arc;
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::VariableExpression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
 
 use crate::{
 	Result,
@@ -53,21 +52,9 @@ impl QueryNode for VariableNode {
 		match ctx.symbols.get(variable_name) {
 			Some(Variable::Columns {
 				columns,
-				is_scalar: true,
 			}) => {
-				let mut columns = columns.clone();
-				columns[0].name = Fragment::internal(variable_name);
 				self.executed = true;
-				Ok(Some(columns))
-			}
-			Some(Variable::Columns {
-				columns: frame_columns,
-				is_scalar: false,
-			}) => {
-				// Return the frame directly
-				self.executed = true;
-
-				Ok(Some(frame_columns.clone()))
+				Ok(Some(columns.clone()))
 			}
 			Some(Variable::ForIterator {
 				columns,

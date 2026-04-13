@@ -21,7 +21,7 @@ pub(crate) fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a m
 	}
 }
 
-impl Vm {
+impl<'a> Vm<'a> {
 	/// Execute a DDL operation that requires an AdminTransaction.
 	/// Extracts the transaction, calls the handler, and pushes the result onto the stack.
 	pub(crate) fn exec_ddl<F>(

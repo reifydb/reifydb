@@ -18,7 +18,7 @@ use reifydb_type::{Result, params::Params, value::identity::IdentityId};
 use crate::{
 	expression::{
 		compile::compile_expression,
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
 	vm::{services::Services, stack::SymbolTable},
 };
@@ -99,7 +99,7 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 		};
 		let compiled = compile_expression(&compile_ctx, expr)?;
 
-		let session = EvalSession {
+		let base = EvalContext {
 			params: &Params::None,
 			symbols: self.symbols,
 			functions: &self.services.functions,
@@ -107,8 +107,12 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 			arena: None,
 			identity,
 			is_aggregate_context: false,
+			columns: Columns::empty(),
+			row_count: 1,
+			target: None,
+			take: None,
 		};
-		let eval_ctx = session.eval(columns.clone(), row_count);
+		let eval_ctx = base.with_eval(columns.clone(), row_count);
 
 		let result = compiled.execute(&eval_ctx)?;
 

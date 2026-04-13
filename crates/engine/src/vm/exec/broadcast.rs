@@ -10,7 +10,7 @@ use reifydb_core::value::column::{Column, data::ColumnData};
 
 use crate::{Result, vm::vm::Vm};
 
-impl Vm {
+impl<'a> Vm<'a> {
 	/// Pop a Variable from the stack and extract its single Column.
 	pub(crate) fn pop_as_column(&mut self) -> Result<Column> {
 		self.stack.pop()?.into_column()

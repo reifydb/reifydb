@@ -1385,6 +1385,10 @@ impl IntoDiagnostic for TypeError {
 						"RUNTIME_008",
 						Some("APPEND can only target Frame variables. Use a new variable name or ensure the target was created by APPEND or FROM".to_string()),
 					),
+					RuntimeErrorKind::AppendColumnMismatch { .. } => (
+						"RUNTIME_011",
+						Some("APPEND requires the new rows to have the same columns as the target.".to_string()),
+					),
 					RuntimeErrorKind::ExpectedSingleColumn { actual } => (
 						"RUNTIME_010",
 						Some(format!(
@@ -1405,11 +1409,16 @@ impl IntoDiagnostic for TypeError {
 							"Use first() to take the first value from the first column".to_string(),
 						]
 					}
+					RuntimeErrorKind::AppendColumnMismatch { existing, incoming, .. } => vec![
+						format!("existing columns: [{}]", existing.join(", ")),
+						format!("incoming columns: [{}]", incoming.join(", ")),
+					],
 					_ => vec![],
 				};
 
 				let fragment = match &kind {
 					RuntimeErrorKind::UndefinedFunction { name } => Fragment::internal(name.clone()),
+					RuntimeErrorKind::AppendColumnMismatch { fragment, .. } => fragment.clone(),
 					_ => Fragment::None,
 				};
 

@@ -15,23 +15,20 @@ use reifydb_rql::{
 	instruction::{Instruction, ScopeType},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
-	params::Params,
-	value::{Value, frame::frame::Frame, r#type::Type},
-};
+use reifydb_type::value::{Value, frame::frame::Frame, r#type::Type};
 use tracing::instrument;
 
 use crate::{
 	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 		udf_extract::{ExtractedUdf, extract_udf_calls},
 	},
 	vm::{
 		exec::{call::collect_call_result, stack::strip_dollar_prefix},
 		stack::{SymbolTable, Variable},
-		vm::Vm,
+		vm::{EMPTY_PARAMS, Vm},
 		volcano::query::{QueryContext, QueryNode},
 	},
 };
@@ -133,8 +130,8 @@ impl QueryNode for UdfEvalNode {
 
 		for call in compiled_calls {
 			// Evaluate argument expressions column-oriented
-			let session = EvalSession::from_query(stored_ctx);
-			let eval_ctx = session.eval(columns.clone(), row_count);
+			let session = EvalContext::from_query(stored_ctx);
+			let eval_ctx = session.with_eval(columns.clone(), row_count);
 
 			let mut arg_columns = Vec::with_capacity(call.compiled_args.len());
 			for compiled_arg in &call.compiled_args {
@@ -154,15 +151,15 @@ impl QueryNode for UdfEvalNode {
 				}
 
 				// Execute via columnar VM — one invocation for all rows
-				let mut vm = Vm::with_batch_size(func_symbols, row_count);
-				let mut func_result: Vec<Frame> = Vec::new();
-				vm.run(
+				let mut vm = Vm::with_batch_size_from_services(
+					func_symbols,
+					row_count,
 					&stored_ctx.services,
-					rx,
-					&call.udf.func_def.body,
-					&Params::None,
-					&mut func_result,
-				)?;
+					&EMPTY_PARAMS,
+					stored_ctx.identity,
+				);
+				let mut func_result: Vec<Frame> = Vec::new();
+				vm.run(&stored_ctx.services, rx, &call.udf.func_def.body, &mut func_result)?;
 
 				// Extract result column from return value
 				let result_var = collect_call_result(&mut vm, &mut func_result);
@@ -195,25 +192,19 @@ impl QueryNode for UdfEvalNode {
 						func_symbols.set(param_name, Variable::scalar(value), true)?;
 					}
 
-					let mut vm = Vm::new(func_symbols);
-					let mut func_result: Vec<Frame> = Vec::new();
-					vm.run(
+					let mut vm = Vm::from_services(
+						func_symbols,
 						&stored_ctx.services,
-						rx,
-						&call.udf.func_def.body,
-						&Params::None,
-						&mut func_result,
-					)?;
+						&EMPTY_PARAMS,
+						stored_ctx.identity,
+					);
+					let mut func_result: Vec<Frame> = Vec::new();
+					vm.run(&stored_ctx.services, rx, &call.udf.func_def.body, &mut func_result)?;
 					let result_var = collect_call_result(&mut vm, &mut func_result);
 					let result = match result_var {
 						Variable::Columns {
 							columns: c,
-							is_scalar: true,
-						} => c.scalar_value(),
-						Variable::Columns {
-							columns: c,
-							..
-						} if c.len() == 1 && c.row_count() == 1 => c.scalar_value(),
+						} if c.is_scalar() => c.scalar_value(),
 						_ => Value::none(),
 					};
 
@@ -320,7 +311,7 @@ pub(crate) fn evaluate_udfs_no_input(
 		functions: &ctx.services.functions,
 		symbols: &ctx.symbols,
 	};
-	let session = EvalSession::from_query(ctx);
+	let session = EvalContext::from_query(ctx);
 	let mut result_columns = Vec::new();
 
 	for udf in &all_udfs {
@@ -330,7 +321,7 @@ pub(crate) fn evaluate_udfs_no_input(
 		// Evaluate arguments as scalar expressions (no input columns)
 		for (param, arg_expr) in udf.func_def.parameters.iter().zip(udf.arg_expressions.iter()) {
 			let compiled_arg = compile_expression(&compile_ctx, arg_expr).expect("compile UDF arg");
-			let eval_ctx = session.eval_empty();
+			let eval_ctx = session.with_eval_empty();
 			let arg_col = compiled_arg.execute(&eval_ctx)?;
 			let value = arg_col.data().get_value(0);
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();
@@ -338,19 +329,14 @@ pub(crate) fn evaluate_udfs_no_input(
 		}
 
 		// Execute UDF via canonical VM
-		let mut vm = Vm::new(func_symbols);
+		let mut vm = Vm::from_services(func_symbols, &ctx.services, &EMPTY_PARAMS, ctx.identity);
 		let mut func_result: Vec<Frame> = Vec::new();
-		vm.run(&ctx.services, rx, &udf.func_def.body, &Params::None, &mut func_result)?;
+		vm.run(&ctx.services, rx, &udf.func_def.body, &mut func_result)?;
 		let result_var = collect_call_result(&mut vm, &mut func_result);
 		let value = match result_var {
 			Variable::Columns {
 				columns: c,
-				is_scalar: true,
-			} => c.scalar_value(),
-			Variable::Columns {
-				columns: c,
-				..
-			} if c.len() == 1 && c.row_count() == 1 => c.scalar_value(),
+			} if c.is_scalar() => c.scalar_value(),
 			_ => Value::none(),
 		};
 

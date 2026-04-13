@@ -10,13 +10,13 @@ use crate::{
 	Result,
 	expression::{
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
-		context::{EvalContext, EvalSession},
+		context::EvalContext,
 		prefix::prefix_apply,
 	},
 	vm::{stack::Variable, vm::Vm},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	fn exec_binary_column_op<F>(&mut self, op: F, frag: fn() -> Fragment) -> Result<()>
 	where
 		F: FnOnce(&EvalContext, &Column, &Column, fn() -> Fragment) -> Result<Column>,
@@ -24,8 +24,7 @@ impl Vm {
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
 		let (left, right) = broadcast_to_match(left, right);
-		let session = EvalSession::testing();
-		let ctx = session.eval(Columns::empty(), self.batch_size);
+		let ctx = self.eval_ctx();
 		let result = op(&ctx, &left, &right, frag)?;
 		self.stack.push(Variable::columns(Columns::new(vec![result])));
 		Ok(())

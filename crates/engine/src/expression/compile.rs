@@ -170,8 +170,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				match ctx.symbols.get(variable_name) {
 					Some(Variable::Columns {
 						columns,
-						is_scalar: true,
-					}) => {
+					}) if columns.is_scalar() => {
 						let value = columns.scalar_value();
 						let mut data =
 							ColumnData::with_capacity(value.get_type(), ctx.row_count);
@@ -184,7 +183,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						})
 					}
 					Some(Variable::Columns {
-						is_scalar: false,
 						..
 					})
 					| Some(Variable::ForIterator {
@@ -718,8 +716,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					match ctx.symbols.get(variable_name) {
 						Some(Variable::Columns {
 							columns,
-							is_scalar: false,
-						}) => {
+						}) if !columns.is_scalar() => {
 							let col = columns
 								.columns
 								.iter()
@@ -764,7 +761,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 							}
 						}
 						Some(Variable::Columns {
-							is_scalar: true,
 							..
 						})
 						| Some(Variable::Closure(_)) => Err(TypeError::Runtime {

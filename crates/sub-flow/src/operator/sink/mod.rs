@@ -23,7 +23,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
-	expression::{cast::cast_column_data, context::EvalSession},
+	expression::{cast::cast_column_data, context::EvalContext},
 	vm::stack::SymbolTable,
 };
 use reifydb_routine::function::registry::Functions;
@@ -65,7 +65,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		// Create context with Undefined saturation policy for this column
 		// This ensures overflow during cast produces undefined instead of errors
 		// FIXME how to handle failing views ?!
-		let session = EvalSession {
+		let session = EvalContext {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &EMPTY_FUNCTIONS,
@@ -73,8 +73,12 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,
+			columns: Columns::empty(),
+			row_count: 1,
+			target: None,
+			take: None,
 		};
-		let mut ctx = session.eval(columns.clone(), row_count);
+		let mut ctx = session.with_eval(columns.clone(), row_count);
 		ctx.target = Some(TargetColumn::Partial {
 			source_name: None,
 			column_name: Some(target_col.name.clone()),

@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
+use reifydb_routine::function::registry::Functions;
 use reifydb_rql::instruction::{Instruction, ScopeType};
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	params::Params,
 	util::bitvec::BitVec,
-	value::{Value, frame::frame::Frame},
+	value::{Value, frame::frame::Frame, identity::IdentityId},
 };
 
 use super::{
@@ -52,6 +54,7 @@ use super::{
 };
 use crate::{
 	Result,
+	expression::context::EvalContext,
 	vm::instruction::ddl::{
 		alter::policy::alter_policy,
 		create::{
@@ -67,7 +70,12 @@ use crate::{
 	},
 };
 
-pub struct Vm {
+/// A `&'static Params` value pointing at `Params::None`. Used by UDF / test
+/// runner Vm construction sites to make the "no caller params inside a UDF
+/// body" semantics explicit at the call site.
+pub static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
+
+pub struct Vm<'a> {
 	pub(crate) ip: usize,
 	pub(crate) iteration_count: usize,
 	pub(crate) stack: Stack,
@@ -82,25 +90,44 @@ pub struct Vm {
 	pub(crate) mask_stack: Vec<MaskFrame>,
 	/// Stack of loop mask states for nested WHILE loops in columnar mode.
 	pub(crate) loop_mask_stack: Vec<LoopMaskState>,
+	/// Borrowed evaluation invariants — combined with `&self.symbols` on demand
+	/// in `eval_ctx()` to produce a full `EvalContext`. Stored as loose fields
+	/// rather than a nested `EvalContext` because the latter would need
+	/// `&self.symbols` and would be self-referential.
+	pub(crate) params: &'a Params,
+	pub(crate) functions: &'a Functions,
+	pub(crate) runtime_context: &'a RuntimeContext,
+	pub(crate) identity: IdentityId,
 }
 
-impl Vm {
-	pub fn new(symbols: SymbolTable) -> Self {
-		Self {
-			ip: 0,
-			iteration_count: 0,
-			stack: Stack::new(),
-			symbols,
-			control_flow: ControlFlow::Normal,
-			dispatch_depth: 0,
-			batch_size: 1,
-			active_mask: None,
-			mask_stack: Vec::new(),
-			loop_mask_stack: Vec::new(),
-		}
+impl<'a> Vm<'a> {
+	pub fn from_services(
+		symbols: SymbolTable,
+		services: &'a Services,
+		params: &'a Params,
+		identity: IdentityId,
+	) -> Self {
+		Self::build(symbols, 1, params, &services.functions, &services.runtime_context, identity)
 	}
 
-	pub fn with_batch_size(symbols: SymbolTable, batch_size: usize) -> Self {
+	pub fn with_batch_size_from_services(
+		symbols: SymbolTable,
+		batch_size: usize,
+		services: &'a Services,
+		params: &'a Params,
+		identity: IdentityId,
+	) -> Self {
+		Self::build(symbols, batch_size, params, &services.functions, &services.runtime_context, identity)
+	}
+
+	fn build(
+		symbols: SymbolTable,
+		batch_size: usize,
+		params: &'a Params,
+		functions: &'a Functions,
+		runtime_context: &'a RuntimeContext,
+		identity: IdentityId,
+	) -> Self {
 		Self {
 			ip: 0,
 			iteration_count: 0,
@@ -112,7 +139,45 @@ impl Vm {
 			active_mask: None,
 			mask_stack: Vec::new(),
 			loop_mask_stack: Vec::new(),
+			params,
+			functions,
+			runtime_context,
+			identity,
 		}
+	}
+
+	pub(crate) fn eval_ctx(&self) -> EvalContext<'_> {
+		EvalContext {
+			params: self.params,
+			symbols: &self.symbols,
+			functions: self.functions,
+			runtime_context: self.runtime_context,
+			arena: None,
+			identity: self.identity,
+			is_aggregate_context: false,
+			columns: Columns::empty(),
+			row_count: self.batch_size,
+			target: None,
+			take: None,
+		}
+	}
+
+	/// Execute `instructions` on this Vm with `self.params` temporarily swapped to
+	/// `Params::None`. Used for UDF and closure bodies, which are isolated from the
+	/// caller's `$param` bindings (formal parameters are bound via the symbol table,
+	/// not `Params`). Ensures the swap is reverted even if the body errors.
+	pub(crate) fn run_isolated_body(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		instructions: &[Instruction],
+		result: &mut Vec<Frame>,
+	) -> Result<()> {
+		let saved = self.params;
+		self.params = &EMPTY_PARAMS;
+		let run_result = self.run(services, tx, instructions, result);
+		self.params = saved;
+		run_result
 	}
 
 	/// Pop a scalar Value from the stack. Works for Scalar(Columns) and
@@ -129,12 +194,7 @@ impl Vm {
 		match self.stack.pop()? {
 			Variable::Columns {
 				columns: c,
-				is_scalar: true,
-			} => Ok(c.scalar_value()),
-			Variable::Columns {
-				columns: c,
-				..
-			} if c.len() == 1 && c.row_count() == 1 => Ok(c.scalar_value()),
+			} if c.is_scalar() => Ok(c.scalar_value()),
 			_ => Err(internal_error!("Expected scalar value on stack")),
 		}
 	}
@@ -159,9 +219,9 @@ impl Vm {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		instructions: &[Instruction],
-		params: &Params,
 		result: &mut Vec<Frame>,
 	) -> Result<()> {
+		let params = self.params;
 		while self.ip < instructions.len() {
 			// Check if current IP is a mask merge point (end of else-branch)
 			if self.batch_size > 1 && self.check_mask_merge_point()? {
@@ -323,7 +383,7 @@ impl Vm {
 					arity,
 					is_procedure_call,
 				} => {
-					self.exec_call(services, tx, params, name, *arity, *is_procedure_call)?;
+					self.exec_call(services, tx, name, *arity, *is_procedure_call)?;
 				}
 				Instruction::ReturnValue => {
 					self.exec_return_value()?;
@@ -526,11 +586,9 @@ impl Vm {
 				}
 
 				Instruction::Dispatch(n) => self.exec_dispatch(services, tx, n, params)?,
-				Instruction::Migrate(n) => self.exec_migrate(services, tx, n, params)?,
-				Instruction::RollbackMigration(n) => {
-					self.exec_rollback_migration(services, tx, n, params)?
-				}
-				Instruction::AssertBlock(n) => self.exec_assert_block(services, tx, n, params)?,
+				Instruction::Migrate(n) => self.exec_migrate(services, tx, n)?,
+				Instruction::RollbackMigration(n) => self.exec_rollback_migration(services, tx, n)?,
+				Instruction::AssertBlock(n) => self.exec_assert_block(services, tx, n)?,
 			}
 
 			self.ip += 1;

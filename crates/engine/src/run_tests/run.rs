@@ -13,10 +13,7 @@ use reifydb_rql::{
 	nodes::{RunTestsNode, RunTestsScope},
 };
 use reifydb_transaction::transaction::{TestTransaction, Transaction};
-use reifydb_type::{
-	params::Params,
-	value::{Value, duration::Duration as RqlDuration, frame::frame::Frame},
-};
+use reifydb_type::value::{Value, duration::Duration as RqlDuration, frame::frame::Frame};
 
 use crate::{
 	Result,
@@ -32,7 +29,6 @@ fn run_single(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	body: &str,
-	params: &Params,
 	named_vars: Option<&HashMap<String, Value>>,
 ) -> (String, String) {
 	match services.compiler.compile(txn, body) {
@@ -57,13 +53,9 @@ fn run_single(
 				for compiled_unit in compiled_list.iter() {
 					vm.ip = 0;
 					let mut test_result = Vec::new();
-					if let Err(e) = vm.run(
-						services,
-						txn,
-						&compiled_unit.instructions,
-						params,
-						&mut test_result,
-					) {
+					if let Err(e) =
+						vm.run(services, txn, &compiled_unit.instructions, &mut test_result)
+					{
 						exec_error = Some(e);
 						break;
 					}
@@ -99,7 +91,7 @@ fn resolve_params(vm: &mut Vm, services: &Arc<Services>, txn: &mut Transaction<'
 
 			for compiled_unit in compiled_list.iter() {
 				vm.ip = 0;
-				vm.run(services, txn, &compiled_unit.instructions, &Params::None, &mut frames)?;
+				vm.run(services, txn, &compiled_unit.instructions, &mut frames)?;
 			}
 
 			vm.ip = saved_ip;
@@ -127,7 +119,6 @@ pub(crate) fn run_tests(
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	plan: RunTestsNode,
-	params: &Params,
 ) -> Result<Columns> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
@@ -205,7 +196,6 @@ pub(crate) fn run_tests(
 					services,
 					&mut Transaction::Test(Box::new(test_txn.reborrow())),
 					&test.body,
-					params,
 					None,
 				);
 				test_txn.restore();
@@ -267,7 +257,6 @@ pub(crate) fn run_tests(
 						services,
 						&mut Transaction::Test(Box::new(test_txn.reborrow())),
 						&test.body,
-						params,
 						Some(&named_vars),
 					);
 					test_txn.restore();

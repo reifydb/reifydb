@@ -22,7 +22,7 @@ use crate::{
 	},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_query(
 		&mut self,
 		services: &Arc<Services>,

@@ -12,7 +12,7 @@ use crate::{
 	vm::{stack::Variable, vm::Vm},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_for_init(&mut self, variable_name: &Fragment) -> Result<()> {
 		let columns = match self.stack.pop()? {
 			Variable::Columns {

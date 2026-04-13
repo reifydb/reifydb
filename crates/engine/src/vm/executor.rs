@@ -190,9 +190,9 @@ fn execute_compiled_units(
 
 	for compiled in compiled_list.iter() {
 		result.clear();
-		let mut vm = Vm::new(symbols);
+		let mut vm = Vm::from_services(symbols, services, params, tx.identity());
 		let start = services.runtime_context.clock.instant();
-		let run_result = vm.run(services, tx, &compiled.instructions, params, &mut result);
+		let run_result = vm.run(services, tx, &compiled.instructions, &mut result);
 		let execute_duration = start.elapsed();
 		symbols = vm.symbols;
 
@@ -309,9 +309,9 @@ impl Executor {
 		let mut metrics = Vec::new();
 		for compiled in compiled_list.iter() {
 			result.clear();
-			let mut vm = Vm::new(symbols);
+			let mut vm = Vm::from_services(symbols, &self.0, &params, tx.identity());
 			let start_execute = self.0.runtime_context.clock.instant();
-			let run_result = vm.run(&self.0, tx, &compiled.instructions, &params, &mut result);
+			let run_result = vm.run(&self.0, tx, &compiled.instructions, &mut result);
 			let execute_duration = start_execute.elapsed();
 			symbols = vm.symbols;
 
@@ -439,15 +439,9 @@ impl Executor {
 
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
-					let mut vm = Vm::new(symbols);
+					let mut vm = Vm::from_services(symbols, &self.0, &cmd.params, tx.identity());
 					let start_execute = self.0.runtime_context.clock.instant();
-					let run_result = vm.run(
-						&self.0,
-						&mut tx,
-						&compiled.instructions,
-						&cmd.params,
-						&mut result,
-					);
+					let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
 					let execute_duration = start_execute.elapsed();
 					symbols = vm.symbols;
 
@@ -586,15 +580,9 @@ impl Executor {
 
 					result.clear();
 					let mut tx = Transaction::Test(Box::new(txn.reborrow()));
-					let mut vm = Vm::new(symbols);
+					let mut vm = Vm::from_services(symbols, &self.0, &cmd.params, tx.identity());
 					let start_execute = self.0.runtime_context.clock.instant();
-					let run_result = vm.run(
-						&self.0,
-						&mut tx,
-						&compiled.instructions,
-						&cmd.params,
-						&mut result,
-					);
+					let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
 					let execute_duration = start_execute.elapsed();
 					symbols = vm.symbols;
 
@@ -850,9 +838,9 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Command(txn);
-			let mut vm = Vm::new(symbols);
+			let mut vm = Vm::from_services(symbols, &self.0, params, tx.identity());
 			let start_execute = self.0.runtime_context.clock.instant();
-			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, params, &mut result);
+			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
 			let execute_duration = start_execute.elapsed();
 			symbols = vm.symbols;
 

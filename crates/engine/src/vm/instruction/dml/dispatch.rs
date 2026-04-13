@@ -19,7 +19,7 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	expression::{context::EvalSession, eval::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::{services::Services, stack::Variable, vm::Vm},
 };
 
@@ -71,7 +71,7 @@ pub(crate) fn dispatch(
 	let handler_count = procedures.len();
 
 	// Evaluate dispatch fields into a Columns payload
-	let session = EvalSession {
+	let base = EvalContext {
 		params,
 		symbols: &vm.symbols,
 		functions: &services.functions,
@@ -79,10 +79,14 @@ pub(crate) fn dispatch(
 		arena: None,
 		identity: tx.identity(),
 		is_aggregate_context: false,
+		columns: Columns::empty(),
+		row_count: 1,
+		target: None,
+		take: None,
 	};
 	let mut event_columns = Vec::with_capacity(plan.fields.len());
 	for (field_name, expr) in &plan.fields {
-		let eval_ctx = session.eval_empty();
+		let eval_ctx = base.with_eval_empty();
 		let col = evaluate(&eval_ctx, expr)?;
 		event_columns.push(Column::new(Fragment::internal(field_name), col.data));
 	}
@@ -110,26 +114,15 @@ pub(crate) fn dispatch(
 				for col in event_payload.columns.iter() {
 					let var_name = format!("event_{}", col.name.text());
 					let scalar = Columns::new(vec![col.clone()]);
-					vm.symbols.set(
-						var_name,
-						Variable::Columns {
-							columns: scalar,
-							is_scalar: true,
-						},
-						true,
-					)?;
+					vm.symbols.set(var_name, Variable::columns(scalar), true)?;
 				}
 
 				let mut handler_result = Vec::new();
 				for compiled_unit in compiled_list.iter() {
 					vm.ip = 0;
-					if let Err(e) = vm.run(
-						services,
-						tx,
-						&compiled_unit.instructions,
-						params,
-						&mut handler_result,
-					) {
+					if let Err(e) =
+						vm.run(services, tx, &compiled_unit.instructions, &mut handler_result)
+					{
 						tx.record_test_handler(CapturedInvocation {
 							sequence: 0,
 							namespace: plan.namespace.name().to_string(),

@@ -22,7 +22,7 @@ use crate::{
 	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
 	vm::volcano::{
 		query::{QueryContext, QueryNode},
@@ -137,7 +137,7 @@ impl Transform for FilterNode {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("FilterNode::apply() called before initialize()");
 
-		let session = EvalSession::from_transform(ctx, stored_ctx);
+		let session = EvalContext::from_transform(ctx, stored_ctx);
 		let mut columns = input;
 		let mut row_count = columns.row_count();
 
@@ -146,7 +146,7 @@ impl Transform for FilterNode {
 				break;
 			}
 
-			let exec_ctx = session.eval(columns.clone(), row_count);
+			let exec_ctx = session.with_eval(columns.clone(), row_count);
 
 			let result = compiled_expr.execute(&exec_ctx)?;
 
@@ -211,11 +211,11 @@ impl FilterNode {
 			return Ok(Some(BitVec::empty()));
 		}
 
-		let session = EvalSession::from_query(ctx);
+		let session = EvalContext::from_query(ctx);
 		let mut mask = BitVec::repeat(row_count, true);
 
 		for compiled_expr in compiled {
-			let exec_ctx = session.eval(columns.clone(), row_count);
+			let exec_ctx = session.with_eval(columns.clone(), row_count);
 
 			let result = compiled_expr.execute(&exec_ctx)?;
 

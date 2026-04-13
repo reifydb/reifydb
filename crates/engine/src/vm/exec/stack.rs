@@ -16,7 +16,7 @@ use crate::{
 	vm::{stack::Variable, vm::Vm},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_push_const(&mut self, value: &Value) {
 		if self.batch_size > 1 {
 			let mut data = ColumnData::with_capacity(value.get_type(), self.batch_size);
@@ -24,10 +24,7 @@ impl Vm {
 				data.push_value(value.clone());
 			}
 			let col = Column::new(Fragment::internal("const"), data);
-			self.stack.push(Variable::Columns {
-				columns: Columns::new(vec![col]),
-				is_scalar: false,
-			});
+			self.stack.push(Variable::columns(Columns::new(vec![col])));
 		} else {
 			self.stack.push(Variable::scalar(value.clone()));
 		}
@@ -37,10 +34,7 @@ impl Vm {
 		if self.batch_size > 1 {
 			let data = ColumnData::none_typed(Type::Any, self.batch_size);
 			let col = Column::new(Fragment::internal("none"), data);
-			self.stack.push(Variable::Columns {
-				columns: Columns::new(vec![col]),
-				is_scalar: false,
-			});
+			self.stack.push(Variable::columns(Columns::new(vec![col])));
 		} else {
 			self.stack.push(Variable::scalar(Value::none()));
 		}
@@ -104,23 +98,40 @@ impl Vm {
 
 		match self.symbols.get(clean_name) {
 			Some(Variable::Columns {
-				is_scalar: false,
-				..
+				columns: existing,
 			}) => {
-				let mut existing = match self.symbols.get(clean_name).unwrap() {
-					Variable::Columns {
-						columns: f,
-						..
-					} => f.clone(),
-					_ => unreachable!(),
-				};
+				let existing_names: Vec<String> =
+					existing.columns.iter().map(|c| c.name.text().to_string()).collect();
+				let incoming_names: Vec<String> =
+					columns.columns.iter().map(|c| c.name.text().to_string()).collect();
+				if existing_names != incoming_names {
+					return Err(TypeError::Runtime {
+						kind: RuntimeErrorKind::AppendColumnMismatch {
+							name: clean_name.to_string(),
+							existing: existing_names.clone(),
+							incoming: incoming_names.clone(),
+							fragment: target.clone(),
+						},
+						message: format!(
+							"Cannot APPEND to '${}': existing column {} does not match incoming column {}.",
+							clean_name,
+							format_column_list(&existing_names),
+							format_column_list(&incoming_names),
+						),
+					}
+					.into());
+				}
+				let mut existing = existing.clone();
 				existing.append_columns(columns)?;
 				self.symbols.reassign(clean_name.to_string(), Variable::columns(existing))?;
 			}
 			None => {
 				self.symbols.set(clean_name.to_string(), Variable::columns(columns), true)?;
 			}
-			_ => {
+			Some(Variable::Closure(_))
+			| Some(Variable::ForIterator {
+				..
+			}) => {
 				return Err(TypeError::Runtime {
 					kind: RuntimeErrorKind::AppendTargetNotFrame {
 						name: clean_name.to_string(),
@@ -139,4 +150,8 @@ impl Vm {
 
 pub(crate) fn strip_dollar_prefix(name: &str) -> &str {
 	name.strip_prefix('$').unwrap_or(name)
+}
+
+fn format_column_list(names: &[String]) -> String {
+	format!("[{}]", names.join(", "))
 }

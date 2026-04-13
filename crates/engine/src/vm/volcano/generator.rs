@@ -15,7 +15,7 @@ use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 use crate::{
 	Result,
 	error::EngineError,
-	expression::{context::EvalSession, eval::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -72,8 +72,8 @@ impl QueryNode for GeneratorNode {
 
 		let stored_ctx = self.context.as_ref().unwrap();
 
-		let session = EvalSession::from_query(stored_ctx);
-		let evaluation_ctx = session.eval_empty();
+		let session = EvalContext::from_query(stored_ctx);
+		let evaluation_ctx = session.with_eval_empty();
 
 		// Evaluate all parameter expressions into columns
 		let mut evaluated_columns = Vec::new();

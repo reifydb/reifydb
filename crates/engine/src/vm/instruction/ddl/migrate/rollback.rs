@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{compiler::CompilationResult, nodes::RollbackMigrationNode};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+use reifydb_type::{fragment::Fragment, value::Value};
 
 use crate::{
 	Result,
@@ -23,7 +23,6 @@ pub(crate) fn execute_rollback_migration(
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	plan: RollbackMigrationNode,
-	params: &Params,
 ) -> Result<Columns> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
@@ -92,7 +91,6 @@ pub(crate) fn execute_rollback_migration(
 						services,
 						&mut Transaction::Admin(&mut *txn),
 						&compiled_unit.instructions,
-						params,
 						&mut rollback_result,
 					)?;
 				}
@@ -110,7 +108,6 @@ pub(crate) fn execute_rollback_migration(
 						services,
 						&mut Transaction::Admin(&mut *txn),
 						&compiled_unit.instructions,
-						params,
 						&mut rollback_result,
 					)?;
 				}

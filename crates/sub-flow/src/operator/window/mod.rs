@@ -46,7 +46,7 @@ use reifydb_core::{
 use reifydb_engine::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
 	vm::stack::SymbolTable,
 };
@@ -252,8 +252,8 @@ impl WindowOperator {
 		self.kind.size().and_then(|m| m.as_count())
 	}
 
-	fn eval_session(&self, is_aggregate: bool) -> EvalSession<'_> {
-		EvalSession {
+	fn eval_session(&self, is_aggregate: bool) -> EvalContext<'_> {
+		EvalContext {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
@@ -261,6 +261,10 @@ impl WindowOperator {
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: is_aggregate,
+			columns: Columns::empty(),
+			row_count: 1,
+			target: None,
+			take: None,
 		}
 	}
 
@@ -276,7 +280,7 @@ impl WindowOperator {
 		}
 
 		let session = self.eval_session(false);
-		let exec_ctx = session.eval(columns.clone(), row_count);
+		let exec_ctx = session.with_eval(columns.clone(), row_count);
 
 		let mut group_columns: Vec<Column> = Vec::new();
 		for compiled_expr in &self.compiled_group_by {
@@ -593,7 +597,7 @@ impl WindowOperator {
 		}
 
 		let session = self.eval_session(false);
-		let exec_ctx = session.eval(columns, row_count);
+		let exec_ctx = session.with_eval(columns, row_count);
 
 		let mut values = Vec::new();
 		let mut names = Vec::new();
@@ -664,7 +668,7 @@ impl WindowOperator {
 		let columns = self.events_to_columns(window_layout, events)?;
 
 		let agg_session = self.eval_session(true);
-		let exec_ctx = agg_session.eval(columns, events.len());
+		let exec_ctx = agg_session.with_eval(columns, events.len());
 
 		let (group_values, group_names) = self.extract_group_values(window_layout, events)?;
 

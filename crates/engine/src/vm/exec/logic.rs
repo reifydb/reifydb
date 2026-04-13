@@ -15,14 +15,13 @@ use crate::{
 	expression::{
 		cast::cast_column_data,
 		compare::{Equal, GreaterThanEqual, LessThanEqual, compare_columns},
-		context::EvalContext,
 		logic::execute_logical_op,
 		prefix::prefix_apply,
 	},
 	vm::{stack::Variable, vm::Vm},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_between(&mut self) -> Result<()> {
 		let upper = self.pop_as_column()?;
 		let lower = self.pop_as_column()?;
@@ -113,7 +112,7 @@ impl Vm {
 	pub(crate) fn exec_cast(&mut self, target: &Type) -> Result<()> {
 		let col = self.pop_as_column()?;
 		let frag = Fragment::internal("vm_cast");
-		let ctx = EvalContext::testing();
+		let ctx = self.eval_ctx();
 		let data = cast_column_data(&ctx, col.data(), target.clone(), frag.clone())?;
 		self.stack.push(Variable::columns(Columns::new(vec![Column::new(col.name().clone(), data)])));
 		Ok(())

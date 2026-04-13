@@ -20,7 +20,7 @@ use crate::{
 	vm::{stack::Variable, vm::Vm},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	/// Pop two columns, apply a columnar comparison, push the boolean result column.
 	fn exec_columnar_cmp<Op: CompareOp>(&mut self, binary_op: BinaryOp) -> Result<()> {
 		let right = self.pop_as_column()?;

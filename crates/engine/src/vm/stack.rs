@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns},
 };
 use reifydb_rql::instruction::{CompiledClosure, CompiledFunction, ScopeType};
-use reifydb_type::{error, value::Value};
+use reifydb_type::{error, fragment::Fragment, value::Value};
 
 use crate::{Result, error::EngineError};
 
@@ -62,11 +62,10 @@ pub struct ClosureValue {
 /// A variable can be columnar data, a FOR loop iterator, or a closure.
 #[derive(Debug, Clone)]
 pub enum Variable {
-	/// Columnar data. When `is_scalar` is true, this holds a single value
-	/// (1-column, 1-row) and is treated as a scalar by APPEND, FROM, etc.
+	/// Columnar data. Scalar-ness is derived from shape via `columns.is_scalar()`
+	/// (1 column, 1 row).
 	Columns {
 		columns: Columns,
-		is_scalar: bool,
 	},
 	/// A FOR loop iterator tracking position in a result set
 	ForIterator {
@@ -82,26 +81,32 @@ impl Variable {
 	pub fn scalar(value: Value) -> Self {
 		Variable::Columns {
 			columns: Columns::scalar(value),
-			is_scalar: true,
 		}
 	}
 
-	/// Create a columns variable (non-scalar frame data).
+	/// Create a scalar variable whose single column is named after the binding
+	/// (parameter, loop var, or assignment target). Use this when the value is
+	/// being stored as a named symbol so that later access surfaces the binding name.
+	pub fn scalar_named(name: &str, value: Value) -> Self {
+		let mut columns = Columns::scalar(value);
+		columns.columns.make_mut()[0].name = Fragment::internal(name);
+		Variable::Columns {
+			columns,
+		}
+	}
+
+	/// Create a columns variable.
 	pub fn columns(columns: Columns) -> Self {
 		Variable::Columns {
 			columns,
-			is_scalar: false,
 		}
 	}
 
-	/// Returns true if this variable represents a scalar value.
+	/// Returns true if this variable represents a scalar value (1 column, 1 row).
 	pub fn is_scalar(&self) -> bool {
 		matches!(
 			self,
-			Variable::Columns {
-				is_scalar: true,
-				..
-			}
+			Variable::Columns { columns } if columns.is_scalar()
 		)
 	}
 
