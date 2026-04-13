@@ -121,7 +121,7 @@ mod native {
 		let (reply, receiver) = reply_channel();
 		let msg = ServerMessage::Subscribe {
 			identity: ctx.identity,
-			query: ctx.statements.join("; "),
+			rql: ctx.statements.join("; "),
 			reply,
 		};
 

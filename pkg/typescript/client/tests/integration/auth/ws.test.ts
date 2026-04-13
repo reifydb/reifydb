@@ -58,7 +58,7 @@ describe('Auth Login Tests — WebSocket', () => {
 
         it('should login with correct token and execute queries', async () => {
             client = await Client.connect_ws(WS_URL, {timeout_ms: 10000});
-            const result = await client.login_with_token('bob', 'bob-secret-token');
+            const result = await client.login_with_token('bob-secret-token');
 
             expect(result.token).toBeDefined();
             expect(result.token.length).toBeGreaterThan(0);
@@ -71,12 +71,12 @@ describe('Auth Login Tests — WebSocket', () => {
 
         it('should reject wrong token', async () => {
             client = await Client.connect_ws(WS_URL, {timeout_ms: 10000});
-            await expect(client.login_with_token('bob', 'wrong-token')).rejects.toThrow();
+            await expect(client.login_with_token('wrong-token')).rejects.toThrow();
         }, 10000);
 
         it('should reject unknown user', async () => {
             client = await Client.connect_ws(WS_URL, {timeout_ms: 10000});
-            await expect(client.login_with_token('nonexistent', 'some-token')).rejects.toThrow();
+            await expect(client.login_with_token('some-token')).rejects.toThrow();
         }, 10000);
     });
 
@@ -102,7 +102,7 @@ describe('Auth Login Tests — WebSocket', () => {
             expect(framesA[0][0].v).toBe(1);
 
             // Login as bob (replaces alice session)
-            const resultB = await client.login_with_token('bob', 'bob-secret-token');
+            const resultB = await client.login_with_token('bob-secret-token');
             expect(resultB.token).toBeDefined();
             expect(resultB.token).not.toBe(resultA.token);
 

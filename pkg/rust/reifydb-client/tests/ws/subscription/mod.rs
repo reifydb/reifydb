@@ -3,7 +3,7 @@
 
 use std::{error::Error, future::Future, sync::Arc, time::Duration};
 
-use reifydb_client::{ChangePayload, Encoding, WsClient};
+use reifydb_client::{ChangePayload, WireFormat, WsClient};
 use tokio::{runtime::Runtime, time::timeout};
 
 use crate::common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
@@ -132,7 +132,7 @@ impl SubscriptionTestHarness {
 
 		runtime.block_on(async {
 			let mut client =
-				WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
+				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
 			client.authenticate("mysecrettoken").await.unwrap();
 
 			let ctx = TestContext::new(client);

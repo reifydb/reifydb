@@ -8,7 +8,7 @@ use std::{error::Error, path::Path, sync::Arc};
 
 use common::{cleanup_server, create_server_instance, start_server_and_get_grpc_port};
 use reifydb::{Database, core::util::retry::retry};
-use reifydb_client::{Encoding, GrpcClient};
+use reifydb_client::{GrpcClient, WireFormat};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -19,16 +19,16 @@ pub struct GrpcRunner {
 	instance: Option<Database>,
 	client: Option<GrpcClient>,
 	runtime: Arc<Runtime>,
-	encoding: Encoding,
+	format: WireFormat,
 }
 
 impl GrpcRunner {
-	pub fn new(runtime: Arc<Runtime>, encoding: Encoding) -> Self {
+	pub fn new(runtime: Arc<Runtime>, format: WireFormat) -> Self {
 		Self {
 			instance: Some(create_server_instance(&runtime)),
 			client: None,
 			runtime,
-			encoding,
+			format,
 		}
 	}
 }
@@ -103,7 +103,7 @@ impl testscript::runner::Runner for GrpcRunner {
 		let port = start_server_and_get_grpc_port(&self.runtime, server)?;
 
 		let mut client =
-			self.runtime.block_on(GrpcClient::connect(&format!("http://[::1]:{}", port), self.encoding))?;
+			self.runtime.block_on(GrpcClient::connect(&format!("http://[::1]:{}", port), self.format))?;
 		client.authenticate("mysecrettoken");
 
 		self.client = Some(client);
@@ -125,7 +125,7 @@ fn test_grpc_proto(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::runner::run_path(&mut GrpcRunner::new(Arc::clone(&runtime), Encoding::Proto), path)
+		testscript::runner::run_path(&mut GrpcRunner::new(Arc::clone(&runtime), WireFormat::Proto), path)
 	})
 	.expect("test failed with Proto");
 }
@@ -134,7 +134,7 @@ fn test_grpc_rbcf(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::runner::run_path(&mut GrpcRunner::new(Arc::clone(&runtime), Encoding::Rbcf), path)
+		testscript::runner::run_path(&mut GrpcRunner::new(Arc::clone(&runtime), WireFormat::Rbcf), path)
 	})
 	.expect("test failed with Rbcf");
 }

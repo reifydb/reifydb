@@ -5,10 +5,10 @@ import {useContext, useEffect, useState} from 'react';
 import {ConnectionConfig} from '../connection/connection';
 import {get_connection} from '../connection/connection-pool';
 import {ConnectionContext} from '../connection/connection-context';
-import {WsClient, HttpClient, JsonHttpClient, JsonWebsocketClient} from '@reifydb/client';
+import {WsClient, HttpClient, JsonHttpClient, JsonWsClient} from '@reifydb/client';
 
 interface ConnectionState {
-    client: WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient | null;
+    client: WsClient | HttpClient | JsonHttpClient | JsonWsClient | null;
     is_connected: boolean;
     is_connecting: boolean;
     connection_error: string | null;

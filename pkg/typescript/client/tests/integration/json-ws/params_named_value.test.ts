@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {wait_for_database} from "../setup";
-import {Client, JsonWebsocketClient} from "../../../src";
+import {Client, JsonWsClient} from "../../../src";
 import {expectSingleResult, expectSingleNullResult} from "./test-helper";
 import {
     BooleanValue, Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
@@ -13,10 +13,10 @@ import {
 } from "@reifydb/core";
 
 describe.each([
-    {encoding: "json"},
-    {encoding: "rbcf"},
-] as const)('Named Parameters (Value) [$encoding]', ({encoding}) => {
-    let ws_client: JsonWebsocketClient;
+    {format: "json"},
+    {format: "rbcf"},
+] as const)('Named Parameters (Value) [$format]', ({format}) => {
+    let ws_client: JsonWsClient;
 
     beforeAll(async () => {
         await wait_for_database();
@@ -27,7 +27,7 @@ describe.each([
             ws_client = await Client.connect_json_ws(process.env.REIFYDB_WS_URL, {
                 timeout_ms: 10000,
                 token: process.env.REIFYDB_TOKEN,
-                encoding,
+                format,
             });
         } catch (error) {
             console.error('WebSocket connection failed:', error);

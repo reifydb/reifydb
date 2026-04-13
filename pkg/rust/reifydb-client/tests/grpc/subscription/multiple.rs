@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{Encoding, GrpcClient, Value};
+use reifydb_client::{GrpcClient, Value, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -19,7 +19,8 @@ fn test_multiple_subscriptions_different_tables() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table1 = unique_table_name("sub_multi_t1");
@@ -58,7 +59,8 @@ fn test_multiple_subscriptions_same_table() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_same_table");
@@ -99,7 +101,8 @@ fn test_changes_routed_to_correct_subscription() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table1 = unique_table_name("sub_route_t1");

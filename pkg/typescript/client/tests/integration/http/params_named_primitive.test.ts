@@ -11,16 +11,16 @@ import {
 } from "./test-helper";
 
 describe.each([
-    {encoding: "json"},
-    {encoding: "rbcf"},
-] as const)('Named Parameters (primitive) [$encoding]', ({encoding}) => {
+    {format: "json"},
+    {format: "rbcf"},
+] as const)('Named Parameters (primitive) [$format]', ({format}) => {
     let httpClient: HttpClient;
 
     beforeAll(async () => {
         httpClient = Client.connect_http(process.env.REIFYDB_HTTP_URL, {
             timeout_ms: 10000,
             token: process.env.REIFYDB_TOKEN,
-            encoding,
+            format,
         });
     });
 

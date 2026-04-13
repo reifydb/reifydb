@@ -31,12 +31,13 @@ use crate::{
 	error::GrpcError,
 	generated::{
 		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, ChangeEvent, CommandRequest,
-		CommandResponse, LogoutRequest, LogoutResponse, Params as ProtoParams, QueryRequest, QueryResponse,
-		SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest, UnsubscribeResponse,
+		CommandResponse, FramesPayload, LogoutRequest, LogoutResponse, Params as ProtoParams, QueryRequest,
+		QueryResponse, SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest,
+		UnsubscribeResponse, admin_response, change_event, command_response, query_response,
 		reify_db_server::ReifyDb, subscription_event,
 	},
 	server_state::GrpcServerState,
-	subscription::GrpcSubscriptionRegistry,
+	subscription::{GrpcSubscriptionRegistry, WireFormat},
 };
 
 pub struct ReifyDbService {
@@ -95,6 +96,7 @@ impl ReifyDbService {
 	async fn subscribe_local(
 		&self,
 		subscription_id: SubscriptionId,
+		format: WireFormat,
 	) -> Result<Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
 		let (tx, rx) = mpsc::unbounded_channel();
 
@@ -109,7 +111,7 @@ impl ReifyDbService {
 		}
 
 		// Register with registry
-		self.registry.register(subscription_id, tx.clone());
+		self.registry.register(subscription_id, tx.clone(), format);
 
 		info!("gRPC subscription created: {}", subscription_id);
 
@@ -157,10 +159,11 @@ impl ReifyDbService {
 	async fn subscribe_remote(
 		&self,
 		address: String,
-		query: &str,
+		rql: &str,
 		token: Option<String>,
+		format: WireFormat,
 	) -> Result<Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
-		let remote_sub = connect_remote(&address, query, token.as_deref())
+		let remote_sub = connect_remote(&address, rql, token.as_deref())
 			.await
 			.map_err(|e| Status::unavailable(e.to_string()))?;
 
@@ -176,13 +179,19 @@ impl ReifyDbService {
 
 		// Spawn proxy: remote stream → local channel
 		let shutdown_rx = self.shutdown_rx.clone();
-		spawn(proxy_remote(remote_sub, tx, shutdown_rx, |frames| {
-			let rbcf_payload = reifydb_wire_format::encode::encode_frames(&frames, &EncodeOptions::fast())
-				.unwrap_or_default();
+		spawn(proxy_remote(remote_sub, tx, shutdown_rx, move |frames| {
+			let payload = match format {
+				WireFormat::Rbcf => {
+					let rbcf = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
+					change_event::Payload::Rbcf(rbcf)
+				}
+				WireFormat::Proto => change_event::Payload::Frames(FramesPayload {
+					frames: frames_to_proto(frames),
+				}),
+			};
 			Ok(SubscriptionEvent {
 				event: Some(subscription_event::Event::Change(ChangeEvent {
-					frames: frames_to_proto(frames),
-					rbcf_payload,
+					payload: Some(payload),
 				})),
 			})
 		}));
@@ -209,13 +218,20 @@ impl ReifyDb for ReifyDbService {
 			metadata,
 		};
 
+		let format = WireFormat::from_proto_i32(inner.format);
 		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
 
-		let rbcf_payload = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
+		let payload = match format {
+			WireFormat::Rbcf => admin_response::Payload::Rbcf(
+				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
+			),
+			WireFormat::Proto => admin_response::Payload::Frames(FramesPayload {
+				frames: frames_to_proto(frames),
+			}),
+		};
 
 		Ok(Response::new(AdminResponse {
-			frames: frames_to_proto(frames),
-			rbcf_payload,
+			payload: Some(payload),
 		}))
 	}
 
@@ -232,13 +248,20 @@ impl ReifyDb for ReifyDbService {
 			metadata,
 		};
 
+		let format = WireFormat::from_proto_i32(inner.format);
 		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
 
-		let rbcf_payload = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
+		let payload = match format {
+			WireFormat::Rbcf => command_response::Payload::Rbcf(
+				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
+			),
+			WireFormat::Proto => command_response::Payload::Frames(FramesPayload {
+				frames: frames_to_proto(frames),
+			}),
+		};
 
 		Ok(Response::new(CommandResponse {
-			frames: frames_to_proto(frames),
-			rbcf_payload,
+			payload: Some(payload),
 		}))
 	}
 
@@ -255,13 +278,20 @@ impl ReifyDb for ReifyDbService {
 			metadata,
 		};
 
+		let format = WireFormat::from_proto_i32(inner.format);
 		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
 
-		let rbcf_payload = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
+		let payload = match format {
+			WireFormat::Rbcf => query_response::Payload::Rbcf(
+				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
+			),
+			WireFormat::Proto => query_response::Payload::Frames(FramesPayload {
+				frames: frames_to_proto(frames),
+			}),
+		};
 
 		Ok(Response::new(QueryResponse {
-			frames: frames_to_proto(frames),
-			rbcf_payload,
+			payload: Some(payload),
 		}))
 	}
 
@@ -280,17 +310,17 @@ impl ReifyDb for ReifyDbService {
 			.map(|t| t.to_string());
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
+		let format = WireFormat::from_proto_i32(inner.format);
 
 		// Subscribe still uses execute() via create_subscription for now
-		match create_subscription(&self.state, identity, &inner.query, metadata)
-			.await
-			.map_err(GrpcError::from)?
-		{
-			CreateSubscriptionResult::Local(subscription_id) => self.subscribe_local(subscription_id).await,
+		match create_subscription(&self.state, identity, &inner.rql, metadata).await.map_err(GrpcError::from)? {
+			CreateSubscriptionResult::Local(subscription_id) => {
+				self.subscribe_local(subscription_id, format).await
+			}
 			CreateSubscriptionResult::Remote {
 				address,
-				query,
-			} => self.subscribe_remote(address, &query, token).await,
+				rql,
+			} => self.subscribe_remote(address, &rql, token, format).await,
 		}
 	}
 

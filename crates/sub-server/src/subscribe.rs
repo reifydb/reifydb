@@ -54,7 +54,7 @@ pub enum CreateSubscriptionResult {
 	Local(SubscriptionId),
 	Remote {
 		address: String,
-		query: String,
+		rql: String,
 	},
 }
 
@@ -76,10 +76,10 @@ use crate::{
 pub async fn create_subscription(
 	state: &AppState,
 	identity: IdentityId,
-	query: &str,
+	rql: &str,
 	metadata: RequestMetadata,
 ) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
-	let statement = format!("CREATE SUBSCRIPTION AS {{ {} }}", query);
+	let statement = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
 	debug!("Subscription statement: {}", statement);
 
 	let ctx = RequestContext {
@@ -123,7 +123,7 @@ pub async fn create_subscription(
 
 		return Ok(CreateSubscriptionResult::Remote {
 			address,
-			query: rql,
+			rql,
 		});
 	}
 

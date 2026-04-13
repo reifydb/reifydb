@@ -20,9 +20,9 @@ use tokio::{
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config, tungstenite::Message};
 
 use crate::{
-	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, Encoding, LoginResult,
+	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, LoginResult,
 	QueryRequest, QueryResult, Request, RequestPayload, Response, ResponsePayload, ServerPush, SubscribeRequest,
-	UnsubscribeRequest, params_to_wire,
+	UnsubscribeRequest, WireFormat, params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 	utils::generate_request_id,
 };
@@ -42,7 +42,7 @@ pub struct WsClient {
 	is_authenticated: bool,
 	/// Channel for receiving server-initiated Change messages.
 	change_rx: mpsc::Receiver<ChangePayload>,
-	encoding: Encoding,
+	format: WireFormat,
 }
 
 impl WsClient {
@@ -50,12 +50,12 @@ impl WsClient {
 	///
 	/// # Arguments
 	/// * `url` - WebSocket URL of the ReifyDB server (e.g., "ws://localhost:8090")
-	/// * `encoding` - Wire format encoding for responses
-	pub async fn connect(url: &str, encoding: Encoding) -> Result<Self, Error> {
-		if encoding == Encoding::Proto {
+	/// * `format` - Wire format for responses
+	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
+		if format == WireFormat::Proto {
 			return Err(Error(Box::new(Diagnostic {
-				code: "INVALID_ENCODING".to_string(),
-				message: "Encoding::Proto is not supported for WsClient".to_string(),
+				code: "INVALID_FORMAT".to_string(),
+				message: "WireFormat::Proto is not supported for WsClient".to_string(),
 				..Default::default()
 			})));
 		}
@@ -93,7 +93,7 @@ impl WsClient {
 			shutdown_tx: Some(shutdown_tx),
 			is_authenticated: false,
 			change_rx,
-			encoding,
+			format,
 		})
 	}
 
@@ -129,19 +129,35 @@ impl WsClient {
 							}
 						}
 						Ok(Message::Binary(data)) => {
-							// RBCF binary envelope: [u32 LE id_len][id bytes][RBCF payload]
-							if data.len() >= 4 {
-								let id_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
-								if data.len() >= 4 + id_len {
-									let id = String::from_utf8_lossy(&data[4..4 + id_len]).to_string();
-									let rbcf_data = &data[4 + id_len..];
-									if let Ok(frames) = reifydb_wire_format::decode::decode_frames(rbcf_data) {
-										let mut pending_guard = pending.lock().await;
-										if let Some(tx) = pending_guard.remove(&id) {
-											let _ = tx.send(ClientResponse::Frames(frames));
-										}
+							// Binary envelope: [u8 kind][u32 LE id_len][id bytes][RBCF payload].
+							// kind 0x00 = one-shot response (id = request_id);
+							// kind 0x01 = subscription change (id = subscription_id).
+							if data.len() < 5 { continue; }
+							let kind = data[0];
+							let id_len = u32::from_le_bytes([data[1], data[2], data[3], data[4]]) as usize;
+							if data.len() < 5 + id_len { continue; }
+							let id = String::from_utf8_lossy(&data[5..5 + id_len]).to_string();
+							let rbcf_data = &data[5 + id_len..];
+							let frames = match reifydb_wire_format::decode::decode_frames(rbcf_data) {
+								Ok(f) => f,
+								Err(_) => continue,
+							};
+							match kind {
+								0x00 => {
+									let mut pending_guard = pending.lock().await;
+									if let Some(tx) = pending_guard.remove(&id) {
+										let _ = tx.send(ClientResponse::Frames(frames));
 									}
 								}
+								0x01 => {
+									let _ = change_tx.send(ChangePayload {
+										subscription_id: id,
+										content_type: "application/vnd.reifydb.rbcf".to_string(),
+										body: serde_json::Value::Null,
+										frames: Some(frames),
+									}).await;
+								}
+								_ => {}
 							}
 						}
 						Ok(Message::Ping(data)) => {
@@ -187,9 +203,9 @@ impl WsClient {
 		pending_guard.clear();
 	}
 
-	/// Compute the format field for requests based on encoding.
-	fn rbcf_format(&self) -> Option<String> {
-		if self.encoding == Encoding::Rbcf {
+	/// Compute the wire-format field for requests: `Some("rbcf")` if RBCF, else `None` (JSON default).
+	fn wire_format(&self) -> Option<String> {
+		if self.format == WireFormat::Rbcf {
 			Some("rbcf".to_string())
 		} else {
 			None
@@ -302,7 +318,7 @@ impl WsClient {
 			payload: RequestPayload::Admin(AdminRequest {
 				statements: vec![rql.to_string()],
 				params: params.and_then(params_to_wire),
-				format: self.rbcf_format(),
+				format: self.wire_format(),
 			}),
 		};
 
@@ -322,7 +338,7 @@ impl WsClient {
 			payload: RequestPayload::Admin(AdminRequest {
 				statements: statements.into_iter().map(String::from).collect(),
 				params: params.and_then(params_to_wire),
-				format: self.rbcf_format(),
+				format: self.wire_format(),
 			}),
 		};
 
@@ -342,7 +358,7 @@ impl WsClient {
 			payload: RequestPayload::Command(CommandRequest {
 				statements: vec![rql.to_string()],
 				params: params.and_then(params_to_wire),
-				format: self.rbcf_format(),
+				format: self.wire_format(),
 			}),
 		};
 
@@ -362,7 +378,7 @@ impl WsClient {
 			payload: RequestPayload::Query(QueryRequest {
 				statements: vec![rql.to_string()],
 				params: params.and_then(params_to_wire),
-				format: self.rbcf_format(),
+				format: self.wire_format(),
 			}),
 		};
 
@@ -386,7 +402,7 @@ impl WsClient {
 			payload: RequestPayload::Command(CommandRequest {
 				statements: statements.into_iter().map(String::from).collect(),
 				params: params.and_then(params_to_wire),
-				format: self.rbcf_format(),
+				format: self.wire_format(),
 			}),
 		};
 
@@ -406,7 +422,7 @@ impl WsClient {
 			payload: RequestPayload::Query(QueryRequest {
 				statements: statements.into_iter().map(String::from).collect(),
 				params: params.and_then(params_to_wire),
-				format: self.rbcf_format(),
+				format: self.wire_format(),
 			}),
 		};
 
@@ -419,12 +435,13 @@ impl WsClient {
 	}
 
 	/// Subscribe to real-time changes for a query.
-	pub async fn subscribe(&self, query: &str) -> Result<String, Error> {
+	pub async fn subscribe(&self, rql: &str) -> Result<String, Error> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
 			payload: RequestPayload::Subscribe(SubscribeRequest {
-				query: query.to_string(),
+				rql: rql.to_string(),
+				format: self.wire_format(),
 			}),
 		};
 

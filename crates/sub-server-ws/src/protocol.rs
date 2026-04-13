@@ -95,7 +95,11 @@ pub struct QueryRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SubscribeRequest {
 	/// RQL query to subscribe to.
-	pub query: String,
+	pub rql: String,
+	/// Optional wire format for pushed changes ("json" = default JSON frames,
+	/// "rbcf" = binary RBCF envelope).
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub format: Option<String>,
 }
 
 /// Unsubscribe request payload.

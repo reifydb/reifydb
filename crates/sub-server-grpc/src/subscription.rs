@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
 
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
@@ -12,11 +11,35 @@ use tracing::debug;
 
 use crate::{
 	convert::frames_to_proto,
-	generated::{ChangeEvent, SubscriptionEvent, subscription_event},
+	generated::{ChangeEvent, FramesPayload, SubscriptionEvent, change_event, subscription_event},
 };
 
+/// Wire format chosen by the client for a given subscription.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum WireFormat {
+	#[default]
+	Proto,
+	Rbcf,
+}
+
+impl WireFormat {
+	/// Resolve from the on-wire i32 value of the proto `Format` enum.
+	/// `FORMAT_UNSPECIFIED` is treated as `FORMAT_PROTO` for backwards compatibility.
+	pub fn from_proto_i32(format: i32) -> Self {
+		match crate::generated::Format::try_from(format).unwrap_or(crate::generated::Format::Unspecified) {
+			crate::generated::Format::Rbcf => WireFormat::Rbcf,
+			crate::generated::Format::Proto | crate::generated::Format::Unspecified => WireFormat::Proto,
+		}
+	}
+}
+
+struct SubscriptionState {
+	tx: mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>,
+	format: WireFormat,
+}
+
 pub struct GrpcSubscriptionRegistry {
-	subscriptions: DashMap<SubscriptionId, mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>>,
+	subscriptions: DashMap<SubscriptionId, SubscriptionState>,
 }
 
 impl Default for GrpcSubscriptionRegistry {
@@ -36,9 +59,16 @@ impl GrpcSubscriptionRegistry {
 		&self,
 		subscription_id: SubscriptionId,
 		tx: mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>,
+		format: WireFormat,
 	) {
-		self.subscriptions.insert(subscription_id, tx);
-		debug!("Registered gRPC subscription {}", subscription_id);
+		self.subscriptions.insert(
+			subscription_id,
+			SubscriptionState {
+				tx,
+				format,
+			},
+		);
+		debug!("Registered gRPC subscription {} (format={:?})", subscription_id, format);
 	}
 
 	pub fn unregister(&self, subscription_id: &SubscriptionId) {
@@ -53,20 +83,29 @@ impl GrpcSubscriptionRegistry {
 
 impl SubscriptionDelivery for GrpcSubscriptionRegistry {
 	fn try_deliver(&self, subscription_id: &SubscriptionId, columns: Columns) -> DeliveryResult {
-		let tx = match self.subscriptions.get(subscription_id) {
-			Some(entry) => entry.value().clone(),
+		let (tx, format) = match self.subscriptions.get(subscription_id) {
+			Some(entry) => {
+				let state = entry.value();
+				(state.tx.clone(), state.format)
+			}
 			None => return DeliveryResult::Disconnected,
 		};
 
 		let frames = vec![Frame::from(columns)];
-		let rbcf_payload =
-			reifydb_wire_format::encode::encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
-		let proto_frames = frames_to_proto(frames);
+		let payload = match format {
+			WireFormat::Rbcf => {
+				let rbcf = reifydb_wire_format::encode::encode_frames(&frames, &EncodeOptions::fast())
+					.unwrap_or_default();
+				change_event::Payload::Rbcf(rbcf)
+			}
+			WireFormat::Proto => change_event::Payload::Frames(FramesPayload {
+				frames: frames_to_proto(frames),
+			}),
+		};
 
 		let event = SubscriptionEvent {
 			event: Some(subscription_event::Event::Change(ChangeEvent {
-				frames: proto_frames,
-				rbcf_payload,
+				payload: Some(payload),
 			})),
 		};
 

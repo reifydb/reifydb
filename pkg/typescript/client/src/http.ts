@@ -18,13 +18,14 @@ import {
 } from "./types";
 import {encode_params} from "./encoder";
 import {rbcf} from "./rbcf";
+import {CONTENT_TYPE_JSON, CONTENT_TYPE_RBCF} from "./content-types";
 
 export interface HttpClientOptions {
     url: string;
     timeout_ms?: number;
     token?: string;
-    /** Wire-format encoding for data frames. Defaults to "json". */
-    encoding?: "json" | "rbcf";
+    /** Wire format for data frames. Defaults to "json". */
+    format?: "json" | "rbcf";
 }
 
 export interface RequestOptions {
@@ -43,14 +44,14 @@ export class HttpClient {
     }
 
     async login_with_password(identity: string, password: string, req_opts?: RequestOptions): Promise<LoginResult> {
-        return this.login("password", identity, {password}, req_opts);
+        return this.login("password", {identifier: identity, password}, req_opts);
     }
 
-    async login_with_token(identity: string, token: string, req_opts?: RequestOptions): Promise<LoginResult> {
-        return this.login("token", identity, {token}, req_opts);
+    async login_with_token(token: string, req_opts?: RequestOptions): Promise<LoginResult> {
+        return this.login("token", {token}, req_opts);
     }
 
-    async login(method: string, identity: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginResult> {
+    async login(method: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginResult> {
         const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeout_ms);
@@ -67,7 +68,7 @@ export class HttpClient {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({method, credentials: {identifier: identity, ...credentials}}),
+                body: JSON.stringify({method, credentials}),
                 signal,
             });
 
@@ -224,13 +225,13 @@ export class HttpClient {
             req_opts.signal.addEventListener('abort', () => controller.abort());
         }
 
-        const use_rbcf = this.options.encoding === "rbcf";
+        const use_rbcf = this.options.format === "rbcf";
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
+            'Accept': use_rbcf
+                ? `${CONTENT_TYPE_RBCF}, ${CONTENT_TYPE_JSON}`
+                : CONTENT_TYPE_JSON,
         };
-        if (use_rbcf) {
-            headers['Accept'] = 'application/rbcf, application/json';
-        }
 
         if (this.options.token) {
             headers['Authorization'] = `Bearer ${this.options.token}`;
@@ -257,8 +258,8 @@ export class HttpClient {
             clearTimeout(timeout);
 
             const content_type = response.headers?.get?.('content-type') ?? '';
-            const is_binary = use_rbcf && response.ok &&
-                (content_type.includes('application/rbcf') || content_type.includes('application/octet-stream'));
+            const is_binary = response.ok &&
+                (content_type.startsWith(CONTENT_TYPE_RBCF) || content_type.startsWith('application/octet-stream'));
 
             if (is_binary) {
                 const buf = await response.arrayBuffer();

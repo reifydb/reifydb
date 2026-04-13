@@ -30,8 +30,8 @@ export interface JsonWsClientOptions {
     reconnect_delay_ms?: number;
     unwrap?: boolean;
     signal?: AbortSignal;
-    /** Wire-format encoding for data frames. Defaults to "json". */
-    encoding?: "json" | "rbcf";
+    /** Wire format for data frames. Defaults to "json". */
+    format?: "json" | "rbcf";
 }
 
 type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | LogoutResponse;
@@ -58,7 +58,7 @@ async function create_web_socket(url: string): Promise<WebSocket> {
     return socket;
 }
 
-export class JsonWebsocketClient {
+export class JsonWsClient {
     private options: JsonWsClientOptions;
     private next_id: number;
     private socket: WebSocket;
@@ -75,7 +75,7 @@ export class JsonWebsocketClient {
         this.setup_socket_handlers();
     }
 
-    static async connect(options: JsonWsClientOptions): Promise<JsonWebsocketClient> {
+    static async connect(options: JsonWsClientOptions): Promise<JsonWsClient> {
         if (options.signal?.aborted) {
             throw new Error("AbortError");
         }
@@ -134,7 +134,7 @@ export class JsonWebsocketClient {
             socket.send(JSON.stringify({id: "auth-1", type: "Auth", payload: {token: options.token}}));
         }
 
-        return new JsonWebsocketClient(socket, options);
+        return new JsonWsClient(socket, options);
     }
 
     async admin(
@@ -158,7 +158,7 @@ export class JsonWebsocketClient {
             payload: {
                 statements: output_statements,
                 params: encoded_params,
-                format: this.options.encoding === "rbcf" ? "rbcf" : "json",
+                format: this.options.format === "rbcf" ? "rbcf" : "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
         });
@@ -185,7 +185,7 @@ export class JsonWebsocketClient {
             payload: {
                 statements: output_statements,
                 params: encoded_params,
-                format: this.options.encoding === "rbcf" ? "rbcf" : "json",
+                format: this.options.format === "rbcf" ? "rbcf" : "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
         });
@@ -212,7 +212,7 @@ export class JsonWebsocketClient {
             payload: {
                 statements: output_statements,
                 params: encoded_params,
-                format: this.options.encoding === "rbcf" ? "rbcf" : "json",
+                format: this.options.format === "rbcf" ? "rbcf" : "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
         });
@@ -265,20 +265,20 @@ export class JsonWebsocketClient {
     }
 
     async login_with_password(identity: string, password: string): Promise<LoginResult> {
-        return this.login("password", identity, {password});
+        return this.login("password", {identifier: identity, password});
     }
 
-    async login_with_token(identity: string, token: string): Promise<LoginResult> {
-        return this.login("token", identity, {token});
+    async login_with_token(token: string): Promise<LoginResult> {
+        return this.login("token", {token});
     }
 
-    async login(method: string, identity: string, credentials: Record<string, string>): Promise<LoginResult> {
+    async login(method: string, credentials: Record<string, string>): Promise<LoginResult> {
         const id = `auth-${this.next_id++}`;
 
         const request: AuthRequest = {
             id,
             type: "Auth",
-            payload: {method, credentials: {identifier: identity, ...credentials}}
+            payload: {method, credentials}
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
@@ -500,7 +500,7 @@ export class JsonWebsocketClient {
         }
 
         // Convert columns to rows with plain JS values to match the format=json body shape
-        // (array of frames of plain rows) that JsonWebsocketClient.send returns directly.
+        // (array of frames of plain rows) that JsonWsClient.send returns directly.
         const plain_frames = wire_frames.map((frame: any) => columns_to_plain_rows(frame.columns));
         entry.handler({
             id,

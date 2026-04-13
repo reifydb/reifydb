@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{Encoding, GrpcClient};
+use reifydb_client::{GrpcClient, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -19,7 +19,8 @@ fn test_subscribe_returns_subscription_id() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_basic");
@@ -42,7 +43,8 @@ fn test_drop_subscription_cleans_up() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_unsub");
@@ -65,7 +67,8 @@ fn test_subscribe_invalid_query() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		// Invalid RQL should return an error
@@ -84,7 +87,8 @@ fn test_subscribe_nonexistent_table() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		// Non-existent table should return an error
@@ -103,7 +107,8 @@ fn test_recv_with_timeout_returns_none_when_empty() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_try_recv");

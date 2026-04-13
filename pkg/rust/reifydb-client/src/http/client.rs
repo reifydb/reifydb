@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{from_str, json};
 
 use crate::{
-	AdminRequest, AdminResponse, AdminResult, CommandRequest, CommandResponse, CommandResult, Encoding,
-	ErrResponse, LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, params_to_wire,
+	AdminRequest, AdminResponse, AdminResult, CommandRequest, CommandResponse, CommandResult, ErrResponse,
+	LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, WireFormat, params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 };
 
@@ -27,21 +27,21 @@ struct HttpFrameResponse {
 impl HttpFrameResponse {
 	fn into_admin(self) -> AdminResponse {
 		AdminResponse {
-			content_type: "application/vnd.reifydb.frames+json".to_string(),
+			content_type: "application/vnd.reifydb.json".to_string(),
 			body: json!({ "frames": self.frames }),
 		}
 	}
 
 	fn into_command(self) -> CommandResponse {
 		CommandResponse {
-			content_type: "application/vnd.reifydb.frames+json".to_string(),
+			content_type: "application/vnd.reifydb.json".to_string(),
 			body: json!({ "frames": self.frames }),
 		}
 	}
 
 	fn into_query(self) -> QueryResponse {
 		QueryResponse {
-			content_type: "application/vnd.reifydb.frames+json".to_string(),
+			content_type: "application/vnd.reifydb.json".to_string(),
 			body: json!({ "frames": self.frames }),
 		}
 	}
@@ -71,7 +71,7 @@ pub struct HttpClient {
 	inner: ReqwestClient,
 	base_url: String,
 	token: Option<String>,
-	encoding: Encoding,
+	format: WireFormat,
 }
 
 impl HttpClient {
@@ -79,12 +79,12 @@ impl HttpClient {
 	///
 	/// # Arguments
 	/// * `url` - Base URL of the ReifyDB server (e.g., "http://localhost:8080")
-	/// * `encoding` - Wire format encoding for responses
-	pub async fn connect(url: &str, encoding: Encoding) -> Result<Self, Error> {
-		if encoding == Encoding::Proto {
+	/// * `format` - Wire format for responses
+	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
+		if format == WireFormat::Proto {
 			return Err(Error(Box::new(Diagnostic {
-				code: "INVALID_ENCODING".to_string(),
-				message: "Encoding::Proto is not supported for HttpClient".to_string(),
+				code: "INVALID_FORMAT".to_string(),
+				message: "WireFormat::Proto is not supported for HttpClient".to_string(),
 				..Default::default()
 			})));
 		}
@@ -98,7 +98,7 @@ impl HttpClient {
 			inner,
 			base_url,
 			token: None,
-			encoding,
+			format,
 		})
 	}
 
@@ -107,12 +107,12 @@ impl HttpClient {
 	/// # Arguments
 	/// * `client` - Shared reqwest Client instance
 	/// * `url` - Base URL of the ReifyDB server
-	/// * `encoding` - Wire format encoding for responses
-	pub fn with_client(client: ReqwestClient, url: &str, encoding: Encoding) -> Result<Self, Error> {
-		if encoding == Encoding::Proto {
+	/// * `format` - Wire format for responses
+	pub fn with_client(client: ReqwestClient, url: &str, format: WireFormat) -> Result<Self, Error> {
+		if format == WireFormat::Proto {
 			return Err(Error(Box::new(Diagnostic {
-				code: "INVALID_ENCODING".to_string(),
-				message: "Encoding::Proto is not supported for HttpClient".to_string(),
+				code: "INVALID_FORMAT".to_string(),
+				message: "WireFormat::Proto is not supported for HttpClient".to_string(),
 				..Default::default()
 			})));
 		}
@@ -122,7 +122,7 @@ impl HttpClient {
 			inner: client,
 			base_url,
 			token: None,
-			encoding,
+			format,
 		})
 	}
 
@@ -205,7 +205,7 @@ impl HttpClient {
 			format: None,
 		};
 
-		if self.encoding == Encoding::Rbcf {
+		if self.format == WireFormat::Rbcf {
 			let frames = self.send_rbcf("/v1/admin", &request).await?;
 			return Ok(AdminResult {
 				frames,
@@ -228,7 +228,7 @@ impl HttpClient {
 			format: None,
 		};
 
-		if self.encoding == Encoding::Rbcf {
+		if self.format == WireFormat::Rbcf {
 			let frames = self.send_rbcf("/v1/admin", &request).await?;
 			return Ok(AdminResult {
 				frames,
@@ -251,7 +251,7 @@ impl HttpClient {
 			format: None,
 		};
 
-		if self.encoding == Encoding::Rbcf {
+		if self.format == WireFormat::Rbcf {
 			let frames = self.send_rbcf("/v1/command", &request).await?;
 			return Ok(CommandResult {
 				frames,
@@ -274,7 +274,7 @@ impl HttpClient {
 			format: None,
 		};
 
-		if self.encoding == Encoding::Rbcf {
+		if self.format == WireFormat::Rbcf {
 			let frames = self.send_rbcf("/v1/query", &request).await?;
 			return Ok(QueryResult {
 				frames,
@@ -301,7 +301,7 @@ impl HttpClient {
 			format: None,
 		};
 
-		if self.encoding == Encoding::Rbcf {
+		if self.format == WireFormat::Rbcf {
 			let frames = self.send_rbcf("/v1/command", &request).await?;
 			return Ok(CommandResult {
 				frames,
@@ -324,7 +324,7 @@ impl HttpClient {
 			format: None,
 		};
 
-		if self.encoding == Encoding::Rbcf {
+		if self.format == WireFormat::Rbcf {
 			let frames = self.send_rbcf("/v1/query", &request).await?;
 			return Ok(QueryResult {
 				frames,

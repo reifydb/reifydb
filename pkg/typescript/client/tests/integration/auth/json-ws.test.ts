@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, describe, expect, it} from 'vitest';
 import {wait_for_database} from "../setup";
-import {Client, JsonWebsocketClient} from "../../../src";
+import {Client, JsonWsClient} from "../../../src";
 
 describe('Auth Login Tests — JSON WebSocket', () => {
     const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
@@ -12,7 +12,7 @@ describe('Auth Login Tests — JSON WebSocket', () => {
     }, 30000);
 
     describe('Password Authentication', () => {
-        let client: JsonWebsocketClient;
+        let client: JsonWsClient;
 
         afterEach(async () => {
             if (client) {
@@ -48,7 +48,7 @@ describe('Auth Login Tests — JSON WebSocket', () => {
     });
 
     describe('Token Authentication', () => {
-        let client: JsonWebsocketClient;
+        let client: JsonWsClient;
 
         afterEach(async () => {
             if (client) {
@@ -59,7 +59,7 @@ describe('Auth Login Tests — JSON WebSocket', () => {
 
         it('should login with correct token and execute queries', async () => {
             client = await Client.connect_json_ws(WS_URL, {timeout_ms: 10000});
-            const result = await client.login_with_token('bob', 'bob-secret-token');
+            const result = await client.login_with_token('bob-secret-token');
 
             expect(result.token).toBeDefined();
             expect(result.token.length).toBeGreaterThan(0);
@@ -74,17 +74,17 @@ describe('Auth Login Tests — JSON WebSocket', () => {
 
         it('should reject wrong token', async () => {
             client = await Client.connect_json_ws(WS_URL, {timeout_ms: 10000});
-            await expect(client.login_with_token('bob', 'wrong-token')).rejects.toThrow();
+            await expect(client.login_with_token('wrong-token')).rejects.toThrow();
         }, 10000);
 
         it('should reject unknown user', async () => {
             client = await Client.connect_json_ws(WS_URL, {timeout_ms: 10000});
-            await expect(client.login_with_token('nonexistent', 'some-token')).rejects.toThrow();
+            await expect(client.login_with_token('some-token')).rejects.toThrow();
         }, 10000);
     });
 
     describe('Sequential Logins', () => {
-        let client: JsonWebsocketClient;
+        let client: JsonWsClient;
 
         afterEach(async () => {
             if (client) {
@@ -102,7 +102,7 @@ describe('Auth Login Tests — JSON WebSocket', () => {
             const framesA = await client.query('MAP {v: 1}');
             expect(framesA[0][0].v).toBe(1);
 
-            const resultB = await client.login_with_token('bob', 'bob-secret-token');
+            const resultB = await client.login_with_token('bob-secret-token');
             expect(resultB.token).toBeDefined();
             expect(resultB.token).not.toBe(resultA.token);
 
@@ -112,7 +112,7 @@ describe('Auth Login Tests — JSON WebSocket', () => {
     });
 
     describe('Logout', () => {
-        let client: JsonWebsocketClient;
+        let client: JsonWsClient;
 
         afterEach(async () => {
             if (client) {

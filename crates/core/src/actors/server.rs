@@ -54,7 +54,7 @@ pub enum ServerMessage {
 	/// Create a subscription.
 	Subscribe {
 		identity: IdentityId,
-		query: String,
+		rql: String,
 		reply: Reply<ServerSubscribeResponse>,
 	},
 	/// Authenticate with credentials.

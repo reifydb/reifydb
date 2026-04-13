@@ -38,7 +38,7 @@ use uuid::Builder;
 
 use crate::{
 	protocol::{Request, RequestPayload},
-	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, Response, ServerPush},
+	response::{CONTENT_TYPE_JSON, Response, ServerPush},
 	subscription::{
 		handler::handle_subscribe,
 		registry::{PushMessage, SubscriptionRegistry},
@@ -49,6 +49,30 @@ use crate::{
 enum WsResponse {
 	Text(String),
 	Binary(Vec<u8>),
+}
+
+/// Kind byte for binary WebSocket frames.
+///
+/// The server prefixes every binary frame with a single byte so clients can
+/// distinguish between one-shot responses and subscription pushes. The rest of
+/// the envelope is identical: `[u32 LE id_len][id bytes][RBCF payload]`.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum BinaryKind {
+	Response = 0x00,
+	Change = 0x01,
+}
+
+/// Build a binary envelope for RBCF-encoded frames:
+/// `[u8 kind][u32 LE id_len][id bytes][RBCF payload]`.
+pub(crate) fn encode_rbcf_envelope(kind: BinaryKind, id: &str, rbcf_bytes: &[u8]) -> Vec<u8> {
+	let id_bytes = id.as_bytes();
+	let mut envelope = Vec::with_capacity(1 + 4 + id_bytes.len() + rbcf_bytes.len());
+	envelope.push(kind as u8);
+	envelope.extend_from_slice(&(id_bytes.len() as u32).to_le_bytes());
+	envelope.extend_from_slice(id_bytes);
+	envelope.extend_from_slice(rbcf_bytes);
+	envelope
 }
 
 /// Handle a single WebSocket connection.
@@ -115,10 +139,16 @@ pub async fn handle_connection(
 			// Handle push messages from the subscription registry
 			Some(push) = push_rx.recv() => {
 				match push {
-					PushMessage::Change { subscription_id, content_type, body } => {
+					PushMessage::ChangeJson { subscription_id, content_type, body } => {
 						let msg = ServerPush::change(subscription_id.to_string(), content_type, body).to_json();
 						if sender.send(Message::Text(msg.into())).await.is_err() {
 							debug!("Failed to send push message to {:?}", peer);
+							break;
+						}
+					}
+					PushMessage::ChangeRbcf { envelope, .. } => {
+						if sender.send(Message::Binary(envelope.into())).await.is_err() {
+							debug!("Failed to send RBCF push message to {:?}", peer);
 							break;
 						}
 					}
@@ -564,15 +594,11 @@ async fn execute_via_dispatch(
 		Ok((frames, _duration)) => {
 			if format == Some("rbcf") {
 				return match encode_frames_rbcf(&frames) {
-					Ok(rbcf_bytes) => {
-						let id_bytes = request_id.as_bytes();
-						let mut envelope =
-							Vec::with_capacity(4 + id_bytes.len() + rbcf_bytes.len());
-						envelope.extend_from_slice(&(id_bytes.len() as u32).to_le_bytes());
-						envelope.extend_from_slice(id_bytes);
-						envelope.extend_from_slice(&rbcf_bytes);
-						Some(WsResponse::Binary(envelope))
-					}
+					Ok(rbcf_bytes) => Some(WsResponse::Binary(encode_rbcf_envelope(
+						BinaryKind::Response,
+						request_id,
+						&rbcf_bytes,
+					))),
 					Err(e) => Some(WsResponse::Text(build_error(
 						request_id,
 						"ENCODE_ERROR",
@@ -635,16 +661,17 @@ pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
 /// Build response body with content_type based on format parameter.
 fn build_response_body(frames: Vec<Frame>, format: Option<&str>, unwrap: bool) -> (String, JsonValue) {
 	if format == Some("json") {
+		// Raw JSON body passthrough (unwrap mode).
 		match resolve_response_json(frames, unwrap) {
 			Ok(resolved) => {
 				let body = from_str(&resolved.body).unwrap_or(JsonValue::String(resolved.body));
-				(CONTENT_TYPE_JSON.to_string(), body)
+				("application/json".to_string(), body)
 			}
-			Err(e) => (CONTENT_TYPE_JSON.to_string(), JsonValue::String(e)),
+			Err(e) => ("application/json".to_string(), JsonValue::String(e)),
 		}
 	} else {
 		let ws_frames = convert_frames(&frames);
 		let body = json!({ "frames": ws_frames });
-		(CONTENT_TYPE_FRAMES.to_string(), body)
+		(CONTENT_TYPE_JSON.to_string(), body)
 	}
 }

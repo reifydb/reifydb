@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{Encoding, GrpcClient, Value};
+use reifydb_client::{GrpcClient, Value, WireFormat};
 use tokio::runtime::Runtime;
 
 use super::{create_test_table, find_column, recv_with_timeout, unique_table_name};
@@ -17,7 +17,8 @@ fn test_subscription_int_types() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_int_types");
@@ -60,7 +61,8 @@ fn test_subscription_uint_types() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_uint_types");
@@ -107,7 +109,8 @@ fn test_subscription_float_types() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_float_types");
@@ -149,7 +152,8 @@ fn test_subscription_string_types() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_string");
@@ -182,7 +186,8 @@ fn test_subscription_temporal() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_temporal");
@@ -226,7 +231,8 @@ fn test_subscription_uuid() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_uuid");

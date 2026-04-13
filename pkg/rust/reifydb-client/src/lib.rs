@@ -4,9 +4,9 @@
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-/// Wire format encoding for client-server communication.
+/// Wire format for client-server communication.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Encoding {
+pub enum WireFormat {
 	#[default]
 	Json,
 	Proto,
@@ -235,7 +235,9 @@ pub struct QueryRequest {
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SubscribeRequest {
-	pub query: String,
+	pub rql: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<String>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -335,9 +337,15 @@ pub enum ServerPush {
 
 #[cfg(any(feature = "http", feature = "ws"))]
 /// Payload for subscription change notifications.
+///
+/// For JSON pushes, `body` holds the JSON frames body and `frames` is `None`.
+/// For RBCF pushes, the client decodes the binary envelope and populates
+/// `frames` directly; `body` is empty and `content_type` is `application/vnd.reifydb.rbcf`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChangePayload {
 	pub subscription_id: String,
 	pub content_type: String,
 	pub body: JsonValue,
+	#[serde(skip, default)]
+	pub frames: Option<Vec<Frame>>,
 }

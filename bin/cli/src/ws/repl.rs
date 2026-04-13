@@ -3,7 +3,7 @@
 
 use std::io::{self, Write};
 
-use reifydb_client::{Encoding, Frame, QueryResult, WsClient};
+use reifydb_client::{Frame, QueryResult, WireFormat, WsClient};
 use rustyline::{DefaultEditor, error::ReadlineError};
 use terminal_size::{Width, terminal_size};
 
@@ -22,7 +22,7 @@ enum DotCommandResult {
 }
 
 pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<()> {
-	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port), Encoding::Json)
+	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port), WireFormat::Json)
 		.await
 		.map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;
 

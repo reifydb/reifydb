@@ -12,16 +12,16 @@ import {
 import {expectSingleResult} from "./test-helper";
 
 describe.each([
-    {encoding: "json"},
-    {encoding: "rbcf"},
-] as const)('Positional Parameters (value) [$encoding]', ({encoding}) => {
+    {format: "json"},
+    {format: "rbcf"},
+] as const)('Positional Parameters (value) [$format]', ({format}) => {
     let httpClient: JsonHttpClient;
 
     beforeAll(async () => {
         httpClient = Client.connect_json_http(process.env.REIFYDB_HTTP_URL, {
             timeout_ms: 10000,
             token: process.env.REIFYDB_TOKEN,
-            encoding,
+            format,
         });
     });
 

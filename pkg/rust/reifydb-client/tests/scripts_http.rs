@@ -8,7 +8,7 @@ use std::{error::Error, path::Path, sync::Arc};
 
 use common::{cleanup_server, create_server_instance, start_server_and_get_http_port};
 use reifydb::{Database, core::util::retry::retry};
-use reifydb_client::{Encoding, HttpClient};
+use reifydb_client::{HttpClient, WireFormat};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -19,16 +19,16 @@ pub struct HttpRunner {
 	instance: Option<Database>,
 	client: Option<HttpClient>,
 	runtime: Arc<Runtime>,
-	encoding: Encoding,
+	format: WireFormat,
 }
 
 impl HttpRunner {
-	pub fn new(runtime: Arc<Runtime>, encoding: Encoding) -> Self {
+	pub fn new(runtime: Arc<Runtime>, format: WireFormat) -> Self {
 		Self {
 			instance: Some(create_server_instance(&runtime)),
 			client: None,
 			runtime,
-			encoding,
+			format,
 		}
 	}
 }
@@ -103,7 +103,7 @@ impl testscript::runner::Runner for HttpRunner {
 		let port = start_server_and_get_http_port(&self.runtime, server)?;
 
 		let mut client =
-			self.runtime.block_on(HttpClient::connect(&format!("http://[::1]:{}", port), self.encoding))?;
+			self.runtime.block_on(HttpClient::connect(&format!("http://[::1]:{}", port), self.format))?;
 		client.authenticate("mysecrettoken");
 
 		self.client = Some(client);
@@ -125,7 +125,7 @@ fn test_http_json(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::runner::run_path(&mut HttpRunner::new(Arc::clone(&runtime), Encoding::Json), path)
+		testscript::runner::run_path(&mut HttpRunner::new(Arc::clone(&runtime), WireFormat::Json), path)
 	})
 	.expect("test failed with Json");
 }
@@ -134,7 +134,7 @@ fn test_http_rbcf(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::runner::run_path(&mut HttpRunner::new(Arc::clone(&runtime), Encoding::Rbcf), path)
+		testscript::runner::run_path(&mut HttpRunner::new(Arc::clone(&runtime), WireFormat::Rbcf), path)
 	})
 	.expect("test failed with Rbcf");
 }

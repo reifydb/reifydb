@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-import {Client, WsClient, HttpClient, JsonHttpClient, JsonWebsocketClient, type WsClientOptions} from '@reifydb/client';
+import {Client, WsClient, HttpClient, JsonHttpClient, JsonWsClient, type WsClientOptions} from '@reifydb/client';
 
 interface ConnectionState {
-    client: WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient | null;
+    client: WsClient | HttpClient | JsonHttpClient | JsonWsClient | null;
     is_connected: boolean;
     is_connecting: boolean;
     connection_error: string | null;
@@ -70,7 +70,7 @@ export class Connection {
             try {
                 const isHttp = connect_url.startsWith('http://') || connect_url.startsWith('https://');
                 const isJson = this.config.format === 'json';
-                let client: WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient;
+                let client: WsClient | HttpClient | JsonHttpClient | JsonWsClient;
                 if (isHttp) {
                     client = isJson
                         ? Client.connect_json_http(connect_url, connect_options)
@@ -131,7 +131,7 @@ export class Connection {
         await this.connect(url, options);
     }
 
-    get_client(): WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient | null {
+    get_client(): WsClient | HttpClient | JsonHttpClient | JsonWsClient | null {
         return this.state.client;
     }
 

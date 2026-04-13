@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{Encoding, WsClient};
+use reifydb_client::{WireFormat, WsClient};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -19,7 +19,7 @@ fn test_subscribe_returns_subscription_id() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_basic");
@@ -43,7 +43,7 @@ fn test_unsubscribe_success() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_unsub");
@@ -69,7 +69,7 @@ fn test_subscribe_invalid_query() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		// Invalid RQL should return an error
@@ -90,7 +90,7 @@ fn test_subscribe_nonexistent_table() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		// Non-existent table should return an error
@@ -111,7 +111,7 @@ fn test_unsubscribe_invalid_id() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		// Invalid subscription ID - server may or may not error
@@ -133,7 +133,7 @@ fn test_try_recv_empty() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_try_recv");

@@ -11,7 +11,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use reifydb_client::{Encoding, GrpcClient, Value};
+use reifydb_client::{GrpcClient, Value, WireFormat};
 use tokio::{runtime::Runtime, time::sleep};
 
 use crate::{
@@ -214,7 +214,8 @@ fn test_concurrent_multiple_subscriptions() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table1 = unique_table_name("sub_conc_1");
@@ -251,7 +252,8 @@ fn test_concurrent_5_plus_subscriptions() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		const NUM_TABLES: usize = 5;
@@ -299,7 +301,8 @@ fn test_reconnection_resubscribe_after_disconnect() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_reconn");
@@ -314,7 +317,7 @@ fn test_reconnection_resubscribe_after_disconnect() {
 
 		// Reconnect
 		let mut client2 =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client2.authenticate("mysecrettoken");
 
 		// Resubscribe
@@ -346,7 +349,8 @@ fn test_reconnection_multiple_subscriptions() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let tables: Vec<String> = (0..3).map(|i| unique_table_name(&format!("sub_reconn_m{}", i))).collect();
@@ -367,7 +371,7 @@ fn test_reconnection_multiple_subscriptions() {
 		drop(client);
 
 		let mut client2 =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client2.authenticate("mysecrettoken");
 
 		// Resubscribe to all tables
@@ -407,7 +411,8 @@ fn test_error_invalid_query() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let result = client.subscribe("INVALID RQL SYNTAX HERE").await;
@@ -425,7 +430,8 @@ fn test_error_nonexistent_table() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let non_existent_table = format!(
@@ -448,7 +454,8 @@ fn test_lifecycle_cleanup_on_disconnect() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_cleanup");

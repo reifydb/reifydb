@@ -7,9 +7,9 @@ import {Shape} from "@reifydb/core";
 
 
 describe.each([
-    {encoding: "json"},
-    {encoding: "rbcf"},
-] as const)('Statement [$encoding]', ({encoding}) => {
+    {format: "json"},
+    {format: "rbcf"},
+] as const)('Statement [$format]', ({format}) => {
     let ws_client: WsClient;
 
     beforeAll(async () => {
@@ -22,7 +22,7 @@ describe.each([
             ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
                 timeout_ms: 10000,
                 token: process.env.REIFYDB_TOKEN,
-                encoding,
+                format,
             });
         } catch (error) {
             console.error('❌ WebSocket connection failed:', error);

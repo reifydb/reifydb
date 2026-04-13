@@ -35,6 +35,7 @@ import {
 } from "./types";
 import {encode_params} from "./encoder";
 import {rbcf} from "./rbcf";
+import {CONTENT_TYPE_RBCF} from "./content-types";
 
 export interface WsClientOptions {
     url: string;
@@ -43,13 +44,13 @@ export interface WsClientOptions {
     max_reconnect_attempts?: number;
     reconnect_delay_ms?: number;
     signal?: AbortSignal;
-    /** Wire-format encoding for data frames. Defaults to "json". */
-    encoding?: "json" | "rbcf";
+    /** Wire format for data frames. Defaults to "json". */
+    format?: "json" | "rbcf";
 }
 
 interface SubscriptionState<T = any> {
     subscription_id: string;
-    query: string;
+    rql: string;
     params?: any;
     shape?: ShapeNode;
     callbacks: SubscriptionCallbacks<T>;
@@ -304,7 +305,7 @@ export class WsClient {
     }
 
     async subscribe<T = any>(
-        query: string,
+        rql: string,
         params: any,
         shape: ShapeNode | undefined,
         callbacks: SubscriptionCallbacks<T>
@@ -314,7 +315,9 @@ export class WsClient {
         const request: SubscribeRequest = {
             id,
             type: "Subscribe",
-            payload: {query}
+            payload: this.options.format === "rbcf"
+                ? {rql, format: "rbcf"}
+                : {rql}
         };
 
         return new Promise((resolve, reject) => {
@@ -329,7 +332,7 @@ export class WsClient {
                         // Store subscription state
                         this.subscriptions.set(subscription_id, {
                             subscription_id,
-                            query,
+                            rql,
                             params,
                             shape,
                             callbacks
@@ -391,7 +394,7 @@ export class WsClient {
             });
         }
 
-        if (this.options.encoding === "rbcf") {
+        if (this.options.format === "rbcf") {
             req = {
                 ...req,
                 payload: { ...req.payload, format: "rbcf" },
@@ -521,20 +524,20 @@ export class WsClient {
     }
 
     async login_with_password(identity: string, password: string): Promise<LoginResult> {
-        return this.login("password", identity, {password});
+        return this.login("password", {identifier: identity, password});
     }
 
-    async login_with_token(identity: string, token: string): Promise<LoginResult> {
-        return this.login("token", identity, {token});
+    async login_with_token(token: string): Promise<LoginResult> {
+        return this.login("token", {token});
     }
 
-    async login(method: string, identity: string, credentials: Record<string, string>): Promise<LoginResult> {
+    async login(method: string, credentials: Record<string, string>): Promise<LoginResult> {
         const id = `auth-${this.next_id++}`;
 
         const request: AuthRequest = {
             id,
             type: "Auth",
-            payload: {method, credentials: {identifier: identity, ...credentials}}
+            payload: {method, credentials}
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
@@ -697,9 +700,9 @@ export class WsClient {
             try {
                 // Re-subscribe with same parameters
                 // Cast to avoid overload resolution issues in internal call
-                await (this.subscribe as any)(state.query, state.params, state.shape, state.callbacks);
+                await (this.subscribe as any)(state.rql, state.params, state.shape, state.callbacks);
             } catch (err) {
-                console.error(`Failed to resubscribe to ${state.query}:`, err);
+                console.error(`Failed to resubscribe to ${state.rql}:`, err);
             }
         }
     }
@@ -860,42 +863,66 @@ export class WsClient {
     }
 
     private handle_binary_message(bytes: Uint8Array) {
-        // Parse envelope: [u32 LE id_len][id bytes][RBCF payload].
-        if (bytes.length < 4) return;
+        // Parse envelope: [u8 kind][u32 LE id_len][id bytes][RBCF payload].
+        // kind 0x00 = one-shot response (id = request_id);
+        // kind 0x01 = subscription change (id = subscription_id).
+        if (bytes.length < 5) return;
+        const kind = bytes[0];
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const id_len = view.getUint32(0, true);
-        if (bytes.length < 4 + id_len) return;
-        const id = new TextDecoder("utf-8").decode(bytes.subarray(4, 4 + id_len));
-        const rbcf_bytes = bytes.subarray(4 + id_len);
-
-        const entry = this.pending.get(id);
-        if (!entry) return;
-        this.pending.delete(id);
+        const id_len = view.getUint32(1, true);
+        if (bytes.length < 5 + id_len) return;
+        const id = new TextDecoder("utf-8").decode(bytes.subarray(5, 5 + id_len));
+        const rbcf_bytes = bytes.subarray(5 + id_len);
 
         let frames: any[];
         try {
             frames = rbcf.decode(rbcf_bytes);
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            entry.handler({
-                id,
-                type: "Err",
-                payload: {
-                    diagnostic: { code: "RBCF_DECODE", message: msg, notes: [] }
-                }
-            } as ErrorResponse);
+            if (kind === 0x00) {
+                const entry = this.pending.get(id);
+                if (!entry) return;
+                this.pending.delete(id);
+                entry.handler({
+                    id,
+                    type: "Err",
+                    payload: {
+                        diagnostic: { code: "RBCF_DECODE", message: msg, notes: [] }
+                    }
+                } as ErrorResponse);
+            } else {
+                console.error(`Failed to decode RBCF change for subscription ${id}: ${msg}`);
+            }
             return;
         }
 
-        // Synthesize a response that looks like the JSON path so downstream logic is unchanged.
-        entry.handler({
-            id,
-            type: entry.type,
-            payload: {
-                content_type: "application/rbcf",
-                body: { frames },
-            },
-        } as ResponsePayload);
+        if (kind === 0x00) {
+            const entry = this.pending.get(id);
+            if (!entry) return;
+            this.pending.delete(id);
+            // Synthesize a response that looks like the JSON path so downstream logic is unchanged.
+            entry.handler({
+                id,
+                type: entry.type,
+                payload: {
+                    content_type: CONTENT_TYPE_RBCF,
+                    body: { frames },
+                },
+            } as ResponsePayload);
+            return;
+        }
+
+        if (kind === 0x01) {
+            // Feed decoded frames through the same dispatch path as JSON change pushes.
+            this.handle_change_message({
+                type: "Change",
+                payload: {
+                    subscription_id: id,
+                    content_type: CONTENT_TYPE_RBCF,
+                    body: { frames },
+                }
+            });
+        }
     }
 }
 

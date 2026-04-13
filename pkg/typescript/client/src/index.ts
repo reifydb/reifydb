@@ -3,7 +3,7 @@
 import {WsClient, WsClientOptions} from "./ws";
 import {HttpClient, HttpClientOptions} from "./http";
 import {JsonHttpClient, JsonHttpClientOptions} from "./json-http";
-import {JsonWebsocketClient, JsonWsClientOptions} from "./json-ws";
+import {JsonWsClient, JsonWsClientOptions} from "./json-ws";
 
 export class Client {
     /**
@@ -42,13 +42,14 @@ export class Client {
      * @param options Optional configuration
      * @returns Connected JSON WebSocket client
      */
-    static async connect_json_ws(url: string, options: Omit<JsonWsClientOptions, 'url'> = {}): Promise<JsonWebsocketClient> {
-        return JsonWebsocketClient.connect({url, ...options});
+    static async connect_json_ws(url: string, options: Omit<JsonWsClientOptions, 'url'> = {}): Promise<JsonWsClient> {
+        return JsonWsClient.connect({url, ...options});
     }
 }
 
 export {rbcf} from "./rbcf";
 export type {WireFrame, WireColumn} from "./rbcf";
+export {CONTENT_TYPE_JSON, CONTENT_TYPE_RBCF, CONTENT_TYPE_PROTO} from "./content-types";
 export {ReifyError, asFrameResults} from "@reifydb/core";
 export type {FrameResults, SingleFrameResult, Diagnostic, Fragment, DiagnosticColumn} from "@reifydb/core";
 export {WsClient} from "./ws";
@@ -57,7 +58,7 @@ export {HttpClient} from "./http";
 export type {HttpClientOptions} from "./http";
 export {JsonHttpClient} from "./json-http";
 export type {JsonHttpClientOptions} from "./json-http";
-export {JsonWebsocketClient} from "./json-ws";
+export {JsonWsClient} from "./json-ws";
 export type {JsonWsClientOptions} from "./json-ws";
 export type {
     SubscribeRequest,

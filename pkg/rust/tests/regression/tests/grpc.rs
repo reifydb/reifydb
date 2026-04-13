@@ -4,7 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
 use reifydb::{Database, SharedRuntimeConfig, core::util::retry::retry, server};
-use reifydb_client::{Encoding, GrpcClient};
+use reifydb_client::{GrpcClient, WireFormat};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -96,13 +96,13 @@ impl testscript::runner::Runner for GrpcRunner {
 
 		let mut client = self
 			.runtime
-			.block_on(GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto))?;
+			.block_on(GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto))?;
 		client.authenticate("mysecrettoken");
 		self.client = Some(client);
 
 		let mut admin_client = self
 			.runtime
-			.block_on(GrpcClient::connect(&format!("http://[::1]:{}", admin_port), Encoding::Proto))?;
+			.block_on(GrpcClient::connect(&format!("http://[::1]:{}", admin_port), WireFormat::Proto))?;
 		admin_client.authenticate("mysecrettoken");
 		self.admin_client = Some(admin_client);
 

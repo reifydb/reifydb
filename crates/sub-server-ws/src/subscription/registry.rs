@@ -9,23 +9,50 @@
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
-use reifydb_type::value::uuid::Uuid7;
-use reifydb_wire_format::json::{ResponseColumn, ResponseFrame};
+use reifydb_type::value::{frame::frame::Frame, uuid::Uuid7};
+use reifydb_wire_format::{
+	json::{ResponseColumn, ResponseFrame},
+	options::EncodeOptions,
+};
 use serde_json::{Value as JsonValue, json};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
+use crate::handler::{BinaryKind, encode_rbcf_envelope};
+
 /// Unique identifier for a WebSocket connection.
 pub type ConnectionId = Uuid7;
+
+/// Wire format for subscription change pushes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum WireFormat {
+	#[default]
+	Json,
+	Rbcf,
+}
+
+impl WireFormat {
+	pub fn from_str_opt(s: Option<&str>) -> Self {
+		match s {
+			Some("rbcf") => WireFormat::Rbcf,
+			_ => WireFormat::Json,
+		}
+	}
+}
 
 /// Message sent to a connection for push delivery.
 #[derive(Debug, Clone)]
 pub enum PushMessage {
-	/// A change notification for a subscription.
-	Change {
+	/// A JSON-encoded change notification for a subscription.
+	ChangeJson {
 		subscription_id: SubscriptionId,
 		content_type: String,
 		body: JsonValue,
+	},
+	/// A pre-encoded RBCF binary envelope ready to be sent as Message::Binary.
+	ChangeRbcf {
+		subscription_id: SubscriptionId,
+		envelope: Vec<u8>,
 	},
 	/// The remote subscription has closed (upstream stream ended).
 	Closed {
@@ -37,6 +64,7 @@ pub enum PushMessage {
 struct SubscriptionState {
 	connection_id: ConnectionId,
 	push_tx: mpsc::UnboundedSender<PushMessage>,
+	format: WireFormat,
 	#[allow(dead_code)]
 	query: String,
 }
@@ -70,6 +98,7 @@ impl SubscriptionRegistry {
 		connection_id: ConnectionId,
 		query: String,
 		push_tx: mpsc::UnboundedSender<PushMessage>,
+		format: WireFormat,
 	) {
 		// Store subscription state
 		self.subscriptions.insert(
@@ -77,6 +106,7 @@ impl SubscriptionRegistry {
 			SubscriptionState {
 				connection_id,
 				push_tx,
+				format,
 				query,
 			},
 		);
@@ -92,6 +122,14 @@ impl SubscriptionRegistry {
 	/// Returns None if the subscription doesn't exist.
 	pub fn get_push_channel(&self, subscription_id: &SubscriptionId) -> Option<mpsc::UnboundedSender<PushMessage>> {
 		self.subscriptions.get(subscription_id).map(|state| state.push_tx.clone())
+	}
+
+	/// Get the push channel and chosen wire format for a subscription.
+	pub fn get_push_target(
+		&self,
+		subscription_id: &SubscriptionId,
+	) -> Option<(mpsc::UnboundedSender<PushMessage>, WireFormat)> {
+		self.subscriptions.get(subscription_id).map(|state| (state.push_tx.clone(), state.format))
 	}
 
 	/// Unsubscribe a specific subscription.
@@ -141,13 +179,15 @@ impl SubscriptionRegistry {
 
 	/// Broadcast a message to all active subscriptions.
 	///
-	/// Used by the test push thread to send periodic updates.
+	/// Used by the test push thread to send periodic updates. Subscriptions that
+	/// requested RBCF format still receive JSON here because this helper is only
+	/// used by tests that supply a ready-made JSON body.
 	pub async fn broadcast(&self, content_type: String, body: JsonValue) {
 		for entry in self.subscriptions.iter() {
 			let subscription_id = *entry.key();
 			let state = entry.value();
 
-			let msg = PushMessage::Change {
+			let msg = PushMessage::ChangeJson {
 				subscription_id,
 				content_type: content_type.clone(),
 				body: body.clone(),
@@ -191,49 +231,77 @@ impl Default for SubscriptionRegistry {
 
 impl SubscriptionDelivery for SubscriptionRegistry {
 	fn try_deliver(&self, subscription_id: &SubscriptionId, columns: Columns) -> DeliveryResult {
-		let push_tx = match self.get_push_channel(subscription_id) {
-			Some(tx) => tx,
+		let (push_tx, format) = match self.get_push_target(subscription_id) {
+			Some(t) => t,
 			None => return DeliveryResult::Disconnected,
 		};
 
-		// Convert Columns to ResponseFrame
-		let row_numbers: Vec<u64> = columns.row_numbers.iter().map(|r| r.0).collect();
-		let created_at: Vec<String> = columns.created_at.iter().map(|dt| dt.to_string()).collect();
-		let updated_at: Vec<String> = columns.updated_at.iter().map(|dt| dt.to_string()).collect();
-		let row_count = columns.row_count();
+		let msg = match format {
+			WireFormat::Rbcf => {
+				let frames = vec![Frame::from(columns)];
+				let rbcf_bytes = match reifydb_wire_format::encode::encode_frames(
+					&frames,
+					&EncodeOptions::fast(),
+				) {
+					Ok(b) => b,
+					Err(e) => {
+						warn!("Failed to RBCF-encode change for {}: {}", subscription_id, e);
+						return DeliveryResult::Disconnected;
+					}
+				};
+				let envelope = encode_rbcf_envelope(
+					BinaryKind::Change,
+					&subscription_id.to_string(),
+					&rbcf_bytes,
+				);
+				PushMessage::ChangeRbcf {
+					subscription_id: *subscription_id,
+					envelope,
+				}
+			}
+			WireFormat::Json => {
+				// Convert Columns to ResponseFrame
+				let row_numbers: Vec<u64> = columns.row_numbers.iter().map(|r| r.0).collect();
+				let created_at: Vec<String> =
+					columns.created_at.iter().map(|dt| dt.to_string()).collect();
+				let updated_at: Vec<String> =
+					columns.updated_at.iter().map(|dt| dt.to_string()).collect();
+				let row_count = columns.row_count();
 
-		let response_columns: Vec<ResponseColumn> = columns
-			.columns
-			.iter()
-			.map(|col| {
-				let data: Vec<String> = (0..row_count)
-					.map(|idx| {
-						let value = col.data().get_value(idx);
-						value.to_string()
+				let response_columns: Vec<ResponseColumn> = columns
+					.columns
+					.iter()
+					.map(|col| {
+						let data: Vec<String> = (0..row_count)
+							.map(|idx| {
+								let value = col.data().get_value(idx);
+								value.to_string()
+							})
+							.collect();
+
+						ResponseColumn {
+							name: col.name.to_string(),
+							r#type: col.data().get_type(),
+							payload: data,
+						}
 					})
 					.collect();
 
-				ResponseColumn {
-					name: col.name.to_string(),
-					r#type: col.data().get_type(),
-					payload: data,
+				let frame = ResponseFrame {
+					row_numbers,
+					created_at,
+					updated_at,
+					columns: response_columns,
+				};
+
+				let body = json!({ "frames": [frame] });
+
+				PushMessage::ChangeJson {
+					subscription_id: *subscription_id,
+					content_type: "application/vnd.reifydb.json".to_string(),
+					body,
 				}
-			})
-			.collect();
-
-		let frame = ResponseFrame {
-			row_numbers,
-			created_at,
-			updated_at,
-			columns: response_columns,
-		};
-
-		let body = json!({ "frames": [frame] });
-
-		let msg = PushMessage::Change {
-			subscription_id: *subscription_id,
-			content_type: "application/vnd.reifydb.frames+json".to_string(),
-			body,
+			}
 		};
 
 		match push_tx.send(msg) {
@@ -271,7 +339,7 @@ pub mod tests {
 		let (tx, mut rx) = mpsc::unbounded_channel();
 
 		let sub_id = SubscriptionId(12345);
-		registry.subscribe(sub_id, connection_id, "FROM test".to_string(), tx);
+		registry.subscribe(sub_id, connection_id, "FROM test".to_string(), tx, WireFormat::Json);
 		assert_eq!(registry.subscription_count(), 1);
 
 		// Broadcast with a content_type + body
@@ -285,12 +353,12 @@ pub mod tests {
 				}]
 			}]
 		});
-		registry.broadcast("application/vnd.reifydb.frames+json".to_string(), body.clone()).await;
+		registry.broadcast("application/vnd.reifydb.json".to_string(), body.clone()).await;
 
 		// Should receive message
 		let msg = rx.try_recv().unwrap();
 		match msg {
-			PushMessage::Change {
+			PushMessage::ChangeJson {
 				subscription_id,
 				body: received_body,
 				..
@@ -298,6 +366,9 @@ pub mod tests {
 				assert_eq!(subscription_id, sub_id);
 				assert_eq!(received_body, body);
 			}
+			PushMessage::ChangeRbcf {
+				..
+			} => panic!("Unexpected ChangeRbcf message"),
 			PushMessage::Closed {
 				..
 			} => panic!("Unexpected Closed message"),
@@ -323,8 +394,8 @@ pub mod tests {
 
 		let sub1 = SubscriptionId(12345);
 		let sub2 = SubscriptionId(12346);
-		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1);
-		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2);
+		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1, WireFormat::Json);
+		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2, WireFormat::Json);
 		assert_eq!(registry.subscription_count(), 2);
 
 		registry.cleanup_connection(connection_id);
@@ -342,8 +413,8 @@ pub mod tests {
 
 		let sub1 = SubscriptionId(12345);
 		let sub2 = SubscriptionId(12346);
-		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1);
-		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2);
+		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1, WireFormat::Json);
+		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2, WireFormat::Json);
 		assert_eq!(registry.subscription_count(), 2);
 		assert_eq!(registry.connection_count(), 1);
 

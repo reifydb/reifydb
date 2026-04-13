@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{Encoding, GrpcClient, Value};
+use reifydb_client::{GrpcClient, Value, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -19,7 +19,8 @@ fn test_filtered_subscription() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_filter");
@@ -52,7 +53,8 @@ fn test_no_callback_for_non_matching() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_no_match");

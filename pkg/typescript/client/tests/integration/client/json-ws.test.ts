@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {wait_for_database} from "../setup";
-import {Client, JsonWebsocketClient} from "../../../src";
+import {Client, JsonWsClient} from "../../../src";
 
 describe('ReifyDB Client Integration Tests', () => {
     const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
@@ -13,7 +13,7 @@ describe('ReifyDB Client Integration Tests', () => {
     }, 30000);
 
     describe('JSON WebSocket Client', () => {
-        let ws_client: JsonWebsocketClient;
+        let ws_client: JsonWsClient;
 
         beforeEach(async () => {
             try {

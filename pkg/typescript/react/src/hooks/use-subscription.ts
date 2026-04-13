@@ -14,7 +14,7 @@ export interface SubscriptionOptions extends SubscriptionExecutorOptions {
 }
 
 export function useSubscription<S extends ShapeNode = any>(
-    query: string,
+    rql: string,
     params?: any,
     shape?: S,
     options?: SubscriptionOptions
@@ -38,12 +38,12 @@ export function useSubscription<S extends ShapeNode = any>(
     useEffect(() => {
         if (options?.enabled === false) return;
 
-        subscribe(query, params, shape);
+        subscribe(rql, params, shape);
 
         return () => {
             unsubscribe();
         };
-    }, [query, params_key, shape, options?.enabled, subscribe, unsubscribe]);
+    }, [rql, params_key, shape, options?.enabled, subscribe, unsubscribe]);
 
     return {
         data: state.data,

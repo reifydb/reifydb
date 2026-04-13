@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {JsonWebsocketClient} from '../src/json-ws';
+import {JsonWsClient} from '../src/json-ws';
 import {
     create_mock_socket,
     MockSocket,
@@ -9,7 +9,7 @@ import {
     teardown_window_web_socket,
 } from './helpers/abort-test-utils';
 
-describe('JsonWebsocketClient abort signal', () => {
+describe('JsonWsClient abort signal', () => {
     let mock_socket: MockSocket;
 
     beforeEach(() => {
@@ -27,7 +27,7 @@ describe('JsonWebsocketClient abort signal', () => {
             const controller = new AbortController();
             controller.abort();
 
-            await expect(JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal}))
+            await expect(JsonWsClient.connect({url: 'ws://test', signal: controller.signal}))
                 .rejects.toThrow('AbortError');
 
             // WebSocket constructor should never be called
@@ -37,7 +37,7 @@ describe('JsonWebsocketClient abort signal', () => {
         it('throws AbortError when signal aborts during connection wait', async () => {
             const controller = new AbortController();
 
-            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWsClient.connect({url: 'ws://test', signal: controller.signal});
 
             // Let connect() reach the addEventListener registration
             await Promise.resolve();
@@ -50,7 +50,7 @@ describe('JsonWebsocketClient abort signal', () => {
         it('connects successfully when signal is provided but not aborted', async () => {
             const controller = new AbortController();
 
-            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWsClient.connect({url: 'ws://test', signal: controller.signal});
 
             // Simulate socket opening
             await Promise.resolve();
@@ -65,7 +65,7 @@ describe('JsonWebsocketClient abort signal', () => {
             const controller = new AbortController();
             const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
 
-            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWsClient.connect({url: 'ws://test', signal: controller.signal});
 
             await Promise.resolve();
             mock_socket._emit('open');
@@ -78,7 +78,7 @@ describe('JsonWebsocketClient abort signal', () => {
         it('throws AbortError on post-connection race condition', async () => {
             const controller = new AbortController();
 
-            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWsClient.connect({url: 'ws://test', signal: controller.signal});
 
             await Promise.resolve();
             // Fire open event and then immediately abort — the post-await check should catch it
@@ -92,7 +92,7 @@ describe('JsonWebsocketClient abort signal', () => {
         it('cleans up socket event listeners on successful connection', async () => {
             const controller = new AbortController();
 
-            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWsClient.connect({url: 'ws://test', signal: controller.signal});
 
             await Promise.resolve();
             mock_socket._emit('open');
@@ -106,7 +106,7 @@ describe('JsonWebsocketClient abort signal', () => {
         it('cleans up socket event listeners on abort', async () => {
             const controller = new AbortController();
 
-            const connect_promise = JsonWebsocketClient.connect({url: 'ws://test', signal: controller.signal});
+            const connect_promise = JsonWsClient.connect({url: 'ws://test', signal: controller.signal});
 
             await Promise.resolve();
             controller.abort();

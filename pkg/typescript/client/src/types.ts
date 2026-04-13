@@ -71,7 +71,8 @@ export interface SubscribeRequest {
     id: string;
     type: "Subscribe";
     payload: {
-        query: string;
+        rql: string;
+        format?: "json" | "rbcf";
     };
 }
 

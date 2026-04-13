@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{Encoding, GrpcClient};
+use reifydb_client::{GrpcClient, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -20,7 +20,7 @@ fn test_password_login_success() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 		let result = client.login_with_password("alice", "alice-pass").await.unwrap();
 
 		assert!(!result.token.is_empty(), "Token should not be empty");
@@ -43,7 +43,7 @@ fn test_password_login_wrong_password() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 		let result = client.login_with_password("alice", "wrong-password").await;
 		assert!(result.is_err(), "Should fail with wrong password");
 	});
@@ -60,7 +60,7 @@ fn test_password_login_unknown_user() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 		let result = client.login_with_password("nonexistent", "password").await;
 		assert!(result.is_err(), "Should fail with unknown user");
 	});
@@ -77,7 +77,7 @@ fn test_token_login_success() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 		let result = client.login_with_token("bob-secret-token").await.unwrap();
 
 		assert!(!result.token.is_empty(), "Token should not be empty");
@@ -100,7 +100,7 @@ fn test_token_login_wrong_token() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 		let result = client.login_with_token("wrong-token").await;
 		assert!(result.is_err(), "Should fail with wrong token");
 	});
@@ -117,7 +117,7 @@ fn test_sequential_logins() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 
 		// Login as alice
 		let result_a = client.login_with_password("alice", "alice-pass").await.unwrap();
@@ -149,7 +149,7 @@ fn test_logout_success() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 		let result = client.login_with_password("alice", "alice-pass").await.unwrap();
 		let old_token = result.token.clone();
 
@@ -162,7 +162,7 @@ fn test_logout_success() {
 
 		// Verify the old token is revoked server-side
 		let mut client2 =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 		client2.authenticate(&old_token);
 		let result = client2.query("MAP {v: 2}", None).await;
 		assert!(result.is_err(), "Old token should be revoked after logout");
@@ -180,7 +180,7 @@ fn test_logout_twice() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 		client.login_with_password("alice", "alice-pass").await.unwrap();
 
 		// First logout
@@ -202,7 +202,7 @@ fn test_logout_without_token() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 
 		// Logout without ever logging in should be a no-op
 		client.logout().await.unwrap();
@@ -220,7 +220,7 @@ fn test_logout_invalid_token() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 
 		// Set an invalid token manually
 		client.authenticate("invalid-token-that-does-not-exist");
@@ -242,9 +242,9 @@ fn test_logout_independent_sessions() {
 
 	runtime.block_on(async {
 		let mut client_a =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 		let mut client_b =
-			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), Encoding::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", grpc_port), WireFormat::Proto).await.unwrap();
 
 		// Both login as alice (separate sessions)
 		client_a.login_with_password("alice", "alice-pass").await.unwrap();

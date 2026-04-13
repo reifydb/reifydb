@@ -41,7 +41,7 @@ describe('Auth Login Tests — JSON HTTP', () => {
     describe('Token Authentication', () => {
         it('should login with correct token and execute queries', async () => {
             const client = Client.connect_json_http(HTTP_URL, {timeout_ms: 10000});
-            const result = await client.login_with_token('bob', 'bob-secret-token');
+            const result = await client.login_with_token('bob-secret-token');
 
             expect(result.token).toBeDefined();
             expect(result.token.length).toBeGreaterThan(0);
@@ -56,12 +56,12 @@ describe('Auth Login Tests — JSON HTTP', () => {
 
         it('should reject wrong token', async () => {
             const client = Client.connect_json_http(HTTP_URL, {timeout_ms: 10000});
-            await expect(client.login_with_token('bob', 'wrong-token')).rejects.toThrow();
+            await expect(client.login_with_token('wrong-token')).rejects.toThrow();
         }, 10000);
 
         it('should reject unknown user', async () => {
             const client = Client.connect_json_http(HTTP_URL, {timeout_ms: 10000});
-            await expect(client.login_with_token('nonexistent', 'some-token')).rejects.toThrow();
+            await expect(client.login_with_token('some-token')).rejects.toThrow();
         }, 10000);
     });
 
@@ -75,7 +75,7 @@ describe('Auth Login Tests — JSON HTTP', () => {
             const framesA = await client.query('MAP {v: 1}');
             expect(framesA[0][0].v).toBe(1);
 
-            const resultB = await client.login_with_token('bob', 'bob-secret-token');
+            const resultB = await client.login_with_token('bob-secret-token');
             expect(resultB.token).toBeDefined();
             expect(resultB.token).not.toBe(resultA.token);
 

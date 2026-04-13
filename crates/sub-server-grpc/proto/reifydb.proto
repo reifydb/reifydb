@@ -11,14 +11,24 @@ service ReifyDB {
   rpc Logout(LogoutRequest) returns (LogoutResponse);
 }
 
-message AdminRequest  { repeated string statements = 1; optional Params params = 2; }
-message AdminResponse { repeated Frame frames = 1; bytes rbcf_payload = 2; }
-message CommandRequest  { repeated string statements = 1; optional Params params = 2; }
-message CommandResponse { repeated Frame frames = 1; bytes rbcf_payload = 2; }
-message QueryRequest  { repeated string statements = 1; optional Params params = 2; }
-message QueryResponse { repeated Frame frames = 1; bytes rbcf_payload = 2; }
+// Wire format the server should use when emitting frames back to the client.
+// FORMAT_UNSPECIFIED is treated as FORMAT_PROTO for backwards compatibility.
+enum Format {
+  FORMAT_UNSPECIFIED = 0;
+  FORMAT_PROTO = 1;
+  FORMAT_RBCF = 2;
+}
 
-message SubscribeRequest { string query = 1; }
+message FramesPayload { repeated Frame frames = 1; }
+
+message AdminRequest  { repeated string statements = 1; optional Params params = 2; Format format = 3; }
+message AdminResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+message CommandRequest  { repeated string statements = 1; optional Params params = 2; Format format = 3; }
+message CommandResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+message QueryRequest  { repeated string statements = 1; optional Params params = 2; Format format = 3; }
+message QueryResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+
+message SubscribeRequest { string rql = 1; Format format = 2; }
 message UnsubscribeRequest { string subscription_id = 1; }
 message UnsubscribeResponse { string subscription_id = 1; }
 message SubscriptionEvent {
@@ -28,7 +38,7 @@ message SubscriptionEvent {
   }
 }
 message SubscribedEvent { string subscription_id = 1; }
-message ChangeEvent { repeated Frame frames = 1; bytes rbcf_payload = 2; }
+message ChangeEvent { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
 
 message AuthenticateRequest {
   string method = 1;

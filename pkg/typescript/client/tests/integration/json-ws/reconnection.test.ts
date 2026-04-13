@@ -3,12 +3,12 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {wait_for_database} from "../setup";
-import {Client, JsonWebsocketClient} from "../../../src";
+import {Client, JsonWsClient} from "../../../src";
 
 describe.each([
-    {encoding: "json"},
-    {encoding: "rbcf"},
-] as const)('WebSocket Client Reconnection [$encoding]', ({encoding}) => {
+    {format: "json"},
+    {format: "rbcf"},
+] as const)('WebSocket Client Reconnection [$format]', ({format}) => {
     const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
     const AUTH_TOKEN = process.env.REIFYDB_TOKEN;
 
@@ -17,7 +17,7 @@ describe.each([
     }, 30000);
 
     describe('Automatic Reconnection', () => {
-        let ws_client: JsonWebsocketClient;
+        let ws_client: JsonWsClient;
 
         afterEach(async () => {
             if (ws_client) {
@@ -36,7 +36,7 @@ describe.each([
                 token: AUTH_TOKEN,
                 max_reconnect_attempts: 3,
                 reconnect_delay_ms: 100,
-                encoding,
+                format,
             });
 
             const firstResult = await ws_client.query('MAP {result: 42}');
@@ -61,7 +61,7 @@ describe.each([
                 token: AUTH_TOKEN,
                 max_reconnect_attempts: 3,
                 reconnect_delay_ms: 100,
-                encoding,
+                format,
             });
 
             const socket = (ws_client as any).socket;
@@ -87,7 +87,7 @@ describe.each([
                 token: AUTH_TOKEN,
                 max_reconnect_attempts: 2,
                 reconnect_delay_ms: 100,
-                encoding,
+                format,
             }).catch(() => null);
 
             if (!ws_client) {
@@ -115,7 +115,7 @@ describe.each([
                 token: AUTH_TOKEN,
                 max_reconnect_attempts: 0,
                 reconnect_delay_ms: 100,
-                encoding,
+                format,
             });
 
             const socket = (ws_client as any).socket;
@@ -136,7 +136,7 @@ describe.each([
                 token: AUTH_TOKEN,
                 max_reconnect_attempts: 3,
                 reconnect_delay_ms: 100,
-                encoding,
+                format,
             });
 
             ws_client.disconnect();
@@ -157,7 +157,7 @@ describe.each([
                 token: AUTH_TOKEN,
                 max_reconnect_attempts: 3,
                 reconnect_delay_ms: 100,
-                encoding,
+                format,
             });
 
             const socket = (ws_client as any).socket;
@@ -180,7 +180,7 @@ describe.each([
                 token: AUTH_TOKEN,
                 max_reconnect_attempts: 3,
                 reconnect_delay_ms: 100,
-                encoding,
+                format,
             });
 
             const socket1 = (ws_client as any).socket;

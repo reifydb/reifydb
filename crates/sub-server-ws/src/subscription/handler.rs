@@ -13,16 +13,16 @@ use reifydb_sub_server::{
 	subscribe::{CreateSubscriptionError, CreateSubscriptionResult::*, create_subscription},
 };
 use reifydb_type::value::identity::IdentityId;
-use reifydb_wire_format::json::convert_frames;
+use reifydb_wire_format::{encode::encode_frames, json::convert_frames, options::EncodeOptions};
 use serde_json::json;
 use tokio::spawn;
 use tracing::info;
 
 use crate::{
-	handler::{ConnectionContext, error_to_response},
+	handler::{BinaryKind, ConnectionContext, encode_rbcf_envelope, error_to_response},
 	protocol::SubscribeRequest,
-	response::{CONTENT_TYPE_FRAMES, Response},
-	subscription::PushMessage,
+	response::{CONTENT_TYPE_JSON, Response},
+	subscription::{PushMessage, registry::WireFormat},
 };
 
 /// Handle a subscription request.
@@ -42,23 +42,33 @@ pub(crate) async fn handle_subscribe(
 	conn: &mut ConnectionContext<'_>,
 ) -> Option<String> {
 	let id: IdentityId = conn.identity.unwrap_or_else(IdentityId::root);
-	let user_query = sub.query.clone();
+	let user_rql = sub.rql.clone();
+	let format = WireFormat::from_str_opt(sub.format.as_deref());
 	// TODO: capture upgrade request headers via accept_hdr_async
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 
-	match create_subscription(conn.state, id, &user_query, metadata).await {
+	match create_subscription(conn.state, id, &user_rql, metadata).await {
 		Ok(Local(subscription_id)) => {
-			conn.registry.subscribe(subscription_id, conn.connection_id, user_query, conn.push_tx.clone());
+			conn.registry.subscribe(
+				subscription_id,
+				conn.connection_id,
+				user_rql,
+				conn.push_tx.clone(),
+				format,
+			);
 
-			info!("Connection {} subscribed: subscription_id={}", conn.connection_id, subscription_id);
+			info!(
+				"Connection {} subscribed: subscription_id={} format={:?}",
+				conn.connection_id, subscription_id, format
+			);
 
 			Some(Response::subscribed(request_id, subscription_id.to_string()).to_json())
 		}
 		Ok(Remote {
 			address,
-			query,
+			rql,
 		}) => {
-			let remote_sub = match connect_remote(&address, &query, conn.auth_token.as_deref()).await {
+			let remote_sub = match connect_remote(&address, &rql, conn.auth_token.as_deref()).await {
 				Ok(s) => s,
 				Err(e) => {
 					return Some(Response::internal_error(
@@ -87,12 +97,27 @@ pub(crate) async fn handle_subscribe(
 			let push_tx_close = push_tx.clone();
 			let shutdown = conn.shutdown.clone();
 			let handle = spawn(async move {
-				proxy_remote(remote_sub, push_tx, shutdown, move |frames| {
-					let ws_frames = convert_frames(&frames);
-					PushMessage::Change {
-						subscription_id,
-						content_type: CONTENT_TYPE_FRAMES.to_string(),
-						body: json!({ "frames": ws_frames }),
+				proxy_remote(remote_sub, push_tx, shutdown, move |frames| match format {
+					WireFormat::Rbcf => {
+						let rbcf_bytes = encode_frames(&frames, &EncodeOptions::fast())
+							.unwrap_or_default();
+						let envelope = encode_rbcf_envelope(
+							BinaryKind::Change,
+							&subscription_id.to_string(),
+							&rbcf_bytes,
+						);
+						PushMessage::ChangeRbcf {
+							subscription_id,
+							envelope,
+						}
+					}
+					WireFormat::Json => {
+						let ws_frames = convert_frames(&frames);
+						PushMessage::ChangeJson {
+							subscription_id,
+							content_type: CONTENT_TYPE_JSON.to_string(),
+							body: json!({ "frames": ws_frames }),
+						}
 					}
 				})
 				.await;
@@ -102,7 +127,10 @@ pub(crate) async fn handle_subscribe(
 			});
 			conn.remote_tasks.insert(remote_id.clone(), handle);
 
-			info!("Connection {} subscribed to remote: subscription_id={}", conn.connection_id, remote_id);
+			info!(
+				"Connection {} subscribed to remote: subscription_id={} format={:?}",
+				conn.connection_id, remote_id, format
+			);
 
 			Some(Response::subscribed(request_id, remote_id).to_json())
 		}

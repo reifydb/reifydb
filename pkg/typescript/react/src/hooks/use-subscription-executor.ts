@@ -43,7 +43,7 @@ export function useSubscriptionExecutor<T = any>(
     const client_ref = useRef(client);
 
     const subscriptionIdRef = useRef<string | undefined>(undefined);
-    const query_ref = useRef<string | undefined>(undefined);
+    const rql_ref = useRef<string | undefined>(undefined);
     const params_ref = useRef<any>(undefined);
     const shape_ref = useRef<ShapeNode | undefined>(undefined);
 
@@ -88,7 +88,7 @@ export function useSubscriptionExecutor<T = any>(
     }, [add_change_event]);
 
     const subscribe = useCallback(async (
-        query: string,
+        rql: string,
         params?: any,
         shape?: ShapeNode
     ) => {
@@ -104,7 +104,7 @@ export function useSubscriptionExecutor<T = any>(
         }
 
         // Store refs for reconnection
-        query_ref.current = query;
+        rql_ref.current = rql;
         params_ref.current = params;
         shape_ref.current = shape;
 
@@ -115,7 +115,7 @@ export function useSubscriptionExecutor<T = any>(
         }));
 
         try {
-            const sub_id = await current_client.subscribe(query, params, shape, {
+            const sub_id = await current_client.subscribe(rql, params, shape, {
                 on_insert: handle_insert,
                 on_update: handle_update,
                 on_remove: handle_remove
@@ -145,7 +145,7 @@ export function useSubscriptionExecutor<T = any>(
         try {
             await current_client.unsubscribe(subscriptionIdRef.current);
             subscriptionIdRef.current = undefined;
-            query_ref.current = undefined;
+            rql_ref.current = undefined;
             params_ref.current = undefined;
             shape_ref.current = undefined;
 

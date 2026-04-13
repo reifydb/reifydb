@@ -109,15 +109,15 @@ impl Actor for ServerActor {
 			}
 			ServerMessage::Subscribe {
 				identity,
-				query,
+				rql,
 				reply,
 			} => {
 				let t = self.clock.instant();
-				let result = self.engine.subscribe_as(identity, &query, Params::None);
+				let result = self.engine.subscribe_as(identity, &rql, Params::None);
 				if let Some(err) = result.error {
 					reply.send(ServerSubscribeResponse::EngineError {
 						diagnostic: Box::new(err.diagnostic()),
-						statement: query,
+						statement: rql,
 					});
 				} else {
 					reply.send(ServerSubscribeResponse::Subscribed {

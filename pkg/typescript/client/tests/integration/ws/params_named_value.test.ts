@@ -14,9 +14,9 @@ import {
 import { expectSingleValueResult } from "./test-helper";
 
 describe.each([
-    {encoding: "json"},
-    {encoding: "rbcf"},
-] as const)('Named Parameters (value) [$encoding]', ({encoding}) => {
+    {format: "json"},
+    {format: "rbcf"},
+] as const)('Named Parameters (value) [$format]', ({format}) => {
     let ws_client: WsClient;
 
 
@@ -29,7 +29,7 @@ describe.each([
             ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
                 timeout_ms: 10000,
                 token: process.env.REIFYDB_TOKEN,
-                encoding,
+                format,
             });
         } catch (error) {
             console.error('❌ WebSocket connection failed:', error);

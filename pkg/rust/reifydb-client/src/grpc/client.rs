@@ -42,27 +42,27 @@ use uuid::Uuid;
 
 use super::generated::{
 	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
-	CommandRequest as ProtoCommandRequest, Frame as ProtoFrame, LogoutRequest as ProtoLogoutRequest, NamedParams,
-	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
+	CommandRequest as ProtoCommandRequest, Format, Frame as ProtoFrame, LogoutRequest as ProtoLogoutRequest,
+	NamedParams, Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
 	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
-	UnsubscribeRequest as ProtoUnsubscribeRequest, params::Params as ProtoParamsOneof,
-	reify_db_client::ReifyDbClient, subscription_event,
+	UnsubscribeRequest as ProtoUnsubscribeRequest, admin_response, change_event, command_response,
+	params::Params as ProtoParamsOneof, query_response, reify_db_client::ReifyDbClient, subscription_event,
 };
-use crate::{AdminResult, CommandResult, Encoding, LoginResult, QueryResult};
+use crate::{AdminResult, CommandResult, LoginResult, QueryResult, WireFormat};
 
 #[derive(Clone)]
 pub struct GrpcClient {
 	inner: ReifyDbClient<Channel>,
 	token: Option<String>,
-	encoding: Encoding,
+	format: WireFormat,
 }
 
 impl GrpcClient {
-	pub async fn connect(url: &str, encoding: Encoding) -> Result<Self, Error> {
-		if encoding == Encoding::Json {
+	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
+		if format == WireFormat::Json {
 			return Err(Error(Box::new(Diagnostic {
-				code: "INVALID_ENCODING".to_string(),
-				message: "Encoding::Json is not supported for GrpcClient".to_string(),
+				code: "INVALID_FORMAT".to_string(),
+				message: "WireFormat::Json is not supported for GrpcClient".to_string(),
 				..Default::default()
 			})));
 		}
@@ -81,7 +81,7 @@ impl GrpcClient {
 		Ok(Self {
 			inner: ReifyDbClient::new(channel),
 			token: None,
-			encoding,
+			format,
 		})
 	}
 
@@ -149,12 +149,10 @@ impl GrpcClient {
 		Ok(())
 	}
 
-	fn decode_response_frames(&self, rbcf_payload: Vec<u8>, proto_frames: Vec<ProtoFrame>) -> Vec<Frame> {
-		if self.encoding == Encoding::Rbcf && !rbcf_payload.is_empty() {
-			reifydb_wire_format::decode::decode_frames(&rbcf_payload)
-				.unwrap_or_else(|_| proto_frames_to_frames(proto_frames))
-		} else {
-			proto_frames_to_frames(proto_frames)
+	fn wire_format(&self) -> i32 {
+		match self.format {
+			WireFormat::Rbcf => Format::Rbcf as i32,
+			_ => Format::Proto as i32,
 		}
 	}
 
@@ -162,6 +160,7 @@ impl GrpcClient {
 		let request = ProtoAdminRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
@@ -169,7 +168,7 @@ impl GrpcClient {
 		self.attach_auth(&mut req);
 
 		let inner = client.admin(req).await.map_err(status_to_error)?.into_inner();
-		let frames = self.decode_response_frames(inner.rbcf_payload, inner.frames);
+		let frames = decode_admin_payload(inner.payload)?;
 		Ok(AdminResult {
 			frames,
 		})
@@ -179,6 +178,7 @@ impl GrpcClient {
 		let request = ProtoAdminRequest {
 			statements: statements.into_iter().map(String::from).collect(),
 			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
@@ -186,7 +186,7 @@ impl GrpcClient {
 		self.attach_auth(&mut req);
 
 		let inner = client.admin(req).await.map_err(status_to_error)?.into_inner();
-		let frames = self.decode_response_frames(inner.rbcf_payload, inner.frames);
+		let frames = decode_admin_payload(inner.payload)?;
 		Ok(AdminResult {
 			frames,
 		})
@@ -196,6 +196,7 @@ impl GrpcClient {
 		let request = ProtoCommandRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
@@ -203,7 +204,7 @@ impl GrpcClient {
 		self.attach_auth(&mut req);
 
 		let inner = client.command(req).await.map_err(status_to_error)?.into_inner();
-		let frames = self.decode_response_frames(inner.rbcf_payload, inner.frames);
+		let frames = decode_command_payload(inner.payload)?;
 		Ok(CommandResult {
 			frames,
 		})
@@ -217,6 +218,7 @@ impl GrpcClient {
 		let request = ProtoCommandRequest {
 			statements: statements.into_iter().map(String::from).collect(),
 			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
@@ -224,7 +226,7 @@ impl GrpcClient {
 		self.attach_auth(&mut req);
 
 		let inner = client.command(req).await.map_err(status_to_error)?.into_inner();
-		let frames = self.decode_response_frames(inner.rbcf_payload, inner.frames);
+		let frames = decode_command_payload(inner.payload)?;
 		Ok(CommandResult {
 			frames,
 		})
@@ -234,6 +236,7 @@ impl GrpcClient {
 		let request = ProtoQueryRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
@@ -241,7 +244,7 @@ impl GrpcClient {
 		self.attach_auth(&mut req);
 
 		let inner = client.query(req).await.map_err(status_to_error)?.into_inner();
-		let frames = self.decode_response_frames(inner.rbcf_payload, inner.frames);
+		let frames = decode_query_payload(inner.payload)?;
 		Ok(QueryResult {
 			frames,
 		})
@@ -251,6 +254,7 @@ impl GrpcClient {
 		let request = ProtoQueryRequest {
 			statements: statements.into_iter().map(String::from).collect(),
 			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
@@ -258,15 +262,16 @@ impl GrpcClient {
 		self.attach_auth(&mut req);
 
 		let inner = client.query(req).await.map_err(status_to_error)?.into_inner();
-		let frames = self.decode_response_frames(inner.rbcf_payload, inner.frames);
+		let frames = decode_query_payload(inner.payload)?;
 		Ok(QueryResult {
 			frames,
 		})
 	}
 
-	pub async fn subscribe(&self, query: &str) -> Result<GrpcSubscription, Error> {
+	pub async fn subscribe(&self, rql: &str) -> Result<GrpcSubscription, Error> {
 		let request = ProtoSubscribeRequest {
-			query: query.to_string(),
+			rql: rql.to_string(),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
@@ -299,7 +304,7 @@ impl GrpcClient {
 		Ok(GrpcSubscription {
 			subscription_id,
 			stream,
-			encoding: self.encoding,
+			format: self.format,
 		})
 	}
 
@@ -327,7 +332,8 @@ impl GrpcClient {
 pub struct GrpcSubscription {
 	subscription_id: String,
 	stream: Streaming<SubscriptionEvent>,
-	encoding: Encoding,
+	#[allow(dead_code)]
+	format: WireFormat,
 }
 
 impl GrpcSubscription {
@@ -340,13 +346,15 @@ impl GrpcSubscription {
 			let msg = self.stream.message().await.ok()??;
 			match msg.event {
 				Some(subscription_event::Event::Change(change)) => {
-					let frames = if self.encoding == Encoding::Rbcf
-						&& !change.rbcf_payload.is_empty()
-					{
-						reifydb_wire_format::decode::decode_frames(&change.rbcf_payload)
-							.unwrap_or_else(|_| proto_frames_to_frames(change.frames))
-					} else {
-						proto_frames_to_frames(change.frames)
+					let frames = match change.payload {
+						Some(change_event::Payload::Rbcf(bytes)) => {
+							reifydb_wire_format::decode::decode_frames(&bytes)
+								.unwrap_or_default()
+						}
+						Some(change_event::Payload::Frames(fp)) => {
+							proto_frames_to_frames(fp.frames)
+						}
+						None => Vec::new(),
 					};
 					return Some(frames);
 				}
@@ -358,6 +366,40 @@ impl GrpcSubscription {
 			}
 		}
 	}
+}
+
+fn decode_admin_payload(payload: Option<admin_response::Payload>) -> Result<Vec<Frame>, Error> {
+	match payload {
+		Some(admin_response::Payload::Rbcf(bytes)) => decode_rbcf(&bytes),
+		Some(admin_response::Payload::Frames(fp)) => Ok(proto_frames_to_frames(fp.frames)),
+		None => Ok(Vec::new()),
+	}
+}
+
+fn decode_command_payload(payload: Option<command_response::Payload>) -> Result<Vec<Frame>, Error> {
+	match payload {
+		Some(command_response::Payload::Rbcf(bytes)) => decode_rbcf(&bytes),
+		Some(command_response::Payload::Frames(fp)) => Ok(proto_frames_to_frames(fp.frames)),
+		None => Ok(Vec::new()),
+	}
+}
+
+fn decode_query_payload(payload: Option<query_response::Payload>) -> Result<Vec<Frame>, Error> {
+	match payload {
+		Some(query_response::Payload::Rbcf(bytes)) => decode_rbcf(&bytes),
+		Some(query_response::Payload::Frames(fp)) => Ok(proto_frames_to_frames(fp.frames)),
+		None => Ok(Vec::new()),
+	}
+}
+
+fn decode_rbcf(bytes: &[u8]) -> Result<Vec<Frame>, Error> {
+	reifydb_wire_format::decode::decode_frames(bytes).map_err(|e| {
+		Error(Box::new(Diagnostic {
+			code: "RBCF_DECODE".to_string(),
+			message: format!("failed to decode RBCF payload: {}", e),
+			..Default::default()
+		}))
+	})
 }
 
 fn params_to_proto(params: Params) -> Option<ProtoParams> {
