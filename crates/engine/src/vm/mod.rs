@@ -38,7 +38,6 @@ pub mod executor;
 pub mod instruction;
 pub mod services;
 pub mod stack;
-pub(crate) mod value_ops;
 #[allow(clippy::module_inception)]
 pub mod vm;
 pub(crate) mod volcano;

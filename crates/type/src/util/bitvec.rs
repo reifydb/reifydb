@@ -326,9 +326,8 @@ impl BitVec {
 		}
 
 		// Process remaining bytes
-		for (out, a) in result_bits[full_chunks..byte_count]
-			.iter_mut()
-			.zip(&self.inner.bits[full_chunks..byte_count])
+		for (out, a) in
+			result_bits[full_chunks..byte_count].iter_mut().zip(&self.inner.bits[full_chunks..byte_count])
 		{
 			*out = !a;
 		}

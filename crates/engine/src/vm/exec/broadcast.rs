@@ -38,7 +38,7 @@ pub(crate) fn broadcast_to_match(left: Column, right: Column) -> (Column, Column
 }
 
 /// Repeat a single-element column to `target_len` rows.
-fn broadcast_column(col: &Column, target_len: usize) -> Column {
+pub(crate) fn broadcast_column(col: &Column, target_len: usize) -> Column {
 	debug_assert_eq!(col.data.len(), 1);
 	let value = col.data.get_value(0);
 	let mut data = ColumnData::with_capacity(col.data.get_type(), target_len);
@@ -46,4 +46,23 @@ fn broadcast_column(col: &Column, target_len: usize) -> Column {
 		data.push_value(value.clone());
 	}
 	Column::new(col.name.clone(), data)
+}
+
+/// Broadcast any length-1 columns to the longest length among the inputs.
+/// Columns already at the target length pass through unchanged. Columns with
+/// mismatched non-1 lengths are returned as-is (the kernel's length assert will fire).
+pub(crate) fn broadcast_many(cols: Vec<Column>) -> Vec<Column> {
+	let target = cols.iter().map(|c| c.data.len()).max().unwrap_or(0);
+	if target <= 1 {
+		return cols;
+	}
+	cols.into_iter()
+		.map(|c| {
+			if c.data.len() == 1 {
+				broadcast_column(&c, target)
+			} else {
+				c
+			}
+		})
+		.collect()
 }

@@ -3,30 +3,24 @@
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_type::{
-	error::{BinaryOp, IntoDiagnostic, TypeError},
+	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
 	fragment::Fragment,
-	value::Value,
 };
 
 use super::broadcast::broadcast_to_match;
 use crate::{
 	Result,
-	expression::compare::{
-		CompareOp, Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns,
+	expression::{
+		compare::{
+			CompareOp, Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual,
+			compare_columns,
+		},
+		logic::execute_logical_op,
 	},
 	vm::{stack::Variable, vm::Vm},
 };
 
 impl Vm {
-	/// Pop two values, apply an infallible comparison/logic operation, push the result.
-	/// Used in scalar mode (batch_size == 1).
-	pub(crate) fn exec_cmp_op(&mut self, op: fn(&Value, &Value) -> Value) -> Result<()> {
-		let right = self.pop_value()?;
-		let left = self.pop_value()?;
-		self.stack.push(Variable::scalar(op(&left, &right)));
-		Ok(())
-	}
-
 	/// Pop two columns, apply a columnar comparison, push the boolean result column.
 	fn exec_columnar_cmp<Op: CompareOp>(&mut self, binary_op: BinaryOp) -> Result<()> {
 		let right = self.pop_as_column()?;
@@ -41,6 +35,17 @@ impl Vm {
 			}
 			.into_diagnostic()
 		})?;
+		self.stack.push(Variable::columns(Columns::new(vec![result])));
+		Ok(())
+	}
+
+	/// Pop two columns, apply a columnar boolean logic op, push the boolean result column.
+	fn exec_columnar_logic(&mut self, op: LogicalOp, bool_fn: fn(bool, bool) -> bool) -> Result<()> {
+		let right = self.pop_as_column()?;
+		let left = self.pop_as_column()?;
+		let (left, right) = broadcast_to_match(left, right);
+		let frag = Fragment::internal("vm_logic");
+		let result = execute_logical_op(&left, &right, &frag, op, bool_fn)?;
 		self.stack.push(Variable::columns(Columns::new(vec![result])));
 		Ok(())
 	}
@@ -67,5 +72,17 @@ impl Vm {
 
 	pub(crate) fn exec_cmp_ge(&mut self) -> Result<()> {
 		self.exec_columnar_cmp::<GreaterThanEqual>(BinaryOp::GreaterThanEqual)
+	}
+
+	pub(crate) fn exec_logic_and(&mut self) -> Result<()> {
+		self.exec_columnar_logic(LogicalOp::And, |a, b| a && b)
+	}
+
+	pub(crate) fn exec_logic_or(&mut self) -> Result<()> {
+		self.exec_columnar_logic(LogicalOp::Or, |a, b| a || b)
+	}
+
+	pub(crate) fn exec_logic_xor(&mut self) -> Result<()> {
+		self.exec_columnar_logic(LogicalOp::Xor, |a, b| a != b)
 	}
 }

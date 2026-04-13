@@ -49,7 +49,6 @@ use super::{
 	},
 	services::Services,
 	stack::{ControlFlow, Stack, SymbolTable, Variable},
-	value_ops,
 };
 use crate::{
 	Result,
@@ -118,6 +117,14 @@ impl Vm {
 
 	/// Pop a scalar Value from the stack. Works for Scalar(Columns) and
 	/// 1x1 Columns variants.
+	///
+	/// Invariant: only legitimate in scalar-mode contexts (`batch_size == 1`) or
+	/// in DDL/DML code paths where a single value is required. All arithmetic,
+	/// comparison, and logic dispatch goes through columnar kernels via
+	/// `pop_as_column`; scalar-path jump helpers are guarded by `batch_size > 1`
+	/// checks in the dispatch in `run`. If you add a new caller, confirm it's
+	/// unreachable when the VM is batch-mode, or the call will fail on multi-row
+	/// input.
 	pub(crate) fn pop_value(&mut self) -> Result<Value> {
 		match self.stack.pop()? {
 			Variable::Columns {
@@ -206,9 +213,9 @@ impl Vm {
 				Instruction::CmpGt => self.exec_cmp_gt()?,
 				Instruction::CmpGe => self.exec_cmp_ge()?,
 
-				Instruction::LogicAnd => self.exec_cmp_op(value_ops::scalar_and)?,
-				Instruction::LogicOr => self.exec_cmp_op(value_ops::scalar_or)?,
-				Instruction::LogicXor => self.exec_cmp_op(value_ops::scalar_xor)?,
+				Instruction::LogicAnd => self.exec_logic_and()?,
+				Instruction::LogicOr => self.exec_logic_or()?,
+				Instruction::LogicXor => self.exec_logic_xor()?,
 				Instruction::Between => self.exec_between()?,
 				Instruction::InList {
 					count,
@@ -265,7 +272,11 @@ impl Vm {
 					}
 				}
 				Instruction::JumpIfTruePop(addr) => {
-					if self.exec_jump_if_true_pop(*addr)? {
+					if self.batch_size > 1 {
+						if self.exec_jump_if_true_pop_columnar(*addr)? {
+							continue;
+						}
+					} else if self.exec_jump_if_true_pop(*addr)? {
 						continue;
 					}
 				}

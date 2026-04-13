@@ -6,7 +6,7 @@ use std::slice::from_ref;
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{
-	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, OperandCategory, RuntimeErrorKind, TypeError},
+	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	value::{Value, r#type::Type},
 };
@@ -26,6 +26,7 @@ use crate::{
 		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns},
 		constant::{constant_value, constant_value_of},
 		context::EvalContext,
+		logic::execute_logical_op,
 		lookup::column_lookup,
 		parameter::parameter_lookup,
 		prefix::prefix_apply,
@@ -821,49 +822,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 
 fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> Result<Vec<CompiledExpr>> {
 	exprs.iter().map(|e| compile_expression(ctx, e)).collect()
-}
-
-fn execute_logical_op(
-	left: &Column,
-	right: &Column,
-	fragment: &Fragment,
-	logical_op: LogicalOp,
-	bool_fn: fn(bool, bool) -> bool,
-) -> Result<Column> {
-	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			let data: Vec<bool> = l_container
-				.data()
-				.iter()
-				.zip(r_container.data().iter())
-				.map(|(l_val, r_val)| bool_fn(l_val, r_val))
-				.collect();
-
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool(data),
-			})
-		}
-		(l, r) => {
-			let category = if l.is_number() || r.is_number() {
-				OperandCategory::Number
-			} else if l.is_text() || r.is_text() {
-				OperandCategory::Text
-			} else if l.is_temporal() || r.is_temporal() {
-				OperandCategory::Temporal
-			} else if l.is_uuid() || r.is_uuid() {
-				OperandCategory::Uuid
-			} else {
-				unimplemented!("{} {:?} {}", l.get_type(), logical_op, r.get_type());
-			};
-			Err(TypeError::LogicalOperatorNotApplicable {
-				operator: logical_op.clone(),
-				operand_category: category,
-				fragment: fragment.clone(),
-			}
-			.into())
-		}
-	})
 }
 
 fn combine_bool_columns(

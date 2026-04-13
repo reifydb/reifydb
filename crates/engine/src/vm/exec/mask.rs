@@ -19,8 +19,27 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	vm::{stack::Variable, value_ops, vm::Vm},
+	vm::{stack::Variable, vm::Vm},
 };
+
+/// Returns true when `value` is considered truthy for conditional branches.
+/// None and zero numerics are falsy; non-empty strings and any other non-zero
+/// value are truthy.
+pub(crate) fn value_is_truthy(value: &Value) -> bool {
+	match value {
+		Value::Boolean(true) => true,
+		Value::Boolean(false) => false,
+		Value::None {
+			..
+		} => false,
+		Value::Int1(0) | Value::Int2(0) | Value::Int4(0) | Value::Int8(0) | Value::Int16(0) => false,
+		Value::Uint1(0) | Value::Uint2(0) | Value::Uint4(0) | Value::Uint8(0) | Value::Uint16(0) => false,
+		Value::Int1(_) | Value::Int2(_) | Value::Int4(_) | Value::Int8(_) | Value::Int16(_) => true,
+		Value::Uint1(_) | Value::Uint2(_) | Value::Uint4(_) | Value::Uint8(_) | Value::Uint16(_) => true,
+		Value::Utf8(s) => !s.is_empty(),
+		_ => true,
+	}
+}
 
 /// Tracks mask state for an IF/ELSE conditional in columnar mode.
 ///
@@ -199,7 +218,7 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
 		_ => {
 			// Non-boolean: evaluate truthiness per row
 			let len = col.data.len();
-			Ok(BitVec::from_fn(len, |i| value_ops::value_is_truthy(&col.data.get_value(i))))
+			Ok(BitVec::from_fn(len, |i| value_is_truthy(&col.data.get_value(i))))
 		}
 	}
 }
@@ -304,6 +323,51 @@ impl Vm {
 
 		self.active_mask = Some(candidate);
 		Ok(false) // don't jump, execute then-branch
+	}
+
+	/// Columnar `JumpIfTruePop`: the dual of `exec_jump_if_false_pop_columnar`.
+	/// Rows whose condition is true jump to `target_addr`; rows whose condition is
+	/// false continue executing the intermediate block.
+	///
+	/// Returns `Ok(true)` if the jump was taken for all active rows (caller should
+	/// `continue` after setting ip). Returns `Ok(false)` otherwise.
+	pub(crate) fn exec_jump_if_true_pop_columnar(&mut self, target_addr: usize) -> Result<bool> {
+		let var = self.stack.pop()?;
+		let bool_bv = extract_bool_bitvec(&var)?;
+
+		let parent = self.effective_mask();
+		// "Jumping rows" = rows where condition is true (within parent mask).
+		let jumping = self.intersect_condition(&bool_bv);
+
+		// Fast path: no rows jump (all false) — continue normally.
+		if jumping.none() {
+			return Ok(false);
+		}
+
+		// Fast path: all active rows jump (all true within parent).
+		if jumping == parent {
+			self.ip = target_addr;
+			return Ok(true);
+		}
+
+		// Mixed: then-branch (continuing here) runs on false rows; else-branch (at
+		// target_addr) runs on true rows.
+		let continuing = parent.and(&jumping.not());
+
+		self.mask_stack.push(MaskFrame {
+			parent_mask: parent,
+			then_mask: continuing.clone(),
+			else_mask: jumping,
+			else_addr: target_addr,
+			end_addr: 0,
+			phase: MaskPhase::Then,
+			stack_depth: self.stack.len(),
+			then_stack_delta: Vec::new(),
+			then_var_snapshots: HashMap::new(),
+		});
+
+		self.active_mask = Some(continuing);
+		Ok(false)
 	}
 
 	/// Enter a WHILE loop in columnar mode. Called when the first

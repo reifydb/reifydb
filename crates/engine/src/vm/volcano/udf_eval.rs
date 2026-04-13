@@ -248,6 +248,12 @@ impl QueryNode for UdfEvalNode {
 }
 
 /// Check if a UDF body contains only instructions that the columnar VM can batch-execute.
+///
+/// Every instruction listed here must have a batch-capable handler in `vm/exec/`:
+/// either a kernel that operates on `Column`s (arithmetic, comparison, logic,
+/// between, in_list, cast), or a mask-aware dispatch path (jump instructions,
+/// scoped control flow). If you add an instruction to this list, verify its
+/// handler accepts multi-row columns, or `pop_value()` will fail at runtime.
 fn is_vectorizable(instructions: &[Instruction]) -> bool {
 	instructions.iter().all(|instr| {
 		matches!(

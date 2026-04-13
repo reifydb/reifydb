@@ -11,6 +11,7 @@ pub(crate) mod constant;
 pub mod context;
 pub mod convert;
 pub mod eval;
+pub(crate) mod logic;
 pub mod lookup;
 pub(crate) mod option;
 pub mod parameter;
