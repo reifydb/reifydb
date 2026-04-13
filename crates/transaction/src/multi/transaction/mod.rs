@@ -126,6 +126,11 @@ where
 		self.inner.config()
 	}
 
+	/// Clear the conflict detection window after bootstrap.
+	pub fn bootstrapping_completed(&self) {
+		self.inner.bootstrapping_completed();
+	}
+
 	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
 	pub fn version(&self) -> Result<CommitVersion> {
 		self.inner.version()
@@ -251,6 +256,10 @@ impl Inner {
 	fn actor_system(&self) -> ActorSystem {
 		self.tm.actor_system()
 	}
+
+	fn bootstrapping_completed(&self) {
+		self.tm.bootstrapping_completed();
+	}
 }
 
 impl MultiTransaction {
@@ -311,6 +320,11 @@ impl MultiTransaction {
 	/// Get the shared configuration from the oracle.
 	pub fn config(&self) -> Arc<dyn GetConfig> {
 		self.0.tm.config()
+	}
+
+	/// Clear the conflict detection window after bootstrap.
+	pub fn bootstrapping_completed(&self) {
+		self.0.bootstrapping_completed();
 	}
 }
 

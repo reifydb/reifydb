@@ -7,7 +7,7 @@ import {Shape} from "@reifydb/core";
 import {Client, WsClient} from "../../../src";
 
 describe.each([
-    {format: "json"},
+    {format: "frames"},
     {format: "rbcf"},
 ] as const)('WebSocket Client Reconnection [$format]', ({format}) => {
     const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';

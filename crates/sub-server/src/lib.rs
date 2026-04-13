@@ -21,6 +21,7 @@ pub mod actor;
 pub mod auth;
 pub mod dispatch;
 pub mod execute;
+pub mod format;
 pub mod interceptor;
 pub mod response;
 pub mod state;

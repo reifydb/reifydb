@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::value::{Value, frame::frame::Frame};
+use serde_json::{Error, to_string};
 
 use crate::json::types::{ResponseColumn, ResponseFrame};
 
@@ -48,7 +49,7 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 }
 
 /// Serialize frames to a JSON string of `[ResponseFrame, ...]`.
-pub fn frames_to_json(frames: &[Frame]) -> Result<String, serde_json::Error> {
+pub fn frames_to_json(frames: &[Frame]) -> Result<String, Error> {
 	let response_frames = convert_frames(frames);
-	serde_json::to_string(&response_frames)
+	to_string(&response_frames)
 }

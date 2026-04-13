@@ -375,6 +375,16 @@ where
 		Ok(CreateCommitResult::Success(commit_version))
 	}
 
+	/// Clear the conflict detection window and mark the oracle as ready.
+	/// Called after bootstrap completes — bootstrap transactions committed
+	/// sequentially before any concurrent access and should not participate
+	/// in conflict detection.
+	pub(crate) fn bootstrapping_completed(&self) {
+		let mut inner = self.inner.write();
+		inner.time_windows.clear();
+		inner.key_to_windows.clear();
+	}
+
 	pub(crate) fn version(&self) -> Result<CommitVersion> {
 		self.clock.current()
 	}

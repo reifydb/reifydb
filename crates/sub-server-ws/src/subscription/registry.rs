@@ -8,13 +8,15 @@
 
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_sub_server::{format::WireFormat, response::resolve_response_json};
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_type::value::{frame::frame::Frame, uuid::Uuid7};
 use reifydb_wire_format::{
-	json::{ResponseColumn, ResponseFrame},
+	encode::encode_frames,
+	json::types::{ResponseColumn, ResponseFrame},
 	options::EncodeOptions,
 };
-use serde_json::{Value as JsonValue, json};
+use serde_json::{Value as JsonValue, from_str, json};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
@@ -22,23 +24,6 @@ use crate::handler::{BinaryKind, encode_rbcf_envelope};
 
 /// Unique identifier for a WebSocket connection.
 pub type ConnectionId = Uuid7;
-
-/// Wire format for subscription change pushes.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum WireFormat {
-	#[default]
-	Json,
-	Rbcf,
-}
-
-impl WireFormat {
-	pub fn from_str_opt(s: Option<&str>) -> Self {
-		match s {
-			Some("rbcf") => WireFormat::Rbcf,
-			_ => WireFormat::Json,
-		}
-	}
-}
 
 /// Message sent to a connection for push delivery.
 #[derive(Debug, Clone)]
@@ -239,10 +224,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 		let msg = match format {
 			WireFormat::Rbcf => {
 				let frames = vec![Frame::from(columns)];
-				let rbcf_bytes = match reifydb_wire_format::encode::encode_frames(
-					&frames,
-					&EncodeOptions::fast(),
-				) {
+				let rbcf_bytes = match encode_frames(&frames, &EncodeOptions::fast()) {
 					Ok(b) => b,
 					Err(e) => {
 						warn!("Failed to RBCF-encode change for {}: {}", subscription_id, e);
@@ -259,7 +241,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 					envelope,
 				}
 			}
-			WireFormat::Json => {
+			WireFormat::Frames => {
 				// Convert Columns to ResponseFrame
 				let row_numbers: Vec<u64> = columns.row_numbers.iter().map(|r| r.0).collect();
 				let created_at: Vec<String> =
@@ -302,6 +284,22 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 					body,
 				}
 			}
+			WireFormat::Json => {
+				let frames = vec![Frame::from(columns)];
+				let resolved = match resolve_response_json(frames, false) {
+					Ok(r) => r,
+					Err(e) => {
+						warn!("Failed to JSON-encode change for {}: {}", subscription_id, e);
+						return DeliveryResult::Disconnected;
+					}
+				};
+				let body = from_str(&resolved.body).unwrap_or(JsonValue::String(resolved.body));
+				PushMessage::ChangeJson {
+					subscription_id: *subscription_id,
+					content_type: "application/json".to_string(),
+					body,
+				}
+			}
 		};
 
 		match push_tx.send(msg) {
@@ -339,7 +337,7 @@ pub mod tests {
 		let (tx, mut rx) = mpsc::unbounded_channel();
 
 		let sub_id = SubscriptionId(12345);
-		registry.subscribe(sub_id, connection_id, "FROM test".to_string(), tx, WireFormat::Json);
+		registry.subscribe(sub_id, connection_id, "FROM test".to_string(), tx, WireFormat::Frames);
 		assert_eq!(registry.subscription_count(), 1);
 
 		// Broadcast with a content_type + body

@@ -24,8 +24,14 @@ export interface HttpClientOptions {
     url: string;
     timeout_ms?: number;
     token?: string;
-    /** Wire format for data frames. Defaults to "json". */
-    format?: "json" | "rbcf";
+    /**
+     * Wire format for data frames. Defaults to `"frames"`.
+     *
+     * - `"json"`   — rows-shape JSON: `[[{col: val, ...}, ...], ...]`
+     * - `"frames"` — frames-shape JSON: columnar frames (default)
+     * - `"rbcf"`   — frames-shape binary (RBCF)
+     */
+    format?: "json" | "frames" | "rbcf";
 }
 
 export interface RequestOptions {
@@ -225,10 +231,10 @@ export class HttpClient {
             req_opts.signal.addEventListener('abort', () => controller.abort());
         }
 
-        const use_rbcf = this.options.format === "rbcf";
+        const format = this.options.format ?? "frames";
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
-            'Accept': use_rbcf
+            'Accept': format === "rbcf"
                 ? `${CONTENT_TYPE_RBCF}, ${CONTENT_TYPE_JSON}`
                 : CONTENT_TYPE_JSON,
         };
@@ -242,9 +248,7 @@ export class HttpClient {
             body.params = params;
         }
 
-        const url = use_rbcf
-            ? `${this.options.url}/v1/${endpoint}?format=rbcf`
-            : `${this.options.url}/v1/${endpoint}`;
+        const url = `${this.options.url}/v1/${endpoint}?format=${format}`;
 
         try {
             const response = await fetch(url, {
@@ -286,6 +290,12 @@ export class HttpClient {
                 throw new Error(parsed.error || `HTTP ${response.status}: ${response_body}`);
             }
 
+            // Response shape depends on format:
+            // - "json"   → `[[{col: val}, ...], ...]` already in rows shape
+            // - "frames" → `{frames: [ColumnarFrame, ...]}` needing column→row pivot
+            if (format === "json") {
+                return parsed ?? [];
+            }
             const frames = parsed.frames || [];
             return frames.map((frame: any) =>
                 columns_to_rows(frame.columns)

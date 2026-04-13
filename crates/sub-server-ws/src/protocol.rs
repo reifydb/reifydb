@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_sub_server::wire::WireParams;
+use reifydb_sub_server::{format::WireFormat, wire::WireParams};
 use serde::{Deserialize, Serialize};
 
 /// A WebSocket request message.
@@ -48,8 +48,8 @@ pub struct AdminRequest {
 	pub statements: Vec<String>,
 	/// Optional parameters for the statements.
 	pub params: Option<WireParams>,
-	/// Optional response format (e.g., "json" for JSON body passthrough).
-	pub format: Option<String>,
+	/// Required response format.
+	pub format: WireFormat,
 	/// When true with format="json", return the first element directly instead of an array.
 	pub unwrap: Option<bool>,
 }
@@ -69,8 +69,8 @@ pub struct CommandRequest {
 	pub statements: Vec<String>,
 	/// Optional parameters for the statements.
 	pub params: Option<WireParams>,
-	/// Optional response format (e.g., "json" for JSON body passthrough).
-	pub format: Option<String>,
+	/// Required response format.
+	pub format: WireFormat,
 	/// When true with format="json", return the first element directly instead of an array.
 	pub unwrap: Option<bool>,
 }
@@ -82,8 +82,8 @@ pub struct QueryRequest {
 	pub statements: Vec<String>,
 	/// Optional parameters for the queries.
 	pub params: Option<WireParams>,
-	/// Optional response format (e.g., "json" for JSON body passthrough).
-	pub format: Option<String>,
+	/// Required response format.
+	pub format: WireFormat,
 	/// When true with format="json", return the first element directly instead of an array.
 	pub unwrap: Option<bool>,
 }
@@ -96,10 +96,8 @@ pub struct QueryRequest {
 pub struct SubscribeRequest {
 	/// RQL query to subscribe to.
 	pub rql: String,
-	/// Optional wire format for pushed changes ("json" = default JSON frames,
-	/// "rbcf" = binary RBCF envelope).
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub format: Option<String>,
+	/// Required wire format for pushed changes.
+	pub format: WireFormat,
 }
 
 /// Unsubscribe request payload.

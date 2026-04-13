@@ -12,7 +12,7 @@ use reifydb_type::{
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 	},
 };
-use reifydb_wire_format::json::{frames_from_json, frames_to_json};
+use reifydb_wire_format::json::{from::frames_from_json, to::frames_to_json};
 
 fn round_trip(frame: Frame) {
 	let json = frames_to_json(&[frame.clone()]).expect("to_json failed");

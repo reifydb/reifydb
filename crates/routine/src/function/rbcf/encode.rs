@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{blob::Blob, r#type::Type};
-use reifydb_wire_format::{encode::encode_frames, json::frames_from_json, options::EncodeOptions};
+use reifydb_wire_format::{encode::encode_frames, json::from::frames_from_json, options::EncodeOptions};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 

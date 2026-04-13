@@ -3,17 +3,13 @@
 import {beforeAll, describe, expect, it} from 'vitest';
 import {Client, JsonHttpClient} from "../../../src";
 
-describe.each([
-    {format: "json"},
-    {format: "rbcf"},
-] as const)('Concurrent requests [$format]', ({format}) => {
+describe('Concurrent requests', () => {
     let httpClient: JsonHttpClient;
 
     beforeAll(async () => {
         httpClient = Client.connect_json_http(process.env.REIFYDB_HTTP_URL, {
             timeout_ms: 10000,
             token: process.env.REIFYDB_TOKEN,
-            format,
         });
     });
 

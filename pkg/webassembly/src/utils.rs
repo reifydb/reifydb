@@ -5,7 +5,7 @@
 
 use js_sys::{Array, JSON, Object, Reflect};
 use reifydb_type::{params::Params, value::frame::frame::Frame};
-use reifydb_wire_format::json::convert_frames;
+use reifydb_wire_format::json::to::convert_frames;
 use serde_json::{Value as JsonValue, from_str as json_from_str};
 use wasm_bindgen::prelude::*;
 use web_sys::console;

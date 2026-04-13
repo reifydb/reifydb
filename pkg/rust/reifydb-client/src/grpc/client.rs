@@ -31,6 +31,7 @@ use reifydb_type::{
 		uuid::{Uuid4, Uuid7},
 	},
 };
+use reifydb_wire_format::decode::decode_frames;
 use serde_json::from_str as serde_json_from_str;
 use tonic::{
 	Request, Status,
@@ -348,8 +349,7 @@ impl GrpcSubscription {
 				Some(subscription_event::Event::Change(change)) => {
 					let frames = match change.payload {
 						Some(change_event::Payload::Rbcf(bytes)) => {
-							reifydb_wire_format::decode::decode_frames(&bytes)
-								.unwrap_or_default()
+							decode_frames(&bytes).unwrap_or_default()
 						}
 						Some(change_event::Payload::Frames(fp)) => {
 							proto_frames_to_frames(fp.frames)
@@ -393,7 +393,7 @@ fn decode_query_payload(payload: Option<query_response::Payload>) -> Result<Vec<
 }
 
 fn decode_rbcf(bytes: &[u8]) -> Result<Vec<Frame>, Error> {
-	reifydb_wire_format::decode::decode_frames(bytes).map_err(|e| {
+	decode_frames(bytes).map_err(|e| {
 		Error(Box::new(Diagnostic {
 			code: "RBCF_DECODE".to_string(),
 			message: format!("failed to decode RBCF payload: {}", e),

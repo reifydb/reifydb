@@ -33,3 +33,7 @@ path = "tests/delta/mod.rs"
 [[test]]
 name = "delta_rle"
 path = "tests/delta_rle/mod.rs"
+
+[[test]]
+name = "nones"
+path = "tests/nones/mod.rs"

@@ -12,7 +12,7 @@ import {
 } from "./test-helper";
 
 describe.each([
-    {format: "json"},
+    {format: "frames"},
     {format: "rbcf"},
 ] as const)('Named Parameters (primitive) [$format]', ({format}) => {
     let ws_client: WsClient;

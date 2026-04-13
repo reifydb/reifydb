@@ -4,7 +4,11 @@
 //! Shared test helpers and macros for wire-format encoding tests.
 #![allow(dead_code)]
 
-use reifydb_type::value::frame::{column::FrameColumn, data::FrameColumnData, frame::Frame};
+use reifydb_type::value::{
+	Value,
+	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
+	r#type::Type,
+};
 use reifydb_wire_format::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
 
 pub fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
@@ -281,6 +285,175 @@ macro_rules! delta_tests {
 					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
 				},
 			);
+		}
+	};
+}
+
+/// Round-trip an Option-wrapped column and assert the decoded side matches expectations.
+///
+/// Asserts:
+/// - The decoded column type is `Type::Option(expected_inner_type)`.
+/// - The decoded length matches `expected_defined.len()`.
+/// - For each row, `is_defined(i)` matches `expected_defined[i]`.
+/// - Defined rows round-trip to the same `Value` as the original.
+/// - Undefined rows decode to `Value::None { inner: expected_inner_type }`.
+pub fn assert_option_round_trip(col: FrameColumnData, expected_inner_type: Type, expected_defined: &[bool]) {
+	let frame = Frame::new(vec![FrameColumn {
+		name: "test".to_string(),
+		data: col.clone(),
+	}]);
+	let encoded = encode_frames(&[frame.clone()], &EncodeOptions::default()).expect("encode failed");
+	let decoded_frames = decode_frames(&encoded).expect("decode failed");
+	assert_eq!(decoded_frames.len(), 1, "expected one frame");
+
+	let decoded_col = &decoded_frames[0].columns[0].data;
+	assert_eq!(
+		decoded_col.get_type(),
+		Type::Option(Box::new(expected_inner_type.clone())),
+		"decoded column type should be Option(inner)"
+	);
+	assert_eq!(decoded_col.len(), expected_defined.len(), "length mismatch");
+
+	for (i, &is_def) in expected_defined.iter().enumerate() {
+		assert_eq!(decoded_col.is_defined(i), is_def, "is_defined mismatch at {}", i);
+
+		let actual = decoded_col.get_value(i);
+		if is_def {
+			let original = col.get_value(i);
+			assert_eq!(
+				actual, original,
+				"defined value mismatch at {}: got {:?}, expected {:?}",
+				i, actual, original
+			);
+			assert!(!matches!(actual, Value::None { .. }), "expected a defined value at {}, got None", i);
+		} else {
+			match &actual {
+				Value::None {
+					inner,
+				} => assert_eq!(
+					*inner, expected_inner_type,
+					"None inner_type mismatch at {}: got {:?}, expected {:?}",
+					i, inner, expected_inner_type
+				),
+				other => panic!("expected Value::None at {}, got {:?}", i, other),
+			}
+		}
+	}
+}
+
+/// Generate extensive option/none round-trip tests for a type.
+///
+/// The calling module must define:
+/// - `fn make(Vec<T>) -> FrameColumnData`
+/// - have `reifydb_type::value::r#type::Type` in scope via the `inner_type` argument
+#[macro_export]
+macro_rules! nones_tests {
+	(values: $values:expr, inner_type: $inner_type:expr $(,)?) => {
+		// Wraps `make($values)` in `FrameColumnData::Option` with the given bitvec.
+		macro_rules! __opt_col {
+			($defined:expr) => {
+				reifydb_type::value::frame::data::FrameColumnData::Option {
+					inner: Box::new(make($values)),
+					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&$defined),
+				}
+			};
+		}
+
+		#[test]
+		fn all_defined() {
+			let values = $values;
+			let defined = vec![true; values.len()];
+			crate::utils::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+		}
+
+		#[test]
+		fn all_none() {
+			let values = $values;
+			let defined = vec![false; values.len()];
+			crate::utils::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+		}
+
+		#[test]
+		fn first_none() {
+			let values = $values;
+			assert!(values.len() >= 2, "nones_tests: values must have at least 2 elements");
+			let mut defined = vec![true; values.len()];
+			defined[0] = false;
+			crate::utils::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+		}
+
+		#[test]
+		fn last_none() {
+			let values = $values;
+			assert!(values.len() >= 2, "nones_tests: values must have at least 2 elements");
+			let mut defined = vec![true; values.len()];
+			*defined.last_mut().unwrap() = false;
+			crate::utils::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+		}
+
+		#[test]
+		fn alternating_from_none() {
+			let values = $values;
+			let defined: Vec<bool> = (0..values.len()).map(|i| i % 2 == 1).collect();
+			crate::utils::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+		}
+
+		#[test]
+		fn alternating_from_defined() {
+			let values = $values;
+			let defined: Vec<bool> = (0..values.len()).map(|i| i % 2 == 0).collect();
+			crate::utils::assert_option_round_trip(__opt_col!(defined), $inner_type, &defined);
+		}
+
+		#[test]
+		fn single_defined() {
+			// Build a 1-element column by truncating the base values via make().
+			let defined = vec![true];
+			let col = {
+				let mut v = $values;
+				v.truncate(1);
+				assert_eq!(v.len(), 1);
+				reifydb_type::value::frame::data::FrameColumnData::Option {
+					inner: Box::new(make(v)),
+					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+				}
+			};
+			crate::utils::assert_option_round_trip(col, $inner_type, &defined);
+		}
+
+		#[test]
+		fn single_none() {
+			let defined = vec![false];
+			let col = {
+				let mut v = $values;
+				v.truncate(1);
+				assert_eq!(v.len(), 1);
+				reifydb_type::value::frame::data::FrameColumnData::Option {
+					inner: Box::new(make(v)),
+					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+				}
+			};
+			crate::utils::assert_option_round_trip(col, $inner_type, &defined);
+		}
+
+		#[test]
+		fn round_trip_no_compression() {
+			let values = $values;
+			let defined = vec![true; values.len()];
+			let col = __opt_col!(defined);
+			let frame = reifydb_type::value::frame::frame::Frame::new(vec![
+				reifydb_type::value::frame::column::FrameColumn {
+					name: "test".to_string(),
+					data: col,
+				},
+			]);
+			let encoded = reifydb_wire_format::encode::encode_frames(
+				&[frame.clone()],
+				&reifydb_wire_format::options::EncodeOptions::none(),
+			)
+			.expect("encode failed");
+			let decoded = reifydb_wire_format::decode::decode_frames(&encoded).expect("decode failed");
+			crate::utils::assert_frame_eq(&frame, &decoded[0]);
 		}
 	};
 }

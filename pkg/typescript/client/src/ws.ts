@@ -37,6 +37,31 @@ import {encode_params} from "./encoder";
 import {rbcf} from "./rbcf";
 import {CONTENT_TYPE_RBCF} from "./content-types";
 
+const enum BinaryKind {
+    Response = 0x00,
+    Change = 0x01,
+}
+
+interface BinaryEnvelope {
+    kind: BinaryKind;
+    id: string;
+    rbcf: Uint8Array;
+}
+
+// Wire format: `[u8 kind][u32 LE id_len][id UTF-8 bytes][RBCF payload]`.
+// Must stay in sync with `encode_rbcf_envelope` in
+// `crates/sub-server-ws/src/handler.rs`.
+function decode_envelope(bytes: Uint8Array): BinaryEnvelope | null {
+    if (bytes.length < 5) return null;
+    const kind = bytes[0] as BinaryKind;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const id_len = view.getUint32(1, true);
+    if (bytes.length < 5 + id_len) return null;
+    const id = new TextDecoder("utf-8").decode(bytes.subarray(5, 5 + id_len));
+    const rbcf = bytes.subarray(5 + id_len);
+    return {kind, id, rbcf};
+}
+
 export interface WsClientOptions {
     url: string;
     timeout_ms?: number;
@@ -44,8 +69,14 @@ export interface WsClientOptions {
     max_reconnect_attempts?: number;
     reconnect_delay_ms?: number;
     signal?: AbortSignal;
-    /** Wire format for data frames. Defaults to "json". */
-    format?: "json" | "rbcf";
+    /**
+     * Wire format for data frames. Defaults to `"frames"`.
+     *
+     * - `"json"`   — rows-shape JSON: `[[{col: val, ...}, ...], ...]`
+     * - `"frames"` — frames-shape JSON: columnar frames (default)
+     * - `"rbcf"`   — frames-shape binary (RBCF)
+     */
+    format?: "json" | "frames" | "rbcf";
 }
 
 interface SubscriptionState<T = any> {
@@ -312,12 +343,13 @@ export class WsClient {
     ): Promise<string> {
         const id = `sub-${this.next_id++}`;
 
+        // Subscriptions always use columnar shape (frames or rbcf) — the change-tracking
+        // protocol reads `_op` from the columnar layout, so rows-shape JSON cannot carry it.
+        const sub_format = this.options.format === "rbcf" ? "rbcf" : "frames";
         const request: SubscribeRequest = {
             id,
             type: "Subscribe",
-            payload: this.options.format === "rbcf"
-                ? {rql, format: "rbcf"}
-                : {rql}
+            payload: {rql, format: sub_format} as any
         };
 
         return new Promise((resolve, reject) => {
@@ -394,12 +426,10 @@ export class WsClient {
             });
         }
 
-        if (this.options.format === "rbcf") {
-            req = {
-                ...req,
-                payload: { ...req.payload, format: "rbcf" },
-            } as AdminRequest | CommandRequest | QueryRequest;
-        }
+        req = {
+            ...req,
+            payload: { ...req.payload, format: this.wire_format() },
+        } as AdminRequest | CommandRequest | QueryRequest;
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
             const timeout_ms = this.options.timeout_ms ?? 30_000;
@@ -428,10 +458,21 @@ export class WsClient {
             throw new Error(`Unexpected response type: ${response.type}`);
         }
 
+        // Response shape depends on wire format:
+        // - "json"   → body is `[[{col: val}, ...], ...]` already in rows shape
+        // - "frames" → body is `{frames: [ColumnarFrame, ...]}` needing column→row pivot
+        // - "rbcf"   → handle_binary_message synthesizes `{frames}` so it matches "frames"
+        if (this.wire_format() === "json") {
+            return response.payload.body ?? [];
+        }
         const frames = response.payload.body?.frames || [];
         return frames.map((frame: any) =>
             columns_to_rows(frame.columns)
         );
+    }
+
+    private wire_format(): "json" | "frames" | "rbcf" {
+        return this.options.format ?? "frames";
     }
 
 
@@ -863,23 +904,16 @@ export class WsClient {
     }
 
     private handle_binary_message(bytes: Uint8Array) {
-        // Parse envelope: [u8 kind][u32 LE id_len][id bytes][RBCF payload].
-        // kind 0x00 = one-shot response (id = request_id);
-        // kind 0x01 = subscription change (id = subscription_id).
-        if (bytes.length < 5) return;
-        const kind = bytes[0];
-        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const id_len = view.getUint32(1, true);
-        if (bytes.length < 5 + id_len) return;
-        const id = new TextDecoder("utf-8").decode(bytes.subarray(5, 5 + id_len));
-        const rbcf_bytes = bytes.subarray(5 + id_len);
+        const envelope = decode_envelope(bytes);
+        if (!envelope) return;
+        const {kind, id, rbcf: rbcf_bytes} = envelope;
 
         let frames: any[];
         try {
             frames = rbcf.decode(rbcf_bytes);
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            if (kind === 0x00) {
+            if (kind === BinaryKind.Response) {
                 const entry = this.pending.get(id);
                 if (!entry) return;
                 this.pending.delete(id);
@@ -896,7 +930,7 @@ export class WsClient {
             return;
         }
 
-        if (kind === 0x00) {
+        if (kind === BinaryKind.Response) {
             const entry = this.pending.get(id);
             if (!entry) return;
             this.pending.delete(id);
@@ -912,7 +946,7 @@ export class WsClient {
             return;
         }
 
-        if (kind === 0x01) {
+        if (kind === BinaryKind.Change) {
             // Feed decoded frames through the same dispatch path as JSON change pushes.
             this.handle_change_message({
                 type: "Change",

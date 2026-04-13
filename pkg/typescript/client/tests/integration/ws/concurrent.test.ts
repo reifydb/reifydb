@@ -6,7 +6,7 @@ import {Client, WsClient} from "../../../src";
 import {Shape} from "@reifydb/core";
 
 describe.each([
-    {format: "json"},
+    {format: "frames"},
     {format: "rbcf"},
 ] as const)('Concurrent requests [$format]', ({format}) => {
     let ws_client: WsClient;

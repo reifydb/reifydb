@@ -21,13 +21,13 @@ use reifydb_type::{
 		uuid::parse::{parse_uuid4, parse_uuid7},
 	},
 };
-use serde_json::Value;
+use serde_json::{Error, Value, from_str, from_value};
 
 use crate::json::types::ResponseFrame;
 
 /// Parse a JSON string in the `[ResponseFrame, ...]` shape and rebuild typed `Frame`s.
-pub fn frames_from_json(json: &str) -> Result<Vec<Frame>, serde_json::Error> {
-	let response_frames: Vec<ResponseFrame> = serde_json::from_str(json)?;
+pub fn frames_from_json(json: &str) -> Result<Vec<Frame>, Error> {
+	let response_frames: Vec<ResponseFrame> = from_str(json)?;
 	Ok(response_frames.into_iter().map(response_frame_to_frame).collect())
 }
 
@@ -41,7 +41,7 @@ pub fn convert_envelope_response(body: Value) -> Vec<Frame> {
 	};
 
 	let response_frames: Vec<ResponseFrame> = match frames_value {
-		Some(v) => serde_json::from_value(v.clone()).unwrap_or_default(),
+		Some(v) => from_value(v.clone()).unwrap_or_default(),
 		None => return Vec::new(),
 	};
 

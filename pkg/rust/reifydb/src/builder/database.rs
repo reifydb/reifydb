@@ -321,6 +321,10 @@ impl DatabaseBuilder {
 
 		load_materialized_catalog(&multi, &single, &catalog)?;
 
+		// Bootstrap complete — clear conflict window so bootstrap entries
+		// don't participate in conflict detection.
+		multi.bootstrapping_completed();
+
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
 		let actor_system = self.actor_system.unwrap_or_else(|| runtime.actor_system().scope());
 

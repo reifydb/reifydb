@@ -11,7 +11,8 @@ use reifydb_type::{
 	params::Params,
 	value::frame::frame::Frame,
 };
-use serde_json::{from_str, to_string};
+use reifydb_wire_format::decode::decode_frames;
+use serde_json::{Value, from_str, to_string};
 use tokio::{
 	net::TcpStream,
 	select, spawn,
@@ -29,7 +30,7 @@ use crate::{
 
 /// Internal response type that can carry either a JSON Response or decoded RBCF frames.
 enum ClientResponse {
-	Json(Response),
+	Json(Box<Response>),
 	Frames(Vec<Frame>),
 }
 
@@ -116,7 +117,7 @@ impl WsClient {
 							if let Ok(response) = from_str::<Response>(&text) {
 								let mut pending_guard = pending.lock().await;
 								if let Some(tx) = pending_guard.remove(&response.id) {
-									let _ = tx.send(ClientResponse::Json(response));
+									let _ = tx.send(ClientResponse::Json(Box::new(response)));
 								}
 							}
 							// Then try to parse as ServerPush (no id field)
@@ -138,7 +139,7 @@ impl WsClient {
 							if data.len() < 5 + id_len { continue; }
 							let id = String::from_utf8_lossy(&data[5..5 + id_len]).to_string();
 							let rbcf_data = &data[5 + id_len..];
-							let frames = match reifydb_wire_format::decode::decode_frames(rbcf_data) {
+							let frames = match decode_frames(rbcf_data) {
 								Ok(f) => f,
 								Err(_) => continue,
 							};
@@ -153,7 +154,7 @@ impl WsClient {
 									let _ = change_tx.send(ChangePayload {
 										subscription_id: id,
 										content_type: "application/vnd.reifydb.rbcf".to_string(),
-										body: serde_json::Value::Null,
+										body: Value::Null,
 										frames: Some(frames),
 									}).await;
 								}
@@ -203,12 +204,16 @@ impl WsClient {
 		pending_guard.clear();
 	}
 
-	/// Compute the wire-format field for requests: `Some("rbcf")` if RBCF, else `None` (JSON default).
+	/// Compute the wire-format field for requests.
+	///
+	/// Maps the client-side `WireFormat` to the server's required `format` string.
+	/// `WireFormat::Json` on this client refers to frames-shape JSON (`{frames: [...]}`),
+	/// which the server now names `"frames"`.
 	fn wire_format(&self) -> Option<String> {
-		if self.format == WireFormat::Rbcf {
-			Some("rbcf".to_string())
-		} else {
-			None
+		match self.format {
+			WireFormat::Rbcf => Some("rbcf".to_string()),
+			WireFormat::Json => Some("frames".to_string()),
+			WireFormat::Proto => None,
 		}
 	}
 
@@ -326,7 +331,7 @@ impl WsClient {
 			ClientResponse::Frames(frames) => Ok(AdminResult {
 				frames,
 			}),
-			ClientResponse::Json(resp) => parse_admin_response(resp),
+			ClientResponse::Json(resp) => parse_admin_response(*resp),
 		}
 	}
 
@@ -346,7 +351,7 @@ impl WsClient {
 			ClientResponse::Frames(frames) => Ok(AdminResult {
 				frames,
 			}),
-			ClientResponse::Json(resp) => parse_admin_response(resp),
+			ClientResponse::Json(resp) => parse_admin_response(*resp),
 		}
 	}
 
@@ -366,7 +371,7 @@ impl WsClient {
 			ClientResponse::Frames(frames) => Ok(CommandResult {
 				frames,
 			}),
-			ClientResponse::Json(resp) => parse_command_response(resp),
+			ClientResponse::Json(resp) => parse_command_response(*resp),
 		}
 	}
 
@@ -386,7 +391,7 @@ impl WsClient {
 			ClientResponse::Frames(frames) => Ok(QueryResult {
 				frames,
 			}),
-			ClientResponse::Json(resp) => parse_query_response(resp),
+			ClientResponse::Json(resp) => parse_query_response(*resp),
 		}
 	}
 
@@ -410,7 +415,7 @@ impl WsClient {
 			ClientResponse::Frames(frames) => Ok(CommandResult {
 				frames,
 			}),
-			ClientResponse::Json(resp) => parse_command_response(resp),
+			ClientResponse::Json(resp) => parse_command_response(*resp),
 		}
 	}
 
@@ -430,7 +435,7 @@ impl WsClient {
 			ClientResponse::Frames(frames) => Ok(QueryResult {
 				frames,
 			}),
-			ClientResponse::Json(resp) => parse_query_response(resp),
+			ClientResponse::Json(resp) => parse_query_response(*resp),
 		}
 	}
 
@@ -493,7 +498,7 @@ impl WsClient {
 	/// Send a request and expect a JSON response (for auth/subscribe/unsubscribe).
 	async fn send_request_json(&self, request: Request) -> Result<Response, Error> {
 		match self.send_request(request).await? {
-			ClientResponse::Json(resp) => Ok(resp),
+			ClientResponse::Json(resp) => Ok(*resp),
 			ClientResponse::Frames(_) => panic!("unexpected binary response"), /* FIXME better error
 			                                                                    * handling */
 		}

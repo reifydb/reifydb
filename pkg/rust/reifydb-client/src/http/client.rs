@@ -7,7 +7,7 @@ use reifydb_type::{
 	params::Params,
 	value::frame::frame::Frame,
 };
-use reifydb_wire_format::json::ResponseFrame;
+use reifydb_wire_format::{decode::decode_frames, json::types::ResponseFrame};
 use reqwest::Client as ReqwestClient;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, json};
@@ -341,7 +341,7 @@ impl HttpClient {
 
 	/// Send an admin request to the server.
 	async fn send_admin(&self, request: &AdminRequest) -> Result<AdminResponse, Error> {
-		let url = format!("{}/v1/admin", self.base_url);
+		let url = format!("{}/v1/admin?format=frames", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
 
 		match from_str::<HttpFrameResponse>(&response_body) {
@@ -352,7 +352,7 @@ impl HttpClient {
 
 	/// Send a command request to the server.
 	async fn send_command(&self, request: &CommandRequest) -> Result<CommandResponse, Error> {
-		let url = format!("{}/v1/command", self.base_url);
+		let url = format!("{}/v1/command?format=frames", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
 
 		match from_str::<HttpFrameResponse>(&response_body) {
@@ -363,7 +363,7 @@ impl HttpClient {
 
 	/// Send a query request to the server.
 	async fn send_query(&self, request: &QueryRequest) -> Result<QueryResponse, Error> {
-		let url = format!("{}/v1/query", self.base_url);
+		let url = format!("{}/v1/query?format=frames", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
 
 		match from_str::<HttpFrameResponse>(&response_body) {
@@ -376,7 +376,7 @@ impl HttpClient {
 	async fn send_rbcf<T: Serialize>(&self, path: &str, body: &T) -> Result<Vec<Frame>, Error> {
 		let url = format!("{}{}?format=rbcf", self.base_url, path);
 		let bytes = self.send_request_bytes(&url, body).await?;
-		reifydb_wire_format::decode::decode_frames(&bytes).map_err(|e| {
+		decode_frames(&bytes).map_err(|e| {
 			Error(Box::new(Diagnostic {
 				code: "RBCF_DECODE".to_string(),
 				message: format!("Failed to decode RBCF response: {}", e),

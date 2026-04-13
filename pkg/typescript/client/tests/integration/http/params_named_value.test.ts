@@ -13,7 +13,7 @@ import {
 import { expectSingleValueResult } from "./test-helper";
 
 describe.each([
-    {format: "json"},
+    {format: "frames"},
     {format: "rbcf"},
 ] as const)('Named Parameters (value) [$format]', ({format}) => {
     let httpClient: HttpClient;

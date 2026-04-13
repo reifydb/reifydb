@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::value::frame::frame::Frame;
-use reifydb_wire_format::options::EncodeOptions;
+use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use serde_json::{self, Map, Value as JsonValue, to_string as json_to_string};
 
 /// Encode frames into RBCF binary format.
 pub fn encode_frames_rbcf(frames: &[Frame]) -> Result<Vec<u8>, String> {
-	reifydb_wire_format::encode::encode_frames(frames, &EncodeOptions::fast()).map_err(|e| e.to_string())
+	encode_frames(frames, &EncodeOptions::fast()).map_err(|e| e.to_string())
 }
 
 /// A resolved JSON response for `?format=json` mode.

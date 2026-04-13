@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-import {decode} from "@reifydb/core";
 import type {
     AdminRequest,
     AuthRequest,
@@ -8,7 +7,6 @@ import type {
     CommandRequest,
     QueryRequest,
     AdminResponse,
-    Column,
     CommandResponse,
     QueryResponse,
     ErrorResponse,
@@ -20,7 +18,6 @@ import {
     ReifyError
 } from "./types";
 import {encode_params} from "./encoder";
-import {rbcf} from "./rbcf";
 
 export interface JsonWsClientOptions {
     url: string;
@@ -30,8 +27,6 @@ export interface JsonWsClientOptions {
     reconnect_delay_ms?: number;
     unwrap?: boolean;
     signal?: AbortSignal;
-    /** Wire format for data frames. Defaults to "json". */
-    format?: "json" | "rbcf";
 }
 
 type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | LogoutResponse;
@@ -42,20 +37,12 @@ interface PendingEntry {
 }
 
 async function create_web_socket(url: string): Promise<WebSocket> {
-    let socket: WebSocket;
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
-        socket = new WebSocket(url);
-    } else {
-        //@ts-ignore
-        const ws_module = await import("ws");
-        socket = new ws_module.WebSocket(url);
+        return new WebSocket(url);
     }
-    try {
-        (socket as any).binaryType = "arraybuffer";
-    } catch {
-        // Some environments disallow setting before open — best effort.
-    }
-    return socket;
+    //@ts-ignore
+    const ws_module = await import("ws");
+    return new ws_module.WebSocket(url);
 }
 
 export class JsonWsClient {
@@ -158,7 +145,7 @@ export class JsonWsClient {
             payload: {
                 statements: output_statements,
                 params: encoded_params,
-                format: this.options.format === "rbcf" ? "rbcf" : "json",
+                format: "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
         });
@@ -185,7 +172,7 @@ export class JsonWsClient {
             payload: {
                 statements: output_statements,
                 params: encoded_params,
-                format: this.options.format === "rbcf" ? "rbcf" : "json",
+                format: "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
         });
@@ -212,7 +199,7 @@ export class JsonWsClient {
             payload: {
                 statements: output_statements,
                 params: encoded_params,
-                format: this.options.format === "rbcf" ? "rbcf" : "json",
+                format: "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
         });
@@ -430,33 +417,14 @@ export class JsonWsClient {
     private setup_socket_handlers() {
         this.socket.onmessage = (event) => {
             const data = event.data;
-
-            if (data instanceof ArrayBuffer) {
-                this.handle_binary_message(new Uint8Array(data));
-                return;
-            }
-            if (typeof data !== "string") {
-                const buf = data as { buffer?: ArrayBuffer; byteOffset?: number; byteLength?: number };
-                if (buf && typeof buf.byteLength === "number" && buf.buffer instanceof ArrayBuffer) {
-                    const u8 = new Uint8Array(buf.buffer, buf.byteOffset ?? 0, buf.byteLength);
-                    this.handle_binary_message(u8);
-                    return;
-                }
-                return;
-            }
+            if (typeof data !== "string") return;
 
             const msg = JSON.parse(data);
-
-            if (!msg.id) {
-                return;
-            }
+            if (!msg.id) return;
 
             const {id, type, payload} = msg;
-
             const entry = this.pending.get(id);
-            if (!entry) {
-                return;
-            }
+            if (!entry) return;
 
             this.pending.delete(id);
             entry.handler({id, type, payload});
@@ -469,44 +437,6 @@ export class JsonWsClient {
         this.socket.onclose = () => {
             this.handle_disconnect();
         };
-    }
-
-    private handle_binary_message(bytes: Uint8Array) {
-        // Envelope: [u32 LE id_len][id UTF-8 bytes][RBCF payload]. Mirrors ws.ts.
-        if (bytes.length < 4) return;
-        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-        const id_len = view.getUint32(0, true);
-        if (bytes.length < 4 + id_len) return;
-        const id = new TextDecoder("utf-8").decode(bytes.subarray(4, 4 + id_len));
-        const rbcf_bytes = bytes.subarray(4 + id_len);
-
-        const entry = this.pending.get(id);
-        if (!entry) return;
-        this.pending.delete(id);
-
-        let wire_frames: any[];
-        try {
-            wire_frames = rbcf.decode(rbcf_bytes);
-        } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            entry.handler({
-                id,
-                type: "Err",
-                payload: {
-                    diagnostic: {code: "RBCF_DECODE", message: msg, notes: []}
-                }
-            } as ErrorResponse);
-            return;
-        }
-
-        // Convert columns to rows with plain JS values to match the format=json body shape
-        // (array of frames of plain rows) that JsonWsClient.send returns directly.
-        const plain_frames = wire_frames.map((frame: any) => columns_to_plain_rows(frame.columns));
-        entry.handler({
-            id,
-            type: entry.type,
-            payload: {body: plain_frames},
-        } as ResponsePayload);
     }
 
     private reject_all_pending_requests() {
@@ -527,16 +457,4 @@ export class JsonWsClient {
         }
         this.pending.clear();
     }
-}
-
-function columns_to_plain_rows(columns: Column[]): Record<string, any>[] {
-    const row_count = columns[0]?.payload.length ?? 0;
-    return Array.from({length: row_count}, (_, i) => {
-        const row: Record<string, any> = {};
-        for (const col of columns) {
-            const value = decode({type: col.type, value: col.payload[i]});
-            row[col.name] = value?.valueOf();
-        }
-        return row;
-    });
 }

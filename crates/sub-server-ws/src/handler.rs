@@ -14,6 +14,7 @@ use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
 	dispatch::dispatch,
 	execute::ExecuteError,
+	format::WireFormat,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
 	response::{encode_frames_rbcf, resolve_response_json},
 	state::AppState,
@@ -23,7 +24,7 @@ use reifydb_type::{
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
-use reifydb_wire_format::json::convert_frames;
+use reifydb_wire_format::json::to::convert_frames;
 use serde_json::{Value as JsonValue, from_str, json};
 use tokio::{
 	net::TcpStream,
@@ -358,7 +359,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				}
 			};
 
-			let format = a.format.clone();
+			let format = a.format;
 			let unwrap = a.unwrap.unwrap_or(false);
 			let params = match a.params {
 				None => Params::None,
@@ -381,7 +382,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				Operation::Admin,
 				a.statements,
 				params,
-				format.as_deref(),
+				format,
 				unwrap,
 				|id, content_type, body| Response::admin(id, content_type, body).to_json(),
 			)
@@ -400,7 +401,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				}
 			};
 
-			let format = q.format.clone();
+			let format = q.format;
 			let unwrap = q.unwrap.unwrap_or(false);
 			let params = match q.params {
 				None => Params::None,
@@ -423,7 +424,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				Operation::Query,
 				q.statements,
 				params,
-				format.as_deref(),
+				format,
 				unwrap,
 				|id, content_type, body| Response::query(id, content_type, body).to_json(),
 			)
@@ -442,7 +443,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				}
 			};
 
-			let format = c.format.clone();
+			let format = c.format;
 			let unwrap = c.unwrap.unwrap_or(false);
 			let params = match c.params {
 				None => Params::None,
@@ -465,7 +466,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				Operation::Command,
 				c.statements,
 				params,
-				format.as_deref(),
+				format,
 				unwrap,
 				|id, content_type, body| Response::command(id, content_type, body).to_json(),
 			)
@@ -577,7 +578,7 @@ async fn execute_via_dispatch(
 	operation: Operation,
 	statements: Vec<String>,
 	params: Params,
-	format: Option<&str>,
+	format: WireFormat,
 	unwrap: bool,
 	build_response: impl FnOnce(&str, String, JsonValue) -> String,
 ) -> Option<WsResponse> {
@@ -591,25 +592,24 @@ async fn execute_via_dispatch(
 	};
 
 	match dispatch(conn.state, ctx).await {
-		Ok((frames, _duration)) => {
-			if format == Some("rbcf") {
-				return match encode_frames_rbcf(&frames) {
-					Ok(rbcf_bytes) => Some(WsResponse::Binary(encode_rbcf_envelope(
-						BinaryKind::Response,
-						request_id,
-						&rbcf_bytes,
-					))),
-					Err(e) => Some(WsResponse::Text(build_error(
-						request_id,
-						"ENCODE_ERROR",
-						&format!("RBCF encode error: {}", e),
-					))),
-				};
+		Ok((frames, _duration)) => match format {
+			WireFormat::Rbcf => match encode_frames_rbcf(&frames) {
+				Ok(rbcf_bytes) => Some(WsResponse::Binary(encode_rbcf_envelope(
+					BinaryKind::Response,
+					request_id,
+					&rbcf_bytes,
+				))),
+				Err(e) => Some(WsResponse::Text(build_error(
+					request_id,
+					"ENCODE_ERROR",
+					&format!("RBCF encode error: {}", e),
+				))),
+			},
+			WireFormat::Json | WireFormat::Frames => {
+				let (content_type, body) = build_response_body(frames, format, unwrap);
+				Some(WsResponse::Text(build_response(request_id, content_type, body)))
 			}
-
-			let (content_type, body) = build_response_body(frames, format, unwrap);
-			Some(WsResponse::Text(build_response(request_id, content_type, body)))
-		}
+		},
 		Err(e) => Some(WsResponse::Text(error_to_response(request_id, e))),
 	}
 }
@@ -659,19 +659,21 @@ pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
 }
 
 /// Build response body with content_type based on format parameter.
-fn build_response_body(frames: Vec<Frame>, format: Option<&str>, unwrap: bool) -> (String, JsonValue) {
-	if format == Some("json") {
-		// Raw JSON body passthrough (unwrap mode).
-		match resolve_response_json(frames, unwrap) {
+/// Only called for `WireFormat::Json` and `WireFormat::Frames` — `Rbcf` is handled separately.
+fn build_response_body(frames: Vec<Frame>, format: WireFormat, unwrap: bool) -> (String, JsonValue) {
+	match format {
+		WireFormat::Json => match resolve_response_json(frames, unwrap) {
 			Ok(resolved) => {
 				let body = from_str(&resolved.body).unwrap_or(JsonValue::String(resolved.body));
 				("application/json".to_string(), body)
 			}
 			Err(e) => ("application/json".to_string(), JsonValue::String(e)),
+		},
+		WireFormat::Frames => {
+			let ws_frames = convert_frames(&frames);
+			let body = json!({ "frames": ws_frames });
+			(CONTENT_TYPE_JSON.to_string(), body)
 		}
-	} else {
-		let ws_frames = convert_frames(&frames);
-		let body = json!({ "frames": ws_frames });
-		(CONTENT_TYPE_JSON.to_string(), body)
+		WireFormat::Rbcf => unreachable!("Rbcf is handled before build_response_body"),
 	}
 }

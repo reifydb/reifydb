@@ -169,6 +169,8 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 	if has_nones {
 		enc.nones = nones;
 		enc.flags |= COL_FLAG_HAS_NONES;
+		// Set the option bit on the type code so the decoder reconstructs `Type::Option(inner)`.
+		enc.type_code |= 0x80;
 	}
 	enc.row_count = row_count;
 	Ok(enc)

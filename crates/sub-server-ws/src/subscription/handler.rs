@@ -9,12 +9,14 @@
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_remote_proxy::{connect_remote, proxy_remote};
 use reifydb_sub_server::{
+	format::WireFormat,
 	interceptor::{Protocol, RequestMetadata},
+	response::resolve_response_json,
 	subscribe::{CreateSubscriptionError, CreateSubscriptionResult::*, create_subscription},
 };
 use reifydb_type::value::identity::IdentityId;
-use reifydb_wire_format::{encode::encode_frames, json::convert_frames, options::EncodeOptions};
-use serde_json::json;
+use reifydb_wire_format::{encode::encode_frames, json::to::convert_frames, options::EncodeOptions};
+use serde_json::{Value as JsonValue, from_str, json};
 use tokio::spawn;
 use tracing::info;
 
@@ -22,7 +24,7 @@ use crate::{
 	handler::{BinaryKind, ConnectionContext, encode_rbcf_envelope, error_to_response},
 	protocol::SubscribeRequest,
 	response::{CONTENT_TYPE_JSON, Response},
-	subscription::{PushMessage, registry::WireFormat},
+	subscription::PushMessage,
 };
 
 /// Handle a subscription request.
@@ -43,7 +45,7 @@ pub(crate) async fn handle_subscribe(
 ) -> Option<String> {
 	let id: IdentityId = conn.identity.unwrap_or_else(IdentityId::root);
 	let user_rql = sub.rql.clone();
-	let format = WireFormat::from_str_opt(sub.format.as_deref());
+	let format = sub.format;
 	// TODO: capture upgrade request headers via accept_hdr_async
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 
@@ -111,12 +113,24 @@ pub(crate) async fn handle_subscribe(
 							envelope,
 						}
 					}
-					WireFormat::Json => {
+					WireFormat::Frames => {
 						let ws_frames = convert_frames(&frames);
 						PushMessage::ChangeJson {
 							subscription_id,
 							content_type: CONTENT_TYPE_JSON.to_string(),
 							body: json!({ "frames": ws_frames }),
+						}
+					}
+					WireFormat::Json => {
+						let body = match resolve_response_json(frames, false) {
+							Ok(r) => from_str::<JsonValue>(&r.body)
+								.unwrap_or(JsonValue::String(r.body)),
+							Err(_) => JsonValue::Array(vec![]),
+						};
+						PushMessage::ChangeJson {
+							subscription_id,
+							content_type: "application/json".to_string(),
+							body,
 						}
 					}
 				})

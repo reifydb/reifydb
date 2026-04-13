@@ -4,14 +4,14 @@ use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_type::value::frame::frame::Frame;
-use reifydb_wire_format::options::EncodeOptions;
+use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use tokio::sync::mpsc;
 use tonic::Status;
 use tracing::debug;
 
 use crate::{
 	convert::frames_to_proto,
-	generated::{ChangeEvent, FramesPayload, SubscriptionEvent, change_event, subscription_event},
+	generated::{ChangeEvent, Format, FramesPayload, SubscriptionEvent, change_event, subscription_event},
 };
 
 /// Wire format chosen by the client for a given subscription.
@@ -26,9 +26,9 @@ impl WireFormat {
 	/// Resolve from the on-wire i32 value of the proto `Format` enum.
 	/// `FORMAT_UNSPECIFIED` is treated as `FORMAT_PROTO` for backwards compatibility.
 	pub fn from_proto_i32(format: i32) -> Self {
-		match crate::generated::Format::try_from(format).unwrap_or(crate::generated::Format::Unspecified) {
-			crate::generated::Format::Rbcf => WireFormat::Rbcf,
-			crate::generated::Format::Proto | crate::generated::Format::Unspecified => WireFormat::Proto,
+		match Format::try_from(format).unwrap_or(Format::Unspecified) {
+			Format::Rbcf => WireFormat::Rbcf,
+			Format::Proto | Format::Unspecified => WireFormat::Proto,
 		}
 	}
 }
@@ -94,8 +94,7 @@ impl SubscriptionDelivery for GrpcSubscriptionRegistry {
 		let frames = vec![Frame::from(columns)];
 		let payload = match format {
 			WireFormat::Rbcf => {
-				let rbcf = reifydb_wire_format::encode::encode_frames(&frames, &EncodeOptions::fast())
-					.unwrap_or_default();
+				let rbcf = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
 				change_event::Payload::Rbcf(rbcf)
 			}
 			WireFormat::Proto => change_event::Payload::Frames(FramesPayload {

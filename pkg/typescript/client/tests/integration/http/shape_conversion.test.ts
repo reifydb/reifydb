@@ -16,7 +16,7 @@ const versionShape = Shape.object({
 type VersionRow = InferShape<typeof versionShape>;
 
 describe.each([
-    {format: "json"},
+    {format: "frames"},
     {format: "rbcf"},
 ] as const)('Shape Type Conversion [$format]', ({format}) => {
     let httpClient: HttpClient;

@@ -5,7 +5,7 @@ import {Client, HttpClient} from "../../../src";
 import {Shape} from "@reifydb/core";
 
 describe.each([
-    {format: "json"},
+    {format: "frames"},
     {format: "rbcf"},
 ] as const)('Concurrent requests [$format]', ({format}) => {
     let httpClient: HttpClient;

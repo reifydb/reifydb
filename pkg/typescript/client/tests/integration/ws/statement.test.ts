@@ -7,7 +7,7 @@ import {Shape} from "@reifydb/core";
 
 
 describe.each([
-    {format: "json"},
+    {format: "frames"},
     {format: "rbcf"},
 ] as const)('Statement [$format]', ({format}) => {
     let ws_client: WsClient;

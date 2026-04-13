@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::{err, error::Error};
-use reifydb_wire_format::json::convert_envelope_response;
+use reifydb_wire_format::json::from::convert_envelope_response;
 
 use crate::{AdminResult, CommandResult, QueryResult, Response, ResponsePayload};
 

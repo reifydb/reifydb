@@ -11,7 +11,7 @@ import {
 } from "./test-helper";
 
 describe.each([
-    {format: "json"},
+    {format: "frames"},
     {format: "rbcf"},
 ] as const)('Positional Parameters (primitive) [$format]', ({format}) => {
     let httpClient: HttpClient;
