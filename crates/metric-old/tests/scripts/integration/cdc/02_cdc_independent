@@ -21,7 +21,7 @@ remove key2
 ---
 ok
 
-drop key1 keep_last_versions=1 version=5
+drop key1 version=5
 ---
 ok
 

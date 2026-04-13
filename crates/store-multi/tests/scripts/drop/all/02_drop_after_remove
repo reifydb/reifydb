@@ -23,19 +23,22 @@ count_versions a
 ---
 "a" => 1 versions
 
-# Drop should clean up everything including tombstone
+# Drop historical versions (keeps latest tombstone at v2)
 drop a
 ---
 ok
 
-# Now truly gone - 0 versions
+# 0 versions remain because v2 was a tombstone
 count_versions a
 ---
 "a" => 0 versions
 
-# Key doesn't exist at any version
+# v1 is gone
 contains a version=1
-contains a version=2
 ---
 "a" => false
+
+# v2 is still a tombstone
+contains a version=2
+---
 "a" => false

@@ -138,7 +138,7 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 				pre: None,
 			}),
 			Delta::Drop {
-				..
+				key: _,
 			} => None,
 		})
 		.collect()

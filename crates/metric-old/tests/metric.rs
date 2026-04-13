@@ -321,12 +321,10 @@ impl TestRunner for Runner {
 				)?
 			}
 
-			// drop KEY [up_to_version=V] [keep_last_versions=N] [version=VERSION]
+			// drop KEY [version=VERSION]
 			"drop" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				let up_to_version = args.lookup_parse::<u64>("up_to_version")?.map(CommitVersion);
-				let keep_last_versions = args.lookup_parse::<usize>("keep_last_versions")?;
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					let v = CommitVersion(v);
 					if v > self.version {
@@ -343,8 +341,6 @@ impl TestRunner for Runner {
 					cow_vec![
 						(Delta::Drop {
 							key,
-							up_to_version,
-							keep_last_versions,
 						})
 					],
 					version,

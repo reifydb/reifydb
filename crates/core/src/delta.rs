@@ -3,10 +3,7 @@
 
 use std::cmp;
 
-use crate::{
-	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
-};
+use crate::encoded::{key::EncodedKey, row::EncodedRow};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Delta {
@@ -25,20 +22,13 @@ pub enum Delta {
 	Remove {
 		key: EncodedKey,
 	},
-	/// Drop operation - completely erases versioned entries from storage.
+	/// Drop operation - completely erases historical versioned entries from storage.
 	/// Unlike Remove (which writes a tombstone and generates CDC), Drop:
 	/// - Deletes existing entries without writing anything new
 	/// - Never generates CDC events
+	/// - Only keeps the most recent version (aggressive cleanup)
 	Drop {
 		key: EncodedKey,
-		/// If Some(v), drop all versions where version < v (keeps v and later).
-		/// If None, this constraint is not applied.
-		up_to_version: Option<CommitVersion>,
-		/// If Some(n), keep the n most recent versions, drop older ones.
-		/// If None, this constraint is not applied.
-		/// Can be combined with up_to_version (both constraints apply).
-		/// If both are None, drops ALL versions.
-		keep_last_versions: Option<usize>,
 	},
 }
 
@@ -120,12 +110,8 @@ impl Clone for Delta {
 			},
 			Self::Drop {
 				key,
-				up_to_version,
-				keep_last_versions,
 			} => Self::Drop {
 				key: key.clone(),
-				up_to_version: *up_to_version,
-				keep_last_versions: *keep_last_versions,
 			},
 		}
 	}

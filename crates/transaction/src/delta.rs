@@ -46,7 +46,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 	for (idx, delta) in deltas.into_iter().enumerate() {
 		match delta {
 			Delta::Drop {
-				..
+				key: _,
 			} => {
 				// Drop operations pass through without optimization
 				drop_operations.push((idx, delta));

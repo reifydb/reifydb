@@ -119,7 +119,7 @@ impl MultiVersionCommit for StandardMultiStore {
 		let mut writes: Vec<StorageWrite> = Vec::new();
 		let mut deletes: Vec<StorageDelete> = Vec::new();
 		let mut batches: TierBatch = HashMap::new();
-		let mut explicit_drops: Vec<(EntryKind, EncodedKey, Option<CommitVersion>, Option<usize>)> = Vec::new();
+		let mut explicit_drops: Vec<(EntryKind, EncodedKey)> = Vec::new();
 
 		for delta in deltas.iter() {
 			let key = delta.key();
@@ -161,17 +161,15 @@ impl MultiVersionCommit for StandardMultiStore {
 				}
 				Delta::Drop {
 					key,
-					up_to_version,
-					keep_last_versions,
 				} => {
-					explicit_drops.push((table, key.clone(), *up_to_version, *keep_last_versions));
+					explicit_drops.push((table, key.clone()));
 				}
 			}
 		}
 
 		// Process explicit drops now that pending_set_keys is complete
 		let mut drop_batch = Vec::with_capacity(explicit_drops.len() + pending_set_keys.len());
-		for (table, key, up_to_version, keep_last_versions) in explicit_drops {
+		for (table, key) in explicit_drops {
 			let pending_version = if pending_set_keys.contains(key.as_ref()) {
 				Some(version)
 			} else {
@@ -181,8 +179,6 @@ impl MultiVersionCommit for StandardMultiStore {
 			drop_batch.push(DropRequest {
 				table,
 				key: key.0.clone(),
-				up_to_version,
-				keep_last_versions,
 				commit_version: version,
 				pending_version,
 			});
@@ -194,8 +190,6 @@ impl MultiVersionCommit for StandardMultiStore {
 			drop_batch.push(DropRequest {
 				table,
 				key: key.clone(),
-				up_to_version: None,
-				keep_last_versions: Some(1),
 				commit_version: version,
 				pending_version: Some(version),
 			});

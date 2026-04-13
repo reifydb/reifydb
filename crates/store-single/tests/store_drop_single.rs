@@ -201,8 +201,6 @@ impl testscript::runner::Runner for Runner {
 				self.store.commit(cow_vec![
 					(Delta::Drop {
 						key,
-						up_to_version: None,
-						keep_last_versions: None,
 					})
 				])?
 			}

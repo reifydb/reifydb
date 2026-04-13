@@ -12,10 +12,6 @@ pub struct DropRequest {
 	pub table: EntryKind,
 	/// The logical key (without version suffix).
 	pub key: CowVec<u8>,
-	/// Drop versions below this threshold (if Some).
-	pub up_to_version: Option<CommitVersion>,
-	/// Keep this many most recent versions (if Some).
-	pub keep_last_versions: Option<usize>,
 	/// The commit version that created this drop request.
 	pub commit_version: CommitVersion,
 	/// A version being written in the same batch (to avoid race).

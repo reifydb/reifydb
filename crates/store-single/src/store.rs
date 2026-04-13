@@ -139,7 +139,6 @@ impl SingleVersionCommit for StandardSingleStore {
 				}
 				| Delta::Drop {
 					key,
-					..
 				} => (CowVec::new(key.as_ref().to_vec()), None),
 			})
 			.collect();

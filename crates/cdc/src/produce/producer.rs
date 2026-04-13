@@ -259,7 +259,7 @@ where
 					pre: None,
 				},
 				Delta::Drop {
-					..
+					key: _,
 				} => {
 					continue;
 				}
@@ -729,8 +729,6 @@ pub mod tests {
 			},
 			Delta::Drop {
 				key: make_key("key2"),
-				up_to_version: None,
-				keep_last_versions: None,
 			},
 		];
 

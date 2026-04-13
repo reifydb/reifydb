@@ -18,17 +18,17 @@ count_versions c
 "b" => 1 versions
 "c" => 1 versions
 
-# Drop only 'a'
+# Drop 'a' (only one version exists, keeps it)
 drop a
 ---
 ok
 
-# Only 'a' is gone
+# Still all have 1 version
 count_versions a
 count_versions b
 count_versions c
 ---
-"a" => 0 versions
+"a" => 1 versions
 "b" => 1 versions
 "c" => 1 versions
 
@@ -36,12 +36,14 @@ contains a version=1
 contains b version=1
 contains c version=1
 ---
-"a" => false
+"a" => true
 "b" => true
 "c" => true
 
+get a version=1
 get b version=1
 get c version=1
 ---
+"a" => "1"
 "b" => "2"
 "c" => "3"

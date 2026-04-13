@@ -35,7 +35,7 @@ current_value_bytes: 2
 
 # Drop all but the latest version
 # This tests the batch drop path in multi.rs
-drop a keep_last_versions=1 version=5
+drop a version=5
 ---
 ok
 

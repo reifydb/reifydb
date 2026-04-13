@@ -134,7 +134,6 @@ impl TransactionValue {
 				}
 				| Delta::Drop {
 					key,
-					..
 				} => MultiVersionRow {
 					key,
 					row: EncodedRow(CowVec::default()),

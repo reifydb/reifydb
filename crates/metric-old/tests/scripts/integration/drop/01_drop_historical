@@ -31,7 +31,7 @@ historical_key_bytes: 22
 historical_value_bytes: 2
 
 # Drop old versions, keep only latest
-drop a keep_last_versions=1 version=4
+drop a version=4
 ---
 ok
 

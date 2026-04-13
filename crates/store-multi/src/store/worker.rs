@@ -135,14 +135,7 @@ impl DropActor {
 				max_pending_version = version_for_event;
 			}
 
-			match find_keys_to_drop(
-				storage,
-				request.table,
-				request.key.as_ref(),
-				request.up_to_version,
-				request.keep_last_versions,
-				request.pending_version,
-			) {
+			match find_keys_to_drop(storage, request.table, request.key.as_ref(), request.pending_version) {
 				Ok(entries_to_drop) => {
 					for entry in entries_to_drop {
 						// Collect stats for metrics

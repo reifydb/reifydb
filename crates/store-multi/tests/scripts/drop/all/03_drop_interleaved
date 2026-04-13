@@ -16,18 +16,18 @@ contains a version=1
 ---
 "a" => true
 
-# Drop it
+# Drop (but only one version exists, so it should keep it)
 drop a
 ---
 ok
 
 count_versions a
 ---
-"a" => 0 versions
+"a" => 1 versions
 
 contains a version=1
 ---
-"a" => false
+"a" => true
 
 # Re-insert after drop
 set a=new version=2
@@ -36,7 +36,7 @@ ok
 
 count_versions a
 ---
-"a" => 1 versions
+"a" => 2 versions
 
 contains a version=2
 ---
@@ -46,14 +46,18 @@ get a version=2
 ---
 "a" => "new"
 
-# Drop again
+# Drop again - keeps version 2, drops version 1
 drop a
 ---
 ok
 
 count_versions a
 ---
-"a" => 0 versions
+"a" => 1 versions
+
+contains a version=1
+---
+"a" => false
 
 # Set final value
 set a=final version=3
@@ -62,7 +66,7 @@ ok
 
 count_versions a
 ---
-"a" => 1 versions
+"a" => 2 versions
 
 get a version=3
 ---

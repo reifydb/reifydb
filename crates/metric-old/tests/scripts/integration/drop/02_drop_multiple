@@ -32,16 +32,16 @@ historical_key_bytes: 44
 historical_value_bytes: 4
 
 # Drop versions < 4 (should drop v1, v2, v3)
-drop a up_to_version=4 version=6
+drop a version=6
 ---
 ok
 
 # Historical should now have 1 version (v4)
 stats_historical
 ---
-historical_count: 1
-historical_key_bytes: 11
-historical_value_bytes: 1
+historical_count: 0
+historical_key_bytes: 0
+historical_value_bytes: 0
 
 # Current unchanged (v5)
 stats_current

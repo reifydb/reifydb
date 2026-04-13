@@ -69,7 +69,7 @@ historical_bytes: 73
 total_bytes: 101
 
 # Phase 5: Drop old versions of key a (keep last 1)
-drop a keep_last_versions=1 version=10
+drop a version=10
 ---
 ok
 

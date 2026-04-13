@@ -102,7 +102,7 @@ impl<'a> SingleWriteTransaction<'a> {
 					..
 				}
 				| Delta::Drop {
-					..
+					key: _,
 				} => Ok(None),
 			};
 		}
@@ -128,7 +128,7 @@ impl<'a> SingleWriteTransaction<'a> {
 					..
 				}
 				| Delta::Drop {
-					..
+					key: _,
 				} => Ok(false),
 			};
 		}
