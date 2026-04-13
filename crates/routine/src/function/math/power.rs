@@ -413,6 +413,19 @@ fn get_as_f64(data: &ColumnData, i: usize) -> f64 {
 }
 
 fn promote_two(left: Type, right: Type) -> Type {
+	// Known-side-wins symmetric: (X, Any) and (Any, X) yield X when X is numeric;
+	// (Any, Any) yields Any. Runs BEFORE canonicalization so `power(Int, none)`
+	// preserves `Int` rather than falling into the Int→Int16 overflow-guard
+	// branch (no value exists to overflow when the exponent is null).
+	if matches!(left, Type::Any) && matches!(right, Type::Any) {
+		return Type::Any;
+	}
+	if matches!(left, Type::Any) && right.is_number() {
+		return right;
+	}
+	if left.is_number() && matches!(right, Type::Any) {
+		return left;
+	}
 	if matches!(left, Type::Float4 | Type::Float8 | Type::Decimal)
 		|| matches!(right, Type::Float4 | Type::Float8 | Type::Decimal)
 	{

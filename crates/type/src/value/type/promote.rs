@@ -11,6 +11,10 @@ impl Type {
 	/// Promote two Types to a common supertype, similar to Postgres
 	/// expression evaluation.
 	pub fn promote(left: Type, right: Type) -> Type {
+		if matches!(left, Any) || matches!(right, Any) {
+			return Any;
+		}
+
 		if matches!(left, Option(_)) || matches!(right, Option(_)) {
 			return left;
 		}
@@ -360,6 +364,45 @@ pub mod tests {
 		for (left, right, expected) in cases {
 			assert_eq!(Type::promote(left, right), expected);
 		}
+	}
+
+	#[test]
+	fn test_promote_any_is_absorbing() {
+		let kinds = [
+			Boolean,
+			Float4,
+			Float8,
+			Int1,
+			Int2,
+			Int4,
+			Int8,
+			Int16,
+			Uint1,
+			Uint2,
+			Uint4,
+			Uint8,
+			Uint16,
+			Utf8,
+			Date,
+			DateTime,
+			Time,
+			Duration,
+			Uuid4,
+			Uuid7,
+			Blob,
+			IdentityId,
+			DictionaryId,
+			Int,
+			Uint,
+			Decimal,
+			Any,
+		];
+		for ty in kinds {
+			assert_eq!(Type::promote(Any, ty.clone()), Any, "Any on left with {:?}", ty);
+			assert_eq!(Type::promote(ty.clone(), Any), Any, "Any on right with {:?}", ty);
+		}
+		assert_eq!(Type::promote(Any, Option(Box::new(Int4))), Any);
+		assert_eq!(Type::promote(Option(Box::new(Int4)), Any), Any);
 	}
 
 	#[test]

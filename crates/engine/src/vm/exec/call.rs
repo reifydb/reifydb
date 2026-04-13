@@ -15,25 +15,29 @@ use reifydb_core::{
 use reifydb_routine::{function::FunctionContext, procedure::context::ProcedureContext};
 use reifydb_rql::{
 	compiler::{CompilationResult, Compiled},
-	instruction::{CompiledClosure, CompiledFunction, ScopeType},
+	instruction::{CompiledClosure, CompiledFunction, Instruction, ScopeType},
+	nodes::FunctionParameter,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	error::{Error as ReifyError, ProcedureErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
-	value::{Value, frame::frame::Frame},
+	value::{Value, constraint::TypeConstraint, frame::frame::Frame, r#type::Type},
 };
 
 use super::stack::strip_dollar_prefix;
 use crate::{
 	Result,
 	error::EngineError,
+	expression::{cast::cast_column_data, context::EvalContext},
 	policy::PolicyEvaluator,
 	vm::{
+		exec::broadcast::broadcast_many,
 		services::Services,
 		stack::{ClosureValue, ControlFlow, Variable},
 		vm::Vm,
+		volcano::udf::is_vectorizable,
 	},
 };
 
@@ -46,12 +50,58 @@ pub(crate) struct CallContext<'a, 'b> {
 
 /// Collect the return value from a function/procedure/closure execution.
 /// This pattern was previously copy-pasted 4 times in the Call handler.
+/// Coerce every column inside `result` to the declared function return type.
+/// Used by call sites so that mixed-width scalar execution paths collapse to a
+/// single column type before the result flows back to the caller.
+pub(crate) fn coerce_return_value(result: Variable, return_type: Option<&TypeConstraint>) -> Result<Variable> {
+	let Some(tc) = return_type else {
+		return Ok(result);
+	};
+	let target = tc.get_type();
+	match result {
+		Variable::Columns {
+			columns,
+			is_scalar,
+		} => {
+			let ctx = EvalContext::testing();
+			let coerced: Vec<Column> = columns
+				.columns
+				.iter()
+				.map(|col| {
+					let data = cast_column_data(&ctx, &col.data, target.clone(), col.name.clone())?;
+					Ok(Column::new(col.name.clone(), data))
+				})
+				.collect::<Result<Vec<_>>>()?;
+			Ok(Variable::Columns {
+				columns: Columns::new(coerced),
+				is_scalar,
+			})
+		}
+		other => Ok(other),
+	}
+}
+
+/// Coerce a single scalar `Value` to `target` by wrapping in a 1-row column,
+/// casting, and extracting. Slow-path helper used by the per-row fallback so
+/// that the accumulator column's element type stays uniform.
+fn coerce_value(value: Value, target: &Type) -> Result<Value> {
+	let mut data = ColumnData::with_capacity(value.get_type(), 1);
+	data.push_value(value);
+	let ctx = EvalContext::testing();
+	let cast = cast_column_data(&ctx, &data, target.clone(), Fragment::internal("coerce_return"))?;
+	Ok(cast.get_value(0))
+}
+
 pub(crate) fn collect_call_result(vm: &mut Vm, func_result: &mut Vec<Frame>) -> Variable {
 	match mem::replace(&mut vm.control_flow, ControlFlow::Normal) {
-		ControlFlow::Return(c) => Variable::Columns {
-			columns: c.unwrap_or(Columns::scalar(Value::none())),
-			is_scalar: true,
-		},
+		ControlFlow::Return(c) => {
+			let columns = c.unwrap_or(Columns::scalar(Value::none()));
+			let is_scalar = columns.row_count() <= 1;
+			Variable::Columns {
+				columns,
+				is_scalar,
+			}
+		}
 		_ => {
 			if let Some(frame) = func_result.pop() {
 				if !frame.columns.is_empty() && !frame.columns[0].data.is_empty() {
@@ -79,7 +129,20 @@ impl Vm {
 		let arity = arity as usize;
 		let func_name = name.text();
 
-		// testing:: prefix reserved for future use
+		// Columnar dispatch: user functions and closures can take a column
+		// per argument (either a batch path for vectorizable bodies or a
+		// per-row fallback). Procedures don't run inside UDF bodies, so
+		// they stay on the scalar path.
+		if self.batch_size > 1 {
+			if let Some(func_def) = self.symbols.get_function(func_name).cloned() {
+				return self.call_user_function_columnar(services, tx, params, &func_def, arity, name);
+			}
+			if let Some(closure_val) = self.symbols.get(strip_dollar_prefix(func_name)).cloned()
+				&& let Variable::Closure(closure) = closure_val
+			{
+				return self.call_closure_columnar(services, tx, params, closure, arity);
+			}
+		}
 
 		let mut args = Vec::with_capacity(arity);
 		for _ in 0..arity {
@@ -149,6 +212,202 @@ impl Vm {
 		}
 	}
 
+	fn call_user_function_columnar(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		params: &Params,
+		func_def: &CompiledFunction,
+		arity: usize,
+		name: &Fragment,
+	) -> Result<()> {
+		let arg_columns = self.pop_args_as_columns(arity)?;
+
+		if is_vectorizable(&func_def.body) {
+			let row_count = arg_columns.first().map(|c| c.data.len()).unwrap_or(self.batch_size);
+			self.run_function_body_batch(
+				services,
+				tx,
+				params,
+				&func_def.body,
+				&func_def.parameters,
+				arg_columns,
+				row_count,
+				None,
+				func_def.return_type.as_ref(),
+			)
+		} else {
+			self.run_function_body_per_row(
+				services,
+				tx,
+				params,
+				&func_def.body,
+				&func_def.parameters,
+				arg_columns,
+				None,
+				name,
+				func_def.return_type.as_ref(),
+			)
+		}
+	}
+
+	fn call_closure_columnar(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		params: &Params,
+		closure: ClosureValue,
+		arity: usize,
+	) -> Result<()> {
+		let arg_columns = self.pop_args_as_columns(arity)?;
+
+		if is_vectorizable(&closure.def.body) {
+			let row_count = arg_columns.first().map(|c| c.data.len()).unwrap_or(self.batch_size);
+			self.run_function_body_batch(
+				services,
+				tx,
+				params,
+				&closure.def.body,
+				&closure.def.parameters,
+				arg_columns,
+				row_count,
+				Some(&closure.captured),
+				None,
+			)
+		} else {
+			self.run_function_body_per_row(
+				services,
+				tx,
+				params,
+				&closure.def.body,
+				&closure.def.parameters,
+				arg_columns,
+				Some(&closure.captured),
+				&Fragment::internal("closure"),
+				None,
+			)
+		}
+	}
+
+	fn pop_args_as_columns(&mut self, arity: usize) -> Result<Vec<Column>> {
+		let mut arg_columns = Vec::with_capacity(arity);
+		for _ in 0..arity {
+			arg_columns.push(self.pop_as_column()?);
+		}
+		arg_columns.reverse();
+		Ok(broadcast_many(arg_columns))
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn run_function_body_batch(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		params: &Params,
+		body: &[Instruction],
+		parameters: &[FunctionParameter],
+		arg_columns: Vec<Column>,
+		_row_count: usize,
+		captured: Option<&HashMap<String, Variable>>,
+		return_type: Option<&TypeConstraint>,
+	) -> Result<()> {
+		let saved_ip = self.ip;
+		self.symbols.enter_scope(ScopeType::Function);
+
+		if let Some(captured) = captured {
+			for (cap_name, cap_var) in captured {
+				self.symbols.set(cap_name.clone(), cap_var.clone(), true)?;
+			}
+		}
+
+		for (param, arg_col) in parameters.iter().zip(arg_columns.into_iter()) {
+			let param_name = strip_dollar_prefix(param.name.text()).to_string();
+			let col_var = Variable::columns(Columns::new(vec![arg_col]));
+			self.symbols.set(param_name, col_var, true)?;
+		}
+
+		self.ip = 0;
+		let mut func_result = Vec::new();
+		self.run(services, tx, body, params, &mut func_result)?;
+
+		let stack_value = collect_call_result(self, &mut func_result);
+		self.ip = saved_ip;
+		let _ = self.symbols.exit_scope();
+		let coerced = coerce_return_value(stack_value, return_type)?;
+		self.stack.push(coerced);
+		Ok(())
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn run_function_body_per_row(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		params: &Params,
+		body: &[Instruction],
+		parameters: &[FunctionParameter],
+		arg_columns: Vec<Column>,
+		captured: Option<&HashMap<String, Variable>>,
+		name: &Fragment,
+		return_type: Option<&TypeConstraint>,
+	) -> Result<()> {
+		let row_count = arg_columns.first().map(|c| c.data.len()).unwrap_or(0);
+		let mut results: Vec<Value> = Vec::with_capacity(row_count);
+		let mut func_symbols = self.symbols.clone();
+
+		for row_idx in 0..row_count {
+			func_symbols.enter_scope(ScopeType::Function);
+			if let Some(captured) = captured {
+				for (cap_name, cap_var) in captured {
+					func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
+				}
+			}
+			for (param, arg_col) in parameters.iter().zip(arg_columns.iter()) {
+				let param_name = strip_dollar_prefix(param.name.text()).to_string();
+				let value = arg_col.data().get_value(row_idx);
+				func_symbols.set(param_name, Variable::scalar(value), true)?;
+			}
+
+			let mut vm = Vm::new(func_symbols);
+			let mut func_result: Vec<Frame> = Vec::new();
+			vm.run(services, tx, body, params, &mut func_result)?;
+			let result_var = collect_call_result(&mut vm, &mut func_result);
+			let value = match result_var {
+				Variable::Columns {
+					columns: c,
+					is_scalar: true,
+				} => c.scalar_value(),
+				Variable::Columns {
+					columns: c,
+					..
+				} if c.len() == 1 && c.row_count() == 1 => c.scalar_value(),
+				_ => Value::none(),
+			};
+
+			func_symbols = vm.symbols;
+			let _ = func_symbols.exit_scope();
+			results.push(value);
+		}
+
+		// Determine the accumulator column's element type.
+		// - If the function declares a return type, every scalar result is coerced to it so the accumulator
+		//   stays uniform (and mixed-width scalar paths don't panic inside `push_value`).
+		// - Otherwise, promote all result types to a common supertype.
+		let col_type = match return_type {
+			Some(tc) => tc.get_type(),
+			None => Type::super_type_of(results.iter().map(|v| v.get_type())),
+		};
+
+		let mut data = ColumnData::with_capacity(col_type.clone(), row_count);
+		for value in results {
+			let coerced = coerce_value(value, &col_type)?;
+			data.push_value(coerced);
+		}
+		let result_col = Column::new(name.clone(), data);
+		self.stack.push(Variable::columns(Columns::new(vec![result_col])));
+		Ok(())
+	}
+
 	fn call_user_function(
 		&mut self,
 		services: &Arc<Services>,
@@ -173,7 +432,8 @@ impl Vm {
 		let stack_value = collect_call_result(self, &mut func_result);
 		self.ip = saved_ip;
 		let _ = self.symbols.exit_scope();
-		self.stack.push(stack_value);
+		let coerced = coerce_return_value(stack_value, func_def.return_type.as_ref())?;
+		self.stack.push(coerced);
 		Ok(())
 	}
 

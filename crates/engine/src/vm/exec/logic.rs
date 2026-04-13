@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_rql::expression::PrefixOperator;
 use reifydb_type::{
 	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
@@ -102,7 +102,7 @@ impl Vm {
 			None => {
 				// Empty list: IN is always false, NOT IN always true (broadcast to probe length).
 				let len = probe.data.len().max(1);
-				let data = reifydb_core::value::column::data::ColumnData::bool(vec![negated; len]);
+				let data = ColumnData::bool(vec![negated; len]);
 				Column::new(frag.clone(), data)
 			}
 		};

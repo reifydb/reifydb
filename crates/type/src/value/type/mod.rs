@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub mod get;
 pub mod input_types;
 pub mod promote;
+pub mod super_type;
 
 use std::fmt;
 

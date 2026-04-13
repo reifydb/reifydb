@@ -7,6 +7,7 @@ pub mod filter;
 pub mod from;
 pub mod get;
 pub mod reorder;
+pub mod scatter;
 pub mod slice;
 pub mod take;
 

@@ -102,20 +102,8 @@ pub(crate) fn scatter_merge_columns(
 	else_mask: &BitVec,
 	total_len: usize,
 ) -> Column {
-	let result_type = then_col.data().get_type();
-	let mut data = ColumnData::with_capacity(result_type.clone(), total_len);
-
-	for i in 0..total_len {
-		if then_mask.get(i) {
-			data.push_value(then_col.data().get_value(i));
-		} else if else_mask.get(i) {
-			data.push_value(else_col.data().get_value(i));
-		} else {
-			data.push_value(Value::none_of(result_type.clone()));
-		}
-	}
-
-	Column::new(then_col.name().clone(), data)
+	let merged = then_col.data().scatter_merge(else_col.data(), then_mask, else_mask, total_len);
+	Column::new(then_col.name().clone(), merged)
 }
 
 /// Selective update: row i gets `new_value[i]` if `mask[i]`, keeps `existing[i]` otherwise.

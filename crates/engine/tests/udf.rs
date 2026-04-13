@@ -52,6 +52,21 @@ fn strings(frames: &[Frame]) -> Vec<String> {
 		.collect()
 }
 
+fn ints(frames: &[Frame]) -> Vec<i64> {
+	let frame = &frames[0];
+	let out_col = frame.columns.iter().rev().next().unwrap();
+	(0..out_col.data.len())
+		.map(|i| match out_col.data.get_value(i) {
+			Value::Int1(v) => v as i64,
+			Value::Int2(v) => v as i64,
+			Value::Int4(v) => v as i64,
+			Value::Int8(v) => v,
+			Value::Int16(v) => v as i64,
+			other => panic!("expected integer, got {:?}", other),
+		})
+		.collect()
+}
+
 #[test]
 fn test_batch_udf_logic_and() {
 	let t = setup();
@@ -116,6 +131,43 @@ fn test_batch_udf_cast() {
 			FROM test::nums MAP { id, r: as_utf8(v) } SORT { id: ASC }
 		"#);
 	assert_eq!(strings(&frames), vec!["0", "3", "5", "7", "10"]);
+}
+
+#[test]
+fn test_batch_udf_calls_vectorizable_udf() {
+	let t = setup();
+	// Outer UDF calls helper UDF. Inner body is vectorizable (arithmetic only), so
+	// the outer's batch path dispatches Call into the columnar user-function path.
+	let frames = t.query(r#"
+			FUN helper ($y: int) { RETURN $y * 2 };
+			FUN outer ($x: int) { RETURN helper($x) + 1 };
+			FROM test::nums MAP { id, r: outer(v) } SORT { id: ASC }
+		"#);
+	// v = [0, 3, 5, 7, 10] → outer = v*2 + 1 = [1, 7, 11, 15, 21]
+	assert_eq!(ints(&frames), vec![1, 7, 11, 15, 21]);
+}
+
+#[test]
+fn test_batch_udf_calls_non_vectorizable_udf() {
+	let t = setup();
+	// Inner body uses BREAK inside WHILE; BREAK isn't in the vectorizability
+	// whitelist, so the columnar Call path must fall back to per-row scalar
+	// execution.
+	let frames = t.query(r#"
+			FUN helper ($x: int) : int2 {
+				LET $i = 0;
+				WHILE $i < 100 {
+					IF $i >= $x { BREAK };
+					$i = $i + 1
+				};
+				RETURN $i
+			};
+			FUN outer ($x: int) : int2 { RETURN helper($x) };
+			FROM test::nums MAP { id, r: outer(v) } SORT { id: ASC }
+		"#);
+	// helper($x) counts $i from 0 until $i >= $x, then returns $i.
+	// v = [0, 3, 5, 7, 10] → r = [0, 3, 5, 7, 10]
+	assert_eq!(ints(&frames), vec![0, 3, 5, 7, 10]);
 }
 
 #[test]

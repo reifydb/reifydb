@@ -23,7 +23,7 @@ use crate::{
 	},
 	vm::volcano::{
 		query::{QueryContext, QueryNode},
-		udf_eval::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
+		udf::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
 	},
 };
 

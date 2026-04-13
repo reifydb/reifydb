@@ -82,7 +82,7 @@ impl Vm {
 
 	pub(crate) fn exec_append(&mut self, target: &Fragment) -> Result<()> {
 		let clean_name = strip_dollar_prefix(target.text());
-		let columns = match self.stack.pop()? {
+		let mut columns = match self.stack.pop()? {
 			Variable::Columns {
 				columns: cols,
 				..
@@ -91,6 +91,16 @@ impl Vm {
 				return Err(internal_error!("APPEND requires columns/frame data on stack"));
 			}
 		};
+
+		// Drop rows that are masked out in the current execution context.
+		// Without this, an APPEND inside a vectorized IF/WHILE would
+		// unconditionally write every row, ignoring the branch condition.
+		if self.batch_size > 1 && (self.active_mask.is_some() || !self.mask_stack.is_empty()) {
+			let mask = self.effective_mask();
+			for col in columns.columns.make_mut().iter_mut() {
+				col.data_mut().filter(&mask)?;
+			}
+		}
 
 		match self.symbols.get(clean_name) {
 			Some(Variable::Columns {

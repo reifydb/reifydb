@@ -254,7 +254,7 @@ impl QueryNode for UdfEvalNode {
 /// between, in_list, cast), or a mask-aware dispatch path (jump instructions,
 /// scoped control flow). If you add an instruction to this list, verify its
 /// handler accepts multi-row columns, or `pop_value()` will fail at runtime.
-fn is_vectorizable(instructions: &[Instruction]) -> bool {
+pub(crate) fn is_vectorizable(instructions: &[Instruction]) -> bool {
 	instructions.iter().all(|instr| {
 		matches!(
 			instr,
@@ -277,7 +277,10 @@ fn is_vectorizable(instructions: &[Instruction]) -> bool {
 				| Instruction::JumpIfTruePop(_)
 				| Instruction::EnterScope(_) | Instruction::ExitScope
 				| Instruction::ReturnValue | Instruction::ReturnVoid
-				| Instruction::Nop | Instruction::Halt
+				| Instruction::DefineFunction(_)
+				| Instruction::DefineClosure(_)
+				| Instruction::Call { .. } | Instruction::Nop
+				| Instruction::Halt
 		)
 	})
 }

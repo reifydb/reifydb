@@ -82,5 +82,5 @@ pub mod scan;
 pub mod sort;
 pub mod take;
 pub mod top_k;
-pub(crate) mod udf_eval;
+pub(crate) mod udf;
 pub mod variable;
