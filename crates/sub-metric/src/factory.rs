@@ -8,7 +8,10 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_metric::{accumulator::StatementStatsAccumulator, registry::MetricRegistry};
+use reifydb_metric::{
+	accumulator::StatementStatsAccumulator,
+	registry::{MetricRegistry, SystemMetricRegistry},
+};
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_type::Result;
@@ -17,13 +20,19 @@ use crate::{actor::MetricCollectorActor, listener::RequestMetricsEventListener, 
 
 pub struct MetricSubsystemFactory {
 	registry: Arc<MetricRegistry>,
+	system_registry: Arc<SystemMetricRegistry>,
 	accumulator: Arc<StatementStatsAccumulator>,
 }
 
 impl MetricSubsystemFactory {
-	pub fn new(registry: Arc<MetricRegistry>, accumulator: Arc<StatementStatsAccumulator>) -> Self {
+	pub fn new(
+		registry: Arc<MetricRegistry>,
+		system_registry: Arc<SystemMetricRegistry>,
+		accumulator: Arc<StatementStatsAccumulator>,
+	) -> Self {
 		Self {
 			registry,
+			system_registry,
 			accumulator,
 		}
 	}
@@ -36,8 +45,13 @@ impl SubsystemFactory for MetricSubsystemFactory {
 		let event_bus = ioc.resolve::<EventBus>()?;
 		let actor_system = runtime.actor_system();
 
-		let actor =
-			MetricCollectorActor::new(self.registry, self.accumulator, engine.clone(), engine.catalog());
+		let actor = MetricCollectorActor::new(
+			self.registry,
+			self.system_registry,
+			self.accumulator,
+			engine.clone(),
+			engine.catalog(),
+		);
 		let handle = actor_system.spawn("metric-collector", actor);
 
 		let listener = RequestMetricsEventListener::new(handle.actor_ref().clone());

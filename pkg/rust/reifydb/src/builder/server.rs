@@ -6,7 +6,10 @@ use std::{path::PathBuf, sync::Arc};
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::materialized::MaterializedCatalog;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
-use reifydb_metric::{accumulator::StatementStatsAccumulator, registry::MetricRegistry};
+use reifydb_metric::{
+	accumulator::StatementStatsAccumulator,
+	registry::{MetricRegistry, SystemMetricRegistry},
+};
 use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock};
 use reifydb_sub_api::subsystem::SubsystemFactory;
@@ -287,6 +290,7 @@ impl ServerBuilder {
 		#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 		{
 			let registry = Arc::new(MetricRegistry::new());
+			let system_registry = Arc::new(SystemMetricRegistry::new());
 			let accumulator = Arc::new(StatementStatsAccumulator::new());
 
 			let metrics_interceptor =
@@ -296,7 +300,7 @@ impl ServerBuilder {
 			let chain = RequestInterceptorChain::new(self.request_interceptors);
 			database_builder = database_builder.with_request_interceptor_chain(chain);
 
-			let metric_factory = MetricSubsystemFactory::new(registry, accumulator);
+			let metric_factory = MetricSubsystemFactory::new(registry, system_registry, accumulator);
 			database_builder = database_builder.add_subsystem_factory(Box::new(metric_factory));
 		}
 

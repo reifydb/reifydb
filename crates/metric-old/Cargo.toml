@@ -12,6 +12,7 @@ default = []
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-metric = { workspace = true }
 reifydb-type = { workspace = true }
 crossbeam-channel = { workspace = true }
 tracing = { workspace = true }

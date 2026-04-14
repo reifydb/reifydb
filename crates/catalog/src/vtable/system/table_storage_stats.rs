@@ -7,7 +7,8 @@ use reifydb_core::{
 	interface::catalog::{shape::ShapeId, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_metric_old::{MetricId, metric::MetricReader, multi::Tier};
+use reifydb_metric::MetricId;
+use reifydb_metric_old::{metric::MetricReader, multi::Tier};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;

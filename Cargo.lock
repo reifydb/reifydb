@@ -2616,6 +2616,7 @@ dependencies = [
  "reifydb-abi",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-metric",
  "reifydb-metric-old",
  "reifydb-runtime",
  "reifydb-store-multi",
@@ -2810,6 +2811,7 @@ version = "0.4.10"
 dependencies = [
  "crossbeam-channel",
  "reifydb-core",
+ "reifydb-metric",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",

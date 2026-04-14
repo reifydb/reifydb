@@ -7,8 +7,8 @@ use reifydb_core::{
 	interface::catalog::{flow::FlowId, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
+use reifydb_metric::MetricId;
 use reifydb_metric_old::{
-	MetricId,
 	metric::{CombinedStats, MetricReader},
 	multi::Tier,
 };

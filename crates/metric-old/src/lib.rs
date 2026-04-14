@@ -37,8 +37,6 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb_core::interface::catalog::{flow::FlowNodeId, shape::ShapeId};
-
 pub mod cdc;
 pub mod encoding;
 pub mod metric;
@@ -46,13 +44,4 @@ pub mod multi;
 pub mod parser;
 pub mod worker;
 
-/// Identifier for tracking per-object storage statistics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum MetricId {
-	/// Table, view, or flow shape
-	Shape(ShapeId),
-	/// Flow operator node
-	FlowNode(FlowNodeId),
-	/// System metadata (sequences, versions, etc.)
-	System,
-}
+pub(crate) use reifydb_metric::MetricId;

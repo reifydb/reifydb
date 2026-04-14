@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_metric::{
-	counter::Counter, gauge::Gauge, histogram::Histogram, registry::MetricRegistry, snapshot::MetricSnapshot,
+	counter::Counter, gauge::Gauge, histogram::Histogram, registry::SystemMetricRegistry, snapshot::MetricSnapshot,
 };
 
 static TEST_COUNTER: Counter = Counter::new("test_counter", "a counter");
@@ -12,7 +12,7 @@ static TEST_BOUNDS: &[f64] = &[10.0, 100.0, 1000.0];
 
 #[test]
 fn registry_round_trip() {
-	let registry = MetricRegistry::new();
+	let registry = SystemMetricRegistry::new();
 
 	// Histogram needs LazyLock for statics, so use a leaked Box for test
 	let histogram: &'static Histogram =
@@ -73,4 +73,31 @@ fn snapshot_monotonicity() {
 
 	assert!(snap2.count >= snap1.count);
 	assert!(snap2.sum >= snap1.sum);
+}
+
+#[test]
+fn metric_registry_round_trip() {
+	use std::sync::Arc;
+
+	use reifydb_metric::{MetricId, registry::MetricRegistry};
+
+	let registry = MetricRegistry::new();
+	let id = MetricId::System;
+	let gauge = Arc::new(Gauge::new("test_gauge", "help"));
+
+	registry.register_gauge(id, gauge.clone());
+	gauge.set(42.0);
+
+	let snap = registry.snapshot();
+	assert_eq!(snap.len(), 1);
+	assert_eq!(snap[0].0, id);
+
+	if let MetricSnapshot::Gauge(g) = &snap[0].1 {
+		assert_eq!(g.value, 42.0);
+	} else {
+		panic!("expected gauge snapshot");
+	}
+
+	registry.unregister_gauge(&id);
+	assert_eq!(registry.snapshot().len(), 0);
 }

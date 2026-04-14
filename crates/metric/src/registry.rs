@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{LazyLock, RwLock};
+use std::sync::{Arc, LazyLock, RwLock};
 
-use crate::{counter::Counter, gauge::Gauge, histogram::Histogram, snapshot::MetricSnapshot};
+use dashmap::DashMap;
 
-/// Central registry of all metrics primitives.
-///
-/// Counters/gauges register themselves; the collector snapshots them on Tick.
-pub struct MetricRegistry {
+use crate::{MetricId, counter::Counter, gauge::Gauge, histogram::Histogram, snapshot::MetricSnapshot};
+
+/// Static registry for fixed system metrics.
+pub struct SystemMetricRegistry {
 	counters: RwLock<Vec<&'static Counter>>,
 	gauges: RwLock<Vec<&'static Gauge>>,
 	histograms: RwLock<Vec<&'static Histogram>>,
 }
 
-impl Default for MetricRegistry {
+impl Default for SystemMetricRegistry {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl MetricRegistry {
+impl SystemMetricRegistry {
 	pub fn new() -> Self {
 		Self {
 			counters: RwLock::new(Vec::new()),
@@ -62,5 +62,47 @@ impl MetricRegistry {
 	}
 }
 
-/// Global metric registry singleton.
-pub static REGISTRY: LazyLock<MetricRegistry> = LazyLock::new(MetricRegistry::new);
+/// Registry for per-object metrics.
+pub struct MetricRegistry {
+	gauges: DashMap<MetricId, Arc<Gauge>>,
+}
+
+impl Default for MetricRegistry {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl MetricRegistry {
+	pub fn new() -> Self {
+		Self {
+			gauges: DashMap::new(),
+		}
+	}
+
+	pub fn register_gauge(&self, id: MetricId, gauge: Arc<Gauge>) {
+		self.gauges.insert(id, gauge);
+	}
+
+	pub fn get_gauge(&self, id: &MetricId) -> Option<Arc<Gauge>> {
+		self.gauges.get(id).map(|r| r.value().clone())
+	}
+
+	pub fn unregister_gauge(&self, id: &MetricId) {
+		self.gauges.remove(id);
+	}
+
+	#[must_use]
+	pub fn snapshot(&self) -> Vec<(MetricId, MetricSnapshot)> {
+		self.gauges
+			.iter()
+			.map(|r| {
+				let (id, gauge) = r.pair();
+				(*id, MetricSnapshot::Gauge(gauge.snapshot()))
+			})
+			.collect()
+	}
+}
+
+/// Global system metric registry singleton.
+pub static SYSTEM_REGISTRY: LazyLock<SystemMetricRegistry> = LazyLock::new(SystemMetricRegistry::new);
