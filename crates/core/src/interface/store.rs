@@ -13,6 +13,14 @@ use crate::{
 	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 };
 
+/// Identifies which storage tier data resides in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Tier {
+	Hot,
+	Warm,
+	Cold,
+}
+
 /// Identifies a logical table/namespace in storage.
 ///
 /// The store layer routes keys to the appropriate storage based on key type.

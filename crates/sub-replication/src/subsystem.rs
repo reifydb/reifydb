@@ -13,7 +13,7 @@ use std::{
 use reifydb_cdc::storage::CdcStore;
 use reifydb_core::{
 	error::CoreError,
-	event::{EventBus, metric::CdcStatsRecordedEvent},
+	event::{EventBus, metric::CdcWrittenEvent},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -112,7 +112,7 @@ impl ReplicationSubsystem {
 
 		// Create notify and register EventBus listener for push-based replication
 		let notify = Arc::new(Notify::new());
-		event_bus.register::<CdcStatsRecordedEvent, _>(CdcNotifyListener::new(notify.clone()));
+		event_bus.register::<CdcWrittenEvent, _>(CdcNotifyListener::new(notify.clone()));
 
 		let listener = self.runtime.block_on(TcpListener::bind(&bind_addr)).map_err(|e| {
 			let err: Error = CoreError::SubsystemBindFailed {

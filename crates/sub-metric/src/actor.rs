@@ -2,27 +2,33 @@
 // Copyright (c) 2025 ReifyDB
 
 #[allow(unused_imports)]
-use std::{mem, sync::Arc, time::Duration as StdDuration};
+use std::{collections::HashSet, mem, sync::Arc, time::Duration as StdDuration};
 
 use reifydb_catalog::catalog::Catalog;
-#[allow(unused_imports)]
 use reifydb_core::{
 	actors::metric::MetricMessage,
+	common::CommitVersion,
 	encoded::shape::RowShape,
-	event::metric::{Request, RequestExecutedEvent},
-	interface::catalog::ringbuffer::{RingBuffer, RingBufferMetadata},
-	key::row::RowKey,
+	event::{EventBus, metric::RequestExecutedEvent, store::StatsProcessedEvent},
+	interface::{
+		catalog::ringbuffer::RingBuffer,
+		store::{MultiVersionGetPrevious, Tier},
+	},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
+	storage::{cdc::CdcStatsWriter, multi::StorageStatsWriter},
 };
 use reifydb_runtime::actor::{
 	context::Context,
 	traits::{Actor, Directive},
 };
+use reifydb_store_multi::MultiStore;
+use reifydb_store_single::SingleStore;
 use reifydb_type::value::datetime::DateTime;
+use tracing::{error, trace};
 
 #[allow(dead_code)]
 pub struct MetricCollectorActor {
@@ -31,6 +37,9 @@ pub struct MetricCollectorActor {
 	accumulator: Arc<StatementStatsAccumulator>,
 	engine: StandardEngine,
 	catalog: Catalog,
+	event_bus: EventBus,
+	single_store: SingleStore,
+	resolver: MultiStore,
 	flush_interval: StdDuration,
 }
 
@@ -41,6 +50,9 @@ impl MetricCollectorActor {
 		accumulator: Arc<StatementStatsAccumulator>,
 		engine: StandardEngine,
 		catalog: Catalog,
+		event_bus: EventBus,
+		single_store: SingleStore,
+		resolver: MultiStore,
 	) -> Self {
 		Self {
 			registry,
@@ -48,6 +60,9 @@ impl MetricCollectorActor {
 			accumulator,
 			engine,
 			catalog,
+			event_bus,
+			single_store,
+			resolver,
 			flush_interval: StdDuration::from_secs(10),
 		}
 	}
@@ -55,6 +70,9 @@ impl MetricCollectorActor {
 
 #[allow(dead_code)]
 pub struct MetricActorState {
+	storage_writer: StorageStatsWriter<SingleStore>,
+	cdc_writer: CdcStatsWriter<SingleStore>,
+	max_version: CommitVersion,
 	request_history_rb: Option<(RingBuffer, RowShape)>,
 	statement_stats_rb: Option<(RingBuffer, RowShape)>,
 	pending: Vec<RequestExecutedEvent>,
@@ -68,6 +86,9 @@ impl Actor for MetricCollectorActor {
 		ctx.schedule_tick(self.flush_interval, |nanos| MetricMessage::Tick(DateTime::from_nanos(nanos)));
 
 		MetricActorState {
+			storage_writer: StorageStatsWriter::new(self.single_store.clone()),
+			cdc_writer: CdcStatsWriter::new(self.single_store.clone()),
+			max_version: CommitVersion(0),
 			request_history_rb: None,
 			statement_stats_rb: None,
 			pending: Vec::new(),
@@ -78,12 +99,113 @@ impl Actor for MetricCollectorActor {
 		match msg {
 			MetricMessage::Tick(_) => {
 				let _ = mem::take(&mut state.pending);
+				emit_stats_processed(&self.event_bus, &mut state.max_version);
 			}
 			MetricMessage::RequestExecuted(event) => {
 				state.pending.push(event);
 			}
+			MetricMessage::MultiCommitted(event) => {
+				let version = *event.version();
+				let writes = event.writes();
+				let deletes = event.deletes();
+				let drops = event.drops();
+				trace!(
+					"Processing multi ops for version {:?}: {} writes, {} deletes, {} drops",
+					version,
+					writes.len(),
+					deletes.len(),
+					drops.len(),
+				);
+
+				// Collect dropped keys first — if a key is dropped in this batch, any
+				// write to that key is a fresh insert (not an update to the old entry).
+				let dropped_keys: HashSet<_> = drops.iter().map(|d| d.key.clone()).collect();
+
+				for write in writes {
+					let pre_value_bytes = if dropped_keys.contains(&write.key) {
+						None
+					} else {
+						self.resolver
+							.get_previous_version(&write.key, version)
+							.ok()
+							.flatten()
+							.map(|v| v.row.len() as u64)
+					};
+
+					if let Err(e) = state.storage_writer.record_write(
+						Tier::Hot,
+						write.key.as_ref(),
+						write.value_bytes,
+						pre_value_bytes,
+					) {
+						error!("Failed to record write: {}", e);
+					}
+				}
+				for delete in deletes {
+					if let Err(e) = state.storage_writer.record_delete(
+						Tier::Hot,
+						delete.key.as_ref(),
+						Some(delete.value_bytes),
+					) {
+						error!("Failed to record delete: {}", e);
+					}
+				}
+				for drop in drops {
+					if let Err(e) = state.storage_writer.record_drop(
+						Tier::Hot,
+						drop.key.as_ref(),
+						drop.value_bytes,
+					) {
+						error!("Failed to record drop: {}", e);
+					}
+				}
+				if version > state.max_version {
+					state.max_version = version;
+				}
+			}
+			MetricMessage::CdcWritten(event) => {
+				let version = *event.version();
+				let entries = event.entries();
+				trace!("Processing {} CDC ops for version {:?}", entries.len(), version);
+				for entry in entries {
+					if let Err(e) =
+						state.cdc_writer.record_cdc(entry.key.as_ref(), entry.value_bytes)
+					{
+						error!("Failed to record cdc: {}", e);
+					}
+				}
+				if version > state.max_version {
+					state.max_version = version;
+				}
+			}
+			MetricMessage::CdcEvicted(event) => {
+				let version = *event.version();
+				let entries = event.entries();
+				trace!("Processing {} CDC drop ops for version {:?}", entries.len(), version);
+				for entry in entries {
+					if let Err(e) =
+						state.cdc_writer.record_drop(entry.key.as_ref(), entry.value_bytes)
+					{
+						error!("Failed to record cdc drop: {}", e);
+					}
+				}
+				if version > state.max_version {
+					state.max_version = version;
+				}
+			}
 		}
 		Directive::Continue
+	}
+
+	fn post_stop(&self) {
+		// Best-effort final emit; state is gone, so nothing further to flush.
+	}
+}
+
+fn emit_stats_processed(event_bus: &EventBus, max_version: &mut CommitVersion) {
+	if max_version.0 > 0 {
+		event_bus.emit(StatsProcessedEvent::new(*max_version));
+		*max_version = CommitVersion(0);
 	}
 }
 

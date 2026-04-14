@@ -14,63 +14,63 @@ use crate::{
 };
 
 define_event! {
-	/// Emitted when storage operations are committed that need stats tracking.
+	/// Emitted when multi-version storage operations are committed.
 	/// Used for both commit-time ops and async drop worker ops.
-	pub struct StorageStatsRecordedEvent {
-		pub writes: Vec<StorageWrite>,
-		pub deletes: Vec<StorageDelete>,
-		pub drops: Vec<StorageDrop>,
+	pub struct MultiCommittedEvent {
+		pub writes: Vec<MultiWrite>,
+		pub deletes: Vec<MultiDelete>,
+		pub drops: Vec<MultiDrop>,
 		pub version: CommitVersion,
 	}
 }
 
-/// A storage write operation for stats tracking.
+/// A multi-version storage write operation.
 #[derive(Clone, Debug)]
-pub struct StorageWrite {
+pub struct MultiWrite {
 	pub key: EncodedKey,
 	pub value_bytes: u64,
 }
 
-/// A storage delete operation for stats tracking.
+/// A multi-version storage delete operation.
 #[derive(Clone, Debug)]
-pub struct StorageDelete {
+pub struct MultiDelete {
 	pub key: EncodedKey,
 	pub value_bytes: u64,
 }
 
-/// A storage drop operation (MVCC cleanup) for stats tracking.
+/// A multi-version storage drop operation (MVCC cleanup).
 #[derive(Clone, Debug)]
-pub struct StorageDrop {
+pub struct MultiDrop {
 	pub key: EncodedKey,
 	pub value_bytes: u64,
 }
 
 define_event! {
-	/// Emitted when CDC entries are written that need stats tracking.
-	pub struct CdcStatsRecordedEvent {
-		pub entries: Vec<CdcEntryStats>,
+	/// Emitted when CDC entries are written.
+	pub struct CdcWrittenEvent {
+		pub entries: Vec<CdcWrite>,
 		pub version: CommitVersion,
 	}
 }
 
-/// A CDC entry for stats tracking.
+/// A CDC write entry.
 #[derive(Clone, Debug)]
-pub struct CdcEntryStats {
+pub struct CdcWrite {
 	pub key: EncodedKey,
 	pub value_bytes: u64,
 }
 
-/// A CDC entry drop for stats tracking.
+/// A CDC entry eviction.
 #[derive(Clone, Debug)]
-pub struct CdcEntryDrop {
+pub struct CdcEviction {
 	pub key: EncodedKey,
 	pub value_bytes: u64,
 }
 
 define_event! {
-	/// Emitted when CDC entries are dropped that need stats tracking.
-	pub struct CdcStatsDroppedEvent {
-		pub entries: Vec<CdcEntryDrop>,
+	/// Emitted when CDC entries are evicted (retention cleanup).
+	pub struct CdcEvictedEvent {
+		pub entries: Vec<CdcEviction>,
 		pub version: CommitVersion,
 	}
 }

@@ -4,7 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	event::{EventBus, metric::RequestExecutedEvent},
+	event::{
+		EventBus,
+		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent},
+	},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -13,10 +16,16 @@ use reifydb_metric::{
 	registry::{MetricRegistry, StaticMetricRegistry},
 };
 use reifydb_runtime::SharedRuntime;
+use reifydb_store_multi::MultiStore;
+use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_type::Result;
 
-use crate::{actor::MetricCollectorActor, listener::RequestMetricsEventListener, subsystem::MetricSubsystem};
+use crate::{
+	actor::MetricCollectorActor,
+	listener::{CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener},
+	subsystem::MetricSubsystem,
+};
 
 pub struct MetricSubsystemFactory {
 	registry: Arc<MetricRegistry>,
@@ -43,6 +52,8 @@ impl SubsystemFactory for MetricSubsystemFactory {
 		let runtime = ioc.resolve::<SharedRuntime>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
+		let single_store = ioc.resolve::<SingleStore>()?;
+		let multi_store = ioc.resolve::<MultiStore>()?;
 		let actor_system = runtime.actor_system();
 
 		let actor = MetricCollectorActor::new(
@@ -51,11 +62,17 @@ impl SubsystemFactory for MetricSubsystemFactory {
 			self.accumulator,
 			engine.clone(),
 			engine.catalog(),
+			event_bus.clone(),
+			single_store,
+			multi_store,
 		);
 		let handle = actor_system.spawn("metric-collector", actor);
+		let actor_ref = handle.actor_ref().clone();
 
-		let listener = RequestMetricsEventListener::new(handle.actor_ref().clone());
-		event_bus.register::<RequestExecutedEvent, _>(listener);
+		event_bus.register::<RequestExecutedEvent, _>(RequestMetricsEventListener::new(actor_ref.clone()));
+		event_bus.register::<MultiCommittedEvent, _>(MultiCommittedListener::new(actor_ref.clone()));
+		event_bus.register::<CdcWrittenEvent, _>(CdcWrittenListener::new(actor_ref.clone()));
+		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref));
 
 		Ok(Box::new(MetricSubsystem::new()))
 	}

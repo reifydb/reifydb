@@ -14,7 +14,7 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
-	event::metric::{StorageDelete, StorageStatsRecordedEvent, StorageWrite},
+	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
 	interface::store::{
 		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
 		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore,
@@ -116,8 +116,8 @@ impl MultiVersionCommit for StandardMultiStore {
 		};
 
 		let mut pending_set_keys: HashSet<CowVec<u8>> = HashSet::new();
-		let mut writes: Vec<StorageWrite> = Vec::new();
-		let mut deletes: Vec<StorageDelete> = Vec::new();
+		let mut writes: Vec<MultiWrite> = Vec::new();
+		let mut deletes: Vec<MultiDelete> = Vec::new();
 		let mut batches: TierBatch = HashMap::new();
 		let mut explicit_drops: Vec<(EntryKind, EncodedKey)> = Vec::new();
 
@@ -136,7 +136,7 @@ impl MultiVersionCommit for StandardMultiStore {
 						pending_set_keys.insert(key.0.clone());
 					}
 
-					writes.push(StorageWrite {
+					writes.push(MultiWrite {
 						key: key.clone(),
 						value_bytes: row.len() as u64,
 					});
@@ -147,7 +147,7 @@ impl MultiVersionCommit for StandardMultiStore {
 					key,
 					row,
 				} => {
-					deletes.push(StorageDelete {
+					deletes.push(MultiDelete {
 						key: key.clone(),
 						value_bytes: row.len() as u64,
 					});
@@ -204,7 +204,7 @@ impl MultiVersionCommit for StandardMultiStore {
 
 		// Emit storage stats event for this commit
 		if !writes.is_empty() || !deletes.is_empty() {
-			self.event_bus.emit(StorageStatsRecordedEvent::new(writes, deletes, vec![], version));
+			self.event_bus.emit(MultiCommittedEvent::new(writes, deletes, vec![], version));
 		}
 
 		Ok(())

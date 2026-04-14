@@ -25,7 +25,7 @@ use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{
 		EventBus,
-		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
+		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent},
 		transaction::PostCommitEvent,
 	},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
@@ -343,13 +343,17 @@ impl DatabaseBuilder {
 			multi_store.clone(),
 			eventbus.clone(),
 		));
-		eventbus.register::<StorageStatsRecordedEvent, _>(StorageStatsListener::new(metrics_worker.sender()));
-		eventbus.register::<CdcStatsRecordedEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
-		eventbus.register::<CdcStatsDroppedEvent, _>(CdcStatsDroppedListener::new(metrics_worker.sender()));
+		eventbus.register::<MultiCommittedEvent, _>(StorageStatsListener::new(metrics_worker.sender()));
+		eventbus.register::<CdcWrittenEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
+		eventbus.register::<CdcEvictedEvent, _>(CdcStatsDroppedListener::new(metrics_worker.sender()));
 		self.ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
 
 		// Register single store in IoC for engine to access
 		self.ioc = self.ioc.register(single_store);
+		// Register multi store in IoC so the metric actor can resolve it alongside the
+		// legacy MetricsWorker (both run in parallel during the metric-old → metric
+		// migration).
+		self.ioc = self.ioc.register(multi_store.clone());
 
 		let functions = if let Some(configurator) = self.functions_configurator {
 			configurator(default_builder).configure()

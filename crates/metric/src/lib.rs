@@ -15,6 +15,7 @@ pub mod histogram;
 pub mod registry;
 pub mod snapshot;
 pub mod statement;
+pub mod storage;
 
 /// Identifier for tracking per-object storage statistics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

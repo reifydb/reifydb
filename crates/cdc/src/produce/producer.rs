@@ -8,7 +8,7 @@ use reifydb_core::{
 	delta::Delta,
 	event::{
 		EventBus, EventListener,
-		metric::{CdcEntryDrop, CdcEntryStats, CdcStatsDroppedEvent, CdcStatsRecordedEvent},
+		metric::{CdcEvictedEvent, CdcEviction, CdcWrite, CdcWrittenEvent},
 		transaction::PostCommitEvent,
 	},
 	interface::{
@@ -285,19 +285,19 @@ where
 			debug!(version = version.0, "CDC written successfully");
 
 			// Emit CDC stats event
-			let entries: Vec<CdcEntryStats> = system_changes
+			let entries: Vec<CdcWrite> = system_changes
 				.iter()
 				.map(|sys_change| {
 					let key = sys_change.key();
 					let value_bytes = sys_change.value_bytes() as u64;
-					CdcEntryStats {
+					CdcWrite {
 						key: key.clone(),
 						value_bytes,
 					}
 				})
 				.collect();
 
-			self.event_bus.emit(CdcStatsRecordedEvent::new(entries, version));
+			self.event_bus.emit(CdcWrittenEvent::new(entries, version));
 		}
 	}
 
@@ -311,16 +311,16 @@ where
 			if result.count > 0 {
 				debug!(watermark = watermark.0, deleted = result.count, "CDC cleanup completed");
 
-				let drop_entries: Vec<CdcEntryDrop> = result
+				let drop_entries: Vec<CdcEviction> = result
 					.entries
 					.into_iter()
-					.map(|e| CdcEntryDrop {
+					.map(|e| CdcEviction {
 						key: e.key,
 						value_bytes: e.value_bytes,
 					})
 					.collect();
 
-				self.event_bus.emit(CdcStatsDroppedEvent::new(drop_entries, watermark));
+				self.event_bus.emit(CdcEvictedEvent::new(drop_entries, watermark));
 			}
 			Ok(())
 		})();

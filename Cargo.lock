@@ -2802,6 +2802,7 @@ dependencies = [
  "dashmap",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-type",
  "serde",
 ]
 
@@ -3025,6 +3026,8 @@ dependencies = [
  "reifydb-metric",
  "reifydb-rql",
  "reifydb-runtime",
+ "reifydb-store-multi",
+ "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-server",
  "reifydb-transaction",

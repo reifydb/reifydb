@@ -17,7 +17,7 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	event::{
 		EventBus,
-		metric::{StorageDrop, StorageStatsRecordedEvent},
+		metric::{MultiCommittedEvent, MultiDrop},
 	},
 	interface::store::EntryKind,
 };
@@ -139,7 +139,7 @@ impl DropActor {
 				Ok(entries_to_drop) => {
 					for entry in entries_to_drop {
 						// Collect stats for metrics
-						drops_with_stats.push(StorageDrop {
+						drops_with_stats.push(MultiDrop {
 							key: EncodedKey(request.key.clone()),
 							value_bytes: entry.value_bytes,
 						});
@@ -165,7 +165,7 @@ impl DropActor {
 		let total_dropped = drops_with_stats.len();
 		Span::current().record("total_dropped", total_dropped);
 
-		event_bus.emit(StorageStatsRecordedEvent::new(vec![], vec![], drops_with_stats, max_pending_version));
+		event_bus.emit(MultiCommittedEvent::new(vec![], vec![], drops_with_stats, max_pending_version));
 	}
 }
 

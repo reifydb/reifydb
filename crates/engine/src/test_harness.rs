@@ -19,7 +19,7 @@ use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{
 		EventBus,
-		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
+		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent},
 		transaction::PostCommitEvent,
 	},
 	interface::catalog::id::NamespaceId,
@@ -208,13 +208,9 @@ impl TestEngineBuilder {
 				multi_store.clone(),
 				eventbus.clone(),
 			));
-			eventbus.register::<StorageStatsRecordedEvent, _>(StorageStatsListener::new(
-				metrics_worker.sender(),
-			));
-			eventbus.register::<CdcStatsRecordedEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
-			eventbus.register::<CdcStatsDroppedEvent, _>(CdcStatsDroppedListener::new(
-				metrics_worker.sender(),
-			));
+			eventbus.register::<MultiCommittedEvent, _>(StorageStatsListener::new(metrics_worker.sender()));
+			eventbus.register::<CdcWrittenEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
+			eventbus.register::<CdcEvictedEvent, _>(CdcStatsDroppedListener::new(metrics_worker.sender()));
 			ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
 		}
 

@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 	event::{
 		EventBus, EventListener,
-		metric::{CdcEntryDrop, CdcEntryStats, CdcStatsDroppedEvent, CdcStatsRecordedEvent},
+		metric::{CdcEvictedEvent, CdcEviction, CdcWrite, CdcWrittenEvent},
 		store::StatsProcessedEvent,
 	},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow},
@@ -504,11 +504,11 @@ impl TestRunner for Runner {
 				};
 				args.reject_rest()?;
 
-				let entries = vec![CdcEntryStats {
+				let entries = vec![CdcWrite {
 					key,
 					value_bytes,
 				}];
-				self.event_bus.emit(CdcStatsRecordedEvent::new(entries, version));
+				self.event_bus.emit(CdcWrittenEvent::new(entries, version));
 				writeln!(output, "ok")?;
 			}
 
@@ -526,11 +526,11 @@ impl TestRunner for Runner {
 				};
 				args.reject_rest()?;
 
-				let entries = vec![CdcEntryDrop {
+				let entries = vec![CdcEviction {
 					key,
 					value_bytes,
 				}];
-				self.event_bus.emit(CdcStatsDroppedEvent::new(entries, version));
+				self.event_bus.emit(CdcEvictedEvent::new(entries, version));
 				writeln!(output, "ok")?;
 			}
 

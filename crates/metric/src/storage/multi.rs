@@ -7,7 +7,6 @@
 //! - `Tier` - storage tier (Hot, Warm, Cold)
 //! - `MultiStorageStats` - MVCC statistics for a single object
 //! - `TieredStorageStats` - statistics broken down by tier
-//! - `MultiStorageOperation` - operation type for storage metrics processing
 //! - `StorageStatsWriter` - single writer for storage statistics
 //! - `StorageStatsReader` - read-only access to storage statistics
 
@@ -28,11 +27,13 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::{
 	MetricId,
-	encoding::{
-		decode_storage_stats, decode_storage_stats_key, encode_storage_stats, encode_storage_stats_key,
-		storage_stats_key_prefix,
+	storage::{
+		encoding::{
+			decode_storage_stats, decode_storage_stats_key, encode_storage_stats, encode_storage_stats_key,
+			storage_stats_key_prefix,
+		},
+		parser::parse_id,
 	},
-	parser::parse_id,
 };
 
 /// MVCC storage statistics for a single object or aggregate.
@@ -210,34 +211,6 @@ impl AddAssign for TieredStorageStats {
 		self.warm += rhs.warm;
 		self.cold += rhs.cold;
 	}
-}
-
-/// Multi-version storage operation for metrics processing.
-///
-/// Represents a single storage operation to be recorded in statistics.
-#[derive(Debug, Clone)]
-pub enum MultiStorageOperation {
-	/// Write operation (insert or update).
-	Write {
-		tier: Tier,
-		key: EncodedKey,
-		/// Size of the value being written
-		value_bytes: u64,
-	},
-	/// Delete operation.
-	Delete {
-		tier: Tier,
-		key: EncodedKey,
-		/// Size of the value being deleted (for metrics tracking)
-		value_bytes: u64,
-	},
-	/// Drop operation (MVCC cleanup).
-	Drop {
-		tier: Tier,
-		key: EncodedKey,
-		/// Size of the value being dropped
-		value_bytes: u64,
-	},
 }
 
 /// Writer for MVCC storage statistics (single writer only).

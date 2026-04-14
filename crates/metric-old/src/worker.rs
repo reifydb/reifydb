@@ -24,7 +24,7 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	event::{
 		EventBus, EventListener,
-		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
+		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent},
 		store::StatsProcessedEvent,
 	},
 	interface::store::{MultiVersionGetPrevious, SingleVersionStore},
@@ -367,7 +367,7 @@ impl Drop for MetricsWorker {
 
 /// Event listener for storage stats events.
 ///
-/// Converts `StorageStatsRecordedEvent` into `MetricsEvent::Multi` and sends
+/// Converts `MultiCommittedEvent` into `MetricsEvent::Multi` and sends
 /// to the metrics worker for processing.
 pub struct StorageStatsListener {
 	sender: Sender<MetricsEvent>,
@@ -382,8 +382,8 @@ impl StorageStatsListener {
 	}
 }
 
-impl EventListener<StorageStatsRecordedEvent> for StorageStatsListener {
-	fn on(&self, event: &StorageStatsRecordedEvent) {
+impl EventListener<MultiCommittedEvent> for StorageStatsListener {
+	fn on(&self, event: &MultiCommittedEvent) {
 		let mut ops = Vec::with_capacity(event.writes().len() + event.deletes().len() + event.drops().len());
 
 		for write in event.writes() {
@@ -430,8 +430,8 @@ impl CdcStatsListener {
 	}
 }
 
-impl EventListener<CdcStatsRecordedEvent> for CdcStatsListener {
-	fn on(&self, event: &CdcStatsRecordedEvent) {
+impl EventListener<CdcWrittenEvent> for CdcStatsListener {
+	fn on(&self, event: &CdcWrittenEvent) {
 		let ops: Vec<CdcOperation> = event
 			.entries()
 			.iter()
@@ -463,8 +463,8 @@ impl CdcStatsDroppedListener {
 	}
 }
 
-impl EventListener<CdcStatsDroppedEvent> for CdcStatsDroppedListener {
-	fn on(&self, event: &CdcStatsDroppedEvent) {
+impl EventListener<CdcEvictedEvent> for CdcStatsDroppedListener {
+	fn on(&self, event: &CdcEvictedEvent) {
 		let ops: Vec<CdcDropOperation> = event
 			.entries()
 			.iter()
