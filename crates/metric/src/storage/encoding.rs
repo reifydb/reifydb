@@ -19,14 +19,12 @@ use reifydb_core::{
 	},
 	key::kind::KeyKind,
 };
+use reifydb_core::interface::store::Tier;
 use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::{
 	MetricId,
-	storage::{
-		cdc::CdcStats,
-		multi::{MultiStorageStats, Tier},
-	},
+	storage::{cdc::CdcStats, multi::MultiStorageStats},
 };
 
 /// Current key encoding version

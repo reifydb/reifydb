@@ -4,11 +4,14 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{shape::ShapeId, vtable::VTable},
+	interface::{
+		catalog::{shape::ShapeId, vtable::VTable},
+		store::Tier,
+	},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_metric::MetricId;
-use reifydb_metric_old::{metric::MetricReader, multi::Tier};
+use reifydb_metric_old::metric::MetricReader;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;

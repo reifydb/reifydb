@@ -27,13 +27,13 @@ use reifydb_core::{
 		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent},
 		store::StatsProcessedEvent,
 	},
-	interface::store::{MultiVersionGetPrevious, SingleVersionStore},
+	interface::store::{MultiVersionGetPrevious, SingleVersionStore, Tier},
 };
 use tracing::{debug, error, trace};
 
 use crate::{
 	cdc::{CdcOperation, CdcStatsWriter},
-	multi::{MultiStorageOperation, StorageStatsWriter, Tier},
+	multi::{MultiStorageOperation, StorageStatsWriter},
 };
 
 /// CDC drop operation for stats tracking.

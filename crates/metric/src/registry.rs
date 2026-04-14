@@ -6,13 +6,21 @@ use std::sync::{Arc, LazyLock};
 use dashmap::DashMap;
 use reifydb_runtime::sync::mutex::Mutex;
 
-use crate::{MetricId, counter::Counter, gauge::Gauge, histogram::Histogram, snapshot::MetricSnapshot};
+use crate::{
+	MetricId,
+	counter::Counter,
+	gauge::Gauge,
+	histogram::Histogram,
+	snapshot::{MetricSnapshot, TakeSnapshot},
+};
 
 /// Registry for metrics backed by `'static` references.
+///
+/// Holds a single uniform list of [`TakeSnapshot`] sources; the typed
+/// `register_*` methods exist for convenience / type-safety at the call
+/// site but internally all push into the same list.
 pub struct StaticMetricRegistry {
-	counters: Mutex<Vec<&'static Counter>>,
-	gauges: Mutex<Vec<&'static Gauge>>,
-	histograms: Mutex<Vec<&'static Histogram>>,
+	sources: Mutex<Vec<&'static dyn TakeSnapshot>>,
 }
 
 impl Default for StaticMetricRegistry {
@@ -24,42 +32,29 @@ impl Default for StaticMetricRegistry {
 impl StaticMetricRegistry {
 	pub fn new() -> Self {
 		Self {
-			counters: Mutex::new(Vec::new()),
-			gauges: Mutex::new(Vec::new()),
-			histograms: Mutex::new(Vec::new()),
+			sources: Mutex::new(Vec::new()),
 		}
 	}
 
 	pub fn register_counter(&self, counter: &'static Counter) {
-		self.counters.lock().push(counter);
+		self.sources.lock().push(counter);
 	}
 
 	pub fn register_gauge(&self, gauge: &'static Gauge) {
-		self.gauges.lock().push(gauge);
+		self.sources.lock().push(gauge);
 	}
 
 	pub fn register_histogram(&self, histogram: &'static Histogram) {
-		self.histograms.lock().push(histogram);
+		self.sources.lock().push(histogram);
+	}
+
+	pub fn register(&self, source: &'static dyn TakeSnapshot) {
+		self.sources.lock().push(source);
 	}
 
 	#[must_use]
 	pub fn snapshot(&self) -> Vec<MetricSnapshot> {
-		let counters = self.counters.lock();
-		let gauges = self.gauges.lock();
-		let histograms = self.histograms.lock();
-		let mut out = Vec::with_capacity(counters.len() + gauges.len() + histograms.len());
-
-		for c in counters.iter() {
-			out.push(MetricSnapshot::Counter(c.snapshot()));
-		}
-		for g in gauges.iter() {
-			out.push(MetricSnapshot::Gauge(g.snapshot()));
-		}
-		for h in histograms.iter() {
-			out.push(MetricSnapshot::Histogram(Box::new(h.snapshot())));
-		}
-
-		out
+		self.sources.lock().iter().map(|s| s.snapshot()).collect()
 	}
 }
 

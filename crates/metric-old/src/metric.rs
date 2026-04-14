@@ -8,13 +8,13 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::store::SingleVersionStore;
+use reifydb_core::interface::store::{SingleVersionStore, Tier};
 use reifydb_type::Result;
 
 use crate::{
 	MetricId,
 	cdc::{CdcStats, CdcStatsReader},
-	multi::{MultiStorageStats, StorageStatsReader, Tier},
+	multi::{MultiStorageStats, StorageStatsReader},
 };
 
 /// Combined storage and CDC statistics for a single object.

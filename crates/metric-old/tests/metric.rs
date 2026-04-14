@@ -21,12 +21,12 @@ use reifydb_core::{
 		metric::{CdcEvictedEvent, CdcEviction, CdcWrite, CdcWrittenEvent},
 		store::StatsProcessedEvent,
 	},
-	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow},
+	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, Tier},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
 use reifydb_metric_old::{
 	cdc::{CdcStats, CdcStatsReader},
-	multi::{MultiStorageStats, StorageStatsReader, Tier},
+	multi::{MultiStorageStats, StorageStatsReader},
 	worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener},
 };
 use reifydb_runtime::{

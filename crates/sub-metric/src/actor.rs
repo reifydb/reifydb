@@ -44,6 +44,7 @@ pub struct MetricCollectorActor {
 }
 
 impl MetricCollectorActor {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		registry: Arc<MetricRegistry>,
 		static_registry: Arc<StaticMetricRegistry>,
