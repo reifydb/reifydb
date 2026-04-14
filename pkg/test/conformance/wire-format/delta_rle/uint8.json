@@ -1,0 +1,23 @@
+[
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "10",
+              "20",
+              "30",
+              "40"
+            ],
+            "type": "Uint8"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  }
+]

@@ -15,7 +15,6 @@ pub mod is;
 pub mod json;
 pub mod math;
 pub mod meta;
-pub mod rbcf;
 pub mod rql;
 pub mod series;
 pub mod text;
@@ -331,6 +330,4 @@ pub fn default_functions() -> registry::FunctionsConfigurator {
 		.register_function(Arc::new(series::Series::new()))
 		.register_function(Arc::new(series::GenerateSeries::new()))
 		.register_function(Arc::new(rql::fingerprint::RqlFingerprint::new()))
-		.register_function(Arc::new(rbcf::encode::Encode::new()))
-		.register_function(Arc::new(rbcf::decode::Decode::new()))
 }

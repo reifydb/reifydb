@@ -12,12 +12,16 @@ use reifydb_type::{
 		},
 		date::Date,
 		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 		identity::IdentityId,
+		int::{Int, parse::parse_int},
 		row_number::RowNumber,
-		temporal::parse::datetime::parse_datetime,
+		temporal::parse::{datetime::parse_datetime, duration::parse_duration},
 		time::Time,
 		r#type::Type,
+		uint::{Uint, parse::parse_uint},
 		uuid::parse::{parse_uuid4, parse_uuid7},
 	},
 };
@@ -348,13 +352,13 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.into_iter()
 				.map(|s| {
 					if s == "⟪none⟫" {
-						String::new()
+						Duration::zero()
 					} else {
-						s
+						parse_duration(Fragment::from(s)).unwrap_or_else(|_| Duration::zero())
 					}
 				})
 				.collect();
-			FrameColumnData::Utf8(Utf8Container::new(values))
+			FrameColumnData::Duration(TemporalContainer::new(values))
 		}
 		Type::Uuid4 => {
 			let values: Vec<_> = data
@@ -426,10 +430,46 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Blob(BlobContainer::new(values))
 		}
-		Type::Int
-		| Type::Uint
-		| Type::Decimal
-		| Type::Any
+		Type::Int => {
+			let values: Vec<_> = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪none⟫" {
+						Int::zero()
+					} else {
+						parse_int(Fragment::from(s)).unwrap_or_else(|_| Int::zero())
+					}
+				})
+				.collect();
+			FrameColumnData::Int(NumberContainer::new(values))
+		}
+		Type::Uint => {
+			let values: Vec<_> = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪none⟫" {
+						Uint::zero()
+					} else {
+						parse_uint(Fragment::from(s)).unwrap_or_else(|_| Uint::zero())
+					}
+				})
+				.collect();
+			FrameColumnData::Uint(NumberContainer::new(values))
+		}
+		Type::Decimal => {
+			let values: Vec<_> = data
+				.into_iter()
+				.map(|s| {
+					if s == "⟪none⟫" {
+						Decimal::zero()
+					} else {
+						s.parse::<Decimal>().unwrap_or_else(|_| Decimal::zero())
+					}
+				})
+				.collect();
+			FrameColumnData::Decimal(NumberContainer::new(values))
+		}
+		Type::Any
 		| Type::DictionaryId
 		| Type::List(_)
 		| Type::Record(_)

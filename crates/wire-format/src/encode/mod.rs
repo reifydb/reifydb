@@ -115,7 +115,7 @@ fn encode_column(
 	buf: &mut Vec<u8>,
 	options: &EncodeOptions,
 ) -> Result<(), EncodeError> {
-	let desired = choose_encoding(col_data, options.compression);
+	let desired = options.force_encoding.unwrap_or_else(|| choose_encoding(col_data, options.compression));
 	let enc = try_encode_with(col_data, desired)?;
 	write_column(name, &enc, buf);
 	Ok(())

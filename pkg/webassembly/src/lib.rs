@@ -67,6 +67,41 @@ use console_error_panic_hook::set_once as set_panic_hook;
 pub use error::JsError;
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_runtime::context::RuntimeContext;
+use reifydb_wire_format::{
+	decode::decode_frames,
+	encode::encode_frames,
+	format::Encoding,
+	json::{from::frames_from_json, to::frames_to_json},
+	options::EncodeOptions,
+};
+
+/// Encode JSON frames to RBCF binary with an optional forced encoding.
+#[wasm_bindgen(js_name = encode_rbcf)]
+pub fn encode_rbcf(frames_json: &str, forced_encoding: Option<String>) -> Result<Vec<u8>, JsValue> {
+	let frames = frames_from_json(frames_json).map_err(|e| JsError::from_error(&e))?;
+	let mut options = EncodeOptions::default();
+	if let Some(enc_str) = forced_encoding {
+		let enc = match enc_str.to_lowercase().as_str() {
+			"plain" => Encoding::Plain,
+			"dict" => Encoding::Dict,
+			"rle" => Encoding::Rle,
+			"delta" => Encoding::Delta,
+			"deltarle" | "delta_rle" => Encoding::DeltaRle,
+			_ => return Err(JsError::from_message(&format!("unknown encoding: {}", enc_str))),
+		};
+		options.force_encoding = Some(enc);
+	}
+	let bytes = encode_frames(&frames, &options).map_err(|e| JsError::from_error(&e))?;
+	Ok(bytes)
+}
+
+/// Decode RBCF binary to JSON frames.
+#[wasm_bindgen(js_name = decode_rbcf)]
+pub fn decode_rbcf(bytes: &[u8]) -> Result<String, JsValue> {
+	let frames = decode_frames(bytes).map_err(|e| JsError::from_error(&e))?;
+	let json = frames_to_json(&frames).map_err(|e| JsError::from_message(&e.to_string()))?;
+	Ok(json)
+}
 
 /// Result of a successful login, returned to JavaScript.
 #[wasm_bindgen]

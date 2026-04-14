@@ -14,7 +14,7 @@ use crate::{
 	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Frame {
 	pub row_numbers: Vec<RowNumber>,
 	pub created_at: Vec<DateTime>,
