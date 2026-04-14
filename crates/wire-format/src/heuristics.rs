@@ -44,11 +44,32 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 		FrameColumnData::Decimal(c) => try_varlen_numeric_heuristic(c, inner),
 
 		// Fixed-width types with delta/delta_rle/rle support
+		FrameColumnData::Int1(c) => {
+			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
+		}
+		FrameColumnData::Int2(c) => {
+			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
+		}
 		FrameColumnData::Int4(c) => try_numeric_heuristic_i32(c),
 		FrameColumnData::Int8(c) => try_numeric_heuristic_i64(c),
 		FrameColumnData::Int16(c) => try_numeric_heuristic_i128(c),
+		FrameColumnData::Uint1(c) => {
+			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
+		}
+		FrameColumnData::Uint2(c) => {
+			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
+		}
+		FrameColumnData::Uint4(c) => {
+			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
+		}
 		FrameColumnData::Uint8(c) => try_numeric_heuristic_u64(c),
 		FrameColumnData::Uint16(c) => try_numeric_heuristic_u128(c),
+		FrameColumnData::Float4(c) => {
+			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap().to_bits() as i64).collect::<Vec<_>>())
+		}
+		FrameColumnData::Float8(c) => {
+			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap().to_bits() as i64).collect::<Vec<_>>())
+		}
 
 		// Temporal types backed by i32/u64
 		FrameColumnData::Date(c) => {
@@ -63,15 +84,6 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 			let raw: Vec<u64> = (**c).iter().map(|t| t.to_nanos_since_midnight()).collect();
 			try_numeric_heuristic_u64(&raw)
 		}
-
-		// Types with RLE-only support (no delta)
-		FrameColumnData::Int1(c) => try_rle_only_heuristic(c),
-		FrameColumnData::Int2(c) => try_rle_only_heuristic(c),
-		FrameColumnData::Uint1(c) => try_rle_only_heuristic(c),
-		FrameColumnData::Uint2(c) => try_rle_only_heuristic(c),
-		FrameColumnData::Uint4(c) => try_rle_only_heuristic(c),
-		FrameColumnData::Float4(c) => try_rle_only_heuristic(c),
-		FrameColumnData::Float8(c) => try_rle_only_heuristic(c),
 
 		// Everything else: plain
 		_ => Encoding::Plain,
@@ -232,20 +244,6 @@ fn try_varlen_numeric_heuristic<T: PartialEq>(slice: &[T], data: &FrameColumnDat
 	}
 
 	try_dict_heuristic(data)
-}
-
-/// RLE-only heuristic for types that don't support delta encoding.
-fn try_rle_only_heuristic<T: PartialEq>(slice: &[T]) -> Encoding {
-	if slice.len() < MIN_ROWS {
-		return Encoding::Plain;
-	}
-
-	let run_count = count_runs_generic(slice);
-	if run_count * 2 < slice.len() {
-		return Encoding::Rle;
-	}
-
-	Encoding::Plain
 }
 
 /// Check if a slice is monotonically sorted (ascending or descending).

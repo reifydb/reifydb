@@ -30,9 +30,12 @@ use uuid::Uuid;
 use crate::{
 	encoding::{
 		delta::{
-			decode_delta_i32, decode_delta_i64, decode_delta_i128, decode_delta_rle_i32,
-			decode_delta_rle_i64, decode_delta_rle_i128, decode_delta_rle_u64, decode_delta_rle_u128,
-			decode_delta_u64, decode_delta_u128,
+			decode_delta_f32, decode_delta_f64, decode_delta_i8, decode_delta_i16, decode_delta_i32,
+			decode_delta_i64, decode_delta_i128, decode_delta_rle_f32, decode_delta_rle_f64,
+			decode_delta_rle_i8, decode_delta_rle_i16, decode_delta_rle_i32, decode_delta_rle_i64,
+			decode_delta_rle_i128, decode_delta_rle_u8, decode_delta_rle_u16, decode_delta_rle_u32,
+			decode_delta_rle_u64, decode_delta_rle_u128, decode_delta_u8, decode_delta_u16,
+			decode_delta_u32, decode_delta_u64, decode_delta_u128,
 		},
 		rle::{decode_rle, decode_rle_i32, decode_rle_i64, decode_rle_u64},
 	},
@@ -256,6 +259,14 @@ pub(crate) fn decode_delta_column(
 ) -> Result<FrameColumnData, DecodeError> {
 	let ty = Type::from_u8(type_code);
 	match ty {
+		Type::Int1 => {
+			let values = decode_delta_i8(data, row_count)?;
+			Ok(FrameColumnData::Int1(NumberContainer::new(values)))
+		}
+		Type::Int2 => {
+			let values = decode_delta_i16(data, row_count)?;
+			Ok(FrameColumnData::Int2(NumberContainer::new(values)))
+		}
 		Type::Int4 => {
 			let values = decode_delta_i32(data, row_count)?;
 			Ok(FrameColumnData::Int4(NumberContainer::new(values)))
@@ -263,6 +274,18 @@ pub(crate) fn decode_delta_column(
 		Type::Int8 => {
 			let values = decode_delta_i64(data, row_count)?;
 			Ok(FrameColumnData::Int8(NumberContainer::new(values)))
+		}
+		Type::Uint1 => {
+			let values = decode_delta_u8(data, row_count)?;
+			Ok(FrameColumnData::Uint1(NumberContainer::new(values)))
+		}
+		Type::Uint2 => {
+			let values = decode_delta_u16(data, row_count)?;
+			Ok(FrameColumnData::Uint2(NumberContainer::new(values)))
+		}
+		Type::Uint4 => {
+			let values = decode_delta_u32(data, row_count)?;
+			Ok(FrameColumnData::Uint4(NumberContainer::new(values)))
 		}
 		Type::Uint8 => {
 			let values = decode_delta_u64(data, row_count)?;
@@ -275,6 +298,14 @@ pub(crate) fn decode_delta_column(
 		Type::Uint16 => {
 			let values = decode_delta_u128(data, row_count)?;
 			Ok(FrameColumnData::Uint16(NumberContainer::new(values)))
+		}
+		Type::Float4 => {
+			let values = decode_delta_f32(data, row_count)?;
+			Ok(FrameColumnData::Float4(NumberContainer::new(values)))
+		}
+		Type::Float8 => {
+			let values = decode_delta_f64(data, row_count)?;
+			Ok(FrameColumnData::Float8(NumberContainer::new(values)))
 		}
 		Type::Date => {
 			let raw = decode_delta_i32(data, row_count)?;
@@ -317,6 +348,14 @@ pub(crate) fn decode_delta_rle_column(
 ) -> Result<FrameColumnData, DecodeError> {
 	let ty = Type::from_u8(type_code);
 	match ty {
+		Type::Int1 => {
+			let values = decode_delta_rle_i8(data, row_count)?;
+			Ok(FrameColumnData::Int1(NumberContainer::new(values)))
+		}
+		Type::Int2 => {
+			let values = decode_delta_rle_i16(data, row_count)?;
+			Ok(FrameColumnData::Int2(NumberContainer::new(values)))
+		}
 		Type::Int4 => {
 			let values = decode_delta_rle_i32(data, row_count)?;
 			Ok(FrameColumnData::Int4(NumberContainer::new(values)))
@@ -324,6 +363,18 @@ pub(crate) fn decode_delta_rle_column(
 		Type::Int8 => {
 			let values = decode_delta_rle_i64(data, row_count)?;
 			Ok(FrameColumnData::Int8(NumberContainer::new(values)))
+		}
+		Type::Uint1 => {
+			let values = decode_delta_rle_u8(data, row_count)?;
+			Ok(FrameColumnData::Uint1(NumberContainer::new(values)))
+		}
+		Type::Uint2 => {
+			let values = decode_delta_rle_u16(data, row_count)?;
+			Ok(FrameColumnData::Uint2(NumberContainer::new(values)))
+		}
+		Type::Uint4 => {
+			let values = decode_delta_rle_u32(data, row_count)?;
+			Ok(FrameColumnData::Uint4(NumberContainer::new(values)))
 		}
 		Type::Uint8 => {
 			let values = decode_delta_rle_u64(data, row_count)?;
@@ -336,6 +387,14 @@ pub(crate) fn decode_delta_rle_column(
 		Type::Uint16 => {
 			let values = decode_delta_rle_u128(data, row_count)?;
 			Ok(FrameColumnData::Uint16(NumberContainer::new(values)))
+		}
+		Type::Float4 => {
+			let values = decode_delta_rle_f32(data, row_count)?;
+			Ok(FrameColumnData::Float4(NumberContainer::new(values)))
+		}
+		Type::Float8 => {
+			let values = decode_delta_rle_f64(data, row_count)?;
+			Ok(FrameColumnData::Float8(NumberContainer::new(values)))
 		}
 		Type::Date => {
 			let raw = decode_delta_rle_i32(data, row_count)?;

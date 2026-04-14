@@ -130,5 +130,27 @@
         "updated_at": []
       }
     ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "10",
+              "20",
+              "30",
+              "40",
+              "50"
+            ],
+            "type": "Uint2"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
   }
 ]

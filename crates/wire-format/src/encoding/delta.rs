@@ -352,247 +352,104 @@ pub fn decode_delta_rle_u64(data: &[u8], row_count: usize) -> Result<Vec<u64>, D
 	Ok(values)
 }
 
-/// Try delta-encoding an i128 column.
-pub fn try_delta_i128(slice: &[i128]) -> Option<Vec<u8>> {
-	if slice.len() < 2 {
-		return None;
-	}
-
-	let deltas: Vec<i128> = slice.windows(2).map(|w| w[1].wrapping_sub(w[0])).collect();
-	let width = delta_width_i128(&deltas);
-
-	let delta_size = 1 + 16 + (slice.len() - 1) * width;
-	let plain_size = slice.len() * 16;
-
-	if delta_size >= plain_size {
-		return None;
-	}
-
-	let mut buf = Vec::with_capacity(delta_size);
-	buf.push(width as u8);
-	buf.extend_from_slice(&slice[0].to_le_bytes());
-	encode_deltas_i128(&deltas, width, &mut buf);
-	Some(buf)
-}
-
-/// Try delta-encoding a u128 column.
-pub fn try_delta_u128(slice: &[u128]) -> Option<Vec<u8>> {
-	if slice.len() < 2 {
-		return None;
-	}
-
-	let deltas: Vec<i128> = slice.windows(2).map(|w| w[1] as i128 - w[0] as i128).collect();
-	let width = delta_width_i128(&deltas);
-
-	let delta_size = 1 + 16 + (slice.len() - 1) * width;
-	let plain_size = slice.len() * 16;
-
-	if delta_size >= plain_size {
-		return None;
-	}
-
-	let mut buf = Vec::with_capacity(delta_size);
-	buf.push(width as u8);
-	buf.extend_from_slice(&slice[0].to_le_bytes());
-	encode_deltas_i128(&deltas, width, &mut buf);
-	Some(buf)
-}
-
-/// Try DeltaRLE encoding on i128 values.
-pub fn try_delta_rle_i128(slice: &[i128]) -> Option<Vec<u8>> {
-	if slice.len() < 2 {
-		return None;
-	}
-
-	let deltas: Vec<i128> = slice.windows(2).map(|w| w[1].wrapping_sub(w[0])).collect();
-	let width = delta_width_i128(&deltas);
-	let runs = rle_runs_i128(&deltas);
-
-	let drle_size = 1 + 16 + runs.len() * (width + 4);
-	let plain_size = slice.len() * 16;
-
-	if drle_size >= plain_size {
-		return None;
-	}
-
-	let mut buf = Vec::with_capacity(drle_size);
-	buf.push(width as u8);
-	buf.extend_from_slice(&slice[0].to_le_bytes());
-	encode_delta_rle_runs_i128(&runs, width, &mut buf);
-	Some(buf)
-}
-
-/// Try DeltaRLE encoding on u128 values.
-pub fn try_delta_rle_u128(slice: &[u128]) -> Option<Vec<u8>> {
-	if slice.len() < 2 {
-		return None;
-	}
-
-	let deltas: Vec<i128> = slice.windows(2).map(|w| w[1] as i128 - w[0] as i128).collect();
-	let width = delta_width_i128(&deltas);
-	let runs = rle_runs_i128(&deltas);
-
-	let drle_size = 1 + 16 + runs.len() * (width + 4);
-	let plain_size = slice.len() * 16;
-
-	if drle_size >= plain_size {
-		return None;
-	}
-
-	let mut buf = Vec::with_capacity(drle_size);
-	buf.push(width as u8);
-	buf.extend_from_slice(&slice[0].to_le_bytes());
-	encode_delta_rle_runs_i128(&runs, width, &mut buf);
-	Some(buf)
-}
-
-/// Decode delta-encoded i128 data.
-pub fn decode_delta_i128(data: &[u8], row_count: usize) -> Result<Vec<i128>, DecodeError> {
-	if row_count == 0 {
-		return Ok(vec![]);
-	}
-	if data.len() < 17 {
-		return Err(DecodeError::InvalidData("delta i128 data too short".into()));
-	}
-
-	let width = data[0] as usize;
-	let baseline = i128::from_le_bytes([
-		data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
-		data[12], data[13], data[14], data[15], data[16],
-	]);
-
-	let mut values = Vec::with_capacity(row_count);
-	values.push(baseline);
-
-	let mut pos = 17;
-	for _ in 1..row_count {
-		let delta = read_signed_delta_i128(&data[pos..], width);
-		pos += width;
-		let prev = *values.last().unwrap();
-		values.push(prev.wrapping_add(delta));
-	}
-
-	Ok(values)
-}
-
-/// Decode delta-encoded u128 data.
-pub fn decode_delta_u128(data: &[u8], row_count: usize) -> Result<Vec<u128>, DecodeError> {
-	if row_count == 0 {
-		return Ok(vec![]);
-	}
-	if data.len() < 17 {
-		return Err(DecodeError::InvalidData("delta u128 data too short".into()));
-	}
-
-	let width = data[0] as usize;
-	let baseline = u128::from_le_bytes([
-		data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
-		data[12], data[13], data[14], data[15], data[16],
-	]);
-
-	let mut values = Vec::with_capacity(row_count);
-	values.push(baseline);
-
-	let mut pos = 17;
-	for _ in 1..row_count {
-		let delta = read_signed_delta_i128(&data[pos..], width);
-		pos += width;
-		let prev = *values.last().unwrap();
-		values.push((prev as i128).wrapping_add(delta) as u128);
-	}
-
-	Ok(values)
-}
-
-/// Decode DeltaRLE-encoded i128 data.
-pub fn decode_delta_rle_i128(data: &[u8], row_count: usize) -> Result<Vec<i128>, DecodeError> {
-	if row_count == 0 {
-		return Ok(vec![]);
-	}
-	if data.len() < 17 {
-		return Err(DecodeError::InvalidData("delta_rle i128 data too short".into()));
-	}
-
-	let width = data[0] as usize;
-	let baseline = i128::from_le_bytes([
-		data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
-		data[12], data[13], data[14], data[15], data[16],
-	]);
-
-	let mut values = Vec::with_capacity(row_count);
-	values.push(baseline);
-
-	let mut pos = 17;
-	while values.len() < row_count && pos + width + 4 <= data.len() {
-		let delta = read_signed_delta_i128(&data[pos..], width);
-		pos += width;
-		let count = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
-		pos += 4;
-
-		for _ in 0..count {
-			if values.len() >= row_count {
-				break;
+macro_rules! impl_delta_int128 {
+	($ty:ident, $try_fn:ident, $try_rle_fn:ident, $dec_fn:ident, $dec_rle_fn:ident, $width:expr) => {
+		pub fn $try_fn(slice: &[$ty]) -> Option<Vec<u8>> {
+			if slice.len() < 2 {
+				return None;
 			}
-			let prev = *values.last().unwrap();
-			values.push(prev.wrapping_add(delta));
-		}
-	}
-
-	if values.len() != row_count {
-		return Err(DecodeError::InvalidData(format!(
-			"delta_rle decoded {} values but expected {}",
-			values.len(),
-			row_count
-		)));
-	}
-
-	Ok(values)
-}
-
-/// Decode DeltaRLE-encoded u128 data.
-pub fn decode_delta_rle_u128(data: &[u8], row_count: usize) -> Result<Vec<u128>, DecodeError> {
-	if row_count == 0 {
-		return Ok(vec![]);
-	}
-	if data.len() < 17 {
-		return Err(DecodeError::InvalidData("delta_rle u128 data too short".into()));
-	}
-
-	let width = data[0] as usize;
-	let baseline = u128::from_le_bytes([
-		data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11],
-		data[12], data[13], data[14], data[15], data[16],
-	]);
-
-	let mut values = Vec::with_capacity(row_count);
-	values.push(baseline);
-
-	let mut pos = 17;
-	while values.len() < row_count && pos + width + 4 <= data.len() {
-		let delta = read_signed_delta_i128(&data[pos..], width);
-		pos += width;
-		let count = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
-		pos += 4;
-
-		for _ in 0..count {
-			if values.len() >= row_count {
-				break;
+			let deltas: Vec<i128> =
+				slice.windows(2).map(|w| (w[1] as i128).wrapping_sub(w[0] as i128)).collect();
+			let width = delta_width_i128(&deltas);
+			let delta_size = 1 + $width + (slice.len() - 1) * width;
+			if delta_size >= slice.len() * $width {
+				return None;
 			}
-			let prev = *values.last().unwrap();
-			values.push((prev as i128).wrapping_add(delta) as u128);
+			let mut buf = Vec::with_capacity(delta_size);
+			buf.push(width as u8);
+			buf.extend_from_slice(&slice[0].to_le_bytes());
+			encode_deltas_i128(&deltas, width, &mut buf);
+			Some(buf)
 		}
-	}
-
-	if values.len() != row_count {
-		return Err(DecodeError::InvalidData(format!(
-			"delta_rle decoded {} values but expected {}",
-			values.len(),
-			row_count
-		)));
-	}
-
-	Ok(values)
+		pub fn $try_rle_fn(slice: &[$ty]) -> Option<Vec<u8>> {
+			if slice.len() < 2 {
+				return None;
+			}
+			let deltas: Vec<i128> =
+				slice.windows(2).map(|w| (w[1] as i128).wrapping_sub(w[0] as i128)).collect();
+			let width = delta_width_i128(&deltas);
+			let runs = rle_runs_i128(&deltas);
+			let drle_size = 1 + $width + runs.len() * (width + 4);
+			if drle_size >= slice.len() * $width {
+				return None;
+			}
+			let mut buf = Vec::with_capacity(drle_size);
+			buf.push(width as u8);
+			buf.extend_from_slice(&slice[0].to_le_bytes());
+			encode_delta_rle_runs_i128(&runs, width, &mut buf);
+			Some(buf)
+		}
+		pub fn $dec_fn(data: &[u8], row_count: usize) -> Result<Vec<$ty>, DecodeError> {
+			if row_count == 0 {
+				return Ok(vec![]);
+			}
+			if data.len() < 1 + $width {
+				return Err(DecodeError::InvalidData("delta data too short".into()));
+			}
+			let width = data[0] as usize;
+			let mut array = [0u8; $width];
+			array.copy_from_slice(&data[1..1 + $width]);
+			let baseline = $ty::from_le_bytes(array);
+			let mut values = Vec::with_capacity(row_count);
+			values.push(baseline);
+			let mut pos = 1 + $width;
+			for _ in 1..row_count {
+				let delta = read_signed_delta_i128(&data[pos..], width);
+				pos += width;
+				let prev = *values.last().unwrap();
+				values.push((prev as i128).wrapping_add(delta) as $ty);
+			}
+			Ok(values)
+		}
+		pub fn $dec_rle_fn(data: &[u8], row_count: usize) -> Result<Vec<$ty>, DecodeError> {
+			if row_count == 0 {
+				return Ok(vec![]);
+			}
+			if data.len() < 1 + $width {
+				return Err(DecodeError::InvalidData("delta rle data too short".into()));
+			}
+			let width = data[0] as usize;
+			let mut array = [0u8; $width];
+			array.copy_from_slice(&data[1..1 + $width]);
+			let baseline = $ty::from_le_bytes(array);
+			let mut values = Vec::with_capacity(row_count);
+			values.push(baseline);
+			let mut pos = 1 + $width;
+			while values.len() < row_count && pos + width + 4 <= data.len() {
+				let delta = read_signed_delta_i128(&data[pos..], width);
+				pos += width;
+				let mut count_arr = [0u8; 4];
+				count_arr.copy_from_slice(&data[pos..pos + 4]);
+				let count = u32::from_le_bytes(count_arr) as usize;
+				pos += 4;
+				for _ in 0..count {
+					if values.len() >= row_count {
+						break;
+					}
+					let prev = *values.last().unwrap();
+					values.push((prev as i128).wrapping_add(delta) as $ty);
+				}
+			}
+			if values.len() != row_count {
+				return Err(DecodeError::InvalidData("delta rle count mismatch".into()));
+			}
+			Ok(values)
+		}
+	};
 }
+
+impl_delta_int128!(i128, try_delta_i128, try_delta_rle_i128, decode_delta_i128, decode_delta_rle_i128, 16);
+impl_delta_int128!(u128, try_delta_u128, try_delta_rle_u128, decode_delta_u128, decode_delta_rle_u128, 16);
 
 fn delta_width(deltas: &[i64]) -> usize {
 	let min = deltas.iter().copied().min().unwrap_or(0);
@@ -739,3 +596,208 @@ fn read_signed_delta_i128(data: &[u8], width: usize) -> i128 {
 		_ => unreachable!(),
 	}
 }
+
+macro_rules! impl_delta_int {
+	($ty:ident, $try_fn:ident, $try_rle_fn:ident, $dec_fn:ident, $dec_rle_fn:ident, $width:expr) => {
+		pub fn $try_fn(slice: &[$ty]) -> Option<Vec<u8>> {
+			if slice.len() < 2 {
+				return None;
+			}
+			let deltas: Vec<i64> =
+				slice.windows(2).map(|w| (w[1] as i64).wrapping_sub(w[0] as i64)).collect();
+			let width = delta_width(&deltas);
+			let delta_size = 1 + $width + (slice.len() - 1) * width;
+			if delta_size >= slice.len() * $width {
+				return None;
+			}
+			let mut buf = Vec::with_capacity(delta_size);
+			buf.push(width as u8);
+			buf.extend_from_slice(&slice[0].to_le_bytes());
+			encode_deltas(&deltas, width, &mut buf);
+			Some(buf)
+		}
+		pub fn $try_rle_fn(slice: &[$ty]) -> Option<Vec<u8>> {
+			if slice.len() < 2 {
+				return None;
+			}
+			let deltas: Vec<i64> =
+				slice.windows(2).map(|w| (w[1] as i64).wrapping_sub(w[0] as i64)).collect();
+			let width = delta_width(&deltas);
+			let runs = rle_runs(&deltas);
+			let drle_size = 1 + $width + runs.len() * (width + 4);
+			if drle_size >= slice.len() * $width {
+				return None;
+			}
+			let mut buf = Vec::with_capacity(drle_size);
+			buf.push(width as u8);
+			buf.extend_from_slice(&slice[0].to_le_bytes());
+			encode_delta_rle_runs(&runs, width, &mut buf);
+			Some(buf)
+		}
+		pub fn $dec_fn(data: &[u8], row_count: usize) -> Result<Vec<$ty>, DecodeError> {
+			if row_count == 0 {
+				return Ok(vec![]);
+			}
+			if data.len() < 1 + $width {
+				return Err(DecodeError::InvalidData("delta data too short".into()));
+			}
+			let width = data[0] as usize;
+			let mut array = [0u8; $width];
+			array.copy_from_slice(&data[1..1 + $width]);
+			let baseline = $ty::from_le_bytes(array);
+			let mut values = Vec::with_capacity(row_count);
+			values.push(baseline);
+			let mut pos = 1 + $width;
+			for _ in 1..row_count {
+				let delta = read_signed_delta(&data[pos..], width);
+				pos += width;
+				let prev = *values.last().unwrap();
+				values.push((prev as i64).wrapping_add(delta) as $ty);
+			}
+			Ok(values)
+		}
+		pub fn $dec_rle_fn(data: &[u8], row_count: usize) -> Result<Vec<$ty>, DecodeError> {
+			if row_count == 0 {
+				return Ok(vec![]);
+			}
+			if data.len() < 1 + $width {
+				return Err(DecodeError::InvalidData("delta rle data too short".into()));
+			}
+			let width = data[0] as usize;
+			let mut array = [0u8; $width];
+			array.copy_from_slice(&data[1..1 + $width]);
+			let baseline = $ty::from_le_bytes(array);
+			let mut values = Vec::with_capacity(row_count);
+			values.push(baseline);
+			let mut pos = 1 + $width;
+			while values.len() < row_count && pos + width + 4 <= data.len() {
+				let delta = read_signed_delta(&data[pos..], width);
+				pos += width;
+				let mut count_arr = [0u8; 4];
+				count_arr.copy_from_slice(&data[pos..pos + 4]);
+				let count = u32::from_le_bytes(count_arr) as usize;
+				pos += 4;
+				for _ in 0..count {
+					if values.len() >= row_count {
+						break;
+					}
+					let prev = *values.last().unwrap();
+					values.push((prev as i64).wrapping_add(delta) as $ty);
+				}
+			}
+			if values.len() != row_count {
+				return Err(DecodeError::InvalidData("delta rle count mismatch".into()));
+			}
+			Ok(values)
+		}
+	};
+}
+
+macro_rules! impl_delta_float {
+	($ty:ident, $uint_ty:ident, $try_fn:ident, $try_rle_fn:ident, $dec_fn:ident, $dec_rle_fn:ident, $width:expr) => {
+		pub fn $try_fn(slice: &[$ty]) -> Option<Vec<u8>> {
+			if slice.len() < 2 {
+				return None;
+			}
+			let deltas: Vec<i64> = slice
+				.windows(2)
+				.map(|w| (w[1].to_bits() as i64).wrapping_sub(w[0].to_bits() as i64))
+				.collect();
+			let width = delta_width(&deltas);
+			let delta_size = 1 + $width + (slice.len() - 1) * width;
+			if delta_size >= slice.len() * $width {
+				return None;
+			}
+			let mut buf = Vec::with_capacity(delta_size);
+			buf.push(width as u8);
+			buf.extend_from_slice(&slice[0].to_bits().to_le_bytes());
+			encode_deltas(&deltas, width, &mut buf);
+			Some(buf)
+		}
+		pub fn $try_rle_fn(slice: &[$ty]) -> Option<Vec<u8>> {
+			if slice.len() < 2 {
+				return None;
+			}
+			let deltas: Vec<i64> = slice
+				.windows(2)
+				.map(|w| (w[1].to_bits() as i64).wrapping_sub(w[0].to_bits() as i64))
+				.collect();
+			let width = delta_width(&deltas);
+			let runs = rle_runs(&deltas);
+			let drle_size = 1 + $width + runs.len() * (width + 4);
+			if drle_size >= slice.len() * $width {
+				return None;
+			}
+			let mut buf = Vec::with_capacity(drle_size);
+			buf.push(width as u8);
+			buf.extend_from_slice(&slice[0].to_bits().to_le_bytes());
+			encode_delta_rle_runs(&runs, width, &mut buf);
+			Some(buf)
+		}
+		pub fn $dec_fn(data: &[u8], row_count: usize) -> Result<Vec<$ty>, DecodeError> {
+			if row_count == 0 {
+				return Ok(vec![]);
+			}
+			if data.len() < 1 + $width {
+				return Err(DecodeError::InvalidData("delta data too short".into()));
+			}
+			let width = data[0] as usize;
+			let mut array = [0u8; $width];
+			array.copy_from_slice(&data[1..1 + $width]);
+			let baseline = $uint_ty::from_le_bytes(array);
+			let mut values = Vec::with_capacity(row_count);
+			values.push($ty::from_bits(baseline));
+			let mut pos = 1 + $width;
+			for _ in 1..row_count {
+				let delta = read_signed_delta(&data[pos..], width);
+				pos += width;
+				let prev = values.last().unwrap().to_bits();
+				values.push($ty::from_bits((prev as i64).wrapping_add(delta) as $uint_ty));
+			}
+			Ok(values)
+		}
+		pub fn $dec_rle_fn(data: &[u8], row_count: usize) -> Result<Vec<$ty>, DecodeError> {
+			if row_count == 0 {
+				return Ok(vec![]);
+			}
+			if data.len() < 1 + $width {
+				return Err(DecodeError::InvalidData("delta rle data too short".into()));
+			}
+			let width = data[0] as usize;
+			let mut array = [0u8; $width];
+			array.copy_from_slice(&data[1..1 + $width]);
+			let baseline = $uint_ty::from_le_bytes(array);
+			let mut values = Vec::with_capacity(row_count);
+			values.push($ty::from_bits(baseline));
+			let mut pos = 1 + $width;
+			while values.len() < row_count && pos + width + 4 <= data.len() {
+				let delta = read_signed_delta(&data[pos..], width);
+				pos += width;
+				let mut count_arr = [0u8; 4];
+				count_arr.copy_from_slice(&data[pos..pos + 4]);
+				let count = u32::from_le_bytes(count_arr) as usize;
+				pos += 4;
+				for _ in 0..count {
+					if values.len() >= row_count {
+						break;
+					}
+					let prev = values.last().unwrap().to_bits();
+					values.push($ty::from_bits((prev as i64).wrapping_add(delta) as $uint_ty));
+				}
+			}
+			if values.len() != row_count {
+				return Err(DecodeError::InvalidData("delta rle count mismatch".into()));
+			}
+			Ok(values)
+		}
+	};
+}
+
+impl_delta_int!(i8, try_delta_i8, try_delta_rle_i8, decode_delta_i8, decode_delta_rle_i8, 1);
+impl_delta_int!(u8, try_delta_u8, try_delta_rle_u8, decode_delta_u8, decode_delta_rle_u8, 1);
+impl_delta_int!(i16, try_delta_i16, try_delta_rle_i16, decode_delta_i16, decode_delta_rle_i16, 2);
+impl_delta_int!(u16, try_delta_u16, try_delta_rle_u16, decode_delta_u16, decode_delta_rle_u16, 2);
+impl_delta_int!(u32, try_delta_u32, try_delta_rle_u32, decode_delta_u32, decode_delta_rle_u32, 4);
+
+impl_delta_float!(f32, u32, try_delta_f32, try_delta_rle_f32, decode_delta_f32, decode_delta_rle_f32, 4);
+impl_delta_float!(f64, u64, try_delta_f64, try_delta_rle_f64, decode_delta_f64, decode_delta_rle_f64, 8);

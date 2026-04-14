@@ -11,8 +11,11 @@ use super::EncodedColumn;
 use crate::{
 	encoding::{
 		delta::{
-			try_delta_i32, try_delta_i64, try_delta_i128, try_delta_rle_i32, try_delta_rle_i64,
-			try_delta_rle_i128, try_delta_rle_u64, try_delta_rle_u128, try_delta_u64, try_delta_u128,
+			try_delta_f32, try_delta_f64, try_delta_i8, try_delta_i16, try_delta_i32, try_delta_i64,
+			try_delta_i128, try_delta_rle_f32, try_delta_rle_f64, try_delta_rle_i8, try_delta_rle_i16,
+			try_delta_rle_i32, try_delta_rle_i64, try_delta_rle_i128, try_delta_rle_u8, try_delta_rle_u16,
+			try_delta_rle_u32, try_delta_rle_u64, try_delta_rle_u128, try_delta_u8, try_delta_u16,
+			try_delta_u32, try_delta_u64, try_delta_u128,
 		},
 		rle::{try_rle_encode, try_rle_i32, try_rle_u64},
 	},
@@ -104,6 +107,32 @@ pub(crate) fn try_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 /// Returns None if the column type is not supported or delta doesn't save space.
 pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 	match inner {
+		FrameColumnData::Int1(c) => {
+			let encoded = try_delta_i8(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Int1.to_u8(),
+				encoding: Encoding::Delta,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Int2(c) => {
+			let encoded = try_delta_i16(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Int2.to_u8(),
+				encoding: Encoding::Delta,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
 		FrameColumnData::Int4(c) => {
 			let encoded = try_delta_i32(c)?;
 			Some(EncodedColumn {
@@ -121,6 +150,45 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 			let encoded = try_delta_i64(c)?;
 			Some(EncodedColumn {
 				type_code: Type::Int8.to_u8(),
+				encoding: Encoding::Delta,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Uint1(c) => {
+			let encoded = try_delta_u8(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Uint1.to_u8(),
+				encoding: Encoding::Delta,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Uint2(c) => {
+			let encoded = try_delta_u16(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Uint2.to_u8(),
+				encoding: Encoding::Delta,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Uint4(c) => {
+			let encoded = try_delta_u32(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Uint4.to_u8(),
 				encoding: Encoding::Delta,
 				flags: 0,
 				nones: vec![],
@@ -160,6 +228,32 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 			let encoded = try_delta_u128(c)?;
 			Some(EncodedColumn {
 				type_code: Type::Uint16.to_u8(),
+				encoding: Encoding::Delta,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Float4(c) => {
+			let encoded = try_delta_f32(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Float4.to_u8(),
+				encoding: Encoding::Delta,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Float8(c) => {
+			let encoded = try_delta_f64(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Float8.to_u8(),
 				encoding: Encoding::Delta,
 				flags: 0,
 				nones: vec![],
@@ -219,6 +313,32 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 /// Returns None if the column type is not supported or delta-RLE doesn't save space.
 pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 	match inner {
+		FrameColumnData::Int1(c) => {
+			let encoded = try_delta_rle_i8(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Int1.to_u8(),
+				encoding: Encoding::DeltaRle,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Int2(c) => {
+			let encoded = try_delta_rle_i16(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Int2.to_u8(),
+				encoding: Encoding::DeltaRle,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
 		FrameColumnData::Int4(c) => {
 			let encoded = try_delta_rle_i32(c)?;
 			Some(EncodedColumn {
@@ -236,6 +356,45 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 			let encoded = try_delta_rle_i64(c)?;
 			Some(EncodedColumn {
 				type_code: Type::Int8.to_u8(),
+				encoding: Encoding::DeltaRle,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Uint1(c) => {
+			let encoded = try_delta_rle_u8(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Uint1.to_u8(),
+				encoding: Encoding::DeltaRle,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Uint2(c) => {
+			let encoded = try_delta_rle_u16(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Uint2.to_u8(),
+				encoding: Encoding::DeltaRle,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Uint4(c) => {
+			let encoded = try_delta_rle_u32(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Uint4.to_u8(),
 				encoding: Encoding::DeltaRle,
 				flags: 0,
 				nones: vec![],
@@ -275,6 +434,32 @@ pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColu
 			let encoded = try_delta_rle_u128(c)?;
 			Some(EncodedColumn {
 				type_code: Type::Uint16.to_u8(),
+				encoding: Encoding::DeltaRle,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Float4(c) => {
+			let encoded = try_delta_rle_f32(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Float4.to_u8(),
+				encoding: Encoding::DeltaRle,
+				flags: 0,
+				nones: vec![],
+				data: encoded,
+				offsets: vec![],
+				extra: vec![],
+				row_count: 0,
+			})
+		}
+		FrameColumnData::Float8(c) => {
+			let encoded = try_delta_rle_f64(c)?;
+			Some(EncodedColumn {
+				type_code: Type::Float8.to_u8(),
 				encoding: Encoding::DeltaRle,
 				flags: 0,
 				nones: vec![],

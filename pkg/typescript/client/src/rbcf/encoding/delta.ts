@@ -58,6 +58,21 @@ interface DeltaHeader {
     data_start: number;
 }
 
+function read_header_8(data: Uint8Array, signed: boolean): DeltaHeader {
+    if (data.length < 2) throw new Error("RBCF: delta header truncated (8)");
+    const width = data[0];
+    const v = data[1];
+    const baseline = signed ? BigInt(v > 0x7f ? v - 0x100 : v) : BigInt(v);
+    return { width, baseline, data_start: 2 };
+}
+
+function read_header_16(data: Uint8Array, signed: boolean): DeltaHeader {
+    if (data.length < 3) throw new Error("RBCF: delta header truncated (16)");
+    const width = data[0];
+    const baseline = signed ? BigInt(read_i16(data, 1)) : BigInt(read_i16(data, 1) & 0xffff);
+    return { width, baseline, data_start: 3 };
+}
+
 function read_header_32(data: Uint8Array, signed: boolean): DeltaHeader {
     if (data.length < 5) throw new Error("RBCF: delta header truncated (32)");
     const width = data[0];
@@ -140,6 +155,16 @@ function dispatch_delta(type_name: TypeName, row_count: number, data: Uint8Array
     const go = rle ? decode_delta_rle_generic : decode_delta_generic;
 
     switch (type_name) {
+        case "Int1": {
+            const h = read_header_8(data, true);
+            const vs = go(data, row_count, h, read_signed_delta, (v) => wrap_signed(v, 8));
+            return vs.map((v) => v.toString());
+        }
+        case "Int2": {
+            const h = read_header_16(data, true);
+            const vs = go(data, row_count, h, read_signed_delta, (v) => wrap_signed(v, 16));
+            return vs.map((v) => v.toString());
+        }
         case "Int4": {
             const h = read_header_32(data, true);
             const vs = go(data, row_count, h, read_signed_delta, (v) => wrap_signed(v, 32));
@@ -148,6 +173,21 @@ function dispatch_delta(type_name: TypeName, row_count: number, data: Uint8Array
         case "Int8": {
             const h = read_header_64(data, true);
             const vs = go(data, row_count, h, read_signed_delta, (v) => wrap_signed(v, 64));
+            return vs.map((v) => v.toString());
+        }
+        case "Uint1": {
+            const h = read_header_8(data, false);
+            const vs = go(data, row_count, h, read_signed_delta, (v) => wrap_unsigned(v, 8));
+            return vs.map((v) => v.toString());
+        }
+        case "Uint2": {
+            const h = read_header_16(data, false);
+            const vs = go(data, row_count, h, read_signed_delta, (v) => wrap_unsigned(v, 16));
+            return vs.map((v) => v.toString());
+        }
+        case "Uint4": {
+            const h = read_header_32(data, false);
+            const vs = go(data, row_count, h, read_signed_delta, (v) => wrap_unsigned(v, 32));
             return vs.map((v) => v.toString());
         }
         case "Uint8": {
@@ -164,6 +204,28 @@ function dispatch_delta(type_name: TypeName, row_count: number, data: Uint8Array
             const h = read_header_128(data, false);
             const vs = go(data, row_count, h, read_signed_delta_128, (v) => wrap_unsigned(v, 128));
             return vs.map((v) => v.toString());
+        }
+        case "Float4": {
+            const h = read_header_32(data, false);
+            const vs = go(data, row_count, h, read_signed_delta, (v) => wrap_unsigned(v, 32));
+            const buf = new ArrayBuffer(4);
+            const view = new DataView(buf);
+            return vs.map((v) => {
+                view.setUint32(0, Number(v), true);
+                const f = view.getFloat32(0, true);
+                return f.toString();
+            });
+        }
+        case "Float8": {
+            const h = read_header_64(data, false);
+            const vs = go(data, row_count, h, read_signed_delta, (v) => wrap_unsigned(v, 64));
+            const buf = new ArrayBuffer(8);
+            const view = new DataView(buf);
+            return vs.map((v) => {
+                view.setBigUint64(0, v, true);
+                const f = view.getFloat64(0, true);
+                return f.toString();
+            });
         }
         case "Date": {
             const h = read_header_32(data, true);
