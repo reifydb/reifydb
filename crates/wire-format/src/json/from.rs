@@ -469,11 +469,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Decimal(NumberContainer::new(values))
 		}
-		Type::Any
-		| Type::DictionaryId
-		| Type::List(_)
-		| Type::Record(_)
-		| Type::Tuple(_) => {
+		Type::Any | Type::DictionaryId | Type::List(_) | Type::Record(_) | Type::Tuple(_) => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {

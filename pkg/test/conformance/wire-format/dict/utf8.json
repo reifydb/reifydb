@@ -19,5 +19,140 @@
         "updated_at": []
       }
     ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [],
+            "type": "Utf8"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              ""
+            ],
+            "type": "Utf8"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "",
+              "⟪none⟫",
+              "hello",
+              "reifydb",
+              "🚀"
+            ],
+            "type": {
+              "Option": "Utf8"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "⟪none⟫"
+            ],
+            "type": {
+              "Option": "Utf8"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "hello",
+              "hello",
+              "hello",
+              "hello",
+              "hello",
+              "hello",
+              "hello",
+              "hello",
+              "hello",
+              "hello",
+              "reifydb",
+              "reifydb",
+              "reifydb",
+              "reifydb",
+              "reifydb",
+              "reifydb",
+              "reifydb",
+              "reifydb",
+              "reifydb",
+              "reifydb",
+              "🚀",
+              "🚀",
+              "🚀",
+              "🚀",
+              "🚀",
+              "🚀",
+              "🚀",
+              "🚀",
+              "🚀",
+              "🚀"
+            ],
+            "type": "Utf8"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
   }
 ]

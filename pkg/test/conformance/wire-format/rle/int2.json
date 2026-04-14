@@ -7,6 +7,103 @@
             "name": "val",
             "payload": [
               "-32768",
+              "0",
+              "32767"
+            ],
+            "type": "Int2"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [],
+            "type": "Int2"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "-32768"
+            ],
+            "type": "Int2"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "-32768",
+              "⟪none⟫",
+              "0",
+              "32767"
+            ],
+            "type": {
+              "Option": "Int2"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "⟪none⟫"
+            ],
+            "type": {
+              "Option": "Int2"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "-32768",
               "-32768",
               "-32768",
               "-32768",

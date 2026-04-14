@@ -7,6 +7,101 @@
             "name": "val",
             "payload": [
               "0",
+              "255"
+            ],
+            "type": "Uint1"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [],
+            "type": "Uint1"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "0"
+            ],
+            "type": "Uint1"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "0",
+              "⟪none⟫",
+              "255"
+            ],
+            "type": {
+              "Option": "Uint1"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "⟪none⟫"
+            ],
+            "type": {
+              "Option": "Uint1"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "0",
               "0",
               "0",
               "0",

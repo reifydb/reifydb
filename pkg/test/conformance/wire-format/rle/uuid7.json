@@ -6,6 +6,99 @@
           {
             "name": "val",
             "payload": [
+              "018f3a5e-3c00-7000-8000-000000000000"
+            ],
+            "type": "Uuid7"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [],
+            "type": "Uuid7"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "018f3a5e-3c00-7000-8000-000000000000"
+            ],
+            "type": "Uuid7"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "018f3a5e-3c00-7000-8000-000000000000",
+              "⟪none⟫"
+            ],
+            "type": {
+              "Option": "Uuid7"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "⟪none⟫"
+            ],
+            "type": {
+              "Option": "Uuid7"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
               "018f3a5e-3c00-7000-8000-000000000000",
               "018f3a5e-3c00-7000-8000-000000000000",
               "018f3a5e-3c00-7000-8000-000000000000",

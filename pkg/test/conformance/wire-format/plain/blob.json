@@ -95,5 +95,52 @@
         "updated_at": []
       }
     ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "0x",
+              "0x",
+              "0x",
+              "0x",
+              "0x",
+              "0x",
+              "0x",
+              "0x",
+              "0x",
+              "0x",
+              "0xdeadbeef",
+              "0xdeadbeef",
+              "0xdeadbeef",
+              "0xdeadbeef",
+              "0xdeadbeef",
+              "0xdeadbeef",
+              "0xdeadbeef",
+              "0xdeadbeef",
+              "0xdeadbeef",
+              "0xdeadbeef",
+              "0x00ff00ff",
+              "0x00ff00ff",
+              "0x00ff00ff",
+              "0x00ff00ff",
+              "0x00ff00ff",
+              "0x00ff00ff",
+              "0x00ff00ff",
+              "0x00ff00ff",
+              "0x00ff00ff",
+              "0x00ff00ff"
+            ],
+            "type": "Blob"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
   }
 ]

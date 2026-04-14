@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::{fs, path::Path};
+
 use reifydb_wire_format::{
 	decode::decode_frames, encode::encode_frames, format::Encoding, json::from::frames_from_json,
 	options::EncodeOptions,
 };
 use serde_json::{Value, from_str, to_string};
-use std::{fs, path::Path};
 use test_each_file::test_each_path;
 
 test_each_path! { in "pkg/test/conformance/wire-format/plain" as conformance_plain => test_plain }

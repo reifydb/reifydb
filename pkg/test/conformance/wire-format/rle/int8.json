@@ -7,6 +7,103 @@
             "name": "val",
             "payload": [
               "-9223372036854775808",
+              "0",
+              "9223372036854775807"
+            ],
+            "type": "Int8"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [],
+            "type": "Int8"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "-9223372036854775808"
+            ],
+            "type": "Int8"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "-9223372036854775808",
+              "⟪none⟫",
+              "0",
+              "9223372036854775807"
+            ],
+            "type": {
+              "Option": "Int8"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "⟪none⟫"
+            ],
+            "type": {
+              "Option": "Int8"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "-9223372036854775808",
               "-9223372036854775808",
               "-9223372036854775808",
               "-9223372036854775808",
@@ -36,6 +133,28 @@
               "9223372036854775807",
               "9223372036854775807",
               "9223372036854775807"
+            ],
+            "type": "Int8"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "10",
+              "20",
+              "30",
+              "40",
+              "50"
             ],
             "type": "Int8"
           }

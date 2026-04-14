@@ -7,6 +7,111 @@
             "name": "val",
             "payload": [
               "-3.125",
+              "0",
+              "3.125",
+              "1048576",
+              "340282350000000000000000000000000000000",
+              "-340282350000000000000000000000000000000",
+              "0.00000000000000000000000000000000000001175494"
+            ],
+            "type": "Float4"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [],
+            "type": "Float4"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "-3.125"
+            ],
+            "type": "Float4"
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "-3.125",
+              "⟪none⟫",
+              "0",
+              "3.125",
+              "1048576",
+              "340282350000000000000000000000000000000",
+              "-340282350000000000000000000000000000000",
+              "0.00000000000000000000000000000000000001175494"
+            ],
+            "type": {
+              "Option": "Float4"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "⟪none⟫"
+            ],
+            "type": {
+              "Option": "Float4"
+            }
+          }
+        ],
+        "created_at": [],
+        "row_numbers": [],
+        "updated_at": []
+      }
+    ]
+  },
+  {
+    "frames": [
+      {
+        "columns": [
+          {
+            "name": "val",
+            "payload": [
+              "-3.125",
               "-3.125",
               "-3.125",
               "-3.125",
