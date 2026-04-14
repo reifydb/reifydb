@@ -9,8 +9,6 @@ description = "Observability primitives for ReifyDB — counters, gauges, histog
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
 dashmap = { workspace = true }
 serde = { workspace = true }
-
-[dev-dependencies]
-reifydb-runtime = { workspace = true }

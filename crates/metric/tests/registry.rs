@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_metric::{
-	counter::Counter, gauge::Gauge, histogram::Histogram, registry::SystemMetricRegistry, snapshot::MetricSnapshot,
+	counter::Counter, gauge::Gauge, histogram::Histogram, registry::StaticMetricRegistry, snapshot::MetricSnapshot,
 };
 
 static TEST_COUNTER: Counter = Counter::new("test_counter", "a counter");
@@ -12,7 +12,7 @@ static TEST_BOUNDS: &[f64] = &[10.0, 100.0, 1000.0];
 
 #[test]
 fn registry_round_trip() {
-	let registry = SystemMetricRegistry::new();
+	let registry = StaticMetricRegistry::new();
 
 	// Histogram needs LazyLock for statics, so use a leaked Box for test
 	let histogram: &'static Histogram =

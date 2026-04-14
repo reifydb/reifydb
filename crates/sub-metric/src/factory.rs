@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
-	registry::{MetricRegistry, SystemMetricRegistry},
+	registry::{MetricRegistry, StaticMetricRegistry},
 };
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
@@ -20,19 +20,19 @@ use crate::{actor::MetricCollectorActor, listener::RequestMetricsEventListener, 
 
 pub struct MetricSubsystemFactory {
 	registry: Arc<MetricRegistry>,
-	system_registry: Arc<SystemMetricRegistry>,
+	static_registry: Arc<StaticMetricRegistry>,
 	accumulator: Arc<StatementStatsAccumulator>,
 }
 
 impl MetricSubsystemFactory {
 	pub fn new(
 		registry: Arc<MetricRegistry>,
-		system_registry: Arc<SystemMetricRegistry>,
+		static_registry: Arc<StaticMetricRegistry>,
 		accumulator: Arc<StatementStatsAccumulator>,
 	) -> Self {
 		Self {
 			registry,
-			system_registry,
+			static_registry,
 			accumulator,
 		}
 	}
@@ -47,7 +47,7 @@ impl SubsystemFactory for MetricSubsystemFactory {
 
 		let actor = MetricCollectorActor::new(
 			self.registry,
-			self.system_registry,
+			self.static_registry,
 			self.accumulator,
 			engine.clone(),
 			engine.catalog(),

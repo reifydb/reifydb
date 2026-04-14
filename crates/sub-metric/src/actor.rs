@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
-	registry::{MetricRegistry, SystemMetricRegistry},
+	registry::{MetricRegistry, StaticMetricRegistry},
 };
 use reifydb_runtime::actor::{
 	context::Context,
@@ -27,7 +27,7 @@ use reifydb_type::value::datetime::DateTime;
 #[allow(dead_code)]
 pub struct MetricCollectorActor {
 	registry: Arc<MetricRegistry>,
-	system_registry: Arc<SystemMetricRegistry>,
+	static_registry: Arc<StaticMetricRegistry>,
 	accumulator: Arc<StatementStatsAccumulator>,
 	engine: StandardEngine,
 	catalog: Catalog,
@@ -37,14 +37,14 @@ pub struct MetricCollectorActor {
 impl MetricCollectorActor {
 	pub fn new(
 		registry: Arc<MetricRegistry>,
-		system_registry: Arc<SystemMetricRegistry>,
+		static_registry: Arc<StaticMetricRegistry>,
 		accumulator: Arc<StatementStatsAccumulator>,
 		engine: StandardEngine,
 		catalog: Catalog,
 	) -> Self {
 		Self {
 			registry,
-			system_registry,
+			static_registry,
 			accumulator,
 			engine,
 			catalog,

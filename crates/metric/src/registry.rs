@@ -1,51 +1,52 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{Arc, LazyLock};
 
 use dashmap::DashMap;
+use reifydb_runtime::sync::mutex::Mutex;
 
 use crate::{MetricId, counter::Counter, gauge::Gauge, histogram::Histogram, snapshot::MetricSnapshot};
 
-/// Static registry for fixed system metrics.
-pub struct SystemMetricRegistry {
-	counters: RwLock<Vec<&'static Counter>>,
-	gauges: RwLock<Vec<&'static Gauge>>,
-	histograms: RwLock<Vec<&'static Histogram>>,
+/// Registry for metrics backed by `'static` references.
+pub struct StaticMetricRegistry {
+	counters: Mutex<Vec<&'static Counter>>,
+	gauges: Mutex<Vec<&'static Gauge>>,
+	histograms: Mutex<Vec<&'static Histogram>>,
 }
 
-impl Default for SystemMetricRegistry {
+impl Default for StaticMetricRegistry {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemMetricRegistry {
+impl StaticMetricRegistry {
 	pub fn new() -> Self {
 		Self {
-			counters: RwLock::new(Vec::new()),
-			gauges: RwLock::new(Vec::new()),
-			histograms: RwLock::new(Vec::new()),
+			counters: Mutex::new(Vec::new()),
+			gauges: Mutex::new(Vec::new()),
+			histograms: Mutex::new(Vec::new()),
 		}
 	}
 
 	pub fn register_counter(&self, counter: &'static Counter) {
-		self.counters.write().unwrap().push(counter);
+		self.counters.lock().push(counter);
 	}
 
 	pub fn register_gauge(&self, gauge: &'static Gauge) {
-		self.gauges.write().unwrap().push(gauge);
+		self.gauges.lock().push(gauge);
 	}
 
 	pub fn register_histogram(&self, histogram: &'static Histogram) {
-		self.histograms.write().unwrap().push(histogram);
+		self.histograms.lock().push(histogram);
 	}
 
 	#[must_use]
 	pub fn snapshot(&self) -> Vec<MetricSnapshot> {
-		let counters = self.counters.read().unwrap();
-		let gauges = self.gauges.read().unwrap();
-		let histograms = self.histograms.read().unwrap();
+		let counters = self.counters.lock();
+		let gauges = self.gauges.lock();
+		let histograms = self.histograms.lock();
 		let mut out = Vec::with_capacity(counters.len() + gauges.len() + histograms.len());
 
 		for c in counters.iter() {
@@ -104,5 +105,5 @@ impl MetricRegistry {
 	}
 }
 
-/// Global system metric registry singleton.
-pub static SYSTEM_REGISTRY: LazyLock<SystemMetricRegistry> = LazyLock::new(SystemMetricRegistry::new);
+/// Global static-metric registry singleton.
+pub static STATIC_REGISTRY: LazyLock<StaticMetricRegistry> = LazyLock::new(StaticMetricRegistry::new);
