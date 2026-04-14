@@ -14,7 +14,7 @@ use tokio::runtime::Runtime;
 #[cfg(not(reifydb_single_threaded))]
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 	server::memory()
-		.with_runtime_config(SharedRuntimeConfig::default().deterministic_testing(0))
+		.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
 		.with_flow(|f| f)
 		.with_grpc(|grpc| grpc.admin_bind_addr("[::1]:0"))
 		.with_http(|http| http.admin_bind_addr("::1:0"))
@@ -99,7 +99,7 @@ pub struct DstTestContext {
 impl DstTestContext {
 	pub fn new() -> Self {
 		let db = embedded::memory()
-			.with_runtime_config(SharedRuntimeConfig::default().deterministic_testing(0))
+			.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
 			.build()
 			.unwrap();
 

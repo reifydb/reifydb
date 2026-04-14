@@ -19,7 +19,7 @@ pub struct GrpcRunner {
 impl GrpcRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
 		let instance = server::memory()
-			.with_runtime_config(SharedRuntimeConfig::default().deterministic_testing(0))
+			.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
 			.with_grpc(|c| c.bind_addr("::1:0").admin_bind_addr("::1:0"))
 			.build()
 			.unwrap();

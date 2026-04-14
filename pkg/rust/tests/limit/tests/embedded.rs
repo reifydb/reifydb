@@ -16,7 +16,7 @@ impl Runner {
 	pub fn new() -> Self {
 		Self {
 			instance: memory()
-				.with_runtime_config(SharedRuntimeConfig::default().deterministic_testing(0))
+				.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
 				.build()
 				.unwrap(),
 		}

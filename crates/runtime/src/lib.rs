@@ -109,7 +109,7 @@ impl SharedRuntimeConfig {
 
 	/// Configure for deterministic testing with the given seed.
 	/// Sets a mock clock starting at `seed` milliseconds and a seeded RNG.
-	pub fn deterministic_testing(mut self, seed: u64) -> Self {
+	pub fn seeded(mut self, seed: u64) -> Self {
 		self.clock = Clock::Mock(MockClock::from_millis(seed));
 		self.rng = context::rng::Rng::seeded(seed);
 		self

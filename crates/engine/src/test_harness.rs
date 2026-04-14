@@ -180,11 +180,7 @@ impl TestEngineBuilder {
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default()
-				.async_threads(2)
-				.system_threads(2)
-				.query_threads(2)
-				.deterministic_testing(1000),
+			SharedRuntimeConfig::default().async_threads(2).system_threads(2).query_threads(2).seeded(1000),
 		);
 		let materialized_catalog = MaterializedCatalog::new();
 		let multi = MultiTransaction::new(
