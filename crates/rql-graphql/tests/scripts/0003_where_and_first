@@ -1,0 +1,14 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+query 'CALL graphql::explain("query { transactions(where: { blockNumber_gt: 100 }, first: 5) { hash from } }")'
+---
+> +-------+----------+---------------------+
+> |  idx  |   kind   |       detail        |
+> +-------+----------+---------------------+
+> |   0   |   From   |    transactions     |
+> |   1   |  Filter  |  blockNumber > 100  |
+> |   2   |   Take   |          5          |
+> |   3   |   Map    |     hash, from      |
+> +-------+----------+---------------------+
+>

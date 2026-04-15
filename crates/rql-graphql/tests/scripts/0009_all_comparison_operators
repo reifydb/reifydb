@@ -1,0 +1,18 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Scenario: All comparison operators
+# Why: Validates that _gt, _gte, _lt, and _lte suffixes are correctly mapped to their respective RQL infix operators.
+query 'CALL graphql::explain("query { transactions(where: { block_gt: 10, block_gte: 11, index_lt: 5, index_lte: 4 }) { hash } }")'
+---
+> +-------+----------+----------------+
+> |  idx  |   kind   |     detail     |
+> +-------+----------+----------------+
+> |   0   |   From   |  transactions  |
+> |   1   |  Filter  |   block > 10   |
+> |   2   |  Filter  |  block >= 11   |
+> |   3   |  Filter  |   index < 5    |
+> |   4   |  Filter  |   index <= 4   |
+> |   5   |   Map    |      hash      |
+> +-------+----------+----------------+
+>

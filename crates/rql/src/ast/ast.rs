@@ -99,6 +99,7 @@ pub enum Ast<'bump> {
 	Update(AstUpdate<'bump>),
 	Join(AstJoin<'bump>),
 	Take(AstTake<'bump>),
+	Skip(AstSkip<'bump>),
 	List(AstList<'bump>),
 	Literal(AstLiteral<'bump>),
 	#[default]
@@ -173,6 +174,7 @@ impl<'bump> Ast<'bump> {
 			Ast::Insert(node) => &node.token,
 			Ast::Update(node) => &node.token,
 			Ast::Take(node) => &node.token,
+			Ast::Skip(node) => &node.token,
 			Ast::List(node) => &node.token,
 			Ast::Literal(node) => match node {
 				AstLiteral::Boolean(node) => &node.0,
@@ -304,6 +306,7 @@ impl<'bump> Ast<'bump> {
 	ast_accessor!(Update, AstUpdate<'bump>, is_update, as_update, "update");
 	ast_accessor!(Join, AstJoin<'bump>, is_join, as_join, "join");
 	ast_accessor!(Take, AstTake<'bump>, is_take, as_take, "take");
+	ast_accessor!(Skip, AstSkip<'bump>, is_skip, as_skip, "skip");
 	ast_accessor!(List, AstList<'bump>, is_list, as_list, "list");
 	ast_accessor!(Literal, AstLiteral<'bump>, is_literal, as_literal, "literal");
 	ast_accessor!(Sort, AstSort<'bump>, is_sort, as_sort, "sort");
@@ -1144,6 +1147,12 @@ pub enum AstTakeValue<'bump> {
 pub struct AstTake<'bump> {
 	pub token: Token<'bump>,
 	pub take: AstTakeValue<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstSkip<'bump> {
+	pub token: Token<'bump>,
+	pub skip: AstTakeValue<'bump>,
 }
 
 #[derive(Debug)]

@@ -1,0 +1,7 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Scenario: Basic field selection
+# Why: Ensures that simple GraphQL queries correctly map to RQL From and Map nodes.
+query 'CALL graphql::explain("query { transactions { hash index } }")'
+---

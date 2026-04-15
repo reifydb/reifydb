@@ -1,0 +1,18 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Scenario: Complex query with filters, pagination, and nesting
+# Why: Validates the combination of filtering, pagination (skip/first), and one level of field nesting in a single operation.
+query 'CALL graphql::explain("query { transactions(where: { blockNumber_gt: 100 }, skip: 5, first: 10) { hash from { address } } }")'
+---
+> +-------+----------+----------------------+
+> |  idx  |   kind   |        detail        |
+> +-------+----------+----------------------+
+> |   0   |   From   |     transactions     |
+> |   1   |   Join   |     natural from     |
+> |   2   |  Filter  |  blockNumber > 100   |
+> |   3   |   Skip   |          5           |
+> |   4   |   Take   |          10          |
+> |   5   |   Map    |  hash, from_address  |
+> +-------+----------+----------------------+
+>

@@ -1,0 +1,14 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Scenario: Field aliasing
+# Why: Tests that the GraphQL alias syntax (alias: name) correctly maps to RQL aliases.
+query 'CALL graphql::explain("query { txs: transactions { tx_hash: hash } }")'
+---
+> +-------+--------+-----------------------+
+> |  idx  |  kind  |        detail         |
+> +-------+--------+-----------------------+
+> |   0   |  From  |  transactions as txs  |
+> |   1   |  Map   |    hash as tx_hash    |
+> +-------+--------+-----------------------+
+>

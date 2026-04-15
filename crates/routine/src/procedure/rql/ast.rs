@@ -321,6 +321,7 @@ fn ast_kind(ast: &Ast<'_>) -> &'static str {
 		Ast::Extend(_) => "Extend",
 		Ast::Patch(_) => "Patch",
 		Ast::Take(_) => "Take",
+		Ast::Skip(_) => "Skip",
 		Ast::Tuple(_) => "Tuple",
 		Ast::While(_) => "While",
 		Ast::Wildcard(_) => "Wildcard",

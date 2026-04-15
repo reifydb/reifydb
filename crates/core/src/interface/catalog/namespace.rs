@@ -14,6 +14,7 @@ impl NamespaceId {
 	pub const SYSTEM_PROCEDURES: NamespaceId = NamespaceId(7);
 	pub const SYSTEM_BINDINGS: NamespaceId = NamespaceId(8);
 	pub const RQL: NamespaceId = NamespaceId(9);
+	pub const GRAPHQL: NamespaceId = NamespaceId(10);
 }
 
 #[derive(Debug, Clone, PartialEq)]

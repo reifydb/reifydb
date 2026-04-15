@@ -14,6 +14,7 @@ pub mod subscription;
 pub mod testing;
 
 pub mod clock;
+pub mod graphql;
 pub mod rql;
 pub mod set;
 
@@ -31,6 +32,7 @@ pub fn default_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfi
 		.register_builtin_procedure(Arc::new(rql::tokenize::RqlTokenize::new()))
 		.register_builtin_procedure(Arc::new(rql::ast::RqlAst::new()))
 		.register_builtin_procedure(Arc::new(rql::logical::RqlLogical::new()))
-		.register_builtin_procedure(Arc::new(rql::explain::RqlExplain::new()));
+		.register_builtin_procedure(Arc::new(rql::explain::RqlExplain::new()))
+		.register_builtin_procedure(Arc::new(graphql::explain::GraphqlExplain::new()));
 	testing::register_testing_native_procedures(builder)
 }

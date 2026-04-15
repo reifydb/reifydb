@@ -58,6 +58,7 @@ mod tag {
 	pub const MAP: u8 = 0x31;
 	pub const SORT: u8 = 0x32;
 	pub const TAKE: u8 = 0x33;
+	pub const SKIP: u8 = 0xBF;
 	pub const DISTINCT: u8 = 0x34;
 	pub const FROM_SOURCE: u8 = 0x35;
 	pub const FROM_VARIABLE: u8 = 0x36;
@@ -151,6 +152,10 @@ mod tag {
 
 	pub const TAKE_LITERAL: u8 = 0xD0;
 	pub const TAKE_VARIABLE: u8 = 0xD1;
+
+	// Skip value kinds
+	pub const SKIP_LITERAL: u8 = 0xD2;
+	pub const SKIP_VARIABLE: u8 = 0xD3;
 }
 
 pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
@@ -228,6 +233,16 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 				AstTakeValue::Literal(_) => buf.write_u8(tag::TAKE_LITERAL),
 				AstTakeValue::Variable(t) => {
 					buf.write_u8(tag::TAKE_VARIABLE);
+					buf.write_str(t.value());
+				}
+			}
+		}
+		Ast::Skip(node) => {
+			buf.write_u8(tag::SKIP);
+			match &node.skip {
+				AstTakeValue::Literal(_) => buf.write_u8(tag::SKIP_LITERAL),
+				AstTakeValue::Variable(t) => {
+					buf.write_u8(tag::SKIP_VARIABLE);
 					buf.write_str(t.value());
 				}
 			}

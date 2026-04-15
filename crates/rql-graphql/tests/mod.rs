@@ -1,0 +1,60 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
+use std::{error::Error, fmt::Write, path::Path, sync::Arc};
+
+use reifydb::{Database, Params, SharedRuntimeConfig, embedded as db_embedded};
+use reifydb_testing::{testscript, testscript::command::Command};
+use test_each_file::test_each_path;
+use tokio::runtime::Runtime;
+
+pub struct Runner {
+	instance: Database,
+}
+
+impl Runner {
+	pub fn new() -> Self {
+		Self {
+			instance: db_embedded::memory()
+				.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
+				.build()
+				.unwrap(),
+		}
+	}
+}
+
+impl testscript::runner::Runner for Runner {
+	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
+		let mut output = String::new();
+		match command.name.as_str() {
+			"query" => {
+				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+				for frame in self.instance.query_as_root(rql.as_str(), Params::None)? {
+					writeln!(output, "{}", frame).unwrap();
+				}
+			}
+			name => {
+				return Err(format!("invalid command {name}").into());
+			}
+		}
+		Ok(output)
+	}
+
+	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
+		self.instance.start()?;
+		Ok(())
+	}
+
+	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
+		self.instance.stop()?;
+		Ok(())
+	}
+}
+
+test_each_path! { in "crates/rql-graphql/tests/scripts" as scripts => test_script }
+
+fn test_script(path: &Path) {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	testscript::runner::run_path(&mut Runner::new(), path).expect("test failed")
+}

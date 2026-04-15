@@ -1,0 +1,15 @@
+fix # Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Scenario: Deep nesting (multi-level joins)
+# Why: Ensures the compiler correctly handles nested fields that require joins and flattens them into the output map.
+query 'CALL graphql::explain("query { transactions { hash from { address owner { name } } } }")'
+---
+> +-------+--------+---------------------------------------+
+> |  idx  |  kind  |                detail                 |
+> +-------+--------+---------------------------------------+
+> |   0   |  From  |             transactions              |
+> |   1   |  Join  |             natural from              |
+> |   2   |  Map   |  hash, from_address, from_owner_name  |
+> +-------+--------+---------------------------------------+
+>

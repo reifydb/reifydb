@@ -1,0 +1,14 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+query 'CALL graphql::explain("query { transactions(skip: 10) { hash from { address } } }")'
+---
+> +-------+--------+----------------------+
+> |  idx  |  kind  |        detail        |
+> +-------+--------+----------------------+
+> |   0   |  From  |     transactions     |
+> |   1   |  Join  |     natural from     |
+> |   2   |  Skip  |          10          |
+> |   3   |  Map   |  hash, from_address  |
+> +-------+--------+----------------------+
+>

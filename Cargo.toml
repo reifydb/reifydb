@@ -21,6 +21,7 @@ members = [
     "crates/runtime",
     "crates/sdk",
     "crates/rql",
+    "crates/rql-graphql",
     "crates/sql",
     "crates/sqlite",
     "crates/store-multi",
@@ -86,6 +87,7 @@ default-members = [
     "crates/runtime",
     "crates/sdk",
     "crates/rql",
+    "crates/rql-graphql",
     "crates/sql",
     "crates/sqlite",
     "crates/store-multi",
@@ -189,6 +191,7 @@ reifydb-abi = { version = "0.5.6", path = "crates/abi" }
 reifydb-runtime = { version = "0.5.6", path = "crates/runtime" }
 reifydb-sdk = { version = "0.5.6", path = "crates/sdk" }
 reifydb-rql = { version = "0.5.6", path = "crates/rql" }
+reifydb-rql-graphql = { version = "0.5.6", path = "crates/rql-graphql" }
 reifydb-sql = { version = "0.5.6", path = "crates/sql" }
 reifydb-sqlite = { version = "0.5.6", path = "crates/sqlite" }
 reifydb-store-multi = { version = "0.5.6", path = "crates/store-multi" }

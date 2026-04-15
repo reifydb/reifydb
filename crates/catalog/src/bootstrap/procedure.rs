@@ -165,6 +165,15 @@ pub fn bootstrap_system_procedures(
 		param_type: TypeConstraint::unconstrained(Type::Utf8),
 	};
 
+	let graphql_namespace = ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::GRAPHQL,
+		"graphql",
+		"graphql",
+		NamespaceId::ROOT,
+	)?;
+
 	let descriptors = vec![
 		EphemeralProcedureDescriptor::Native {
 			namespace: ensure_namespace(
@@ -216,6 +225,16 @@ pub fn bootstrap_system_procedures(
 			params: vec![rql_query_param()],
 			return_type: None,
 			native_name: "rql::explain".to_string(),
+		},
+		EphemeralProcedureDescriptor::Native {
+			namespace: graphql_namespace,
+			name: "explain".to_string(),
+			params: vec![ProcedureParam {
+				name: "query".to_string(),
+				param_type: TypeConstraint::unconstrained(Type::Utf8),
+			}],
+			return_type: None,
+			native_name: "graphql::explain".to_string(),
 		},
 	];
 
