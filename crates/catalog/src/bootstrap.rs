@@ -87,24 +87,14 @@ pub fn bootstrap_system_procedures(
 	// Ensure the system::config sub-namespace exists (persisted to storage).
 	// On first boot it won't exist; on subsequent boots it's already loaded into
 	// MaterializedCatalog by load_namespaces.
-	let ns_id = match catalog_api.find_namespace_by_path(&mut Transaction::Admin(&mut admin), "system::config")? {
-		Some(ns) => ns.id(),
-		None => {
-			let ns = catalog_api.create_namespace_with_id(
-				&mut admin,
-				NamespaceId::SYSTEM_CONFIG,
-				NamespaceToCreate {
-					namespace_fragment: None,
-					name: "system::config".to_string(),
-					local_name: "config".to_string(),
-					parent_id: NamespaceId::SYSTEM,
-					token: None,
-					grpc: None,
-				},
-			)?;
-			ns.id()
-		}
-	};
+	let ns_id = ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_CONFIG,
+		"system::config",
+		"config",
+		NamespaceId::SYSTEM,
+	)?;
 
 	// Procedures are not persisted to storage, so create the procedure on every startup.
 	// The procedure data lives only in MaterializedCatalog for this session.
@@ -200,26 +190,30 @@ pub fn bootstrap_metric_ringbuffers(
 		Clock::Real,
 	)?;
 
-	// Find or create the system::metrics namespace
-	let ns_id = match catalog_api.find_namespace_by_path(&mut Transaction::Admin(&mut admin), "system::metrics")? {
-		Some(ns) => ns.id(),
-		None => {
-			let ns = catalog_api.create_namespace_with_id(
-				&mut admin,
-				NamespaceId::SYSTEM_METRICS,
-				NamespaceToCreate {
-					namespace_fragment: None,
-					name: "system::metrics".to_string(),
-					local_name: "metrics".to_string(),
-					parent_id: NamespaceId::SYSTEM,
-					token: None,
-					grpc: None,
-				},
-			)?;
-			info!("Created system::metrics namespace");
-			ns.id()
-		}
-	};
+	let ns_id = ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_METRICS,
+		"system::metrics",
+		"metrics",
+		NamespaceId::SYSTEM,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_METRICS_STORAGE,
+		"system::metrics::storage",
+		"storage",
+		NamespaceId::SYSTEM_METRICS,
+	)?;
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_METRICS_CDC,
+		"system::metrics::cdc",
+		"cdc",
+		NamespaceId::SYSTEM_METRICS,
+	)?;
 
 	// Create request_history ring buffer if it doesn't exist
 	if catalog_api.find_ringbuffer_by_name(&mut Transaction::Admin(&mut admin), ns_id, "request_history")?.is_none()
@@ -268,6 +262,36 @@ pub fn bootstrap_metric_ringbuffers(
 	admin.commit()?;
 
 	Ok(())
+}
+
+/// Find a namespace by its full `::`-separated path, or create it with the given id
+/// and parent if it doesn't exist. Returns the resolved namespace id.
+fn ensure_namespace(
+	catalog_api: &Catalog,
+	admin: &mut AdminTransaction,
+	id: NamespaceId,
+	path: &str,
+	local_name: &str,
+	parent_id: NamespaceId,
+) -> Result<NamespaceId> {
+	if let Some(ns) = catalog_api.find_namespace_by_path(&mut Transaction::Admin(admin), path)? {
+		return Ok(ns.id());
+	}
+
+	let ns = catalog_api.create_namespace_with_id(
+		admin,
+		id,
+		NamespaceToCreate {
+			namespace_fragment: None,
+			name: path.to_string(),
+			local_name: local_name.to_string(),
+			parent_id,
+			token: None,
+			grpc: None,
+		},
+	)?;
+	info!("Created {} namespace", path);
+	Ok(ns.id())
 }
 
 const REQUEST_HISTORY_CAPACITY: u64 = 10_000;

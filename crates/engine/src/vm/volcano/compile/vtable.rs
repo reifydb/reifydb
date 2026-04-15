@@ -3,32 +3,59 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::vtable::{
-	VTableContext,
-	system::{
-		cdc_consumers::SystemCdcConsumers, column_properties::SystemColumnProperties,
-		columns::SystemColumnsTable, configs::SystemConfigs, dictionaries::SystemDictionaries,
-		dictionary_storage_stats::SystemDictionaryStorageStats, enum_variants::SystemEnumVariants,
-		enums::SystemEnums, event_variants::SystemEventVariants, events::SystemEvents,
-		flow_edges::SystemFlowEdges, flow_lags::SystemFlowLags,
-		flow_node_storage_stats::SystemFlowNodeStorageStats, flow_node_types::SystemFlowNodeTypes,
-		flow_nodes::SystemFlowNodes, flow_operator_inputs::SystemFlowOperatorInputs,
-		flow_operator_outputs::SystemFlowOperatorOutputs, flow_operators::SystemFlowOperators,
-		flow_storage_stats::SystemFlowStorageStats, flows::SystemFlows, granted_roles::SystemGrantedRoles,
-		handlers::SystemHandlers, identities::SystemIdentities, index_storage_stats::SystemIndexStorageStats,
-		migrations::SystemMigrations, namespaces::SystemNamespaces,
-		operator_retention_strategies::SystemOperatorRetentionStrategies, policies::SystemPolicies,
-		policy_operations::SystemPolicyOperations, primary_key_columns::SystemPrimaryKeyColumns,
-		primary_keys::SystemPrimaryKeys, procedures::SystemProcedures,
-		ringbuffer_storage_stats::SystemRingBufferStorageStats, ringbuffers::SystemRingBuffers,
-		roles::SystemRoles, sequences::SystemSequences, series::SystemSeries, shape_fields::SystemShapeFields,
-		shape_retention_strategies::SystemShapeRetentionStrategies, shapes::SystemShapes,
-		subscriptions::SystemSubscriptions, table_storage_stats::SystemTableStorageStats, tables::SystemTables,
-		tables_virtual::SystemTablesVirtual, tag_variants::SystemTagVariants, tags::SystemTags,
-		types::SystemTypes, versions::SystemVersions, view_storage_stats::SystemViewStorageStats,
-		views::SystemViews, virtual_table_columns::SystemVirtualTableColumns,
+use reifydb_catalog::{
+	system::SystemCatalog,
+	vtable::{
+		VTableContext,
+		system::{
+			cdc_consumers::SystemCdcConsumers,
+			column_properties::SystemColumnProperties,
+			columns::SystemColumnsTable,
+			configs::SystemConfigs,
+			dictionaries::SystemDictionaries,
+			enum_variants::SystemEnumVariants,
+			enums::SystemEnums,
+			event_variants::SystemEventVariants,
+			events::SystemEvents,
+			flow_edges::SystemFlowEdges,
+			flow_lags::SystemFlowLags,
+			flow_node_types::SystemFlowNodeTypes,
+			flow_nodes::SystemFlowNodes,
+			flow_operator_inputs::SystemFlowOperatorInputs,
+			flow_operator_outputs::SystemFlowOperatorOutputs,
+			flow_operators::SystemFlowOperators,
+			flows::SystemFlows,
+			granted_roles::SystemGrantedRoles,
+			handlers::SystemHandlers,
+			identities::SystemIdentities,
+			metrics::{StatsPrimitive, cdc::SystemMetricsCdc, storage::SystemMetricsStorage},
+			migrations::SystemMigrations,
+			namespaces::SystemNamespaces,
+			operator_retention_strategies::SystemOperatorRetentionStrategies,
+			policies::SystemPolicies,
+			policy_operations::SystemPolicyOperations,
+			primary_key_columns::SystemPrimaryKeyColumns,
+			primary_keys::SystemPrimaryKeys,
+			procedures::SystemProcedures,
+			ringbuffers::SystemRingBuffers,
+			roles::SystemRoles,
+			sequences::SystemSequences,
+			series::SystemSeries,
+			shape_fields::SystemShapeFields,
+			shape_retention_strategies::SystemShapeRetentionStrategies,
+			shapes::SystemShapes,
+			subscriptions::SystemSubscriptions,
+			tables::SystemTables,
+			tables_virtual::SystemTablesVirtual,
+			tag_variants::SystemTagVariants,
+			tags::SystemTags,
+			types::SystemTypes,
+			versions::SystemVersions,
+			views::SystemViews,
+			virtual_table_columns::SystemVirtualTableColumns,
+		},
+		tables::VTables,
 	},
-	tables::VTables,
 };
 use reifydb_core::interface::catalog::id::NamespaceId;
 use reifydb_rql::nodes::TableVirtualScanNode;
@@ -50,6 +77,10 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 	} else if namespace.id() == NamespaceId::SYSTEM {
 		// Built-in system virtual tables
 		compile_system_vtable(&table.name, &context)
+	} else if namespace.id() == NamespaceId::SYSTEM_METRICS_STORAGE {
+		compile_metrics_storage_vtable(&table.name, &context)
+	} else if namespace.id() == NamespaceId::SYSTEM_METRICS_CDC {
+		compile_metrics_cdc_vtable(&table.name, &context)
 	} else {
 		panic!("Unknown virtual table type: {}.{}", namespace.name(), table.name)
 	};
@@ -102,27 +133,6 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 			context.services.flow_operator_store.clone(),
 		)),
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
-		"table_storage_stats" => {
-			VTables::TableStorageStats(SystemTableStorageStats::new(context.services.stats_reader.clone()))
-		}
-		"view_storage_stats" => {
-			VTables::ViewStorageStats(SystemViewStorageStats::new(context.services.stats_reader.clone()))
-		}
-		"flow_storage_stats" => {
-			VTables::FlowStorageStats(SystemFlowStorageStats::new(context.services.stats_reader.clone()))
-		}
-		"flow_node_storage_stats" => VTables::FlowNodeStorageStats(SystemFlowNodeStorageStats::new(
-			context.services.stats_reader.clone(),
-		)),
-		"index_storage_stats" => {
-			VTables::IndexStorageStats(SystemIndexStorageStats::new(context.services.stats_reader.clone()))
-		}
-		"ringbuffer_storage_stats" => VTables::RingBufferStorageStats(SystemRingBufferStorageStats::new(
-			context.services.stats_reader.clone(),
-		)),
-		"dictionary_storage_stats" => VTables::DictionaryStorageStats(SystemDictionaryStorageStats::new(
-			context.services.stats_reader.clone(),
-		)),
 		"shapes" => VTables::Shapes(SystemShapes::new(context.services.catalog.clone())),
 		"shape_fields" => VTables::ShapeFields(SystemShapeFields::new(context.services.catalog.clone())),
 		"enums" => VTables::Enums(SystemEnums::new()),
@@ -147,4 +157,46 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		}
 		_ => panic!("Unknown virtual table type: {}", name),
 	}
+}
+
+fn compile_metrics_storage_vtable(name: &str, context: &QueryContext) -> VTables {
+	let reader = context.services.stats_reader.clone();
+	let (vtable, primitive) = match name {
+		"table" => (SystemCatalog::get_system_metrics_storage_table_table(), StatsPrimitive::Table),
+		"view" => (SystemCatalog::get_system_metrics_storage_view_table(), StatsPrimitive::View),
+		"table_virtual" => {
+			(SystemCatalog::get_system_metrics_storage_table_virtual_table(), StatsPrimitive::TableVirtual)
+		}
+		"ringbuffer" => {
+			(SystemCatalog::get_system_metrics_storage_ringbuffer_table(), StatsPrimitive::RingBuffer)
+		}
+		"dictionary" => {
+			(SystemCatalog::get_system_metrics_storage_dictionary_table(), StatsPrimitive::Dictionary)
+		}
+		"series" => (SystemCatalog::get_system_metrics_storage_series_table(), StatsPrimitive::Series),
+		"flow" => (SystemCatalog::get_system_metrics_storage_flow_table(), StatsPrimitive::Flow),
+		"flow_node" => (SystemCatalog::get_system_metrics_storage_flow_node_table(), StatsPrimitive::FlowNode),
+		"system" => (SystemCatalog::get_system_metrics_storage_system_table(), StatsPrimitive::System),
+		_ => panic!("Unknown metrics storage virtual table: {}", name),
+	};
+	VTables::MetricsStorage(SystemMetricsStorage::new(vtable, primitive, reader))
+}
+
+fn compile_metrics_cdc_vtable(name: &str, context: &QueryContext) -> VTables {
+	let reader = context.services.stats_reader.clone();
+	let (vtable, primitive) = match name {
+		"table" => (SystemCatalog::get_system_metrics_cdc_table_table(), StatsPrimitive::Table),
+		"view" => (SystemCatalog::get_system_metrics_cdc_view_table(), StatsPrimitive::View),
+		"table_virtual" => {
+			(SystemCatalog::get_system_metrics_cdc_table_virtual_table(), StatsPrimitive::TableVirtual)
+		}
+		"ringbuffer" => (SystemCatalog::get_system_metrics_cdc_ringbuffer_table(), StatsPrimitive::RingBuffer),
+		"dictionary" => (SystemCatalog::get_system_metrics_cdc_dictionary_table(), StatsPrimitive::Dictionary),
+		"series" => (SystemCatalog::get_system_metrics_cdc_series_table(), StatsPrimitive::Series),
+		"flow" => (SystemCatalog::get_system_metrics_cdc_flow_table(), StatsPrimitive::Flow),
+		"flow_node" => (SystemCatalog::get_system_metrics_cdc_flow_node_table(), StatsPrimitive::FlowNode),
+		"system" => (SystemCatalog::get_system_metrics_cdc_system_table(), StatsPrimitive::System),
+		_ => panic!("Unknown metrics cdc virtual table: {}", name),
+	};
+	VTables::MetricsCdc(SystemMetricsCdc::new(vtable, primitive, reader))
 }

@@ -11,6 +11,8 @@ impl NamespaceId {
 	pub const DEFAULT: NamespaceId = NamespaceId(2);
 	pub const SYSTEM_CONFIG: NamespaceId = NamespaceId(3);
 	pub const SYSTEM_METRICS: NamespaceId = NamespaceId(4);
+	pub const SYSTEM_METRICS_STORAGE: NamespaceId = NamespaceId(5);
+	pub const SYSTEM_METRICS_CDC: NamespaceId = NamespaceId(6);
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{catalog::vtable::VTable, version::SystemVersion};
+use reifydb_core::interface::{
+	catalog::vtable::{VTable, VTableId},
+	version::SystemVersion,
+};
 
 pub mod authentications;
 pub mod cdc_consumers;
@@ -26,6 +29,8 @@ pub mod flows;
 pub mod granted_roles;
 pub mod handlers;
 pub mod identities;
+pub mod metrics_cdc;
+pub mod metrics_storage;
 pub mod migrations;
 pub mod namespaces;
 pub mod operator_retention_strategies;
@@ -41,13 +46,6 @@ pub mod series;
 pub mod shape_fields;
 pub mod shape_retention_strategies;
 pub mod shapes;
-pub mod storage_stats_dictionary;
-pub mod storage_stats_flow;
-pub mod storage_stats_flow_node;
-pub mod storage_stats_index;
-pub mod storage_stats_ringbuffer;
-pub mod storage_stats_table;
-pub mod storage_stats_view;
 pub mod subscriptions;
 pub mod tables;
 pub mod tables_virtual;
@@ -79,6 +77,8 @@ use flows::flows;
 use granted_roles::granted_roles;
 use handlers::handlers;
 use identities::identities;
+use metrics_cdc::metrics_cdc_vtable;
+use metrics_storage::metrics_storage_vtable;
 use migrations::migrations;
 use namespaces::namespaces;
 use operator_retention_strategies::operator_retention_strategies;
@@ -93,13 +93,6 @@ use series::series;
 use shape_fields::shape_fields;
 use shape_retention_strategies::shape_retention_strategies;
 use shapes::shapes;
-use storage_stats_dictionary::dictionary_storage_stats;
-use storage_stats_flow::flow_storage_stats;
-use storage_stats_flow_node::flow_node_storage_stats;
-use storage_stats_index::index_storage_stats;
-use storage_stats_ringbuffer::ringbuffer_storage_stats;
-use storage_stats_table::table_storage_stats;
-use storage_stats_view::view_storage_stats;
 use subscriptions::subscriptions;
 use tables::tables;
 use tables_virtual::virtual_tables;
@@ -111,6 +104,43 @@ use views::views;
 use virtual_table_columns::virtual_table_columns;
 
 use crate::system::ringbuffers::ringbuffers;
+
+/// Nine slots, one per primitive variant shared between storage and cdc
+/// (table, view, table_virtual, ringbuffer, dictionary, series, flow,
+/// flow_node, system).
+const METRIC_PRIMITIVE_SLOTS: usize = 9;
+
+static METRICS_STORAGE_CACHE: [OnceLock<Arc<VTable>>; METRIC_PRIMITIVE_SLOTS] = [
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+];
+
+static METRICS_CDC_CACHE: [OnceLock<Arc<VTable>>; METRIC_PRIMITIVE_SLOTS] = [
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+];
+
+fn metrics_storage_table_cached(id: VTableId, local_name: &str, slot: usize) -> Arc<VTable> {
+	METRICS_STORAGE_CACHE[slot].get_or_init(|| metrics_storage_vtable(id, local_name)).clone()
+}
+
+fn metrics_cdc_table_cached(id: VTableId, local_name: &str, slot: usize) -> Arc<VTable> {
+	METRICS_CDC_CACHE[slot].get_or_init(|| metrics_cdc_vtable(id, local_name)).clone()
+}
 
 pub mod ids {
 	pub mod columns {
@@ -705,13 +735,6 @@ pub mod ids {
 		pub const FLOW_OPERATOR_INPUTS: VTableId = VTableId(21);
 		pub const FLOW_OPERATOR_OUTPUTS: VTableId = VTableId(22);
 		pub const RINGBUFFERS: VTableId = VTableId(23);
-		pub const TABLE_STORAGE_STATS: VTableId = VTableId(24);
-		pub const VIEW_STORAGE_STATS: VTableId = VTableId(25);
-		pub const FLOW_STORAGE_STATS: VTableId = VTableId(26);
-		pub const FLOW_NODE_STORAGE_STATS: VTableId = VTableId(27);
-		pub const INDEX_STORAGE_STATS: VTableId = VTableId(28);
-		pub const RINGBUFFER_STORAGE_STATS: VTableId = VTableId(29);
-		pub const DICTIONARY_STORAGE_STATS: VTableId = VTableId(30);
 		pub const FLOW_LAGS: VTableId = VTableId(31);
 		pub const SHAPES: VTableId = VTableId(32);
 		pub const SHAPE_FIELDS: VTableId = VTableId(33);
@@ -735,7 +758,29 @@ pub mod ids {
 		pub const TAG_VARIANTS: VTableId = VTableId(51);
 		pub const SUBSCRIPTIONS: VTableId = VTableId(52);
 
-		pub const ALL: [VTableId; 52] = [
+		// `system::metrics::storage::*` virtual tables.
+		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
+		pub const METRICS_STORAGE_VIEW: VTableId = VTableId(1025);
+		pub const METRICS_STORAGE_TABLE_VIRTUAL: VTableId = VTableId(1026);
+		pub const METRICS_STORAGE_RINGBUFFER: VTableId = VTableId(1027);
+		pub const METRICS_STORAGE_DICTIONARY: VTableId = VTableId(1028);
+		pub const METRICS_STORAGE_SERIES: VTableId = VTableId(1029);
+		pub const METRICS_STORAGE_FLOW: VTableId = VTableId(1030);
+		pub const METRICS_STORAGE_FLOW_NODE: VTableId = VTableId(1031);
+		pub const METRICS_STORAGE_SYSTEM: VTableId = VTableId(1032);
+
+		// `system::metrics::cdc::*` virtual tables.
+		pub const METRICS_CDC_TABLE: VTableId = VTableId(1033);
+		pub const METRICS_CDC_VIEW: VTableId = VTableId(1034);
+		pub const METRICS_CDC_TABLE_VIRTUAL: VTableId = VTableId(1035);
+		pub const METRICS_CDC_RINGBUFFER: VTableId = VTableId(1036);
+		pub const METRICS_CDC_DICTIONARY: VTableId = VTableId(1037);
+		pub const METRICS_CDC_SERIES: VTableId = VTableId(1038);
+		pub const METRICS_CDC_FLOW: VTableId = VTableId(1039);
+		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
+		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
+
+		pub const ALL: [VTableId; 63] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -759,13 +804,6 @@ pub mod ids {
 			FLOW_OPERATOR_INPUTS,
 			FLOW_OPERATOR_OUTPUTS,
 			RINGBUFFERS,
-			TABLE_STORAGE_STATS,
-			VIEW_STORAGE_STATS,
-			FLOW_STORAGE_STATS,
-			FLOW_NODE_STORAGE_STATS,
-			INDEX_STORAGE_STATS,
-			RINGBUFFER_STORAGE_STATS,
-			DICTIONARY_STORAGE_STATS,
 			FLOW_LAGS,
 			SHAPES,
 			SHAPE_FIELDS,
@@ -788,6 +826,24 @@ pub mod ids {
 			EVENT_VARIANTS,
 			TAG_VARIANTS,
 			SUBSCRIPTIONS,
+			METRICS_STORAGE_TABLE,
+			METRICS_STORAGE_VIEW,
+			METRICS_STORAGE_TABLE_VIRTUAL,
+			METRICS_STORAGE_RINGBUFFER,
+			METRICS_STORAGE_DICTIONARY,
+			METRICS_STORAGE_SERIES,
+			METRICS_STORAGE_FLOW,
+			METRICS_STORAGE_FLOW_NODE,
+			METRICS_STORAGE_SYSTEM,
+			METRICS_CDC_TABLE,
+			METRICS_CDC_VIEW,
+			METRICS_CDC_TABLE_VIRTUAL,
+			METRICS_CDC_RINGBUFFER,
+			METRICS_CDC_DICTIONARY,
+			METRICS_CDC_SERIES,
+			METRICS_CDC_FLOW,
+			METRICS_CDC_FLOW_NODE,
+			METRICS_CDC_SYSTEM,
 		];
 	}
 }
@@ -939,39 +995,76 @@ impl SystemCatalog {
 		ringbuffers()
 	}
 
-	/// Get the table_storage_stats virtual table definition
-	pub fn get_system_table_storage_stats_table() -> Arc<VTable> {
-		table_storage_stats()
+	pub fn get_system_metrics_storage_table_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_TABLE, "table", 0)
 	}
 
-	/// Get the view_storage_stats virtual table definition
-	pub fn get_system_view_storage_stats_table() -> Arc<VTable> {
-		view_storage_stats()
+	pub fn get_system_metrics_storage_view_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_VIEW, "view", 1)
 	}
 
-	/// Get the flow_storage_stats virtual table definition
-	pub fn get_system_flow_storage_stats_table() -> Arc<VTable> {
-		flow_storage_stats()
+	pub fn get_system_metrics_storage_table_virtual_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_TABLE_VIRTUAL, "table_virtual", 2)
 	}
 
-	/// Get the flow_node_storage_stats virtual table definition
-	pub fn get_system_flow_node_storage_stats_table() -> Arc<VTable> {
-		flow_node_storage_stats()
+	pub fn get_system_metrics_storage_ringbuffer_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_RINGBUFFER, "ringbuffer", 3)
 	}
 
-	/// Get the index_storage_stats virtual table definition
-	pub fn get_system_index_storage_stats_table() -> Arc<VTable> {
-		index_storage_stats()
+	pub fn get_system_metrics_storage_dictionary_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_DICTIONARY, "dictionary", 4)
 	}
 
-	/// Get the ringbuffer_storage_stats virtual table definition
-	pub fn get_system_ringbuffer_storage_stats_table() -> Arc<VTable> {
-		ringbuffer_storage_stats()
+	pub fn get_system_metrics_storage_series_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_SERIES, "series", 5)
 	}
 
-	/// Get the dictionary_storage_stats virtual table definition
-	pub fn get_system_dictionary_storage_stats_table() -> Arc<VTable> {
-		dictionary_storage_stats()
+	pub fn get_system_metrics_storage_flow_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_FLOW, "flow", 6)
+	}
+
+	pub fn get_system_metrics_storage_flow_node_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_FLOW_NODE, "flow_node", 7)
+	}
+
+	pub fn get_system_metrics_storage_system_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_SYSTEM, "system", 8)
+	}
+
+	pub fn get_system_metrics_cdc_table_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_TABLE, "table", 0)
+	}
+
+	pub fn get_system_metrics_cdc_view_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_VIEW, "view", 1)
+	}
+
+	pub fn get_system_metrics_cdc_table_virtual_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_TABLE_VIRTUAL, "table_virtual", 2)
+	}
+
+	pub fn get_system_metrics_cdc_ringbuffer_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_RINGBUFFER, "ringbuffer", 3)
+	}
+
+	pub fn get_system_metrics_cdc_dictionary_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_DICTIONARY, "dictionary", 4)
+	}
+
+	pub fn get_system_metrics_cdc_series_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_SERIES, "series", 5)
+	}
+
+	pub fn get_system_metrics_cdc_flow_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_FLOW, "flow", 6)
+	}
+
+	pub fn get_system_metrics_cdc_flow_node_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_FLOW_NODE, "flow_node", 7)
+	}
+
+	pub fn get_system_metrics_cdc_system_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_SYSTEM, "system", 8)
 	}
 
 	/// Get the shapes virtual table definition

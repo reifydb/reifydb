@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
+use std::sync::Arc;
+
+use reifydb_core::interface::catalog::{
+	column::{Column, ColumnIndex},
+	id::{ColumnId, NamespaceId},
+	vtable::{VTable, VTableId},
+};
+use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+
+/// Build a `system::metrics::cdc::<name>` virtual table definition.
+///
+/// Schema: (id, namespace_id, key_bytes, value_bytes, total_bytes, count).
+pub fn metrics_cdc_vtable(id: VTableId, local_name: &str) -> Arc<VTable> {
+	Arc::new(VTable {
+		id,
+		namespace: NamespaceId::SYSTEM_METRICS_CDC,
+		name: local_name.to_string(),
+		columns: vec![
+			col(1, 0, "id", Type::Uint8),
+			col(2, 1, "namespace_id", Type::Uint8),
+			col(3, 2, "key_bytes", Type::Uint8),
+			col(4, 3, "value_bytes", Type::Uint8),
+			col(5, 4, "total_bytes", Type::Uint8),
+			col(6, 5, "count", Type::Uint8),
+		],
+	})
+}
+
+fn col(id: u64, index: u8, name: &str, ty: Type) -> Column {
+	Column {
+		id: ColumnId(id),
+		name: name.to_string(),
+		constraint: TypeConstraint::unconstrained(ty),
+		properties: vec![],
+		index: ColumnIndex(index),
+		auto_increment: false,
+		dictionary_id: None,
+	}
+}

@@ -75,7 +75,7 @@ fn test_row_ttl_replication_sync() {
 	replica_txn.commit_at_version().unwrap();
 
 	// 6. Verify replica materialized catalog has the TTL
-	// Namespace ID should be 1025
+	// Namespace ID should be 16385
 	let mut q_txn = replica.begin_admin(IdentityId::system()).unwrap();
 	let table = replica_catalog
 		.find_table_by_name(&mut Transaction::Admin(&mut q_txn), NamespaceId(16385), "users")

@@ -80,12 +80,16 @@ pub fn resolve_unresolved_source(
 		))));
 	}
 
-	// Check if it's a system table (namespace = "system")
-	// TODO: This should use proper system table definitions from the catalog
-	if namespace_str == "system" {
+	// Check if it's a system-managed virtual table namespace (e.g. `system`,
+	// `system::metrics::storage`, `system::metrics::cdc`). The downstream
+	// dispatch in `compile/vtable.rs` matches by namespace id + leaf name.
+	if matches!(
+		ns_def.id(),
+		NamespaceId::SYSTEM | NamespaceId::SYSTEM_METRICS_STORAGE | NamespaceId::SYSTEM_METRICS_CDC
+	) {
 		let def = VTable {
 			id: VTableId(0), // Placeholder ID - compile.rs handles actual lookup
-			namespace: NamespaceId::SYSTEM,
+			namespace: ns_def.id(),
 			name: name_str.to_string(),
 			columns: vec![], // Columns are populated at execution time
 		};
