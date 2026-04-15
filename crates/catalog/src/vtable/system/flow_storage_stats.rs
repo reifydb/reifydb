@@ -10,8 +10,10 @@ use reifydb_core::{
 	},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_metric::MetricId;
-use reifydb_metric_old::metric::{CombinedStats, MetricReader};
+use reifydb_metric::{
+	MetricId,
+	storage::metric::{CombinedStats, MetricReader},
+};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;

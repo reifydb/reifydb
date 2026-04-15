@@ -10,7 +10,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_metric_old::metric::MetricReader;
+use reifydb_metric::storage::metric::MetricReader;
 use reifydb_routine::{
 	function::{default_functions, registry::Functions},
 	procedure::{Procedure, registry::Procedures},

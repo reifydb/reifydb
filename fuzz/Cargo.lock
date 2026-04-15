@@ -690,7 +690,7 @@ dependencies = [
  "once_cell",
  "reifydb-abi",
  "reifydb-core",
- "reifydb-metric-old",
+ "reifydb-metric",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -744,13 +744,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-metric-old"
+name = "reifydb-metric"
 version = "0.4.10"
 dependencies = [
- "crossbeam-channel",
+ "dashmap",
  "reifydb-core",
+ "reifydb-runtime",
  "reifydb-type",
- "tracing",
+ "serde",
 ]
 
 [[package]]

@@ -11,7 +11,7 @@ use reifydb_core::{
 	metric::{ExecutionMetrics, StatementMetric},
 	value::column::columns::Columns,
 };
-use reifydb_metric_old::metric::MetricReader;
+use reifydb_metric::storage::metric::MetricReader;
 use reifydb_policy::inject_read_policies;
 use reifydb_rql::{
 	ast::parse_str,

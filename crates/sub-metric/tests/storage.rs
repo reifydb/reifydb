@@ -18,16 +18,22 @@ use reifydb_core::{
 	},
 	event::{
 		EventBus, EventListener,
-		metric::{CdcEvictedEvent, CdcEviction, CdcWrite, CdcWrittenEvent},
+		metric::{
+			CdcEvictedEvent, CdcEviction, CdcWrite, CdcWrittenEvent, MultiCommittedEvent,
+			RequestExecutedEvent,
+		},
 		store::StatsProcessedEvent,
 	},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, Tier},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
-use reifydb_metric_old::{
-	cdc::{CdcStats, CdcStatsReader},
-	multi::{MultiStorageStats, StorageStatsReader},
-	worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener},
+use reifydb_metric::{
+	accumulator::StatementStatsAccumulator,
+	registry::{MetricRegistry, StaticMetricRegistry},
+	storage::{
+		cdc::{CdcStats, CdcStatsReader},
+		multi::{MultiStorageStats, StorageStatsReader},
+	},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -35,11 +41,16 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
+	MultiStore,
 	config::{HotConfig, MultiStoreConfig},
 	hot::storage::HotStorage,
 	store::StandardMultiStore,
 };
-use reifydb_store_single::store::StandardSingleStore;
+use reifydb_store_single::SingleStore;
+use reifydb_sub_metric::{
+	actor::MetricCollectorActor,
+	listener::{CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener},
+};
 use reifydb_testing::{
 	tempdir::temp_dir,
 	testscript::{
@@ -50,40 +61,22 @@ use reifydb_testing::{
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/metric-old/tests/scripts/integration" as metric_memory => test_memory }
-test_each_path! { in "crates/metric-old/tests/scripts/integration" as metric_sqlite => test_sqlite }
+test_each_path! { in "crates/sub-metric/tests/scripts/storage" as metric_memory => test_memory }
+test_each_path! { in "crates/sub-metric/tests/scripts/storage" as metric_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	let data_storage = HotStorage::memory();
-	let pools = Pools::new(PoolConfig::default());
-	let actor_system = ActorSystem::new(pools, Clock::Real);
-	let event_bus = EventBus::new(&actor_system);
-	let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
-	let stats_waiter = StatsWaiter::new();
-	event_bus.register::<StatsProcessedEvent, _>(stats_waiter.clone());
-	runner::run_path(&mut Runner::new(data_storage, metrics_storage, event_bus, stats_waiter, actor_system), path)
-		.expect("test failed")
+	runner::run_path(&mut Runner::new(data_storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
 		let data_storage = HotStorage::sqlite_in_memory();
-		let pools = Pools::new(PoolConfig::default());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
-		let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
-		let stats_waiter = StatsWaiter::new();
-		event_bus.register::<StatsProcessedEvent, _>(stats_waiter.clone());
-		runner::run_path(
-			&mut Runner::new(data_storage, metrics_storage, event_bus, stats_waiter, actor_system),
-			path,
-		)
+		runner::run_path(&mut Runner::new(data_storage), path)
 	})
 	.expect("test failed")
 }
 
-/// Waiter for stats processing events.
-/// Allows tests to wait until stats have been processed up to a specific version.
 #[derive(Clone)]
 struct StatsWaiter {
 	inner: Arc<StatsWaiterInner>,
@@ -104,7 +97,6 @@ impl StatsWaiter {
 		}
 	}
 
-	/// Wait until stats have been processed up to the given version.
 	fn wait_until(&self, version: CommitVersion, timeout: Duration) -> bool {
 		let guard = self.inner.processed_up_to.lock().unwrap();
 		let result = self.inner.condvar.wait_timeout_while(guard, timeout, |v| *v < version).unwrap();
@@ -122,82 +114,67 @@ impl EventListener<StatsProcessedEvent> for StatsWaiter {
 	}
 }
 
-/// Test runner for metric integration tests.
-///
-/// Coordinates between:
-/// - StandardMultiStore for data operations (set, remove, drop, get, scan)
-/// - MetricsWorker for background stats processing
-/// - StorageStatsReader and CdcStatsReader for querying stats
 pub struct Runner {
-	/// Multi-version store for data operations
-	multi_store: StandardMultiStore,
-	/// Metrics storage backend
-	_metrics_storage: StandardSingleStore,
-	/// Background metrics worker
-	_metrics_worker: MetricsWorker,
-	/// Reader for storage stats
-	storage_reader: StorageStatsReader<StandardSingleStore>,
-	/// Reader for CDC stats
-	cdc_reader: CdcStatsReader<StandardSingleStore>,
-	/// Waiter for async stats processing
+	multi_store: MultiStore,
+	storage_reader: StorageStatsReader<SingleStore>,
+	cdc_reader: CdcStatsReader<SingleStore>,
 	stats_waiter: StatsWaiter,
-	/// Event bus for emitting CDC events
 	event_bus: EventBus,
-	/// Current version integration
 	version: CommitVersion,
 }
 
 impl Runner {
-	fn new(
-		data_storage: HotStorage,
-		metrics_storage: StandardSingleStore,
-		event_bus: EventBus,
-		stats_waiter: StatsWaiter,
-		actor_system: ActorSystem,
-	) -> Self {
-		// Create multi-version store for data operations
-		let multi_store = StandardMultiStore::new(MultiStoreConfig {
-			hot: Some(HotConfig {
-				storage: data_storage,
-			}),
-			warm: None,
-			cold: None,
-			retention: Default::default(),
-			merge_config: Default::default(),
-			event_bus: event_bus.clone(),
-			actor_system,
-			clock: Clock::Real,
-		})
-		.unwrap();
+	fn new(data_storage: HotStorage) -> Self {
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let event_bus = EventBus::new(&actor_system);
 
-		// Create metrics worker (single writer)
-		let metrics_worker = MetricsWorker::new(
-			MetricsWorkerConfig::default(),
-			metrics_storage.clone(),
-			multi_store.clone(),
-			event_bus.clone(),
+		let metrics_storage = SingleStore::testing_memory_with_eventbus(event_bus.clone());
+
+		let multi_store = MultiStore::Standard(
+			StandardMultiStore::new(MultiStoreConfig {
+				hot: Some(HotConfig {
+					storage: data_storage,
+				}),
+				warm: None,
+				cold: None,
+				retention: Default::default(),
+				merge_config: Default::default(),
+				event_bus: event_bus.clone(),
+				actor_system: actor_system.clone(),
+				clock: Clock::Real,
+			})
+			.unwrap(),
 		);
 
-		// Register event listeners to forward events to metrics worker
-		let storage_listener = StorageStatsListener::new(metrics_worker.sender());
-		event_bus.register(storage_listener);
+		let actor = MetricCollectorActor::new(
+			Arc::new(MetricRegistry::new()),
+			Arc::new(StaticMetricRegistry::new()),
+			Arc::new(StatementStatsAccumulator::new()),
+			event_bus.clone(),
+			metrics_storage.clone(),
+			multi_store.clone(),
+		)
+		.with_flush_interval(Duration::from_millis(10));
 
-		let cdc_listener = CdcStatsListener::new(metrics_worker.sender());
-		event_bus.register(cdc_listener);
+		let handle = actor_system.spawn("metric-collector", actor);
+		let actor_ref = handle.actor_ref().clone();
 
-		let cdc_drop_listener = CdcStatsDroppedListener::new(metrics_worker.sender());
-		event_bus.register(cdc_drop_listener);
+		event_bus.register::<MultiCommittedEvent, _>(MultiCommittedListener::new(actor_ref.clone()));
+		event_bus.register::<CdcWrittenEvent, _>(CdcWrittenListener::new(actor_ref.clone()));
+		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref.clone()));
+		event_bus.register::<RequestExecutedEvent, _>(RequestMetricsEventListener::new(actor_ref));
 
-		// Create readers for querying stats
-		let storage_stats_reader = StorageStatsReader::new(metrics_storage.clone());
-		let cdc_stats_reader = CdcStatsReader::new(metrics_storage.clone());
+		let stats_waiter = StatsWaiter::new();
+		event_bus.register::<StatsProcessedEvent, _>(stats_waiter.clone());
+
+		let storage_reader = StorageStatsReader::new(metrics_storage.clone());
+		let cdc_reader = CdcStatsReader::new(metrics_storage);
 
 		Self {
 			multi_store,
-			_metrics_storage: metrics_storage,
-			_metrics_worker: metrics_worker,
-			storage_reader: storage_stats_reader,
-			cdc_reader: cdc_stats_reader,
+			storage_reader,
+			cdc_reader,
 			stats_waiter,
 			event_bus,
 			version: CommitVersion(0),
@@ -209,7 +186,6 @@ impl TestRunner for Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
-			// get KEY [version=VERSION]
 			"get" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
@@ -222,7 +198,6 @@ impl TestRunner for Runner {
 				writeln!(output, "{}", format::raw::Raw::key_maybe_value(&key, value))?;
 			}
 
-			// contains KEY [version=VERSION]
 			"contains" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
@@ -232,7 +207,6 @@ impl TestRunner for Runner {
 				writeln!(output, "{} => {}", format::raw::Raw::key(&key), contains)?;
 			}
 
-			// scan [reverse=BOOL] [version=VERSION]
 			"scan" => {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
@@ -255,7 +229,6 @@ impl TestRunner for Runner {
 				};
 			}
 
-			// set KEY=VALUE [version=VERSION]
 			"set" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
@@ -263,7 +236,6 @@ impl TestRunner for Runner {
 				let row = EncodedRow(decode_binary(&kv.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					let v = CommitVersion(v);
-					// Update self.version to track highest version used
 					if v > self.version {
 						self.version = v;
 					}
@@ -285,8 +257,6 @@ impl TestRunner for Runner {
 				)?
 			}
 
-			// remove KEY [version=VERSION]
-			// remove KEY [version=VERSION]
 			"remove" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
@@ -302,7 +272,6 @@ impl TestRunner for Runner {
 				};
 				args.reject_rest()?;
 
-				// Get the current value to pass to Unset for metrics tracking
 				let prev_version = CommitVersion(version.0.saturating_sub(1));
 				let current_values = self
 					.multi_store
@@ -347,31 +316,26 @@ impl TestRunner for Runner {
 				)?
 			}
 
-			// stats - outputs all integration stats for hot tier
 			"stats" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats".into());
 				}
 
-				// Aggregate all storage stats (Hot tier only)
 				let storage_entries = self.storage_reader.scan_tier(Tier::Hot)?;
 				let mut total_storage = MultiStorageStats::default();
 				for (_, stats) in storage_entries {
 					total_storage += stats;
 				}
 
-				// Aggregate all CDC stats
 				let cdc_entries = self.cdc_reader.scan_all()?;
 				let mut total_cdc = CdcStats::default();
 				for (_, stats) in cdc_entries {
 					total_cdc += stats;
 				}
 
-				// Output in original format
 				writeln!(output, "current_count: {}", total_storage.current_count)?;
 				writeln!(output, "current_key_bytes: {}", total_storage.current_key_bytes)?;
 				writeln!(output, "current_value_bytes: {}", total_storage.current_value_bytes)?;
@@ -384,17 +348,14 @@ impl TestRunner for Runner {
 				writeln!(output, "total_bytes: {}", total_storage.total_bytes())?;
 			}
 
-			// stats_current - outputs only current stats (for brevity)
 			"stats_current" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats".into());
 				}
 
-				// Aggregate all storage stats
 				let storage_entries = self.storage_reader.scan_tier(Tier::Hot)?;
 				let mut total_storage = MultiStorageStats::default();
 				for (_, stats) in storage_entries {
@@ -406,17 +367,14 @@ impl TestRunner for Runner {
 				writeln!(output, "current_value_bytes: {}", total_storage.current_value_bytes)?;
 			}
 
-			// stats_historical - outputs only historical stats
 			"stats_historical" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats".into());
 				}
 
-				// Aggregate all storage stats
 				let storage_entries = self.storage_reader.scan_tier(Tier::Hot)?;
 				let mut total_storage = MultiStorageStats::default();
 				for (_, stats) in storage_entries {
@@ -428,17 +386,14 @@ impl TestRunner for Runner {
 				writeln!(output, "historical_value_bytes: {}", total_storage.historical_value_bytes)?;
 			}
 
-			// stats_cdc - outputs only CDC stats
 			"stats_cdc" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats".into());
 				}
 
-				// Aggregate all CDC stats
 				let cdc_entries = self.cdc_reader.scan_all()?;
 				let mut total_cdc = CdcStats::default();
 				for (_, stats) in cdc_entries {
@@ -450,17 +405,14 @@ impl TestRunner for Runner {
 				writeln!(output, "cdc_value_bytes: {}", total_cdc.value_bytes)?;
 			}
 
-			// stats_totals - outputs computed totals for invariant checks
 			"stats_totals" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				// Auto-sync before reading stats
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats".into());
 				}
 
-				// Aggregate all storage stats
 				let storage_entries = self.storage_reader.scan_tier(Tier::Hot)?;
 				let mut total_storage = MultiStorageStats::default();
 				for (_, stats) in storage_entries {
@@ -479,18 +431,15 @@ impl TestRunner for Runner {
 				writeln!(output, "total_bytes: {}", total_bytes)?;
 			}
 
-			// sync_stats - waits until stats have been processed up to current version
 			"sync_stats" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				// Wait for stats to be processed up to current version
 				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
 					return Err("timeout waiting for stats to be processed".into());
 				}
 			}
 
-			// cdc_write KEY=VALUE [version=VERSION] - simulates CDC entry being written
 			"cdc_write" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
@@ -512,7 +461,6 @@ impl TestRunner for Runner {
 				writeln!(output, "ok")?;
 			}
 
-			// cdc_drop KEY=VALUE_BYTES [version=VERSION] - simulates CDC cleanup
 			"cdc_drop" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value_bytes not given")?.clone();

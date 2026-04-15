@@ -17,18 +17,11 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
-	event::{
-		EventBus,
-		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent},
-		transaction::PostCommitEvent,
-	},
+	event::{EventBus, transaction::PostCommitEvent},
 	interface::catalog::id::NamespaceId,
 	util::ioc::IocContainer,
 };
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_metric_old::worker::{
-	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
-};
 use reifydb_routine::{function::default_functions, procedure::registry::Procedures};
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
@@ -69,7 +62,7 @@ impl Default for TestEngine {
 impl TestEngine {
 	/// Create a new TestEngine with all subsystems (CDC, metrics, etc.).
 	pub fn new() -> Self {
-		Self::builder().with_cdc().with_metrics().build()
+		Self::builder().with_cdc().build()
 	}
 
 	/// Start configuring a test engine via the builder.
@@ -158,17 +151,11 @@ impl Deref for TestEngine {
 #[derive(Default)]
 pub struct TestEngineBuilder {
 	cdc: bool,
-	metrics: bool,
 }
 
 impl TestEngineBuilder {
 	pub fn with_cdc(mut self) -> Self {
 		self.cdc = true;
-		self
-	}
-
-	pub fn with_metrics(mut self) -> Self {
-		self.metrics = true;
 		self
 	}
 
@@ -200,19 +187,6 @@ impl TestEngineBuilder {
 
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
-
-		if self.metrics {
-			let metrics_worker = Arc::new(MetricsWorker::new(
-				MetricsWorkerConfig::default(),
-				single_store.clone(),
-				multi_store.clone(),
-				eventbus.clone(),
-			));
-			eventbus.register::<MultiCommittedEvent, _>(StorageStatsListener::new(metrics_worker.sender()));
-			eventbus.register::<CdcWrittenEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
-			eventbus.register::<CdcEvictedEvent, _>(CdcStatsDroppedListener::new(metrics_worker.sender()));
-			ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
-		}
 
 		let cdc_store = CdcStore::memory();
 		ioc = ioc.register(cdc_store.clone());

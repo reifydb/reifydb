@@ -5,3 +5,5 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 mod auth;
+mod metric;
+mod virtual_table;

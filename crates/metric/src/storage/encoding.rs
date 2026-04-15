@@ -11,15 +11,17 @@
 //! - `[VERSION][0x25][0x03][id:variable]` -> CdcStats for Id (no tier)
 
 use reifydb_core::{
-	interface::catalog::{
-		flow::FlowNodeId,
-		id::{RingBufferId, SeriesId, TableId, ViewId},
-		shape::ShapeId,
-		vtable::VTableId,
+	interface::{
+		catalog::{
+			flow::FlowNodeId,
+			id::{RingBufferId, SeriesId, TableId, ViewId},
+			shape::ShapeId,
+			vtable::VTableId,
+		},
+		store::Tier,
 	},
 	key::kind::KeyKind,
 };
-use reifydb_core::interface::store::Tier;
 use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::{

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 //! Integration tests for gRPC subscriptions
-//! Ported from WebSocket integration tests
+//! Ported from WebSocket storage tests
 //!
 //! These tests focus on connection reliability by repeatedly connecting to the same server instance.
 

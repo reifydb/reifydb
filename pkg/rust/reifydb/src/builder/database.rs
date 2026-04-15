@@ -23,11 +23,7 @@ use reifydb_cdc::{
 use reifydb_core::{
 	CoreVersion,
 	actors::cdc::CdcProduceHandle,
-	event::{
-		EventBus,
-		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent},
-		transaction::PostCommitEvent,
-	},
+	event::{EventBus, transaction::PostCommitEvent},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
@@ -39,9 +35,6 @@ use reifydb_extension::procedure::ffi_loader::register_procedures_from_dir;
 use reifydb_extension::{
 	procedure::wasm_loader::register_wasm_procedures_from_dir,
 	transform::registry::{Transforms, TransformsConfigurator},
-};
-use reifydb_metric_old::worker::{
-	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_routine::{
 	function::{default_functions, registry::FunctionsConfigurator},
@@ -336,23 +329,7 @@ impl DatabaseBuilder {
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
 
-		// Create metrics worker and register event listeners
-		let metrics_worker = Arc::new(MetricsWorker::new(
-			MetricsWorkerConfig::default(),
-			single_store.clone(),
-			multi_store.clone(),
-			eventbus.clone(),
-		));
-		eventbus.register::<MultiCommittedEvent, _>(StorageStatsListener::new(metrics_worker.sender()));
-		eventbus.register::<CdcWrittenEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
-		eventbus.register::<CdcEvictedEvent, _>(CdcStatsDroppedListener::new(metrics_worker.sender()));
-		self.ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
-
-		// Register single store in IoC for engine to access
 		self.ioc = self.ioc.register(single_store);
-		// Register multi store in IoC so the metric actor can resolve it alongside the
-		// legacy MetricsWorker (both run in parallel during the metric-old → metric
-		// migration).
 		self.ioc = self.ioc.register(multi_store.clone());
 
 		let functions = if let Some(configurator) = self.functions_configurator {

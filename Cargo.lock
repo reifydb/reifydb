@@ -2552,7 +2552,6 @@ dependencies = [
  "reifydb-engine",
  "reifydb-extension",
  "reifydb-metric",
- "reifydb-metric-old",
  "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
@@ -2617,7 +2616,6 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-metric",
- "reifydb-metric-old",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -2727,12 +2725,7 @@ version = "0.4.10"
 dependencies = [
  "bumpalo",
  "futures-util",
- "indexmap",
- "libloading",
- "once_cell",
  "postcard",
- "rand 0.10.0",
- "reifydb-abi",
  "reifydb-auth",
  "reifydb-build",
  "reifydb-catalog",
@@ -2740,19 +2733,15 @@ dependencies = [
  "reifydb-client",
  "reifydb-core",
  "reifydb-extension",
- "reifydb-metric-old",
+ "reifydb-metric",
  "reifydb-policy",
  "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
- "reifydb-sdk",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-transaction",
  "reifydb-type",
- "reifydb-wasm",
- "serde",
- "serde_json",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -2804,22 +2793,6 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-type",
  "serde",
-]
-
-[[package]]
-name = "reifydb-metric-old"
-version = "0.4.10"
-dependencies = [
- "crossbeam-channel",
- "reifydb-core",
- "reifydb-metric",
- "reifydb-runtime",
- "reifydb-store-multi",
- "reifydb-store-single",
- "reifydb-testing",
- "reifydb-type",
- "test_each_file",
- "tracing",
 ]
 
 [[package]]
@@ -3020,19 +2993,22 @@ version = "0.4.10"
 dependencies = [
  "crossbeam-channel",
  "futures-util",
- "reifydb-catalog",
+ "reifydb-cdc",
  "reifydb-core",
- "reifydb-engine",
+ "reifydb-extension",
  "reifydb-metric",
+ "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-server",
+ "reifydb-testing",
  "reifydb-transaction",
  "reifydb-type",
  "serde",
+ "test_each_file",
  "tracing",
 ]
 
@@ -3954,6 +3930,8 @@ name = "tests-integration"
 version = "0.4.10"
 dependencies = [
  "reifydb",
+ "reifydb-metric",
+ "reifydb-sub-metric",
  "reifydb-type",
  "tokio",
 ]

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 //! Integration tests for WebSocket subscriptions
-//! Ported from TypeScript integration tests in pkg/typescript/client/tests/integration/ws/subscription.test::ts
+//! Ported from TypeScript storage tests in pkg/typescript/client/tests/storage/ws/subscription.test::ts
 //!
 //! These tests focus on connection reliability by repeatedly connecting to the same server instance.
 

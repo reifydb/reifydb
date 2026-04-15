@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Shared test actors and utilities for DST integration tests.
+//! Shared test actors and utilities for DST storage tests.
 
 use std::sync::{Arc, Mutex};
 

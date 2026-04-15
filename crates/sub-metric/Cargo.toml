@@ -8,9 +8,7 @@ repository.workspace = true
 description = "Metric collection subsystem for ReifyDB"
 
 [dependencies]
-reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
-reifydb-engine = { workspace = true }
 reifydb-metric = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-store-single = { workspace = true }
@@ -24,3 +22,12 @@ serde = { workspace = true }
 tracing = { workspace = true }
 futures-util = { workspace = true }
 crossbeam-channel = { workspace = true }
+
+[dev-dependencies]
+reifydb-cdc = { workspace = true }
+reifydb-extension = { workspace = true }
+reifydb-routine = { workspace = true }
+reifydb-store-single = { workspace = true, features = ["sqlite"] }
+reifydb-store-multi = { workspace = true, features = ["sqlite"] }
+reifydb-testing = { workspace = true }
+test_each_file = { workspace = true }

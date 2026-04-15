@@ -4,7 +4,6 @@
 #[allow(unused_imports)]
 use std::{collections::HashSet, mem, sync::Arc, time::Duration as StdDuration};
 
-use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::metric::MetricMessage,
 	common::CommitVersion,
@@ -15,7 +14,6 @@ use reifydb_core::{
 		store::{MultiVersionGetPrevious, Tier},
 	},
 };
-use reifydb_engine::engine::StandardEngine;
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
@@ -35,8 +33,6 @@ pub struct MetricCollectorActor {
 	registry: Arc<MetricRegistry>,
 	static_registry: Arc<StaticMetricRegistry>,
 	accumulator: Arc<StatementStatsAccumulator>,
-	engine: StandardEngine,
-	catalog: Catalog,
 	event_bus: EventBus,
 	single_store: SingleStore,
 	resolver: MultiStore,
@@ -44,13 +40,10 @@ pub struct MetricCollectorActor {
 }
 
 impl MetricCollectorActor {
-	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		registry: Arc<MetricRegistry>,
 		static_registry: Arc<StaticMetricRegistry>,
 		accumulator: Arc<StatementStatsAccumulator>,
-		engine: StandardEngine,
-		catalog: Catalog,
 		event_bus: EventBus,
 		single_store: SingleStore,
 		resolver: MultiStore,
@@ -59,13 +52,16 @@ impl MetricCollectorActor {
 			registry,
 			static_registry,
 			accumulator,
-			engine,
-			catalog,
 			event_bus,
 			single_store,
 			resolver,
 			flush_interval: StdDuration::from_secs(10),
 		}
+	}
+
+	pub fn with_flush_interval(mut self, interval: StdDuration) -> Self {
+		self.flush_interval = interval;
+		self
 	}
 }
 

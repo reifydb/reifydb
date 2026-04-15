@@ -10,7 +10,6 @@ use reifydb_core::{
 	},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::engine::StandardEngine;
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
@@ -50,7 +49,6 @@ impl MetricSubsystemFactory {
 impl SubsystemFactory for MetricSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let runtime = ioc.resolve::<SharedRuntime>()?;
-		let engine = ioc.resolve::<StandardEngine>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
 		let single_store = ioc.resolve::<SingleStore>()?;
 		let multi_store = ioc.resolve::<MultiStore>()?;
@@ -60,8 +58,6 @@ impl SubsystemFactory for MetricSubsystemFactory {
 			self.registry,
 			self.static_registry,
 			self.accumulator,
-			engine.clone(),
-			engine.catalog(),
 			event_bus.clone(),
 			single_store,
 			multi_store,

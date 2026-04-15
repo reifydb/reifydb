@@ -36,7 +36,7 @@ use reifydb_core::{
 	},
 	metric::ExecutionMetrics,
 };
-use reifydb_metric_old::metric::MetricReader;
+use reifydb_metric::storage::metric::MetricReader;
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{clock::Clock, rng::Rng},

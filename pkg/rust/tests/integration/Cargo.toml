@@ -9,5 +9,7 @@ publish = false
 
 [dev-dependencies]
 reifydb = { workspace = true }
+reifydb-metric = { workspace = true }
+reifydb-sub-metric = { workspace = true }
 reifydb-type = { workspace = true }
 tokio = { workspace = true }

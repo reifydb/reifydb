@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM integration tests
+//! WASM storage tests
 //!
 //! Run with: wasm-pack test --headless --firefox
 
