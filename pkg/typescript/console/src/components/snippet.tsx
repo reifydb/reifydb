@@ -18,6 +18,7 @@ export interface SnippetProps {
   className?: string;
   theme?: RdbTheme;
   monaco_theme?: string | editor.IStandaloneThemeData;
+  readonly?: boolean;
 }
 
 interface QueryResult {
@@ -33,6 +34,7 @@ export function Snippet({
   className,
   theme = 'light',
   monaco_theme,
+  readonly = false,
 }: SnippetProps) {
   const [code, setCode] = useState(initial_code);
   const [result, setResult] = useState<QueryResult | null>(null);
@@ -111,14 +113,16 @@ export function Snippet({
     editor_ref.current = editor;
     register_rql_language(monaco);
 
-    editor.addAction({
-      id: 'run-query',
-      label: 'Run Query',
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-      run: () => {
-        handle_run_ref.current();
-      },
-    });
+    if (!readonly) {
+      editor.addAction({
+        id: 'run-query',
+        label: 'Run Query',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+        run: () => {
+          handle_run_ref.current();
+        },
+      });
+    }
   };
 
   const handle_before_mount = (monaco: typeof import('monaco-editor')) => {
@@ -139,33 +143,35 @@ export function Snippet({
           <span className="rdb-snippet__title-marker">$</span> {title}
         </div>
         <div className="rdb-snippet__actions">
-          <button
-            onClick={toggle_fullscreen}
-            className="rdb-snippet__action-btn"
-            title={is_fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          >
-            {is_fullscreen ? (
-              <>
-                <svg className="rdb-snippet__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="4 14 10 14 10 20" />
-                  <polyline points="20 10 14 10 14 4" />
-                  <line x1="14" y1="10" x2="21" y2="3" />
-                  <line x1="3" y1="21" x2="10" y2="14" />
-                </svg>
-                Exit
-              </>
-            ) : (
-              <>
-                <svg className="rdb-snippet__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="15 3 21 3 21 9" />
-                  <polyline points="9 21 3 21 3 15" />
-                  <line x1="21" y1="3" x2="14" y2="10" />
-                  <line x1="3" y1="21" x2="10" y2="14" />
-                </svg>
-                Expand
-              </>
-            )}
-          </button>
+          {!readonly && (
+            <button
+              onClick={toggle_fullscreen}
+              className="rdb-snippet__action-btn"
+              title={is_fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {is_fullscreen ? (
+                <>
+                  <svg className="rdb-snippet__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="4 14 10 14 10 20" />
+                    <polyline points="20 10 14 10 14 4" />
+                    <line x1="14" y1="10" x2="21" y2="3" />
+                    <line x1="3" y1="21" x2="10" y2="14" />
+                  </svg>
+                  Exit
+                </>
+              ) : (
+                <>
+                  <svg className="rdb-snippet__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 3 21 3 21 9" />
+                    <polyline points="9 21 3 21 3 15" />
+                    <line x1="21" y1="3" x2="14" y2="10" />
+                    <line x1="3" y1="21" x2="10" y2="14" />
+                  </svg>
+                  Expand
+                </>
+              )}
+            </button>
+          )}
           <button
             onClick={handle_copy}
             className="rdb-snippet__action-btn"
@@ -188,17 +194,19 @@ export function Snippet({
               </>
             )}
           </button>
-          <button
-            onClick={handle_reset}
-            className="rdb-snippet__action-btn"
-            title="Reset code"
-          >
-            <svg className="rdb-snippet__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="1 4 1 10 7 10" />
-              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-            </svg>
-            Reset
-          </button>
+          {!readonly && (
+            <button
+              onClick={handle_reset}
+              className="rdb-snippet__action-btn"
+              title="Reset code"
+            >
+              <svg className="rdb-snippet__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1 4 1 10 7 10" />
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              </svg>
+              Reset
+            </button>
+          )}
         </div>
       </div>
 
@@ -211,7 +219,38 @@ export function Snippet({
         </div>
       )}
 
-      {is_fullscreen ? (
+      {readonly ? (
+        <div className="rdb-snippet__editor-wrap" style={{ height: editor_height }}>
+          <Editor
+            height="100%"
+            language="rql"
+            theme={resolved_theme}
+            value={code}
+            beforeMount={handle_before_mount}
+            onMount={handle_editor_did_mount}
+            options={{
+              readOnly: true,
+              minimap: { enabled: false },
+              lineNumbers: 'on',
+              glyphMargin: false,
+              folding: false,
+              lineDecorationsWidth: 16,
+              lineNumbersMinChars: 3,
+              scrollBeyondLastLine: false,
+              scrollbar: { vertical: 'hidden', horizontal: 'hidden' },
+              overviewRulerLanes: 0,
+              hideCursorInOverviewRuler: true,
+              overviewRulerBorder: false,
+              renderLineHighlight: 'none',
+              fontFamily: "'Inconsolata', monospace",
+              fontSize: 13,
+              padding: { top: 8, bottom: 8 },
+              wordWrap: 'on',
+              automaticLayout: true,
+            }}
+          />
+        </div>
+      ) : is_fullscreen ? (
         <SplitPane
           initial_split={50}
           top={
