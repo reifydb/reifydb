@@ -5,34 +5,34 @@ import { useState, type ReactNode } from 'react';
 
 interface ShapeNodeProps {
   label: string;
-  labelClass?: string;
+  label_class?: string;
   type?: string;
-  typeClass?: string;
+  type_class?: string;
   children?: ReactNode;
 }
 
-export function ShapeNode({ label, labelClass, type, typeClass, children }: ShapeNodeProps) {
+export function ShapeNode({ label, label_class, type, type_class, children }: ShapeNodeProps) {
   const [expanded, setExpanded] = useState(false);
-  const hasChildren = !!children;
+  const has_children = !!children;
 
   return (
     <div className="rdb-shape__node">
       <div
         className="rdb-shape__node-header"
-        onClick={() => hasChildren && setExpanded(!expanded)}
+        onClick={() => has_children && setExpanded(!expanded)}
       >
-        {hasChildren && (
+        {has_children && (
           <span className="rdb-shape__node-toggle">
             {expanded ? '▾' : '▸'}
           </span>
         )}
-        {!hasChildren && <span className="rdb-shape__node-toggle" />}
-        {type && <span className={typeClass ? "rdb-shape__node-type " + typeClass : "rdb-shape__node-type"}>{type}</span>}
-        <span className={`rdb-shape__node-label${labelClass ? ` ${labelClass}` : ''}`}>
+        {!has_children && <span className="rdb-shape__node-toggle" />}
+        {type && <span className={type_class ? "rdb-shape__node-type " + type_class : "rdb-shape__node-type"}>{type}</span>}
+        <span className={`rdb-shape__node-label${label_class ? ` ${label_class}` : ''}`}>
           {label}
         </span>
       </div>
-      {expanded && hasChildren && (
+      {expanded && has_children && (
         <div className="rdb-shape__node-children">
           {children}
         </div>

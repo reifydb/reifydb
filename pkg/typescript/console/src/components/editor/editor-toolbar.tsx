@@ -1,35 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-import type { ConnectionStatus } from '../connection/ConnectionPanel';
+import type { ConnectionStatus } from '../connection/connection-panel';
 import type { TransactionType } from '../../types';
 
 interface EditorToolbarProps {
-  onRun: () => void;
-  onClear: () => void;
+  on_run: () => void;
+  on_clear: () => void;
   is_executing: boolean;
-  connectionLabel: string;
+  connection_label: string;
   connection_status: ConnectionStatus;
   connection_locked?: boolean;
-  onToggleConnectionPanel: () => void;
+  on_toggle_connection_panel: () => void;
   connection_mode: 'wasm' | 'websocket';
   transaction_type: TransactionType;
   transaction_types: readonly TransactionType[];
-  onTransactionTypeChange: (type: TransactionType) => void;
+  on_transaction_type_change: (type: TransactionType) => void;
 }
 
 export function EditorToolbar({
-  onRun,
-  onClear,
+  on_run,
+  on_clear,
   is_executing,
-  connectionLabel,
+  connection_label,
   connection_status,
   connection_locked,
-  onToggleConnectionPanel,
+  on_toggle_connection_panel,
   connection_mode,
   transaction_type,
   transaction_types,
-  onTransactionTypeChange,
+  on_transaction_type_change,
 }: EditorToolbarProps) {
   const show_tx_selector = connection_mode === 'websocket' && transaction_types.length > 1;
   return (
@@ -38,15 +38,15 @@ export function EditorToolbar({
         {connection_locked ? (
           <span className="rdb-editor-toolbar__connection rdb-editor-toolbar__connection--locked">
             <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connection_status}`}>●</span>
-            <span>[{connectionLabel}]</span>
+            <span>[{connection_label}]</span>
           </span>
         ) : (
           <button
             className="rdb-editor-toolbar__connection"
-            onClick={onToggleConnectionPanel}
+            onClick={on_toggle_connection_panel}
           >
             <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connection_status}`}>●</span>
-            <span>[{connectionLabel}]</span>
+            <span>[{connection_label}]</span>
           </button>
         )}
         {show_tx_selector && (
@@ -55,7 +55,7 @@ export function EditorToolbar({
               <button
                 key={t}
                 className={`rdb-editor-toolbar__tx-type-btn${t === transaction_type ? ' rdb-editor-toolbar__tx-type-btn--active' : ''}`}
-                onClick={() => onTransactionTypeChange(t)}
+                onClick={() => on_transaction_type_change(t)}
               >
                 {t}
               </button>
@@ -67,14 +67,14 @@ export function EditorToolbar({
       <div className="rdb-editor-toolbar__actions">
         <button
           className="rdb-editor-toolbar__btn rdb-editor-toolbar__btn--secondary"
-          onClick={onClear}
+          onClick={on_clear}
           disabled={is_executing}
         >
           Clear
         </button>
         <button
           className="rdb-editor-toolbar__btn"
-          onClick={onRun}
+          onClick={on_run}
           disabled={is_executing}
         >
           {is_executing ? 'Running...' : 'Run'}

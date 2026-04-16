@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 import type { ExecutionResult } from '../../types';
-import { ResultsTable } from './ResultsTable';
-import { ResultsError } from './ResultsError';
-import { ResultsEmpty } from './ResultsEmpty';
-import { ResultsStatusBar } from './ResultsStatusBar';
+import { ResultsTable } from './results-table';
+import { ResultsError } from './results-error';
+import { ResultsEmpty } from './results-empty';
+import { ResultsStatusBar } from './results-status-bar';
 
 interface ResultsPanelProps {
   result: ExecutionResult | null;

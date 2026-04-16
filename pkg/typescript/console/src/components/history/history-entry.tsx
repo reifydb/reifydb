@@ -5,10 +5,10 @@ import type { HistoryEntry as HistoryEntryType } from '../../types';
 
 interface HistoryEntryProps {
   entry: HistoryEntryType;
-  onClick: (query: string) => void;
+  on_click: (query: string) => void;
 }
 
-function formatTimestamp(ts: number): string {
+function format_timestamp(ts: number): string {
   const d = new Date(ts);
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
@@ -16,11 +16,11 @@ function formatTimestamp(ts: number): string {
   return `${hh}:${mm}:${ss}`;
 }
 
-export function HistoryEntryRow({ entry, onClick }: HistoryEntryProps) {
+export function HistoryEntryRow({ entry, on_click }: HistoryEntryProps) {
   return (
-    <div className="rdb-history__entry" onClick={() => onClick(entry.query)}>
+    <div className="rdb-history__entry" onClick={() => on_click(entry.query)}>
       <div className="rdb-history__entry-meta">
-        <span>{formatTimestamp(entry.timestamp)}</span>
+        <span>{format_timestamp(entry.timestamp)}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span>{entry.execution_time}ms</span>
           <span

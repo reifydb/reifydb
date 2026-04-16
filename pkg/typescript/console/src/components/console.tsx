@@ -7,16 +7,16 @@ import type { editor } from 'monaco-editor';
 import type { Executor, TransactionType } from '../types';
 import { WsExecutor, type WsClient } from '../executor/ws-executor';
 import { ConsoleProvider, useConsoleStore } from '../state/use-console-store';
-import { loadHistory, saveHistory } from '../state/history';
-import { SplitPane } from './layout/SplitPane';
-import { TabBar } from './layout/TabBar';
-import { QueryEditor } from './editor/QueryEditor';
-import { EditorToolbar } from './editor/EditorToolbar';
-import { ResultsPanel } from './results/ResultsPanel';
-import { ShapeBrowser } from './shape/ShapeBrowser';
-import { HistoryPanel } from './history/HistoryPanel';
-import { ConnectionPanel } from './connection/ConnectionPanel';
-import type { ConnectionMode, ConnectionStatus } from './connection/ConnectionPanel';
+import { load_history, save_history } from '../state/history';
+import { SplitPane } from './layout/split-pane';
+import { TabBar } from './layout/tab-bar';
+import { QueryEditor } from './editor/query-editor';
+import { EditorToolbar } from './editor/editor-toolbar';
+import { ResultsPanel } from './results/results-panel';
+import { ShapeBrowser } from './shape/shape-browser';
+import { HistoryPanel } from './history/history-panel';
+import { ConnectionPanel } from './connection/connection-panel';
+import type { ConnectionMode, ConnectionStatus } from './connection/connection-panel';
 
 export type ConnectionConfig =
   | { mode: 'wasm' }
@@ -39,7 +39,7 @@ const DEFAULT_TRANSACTION_TYPES: readonly TransactionType[] = ['query', 'command
 const TABS = [
   { id: 'results', label: 'Results' },
   { id: 'history', label: 'History' },
-  { id: 'shape', label: 'Shape' },
+  { id: 'catalog', label: 'Catalog' },
 ];
 
 const WS_URL_STORAGE_KEY = 'rdb-console-ws-url';
@@ -95,7 +95,7 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
 
     let cancelled = false;
     let backoff = 1000;
-    const maxBackoff = 30000;
+    const max_backoff = 30000;
 
     async function connect() {
       if (cancelled) return;
@@ -136,7 +136,7 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
           reconnect_timer_ref.current = setTimeout(() => {
             connect();
           }, backoff);
-          backoff = Math.min(backoff * 2, maxBackoff);
+          backoff = Math.min(backoff * 2, max_backoff);
         }
       }
     }
@@ -158,7 +158,7 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
 
   // Load history on mount
   useEffect(() => {
-    const entries = loadHistory(history_key);
+    const entries = load_history(history_key);
     if (entries.length > 0) {
       dispatch({ type: 'LOAD_HISTORY', entries });
     }
@@ -166,10 +166,10 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
 
   // Save history on change
   useEffect(() => {
-    saveHistory(state.history, history_key);
+    save_history(state.history, history_key);
   }, [state.history, history_key]);
 
-  const handleConnect = useCallback(async () => {
+  const handle_connect = useCallback(async () => {
     if (!ws_url.trim()) return;
     set_connection_status('connecting');
     set_connection_error(null);
@@ -204,14 +204,14 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
     set_connection_error(null);
   }, [executor]);
 
-  const handleTransactionTypeChange = useCallback((type: TransactionType) => {
+  const handle_transaction_type_change = useCallback((type: TransactionType) => {
     set_transaction_type(type);
     if (active_executor instanceof WsExecutor) {
       active_executor.transaction_type = type;
     }
   }, [active_executor]);
 
-  const handleModeChange = useCallback((mode: ConnectionMode) => {
+  const handle_mode_change = useCallback((mode: ConnectionMode) => {
     if (mode === 'wasm' && connection_mode === 'websocket') {
       // Switching back to wasm — disconnect if connected
       if (ws_client_ref.current) {
@@ -229,20 +229,20 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
     set_connection_mode(mode);
   }, [connection_mode, executor]);
 
-  const resolvedMonacoThemeName = useMemo(() => {
+  const resolved_monaco_theme_name = useMemo(() => {
     if (!monaco_theme) return undefined;
     if (typeof monaco_theme === 'string') return monaco_theme;
     return 'rdb-custom';
   }, [monaco_theme]);
 
-  const resolvedMonacoThemeData = useMemo(() => {
+  const resolved_monaco_theme_data = useMemo(() => {
     if (!monaco_theme || typeof monaco_theme === 'string') return undefined;
     return monaco_theme;
   }, [monaco_theme]);
 
-  const connectionLabel = connection_mode === 'wasm' ? 'wasm' : ws_url;
+  const connection_label = connection_mode === 'wasm' ? 'wasm' : ws_url;
 
-  const handleRun = useCallback(async () => {
+  const handle_run = useCallback(async () => {
     if (state.is_executing || !state.code.trim()) return;
     dispatch({ type: 'EXECUTE_START' });
 
@@ -267,29 +267,29 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
 
   }, [state.is_executing, state.code, active_executor, dispatch]);
 
-  const handleClear = useCallback(() => {
+  const handle_clear = useCallback(() => {
     dispatch({ type: 'CLEAR_RESULTS' });
   }, [dispatch]);
 
-  const handleSelectHistory = useCallback((query: string) => {
+  const handle_select_history = useCallback((query: string) => {
     dispatch({ type: 'LOAD_QUERY', code: query });
   }, [dispatch]);
 
-  const editorPane = (
+  const editor_pane = (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ position: 'relative' }}>
         <EditorToolbar
-          onRun={handleRun}
-          onClear={handleClear}
+          on_run={handle_run}
+          on_clear={handle_clear}
           is_executing={state.is_executing}
-          connectionLabel={connectionLabel}
+          connection_label={connection_label}
           connection_status={connection_status}
           connection_locked={connection_locked}
-          onToggleConnectionPanel={() => set_show_connection_panel((v) => !v)}
+          on_toggle_connection_panel={() => set_show_connection_panel((v) => !v)}
           connection_mode={connection_mode}
           transaction_type={transaction_type}
           transaction_types={transaction_types}
-          onTransactionTypeChange={handleTransactionTypeChange}
+          on_transaction_type_change={handle_transaction_type_change}
         />
         {!connection_locked && show_connection_panel && (
           <ConnectionPanel
@@ -297,42 +297,42 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
             ws_url={ws_url}
             status={connection_status}
             error={connection_error}
-            onModeChange={handleModeChange}
-            onUrlChange={set_ws_url}
-            onConnect={handleConnect}
-            onDisconnect={handle_disconnect}
-            onClose={() => set_show_connection_panel(false)}
+            on_mode_change={handle_mode_change}
+            on_url_change={set_ws_url}
+            on_connect={handle_connect}
+            on_disconnect={handle_disconnect}
+            on_close={() => set_show_connection_panel(false)}
           />
         )}
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <QueryEditor
           code={state.code}
-          onChange={(code) => dispatch({ type: 'SET_CODE', code })}
-          onRun={handleRun}
+          on_change={(code) => dispatch({ type: 'SET_CODE', code })}
+          on_run={handle_run}
           theme={theme}
-          monacoThemeName={resolvedMonacoThemeName}
-          monacoThemeData={resolvedMonacoThemeData}
+          monaco_theme_name={resolved_monaco_theme_name}
+          monaco_theme_data={resolved_monaco_theme_data}
         />
       </div>
     </div>
   );
 
-  const bottomPane = (
+  const bottom_pane = (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <TabBar
-        activeTab={state.activeTab}
+        active_tab={state.active_tab}
         tabs={TABS}
-        onTabChange={(tab) => dispatch({ type: 'SET_TAB', tab: tab as 'results' | 'history' | 'shape' })}
+        on_tab_change={(tab) => dispatch({ type: 'SET_TAB', tab: tab as 'results' | 'history' | 'catalog' })}
       />
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {state.activeTab === 'results' ? (
+        {state.active_tab === 'results' ? (
           <ResultsPanel result={state.result} />
-        ) : state.activeTab === 'history' ? (
-          <HistoryPanel entries={state.history} onSelect={handleSelectHistory} />
-        ) : (
+        ) : state.active_tab === 'history' ? (
+          <HistoryPanel entries={state.history} on_select={handle_select_history} />
+        ) : state.active_tab === 'catalog' ? (
           <ShapeBrowser executor={active_executor} />
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -340,7 +340,7 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
   return (
     <div className={`rdb-console${theme === 'light' ? ' rdb-theme-light' : ''}`}>
       <div className="rdb-console__main">
-        <SplitPane top={editorPane} bottom={bottomPane} initialSplit={45} />
+        <SplitPane top={editor_pane} bottom={bottom_pane} initial_split={45} />
       </div>
     </div>
   );

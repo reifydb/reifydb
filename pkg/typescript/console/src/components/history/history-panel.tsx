@@ -3,14 +3,14 @@
 
 import { useState } from 'react';
 import type { HistoryEntry } from '../../types';
-import { HistoryEntryRow } from './HistoryEntry';
+import { HistoryEntryRow } from './history-entry';
 
 interface HistoryPanelProps {
   entries: HistoryEntry[];
-  onSelect: (query: string) => void;
+  on_select: (query: string) => void;
 }
 
-export function HistoryPanel({ entries, onSelect }: HistoryPanelProps) {
+export function HistoryPanel({ entries, on_select }: HistoryPanelProps) {
   const [search, setSearch] = useState('');
 
   const filtered = search
@@ -35,7 +35,7 @@ export function HistoryPanel({ entries, onSelect }: HistoryPanelProps) {
           </div>
         ) : (
           filtered.map((entry) => (
-            <HistoryEntryRow key={entry.id} entry={entry} onClick={onSelect} />
+            <HistoryEntryRow key={entry.id} entry={entry} on_click={on_select} />
           ))
         )}
       </div>

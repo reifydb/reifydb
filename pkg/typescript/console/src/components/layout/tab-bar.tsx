@@ -2,19 +2,19 @@
 // Copyright (c) 2025 ReifyDB
 
 interface TabBarProps {
-  activeTab: string;
+  active_tab: string;
   tabs: { id: string; label: string }[];
-  onTabChange: (id: string) => void;
+  on_tab_change: (id: string) => void;
 }
 
-export function TabBar({ activeTab, tabs, onTabChange }: TabBarProps) {
+export function TabBar({ active_tab, tabs, on_tab_change }: TabBarProps) {
   return (
     <div className="rdb-tabs">
       {tabs.map((tab) => (
         <button
           key={tab.id}
-          className={`rdb-tabs__tab${activeTab === tab.id ? ' rdb-tabs__tab--active' : ''}`}
-          onClick={() => onTabChange(tab.id)}
+          className={`rdb-tabs__tab${active_tab === tab.id ? ' rdb-tabs__tab--active' : ''}`}
+          onClick={() => on_tab_change(tab.id)}
         >
           {tab.label}
         </button>

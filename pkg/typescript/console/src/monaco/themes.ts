@@ -3,7 +3,7 @@
 
 import type { editor } from 'monaco-editor';
 
-export const brutalistLightTheme: editor.IStandaloneThemeData = {
+export const brutalist_light_theme: editor.IStandaloneThemeData = {
   base: 'vs',
   inherit: true,
   rules: [
@@ -27,7 +27,7 @@ export const brutalistLightTheme: editor.IStandaloneThemeData = {
   },
 };
 
-export const brutalistDarkTheme: editor.IStandaloneThemeData = {
+export const brutalist_dark_theme: editor.IStandaloneThemeData = {
   base: 'vs-dark',
   inherit: true,
   rules: [
@@ -58,7 +58,7 @@ export const brutalistDarkTheme: editor.IStandaloneThemeData = {
   },
 };
 
-export const premiumLightTheme: editor.IStandaloneThemeData = {
+export const premium_light_theme: editor.IStandaloneThemeData = {
   base: 'vs',
   inherit: true,
   rules: [
@@ -82,7 +82,7 @@ export const premiumLightTheme: editor.IStandaloneThemeData = {
   },
 };
 
-export const premiumDarkTheme: editor.IStandaloneThemeData = {
+export const premium_dark_theme: editor.IStandaloneThemeData = {
   base: 'vs-dark',
   inherit: true,
   rules: [

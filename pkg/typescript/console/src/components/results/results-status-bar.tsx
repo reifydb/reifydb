@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import { useCallback } from 'react';
-import { formatValue } from '../../format/value';
+import { format_value } from '../../format/value';
 
 interface ResultsStatusBarProps {
   row_count: number;
@@ -11,13 +11,13 @@ interface ResultsStatusBarProps {
 }
 
 export function ResultsStatusBar({ row_count, execution_time, data }: ResultsStatusBarProps) {
-  const copyAsCsv = useCallback(() => {
+  const copy_as_csv = useCallback(() => {
     if (!data || data.length === 0) return;
     const columns = Object.keys(data[0]);
     const header = columns.join(',');
     const rows = data.map(row =>
       columns.map(col => {
-        const val = formatValue(row[col]);
+        const val = format_value(row[col]);
         return val.includes(',') || val.includes('"') || val.includes('\n')
           ? `"${val.replace(/"/g, '""')}"`
           : val;
@@ -26,12 +26,12 @@ export function ResultsStatusBar({ row_count, execution_time, data }: ResultsSta
     navigator.clipboard.writeText([header, ...rows].join('\n'));
   }, [data]);
 
-  const copyAsJson = useCallback(() => {
+  const copy_as_json = useCallback(() => {
     if (!data || data.length === 0) return;
     const serialized = data.map(row => {
       const obj: Record<string, string> = {};
       for (const [key, val] of Object.entries(row)) {
-        obj[key] = formatValue(val);
+        obj[key] = format_value(val);
       }
       return obj;
     });
@@ -45,10 +45,10 @@ export function ResultsStatusBar({ row_count, execution_time, data }: ResultsSta
         <span>({execution_time}ms)</span>
       </div>
       <div className="rdb-status-bar__actions">
-        <button className="rdb-status-bar__btn" onClick={copyAsCsv} title="Copy as CSV">
+        <button className="rdb-status-bar__btn" onClick={copy_as_csv} title="Copy as CSV">
           [CSV]
         </button>
-        <button className="rdb-status-bar__btn" onClick={copyAsJson} title="Copy as JSON">
+        <button className="rdb-status-bar__btn" onClick={copy_as_json} title="Copy as JSON">
           [JSON]
         </button>
       </div>

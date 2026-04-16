@@ -24,7 +24,7 @@ export interface WsClient {
   ): Promise<unknown[][]>;
 }
 
-function normalizeFragment(raw: unknown): Diagnostic['fragment'] {
+function normalize_fragment(raw: unknown): Diagnostic['fragment'] {
   if (!raw || typeof raw !== 'object') return undefined;
   const obj = raw as Record<string, unknown>;
   if ('Statement' in obj && obj.Statement && typeof obj.Statement === 'object') {
@@ -41,12 +41,12 @@ function normalizeFragment(raw: unknown): Diagnostic['fragment'] {
   return undefined;
 }
 
-function toDiagnostic(error: ReifyError): Diagnostic {
+function to_diagnostic(error: ReifyError): Diagnostic {
   return {
     code: error.code,
     statement: error.statement,
     message: error.message.replace(/^\[.*?\]\s*/, ''),
-    fragment: normalizeFragment(error.fragment),
+    fragment: normalize_fragment(error.fragment),
     label: error.label,
     help: error.help,
     notes: error.notes,
@@ -78,11 +78,11 @@ export class WsExecutor implements Executor {
 
       const data = results.map((row: unknown) => {
         if (row && typeof row === 'object') {
-          const plainRow: Record<string, unknown> = {};
+          const plain_row: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(row as Record<string, unknown>)) {
-            plainRow[key] = value;
+            plain_row[key] = value;
           }
-          return plainRow;
+          return plain_row;
         }
         return row as Record<string, unknown>;
       });
@@ -91,7 +91,7 @@ export class WsExecutor implements Executor {
     } catch (error) {
       const execution_time = Math.round(performance.now() - start_time);
       if (error instanceof ReifyError) {
-        return { success: false, error: error.message, diagnostic: toDiagnostic(error), execution_time };
+        return { success: false, error: error.message, diagnostic: to_diagnostic(error), execution_time };
       }
       const error_message = error instanceof Error ? error.message : String(error);
       return { success: false, error: error_message, execution_time };
