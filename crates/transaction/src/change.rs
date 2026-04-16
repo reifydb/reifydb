@@ -6,13 +6,14 @@ use reifydb_core::{
 	encoded::row::EncodedRow,
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
+		binding::Binding,
 		config::{Config, ConfigKey},
 		dictionary::Dictionary,
 		flow::{Flow, FlowId},
 		handler::Handler,
 		id::{
-			HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-			SinkId, SourceId, TableId, TestId, ViewId,
+			BindingId, HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId,
+			SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{GrantedRole, Identity, Role, RoleId},
 		migration::{Migration, MigrationEvent},
@@ -36,7 +37,8 @@ use reifydb_type::value::{dictionary::DictionaryId, identity::IdentityId, row_nu
 use crate::TransactionId;
 
 pub trait TransactionalChanges:
-	TransactionalDictionaryChanges
+	TransactionalBindingChanges
+	+ TransactionalDictionaryChanges
 	+ TransactionalFlowChanges
 	+ TransactionalHandlerChanges
 	+ TransactionalMigrationChanges
@@ -58,6 +60,12 @@ pub trait TransactionalChanges:
 	+ TransactionalConfigChanges
 	+ TransactionalRowTtlChanges
 {
+}
+
+pub trait TransactionalBindingChanges {
+	fn find_binding(&self, id: BindingId) -> Option<&Binding>;
+
+	fn is_binding_deleted(&self, id: BindingId) -> bool;
 }
 
 pub trait TransactionalRowTtlChanges {
@@ -264,6 +272,8 @@ pub struct TransactionalCatalogChanges {
 	pub txn_id: TransactionId,
 	/// Configuration changes in order
 	pub config: Vec<Change<Config>>,
+	/// All binding definition changes in order (no coalescing)
+	pub binding: Vec<Change<Binding>>,
 	/// All dictionary definition changes in order (no coalescing)
 	pub dictionary: Vec<Change<Dictionary>>,
 	/// All flow definition changes in order (no coalescing)
@@ -310,6 +320,7 @@ pub struct TransactionalCatalogChanges {
 }
 
 pub struct CatalogChangesSavepoint {
+	binding_len: usize,
 	config_len: usize,
 	dictionary_len: usize,
 	flow_len: usize,
@@ -338,6 +349,7 @@ pub struct CatalogChangesSavepoint {
 impl TransactionalCatalogChanges {
 	pub fn savepoint(&self) -> CatalogChangesSavepoint {
 		CatalogChangesSavepoint {
+			binding_len: self.binding.len(),
 			config_len: self.config.len(),
 			dictionary_len: self.dictionary.len(),
 			flow_len: self.flow.len(),
@@ -365,6 +377,7 @@ impl TransactionalCatalogChanges {
 	}
 
 	pub fn restore_savepoint(&mut self, sp: CatalogChangesSavepoint) {
+		self.binding.truncate(sp.binding_len);
 		self.config.truncate(sp.config_len);
 		self.dictionary.truncate(sp.dictionary_len);
 		self.flow.truncate(sp.flow_len);
@@ -388,6 +401,21 @@ impl TransactionalCatalogChanges {
 		self.view.truncate(sp.view_len);
 		self.row_ttl.truncate(sp.row_ttl_len);
 		self.log.truncate(sp.log_len);
+	}
+
+	pub fn add_binding_change(&mut self, change: Change<Binding>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|b| b.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.binding.push(change);
+		self.log.push(Operation::Binding {
+			id,
+			op,
+		});
 	}
 
 	pub fn add_config_change(&mut self, change: Change<Config>) {
@@ -751,6 +779,10 @@ pub enum OperationType {
 /// Log entry for operation ordering
 #[derive(Debug, Clone)]
 pub enum Operation {
+	Binding {
+		id: BindingId,
+		op: OperationType,
+	},
 	Config {
 		key: ConfigKey,
 		op: OperationType,
@@ -846,6 +878,7 @@ impl TransactionalCatalogChanges {
 	pub fn new(txn_id: TransactionId) -> Self {
 		Self {
 			txn_id,
+			binding: Vec::new(),
 			config: Vec::new(),
 			dictionary: Vec::new(),
 			flow: Vec::new(),
@@ -963,6 +996,7 @@ impl TransactionalCatalogChanges {
 
 	/// Clear all changes (for rollback)
 	pub fn clear(&mut self) {
+		self.binding.clear();
 		self.config.clear();
 		self.dictionary.clear();
 		self.flow.clear();

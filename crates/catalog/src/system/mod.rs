@@ -751,8 +751,9 @@ pub mod ids {
 		pub const TOKEN: SequenceId = SequenceId(18);
 		pub const SOURCE_CONNECTOR: SequenceId = SequenceId(19);
 		pub const SINK_CONNECTOR: SequenceId = SequenceId(20);
+		pub const BINDING: SequenceId = SequenceId(21);
 
-		pub const ALL: [SequenceId; 20] = [
+		pub const ALL: [SequenceId; 21] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -773,6 +774,7 @@ pub mod ids {
 			TOKEN,
 			SOURCE_CONNECTOR,
 			SINK_CONNECTOR,
+			BINDING,
 		];
 	}
 

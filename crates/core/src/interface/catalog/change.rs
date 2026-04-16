@@ -11,6 +11,7 @@ use reifydb_type::Result;
 use crate::{
 	interface::catalog::{
 		authentication::Authentication,
+		binding::Binding,
 		config::Config,
 		dictionary::Dictionary,
 		flow::Flow,
@@ -193,6 +194,13 @@ pub trait CatalogTrackSourceChangeOperations {
 	fn track_source_deleted(&mut self, source: Source) -> Result<()>;
 }
 
+/// Trait for tracking binding definition changes during a transaction.
+pub trait CatalogTrackBindingChangeOperations {
+	fn track_binding_created(&mut self, binding: Binding) -> Result<()>;
+
+	fn track_binding_deleted(&mut self, binding: Binding) -> Result<()>;
+}
+
 /// Trait for tracking sink definition changes during a transaction.
 pub trait CatalogTrackSinkChangeOperations {
 	fn track_sink_created(&mut self, sink: Sink) -> Result<()>;
@@ -211,7 +219,8 @@ pub trait CatalogTrackRowTtlChangeOperations {
 
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
-	CatalogTrackDictionaryChangeOperations
+	CatalogTrackBindingChangeOperations
+	+ CatalogTrackDictionaryChangeOperations
 	+ CatalogTrackFlowChangeOperations
 	+ CatalogTrackHandlerChangeOperations
 	+ CatalogTrackMigrationChangeOperations

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+pub mod binding;
 pub mod config;
 pub mod dictionary;
 pub mod flow;
@@ -34,13 +35,14 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
+		binding::Binding,
 		config::{Config, ConfigKey, GetConfig},
 		dictionary::Dictionary,
 		flow::{Flow, FlowId, FlowNodeId},
 		handler::Handler,
 		id::{
-			HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId,
-			SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			BindingId, HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId,
+			RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{GrantedRole, Identity, Role, RoleId},
 		key::PrimaryKey,
@@ -78,6 +80,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 };
 
+pub type MultiVersionBinding = MultiVersionContainer<Binding>;
 pub type MultiVersionNamespace = MultiVersionContainer<Namespace>;
 pub type MultiVersionTable = MultiVersionContainer<Table>;
 pub type MultiVersionView = MultiVersionContainer<View>;
@@ -110,6 +113,10 @@ pub struct MaterializedCatalog(Arc<MaterializedCatalogInner>);
 
 #[derive(Debug)]
 pub struct MaterializedCatalogInner {
+	/// MultiVersion binding definitions indexed by binding ID
+	pub(crate) bindings: SkipMap<BindingId, MultiVersionBinding>,
+	/// Index from procedure ID to binding IDs for fast procedure->binding lookups
+	pub(crate) bindings_by_procedure: SkipMap<ProcedureId, Vec<BindingId>>,
 	/// Runtime configuration registry (shared with the oracle)
 	pub(crate) configs: SkipMap<ConfigKey, MultiVersionConfig>,
 	/// MultiVersion namespace definitions indexed by namespace ID
@@ -241,6 +248,8 @@ impl MaterializedCatalog {
 		namespaces_by_name.insert("default".to_string(), default_namespace_id);
 
 		let inner = MaterializedCatalogInner {
+			bindings: SkipMap::new(),
+			bindings_by_procedure: SkipMap::new(),
 			configs: SkipMap::new(),
 			namespaces,
 			namespaces_by_name,

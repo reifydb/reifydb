@@ -78,6 +78,8 @@ pub enum KeyKind {
 	Procedure = 0x44,
 	NamespaceProcedure = 0x45,
 	ProcedureParam = 0x46,
+	Binding = 0x47,
+	NamespaceBinding = 0x48,
 }
 
 impl From<KeyKind> for u8 {
@@ -160,6 +162,8 @@ impl TryFrom<u8> for KeyKind {
 			0x44 => Ok(Self::Procedure),
 			0x45 => Ok(Self::NamespaceProcedure),
 			0x46 => Ok(Self::ProcedureParam),
+			0x47 => Ok(Self::Binding),
+			0x48 => Ok(Self::NamespaceBinding),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

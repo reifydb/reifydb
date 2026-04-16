@@ -136,10 +136,12 @@ pub mod tests {
 			KeyKind::RowTtl => {}
 			KeyKind::Procedure => {}
 			KeyKind::NamespaceProcedure => {}
-			KeyKind::ProcedureParam => {} /* When adding a new variant, add it here.
-			                               * The compiler will error if you forget.
-			                               * Then add a test and update should_exclude_from_cdc() if
-			                               * needed. */
+			KeyKind::ProcedureParam => {}
+			KeyKind::Binding => {}
+			KeyKind::NamespaceBinding => {} /* When adding a new variant, add it here.
+			                                 * The compiler will error if you forget.
+			                                 * Then add a test and update should_exclude_from_cdc() if
+			                                 * needed. */
 		}
 	}
 

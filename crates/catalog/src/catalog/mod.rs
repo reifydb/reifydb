@@ -11,6 +11,7 @@
 //! 4. Fall back to storage as defensive measure
 
 pub mod authentication;
+pub mod binding;
 pub mod column;
 pub mod config;
 pub mod dictionary;

@@ -6,6 +6,7 @@ use reifydb_core::interface::catalog::change::CatalogTrackChangeOperations;
 use crate::transaction::admin::AdminTransaction;
 
 pub mod authentication;
+pub mod binding;
 pub mod config;
 pub mod dictionary;
 pub mod flow;

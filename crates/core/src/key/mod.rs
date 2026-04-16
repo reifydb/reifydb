@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use authentication::AuthenticationKey;
+use binding::BindingKey;
 use cdc_consumer::CdcConsumerKey;
 use column::ColumnKey;
 use column_sequence::ColumnSequenceKey;
@@ -17,6 +18,7 @@ use index::IndexKey;
 use index_entry::IndexEntryKey;
 use kind::KeyKind;
 use namespace::NamespaceKey;
+use namespace_binding::NamespaceBindingKey;
 use namespace_dictionary::NamespaceDictionaryKey;
 use namespace_flow::NamespaceFlowKey;
 use namespace_handler::NamespaceHandlerKey;
@@ -56,6 +58,7 @@ use crate::{
 };
 
 pub mod authentication;
+pub mod binding;
 pub mod cdc_consumer;
 pub mod cdc_exclude;
 pub mod column;
@@ -78,6 +81,7 @@ pub mod kind;
 pub mod migration;
 pub mod migration_event;
 pub mod namespace;
+pub mod namespace_binding;
 pub mod namespace_dictionary;
 pub mod namespace_flow;
 pub mod namespace_handler;
@@ -169,6 +173,8 @@ pub enum Key {
 	Procedure(ProcedureKey),
 	NamespaceProcedure(NamespaceProcedureKey),
 	ProcedureParam(ProcedureParamKey),
+	Binding(BindingKey),
+	NamespaceBinding(NamespaceBindingKey),
 }
 
 impl Key {
@@ -227,6 +233,8 @@ impl Key {
 			Key::Procedure(key) => key.encode(),
 			Key::NamespaceProcedure(key) => key.encode(),
 			Key::ProcedureParam(key) => key.encode(),
+			Key::Binding(key) => key.encode(),
+			Key::NamespaceBinding(key) => key.encode(),
 		}
 	}
 }
@@ -375,6 +383,10 @@ impl Key {
 			KeyKind::Procedure => ProcedureKey::decode(key).map(Self::Procedure),
 			KeyKind::NamespaceProcedure => NamespaceProcedureKey::decode(key).map(Self::NamespaceProcedure),
 			KeyKind::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
+			KeyKind::Binding | KeyKind::NamespaceBinding => {
+				// Binding keys are used directly via EncodableKey trait, not through Key enum
+				None
+			}
 		}
 	}
 }

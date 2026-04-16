@@ -10,6 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{Result, catalog::Catalog, error::CatalogChangeError};
 
+mod binding;
 mod column;
 mod config;
 mod dictionary;
@@ -37,6 +38,7 @@ mod view;
 
 mod role;
 
+use binding::BindingApplier;
 use column::ColumnApplier;
 use config::ConfigApplier;
 use dictionary::DictionaryApplier;
@@ -81,6 +83,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 	};
 
 	match kind {
+		KeyKind::Binding => dispatch::<BindingApplier>(catalog, txn, change),
 		KeyKind::Namespace => dispatch::<NamespaceApplier>(catalog, txn, change),
 		KeyKind::Table => dispatch::<TableApplier>(catalog, txn, change),
 		KeyKind::View => dispatch::<ViewApplier>(catalog, txn, change),
@@ -122,6 +125,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		| KeyKind::NamespaceDictionary
 		| KeyKind::NamespaceSumType
 		| KeyKind::NamespaceHandler
+		| KeyKind::NamespaceBinding
 		| KeyKind::NamespaceProcedure
 		| KeyKind::NamespaceSource
 		| KeyKind::NamespaceSink

@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::{
 		authentication::AuthenticationId,
 		id::{
-			ColumnId, ColumnPropertyId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
+			BindingId, ColumnId, ColumnPropertyId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
 			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId,
 		},
 		identity::RoleId,
@@ -23,7 +23,7 @@ use crate::{
 	Result,
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		AUTHENTICATION, COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION,
+		AUTHENTICATION, BINDING, COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION,
 		MIGRATION_EVENT, NAMESPACE, POLICY, PRIMARY_KEY, PROCEDURE, ROLE, SOURCE, TEST, TOKEN,
 	},
 };
@@ -61,6 +61,8 @@ static AUTHENTICATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::en
 static TEST_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TEST));
 
 static TOKEN_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TOKEN));
+
+static BINDING_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(BINDING));
 
 pub(crate) struct SystemSequence {}
 
@@ -142,5 +144,9 @@ impl SystemSequence {
 
 	pub(crate) fn next_token_id(txn: &mut AdminTransaction) -> Result<TokenId> {
 		GeneratorU64::next(txn, &TOKEN_KEY, Some(SYSTEM_RESERVED))
+	}
+
+	pub(crate) fn next_binding_id(txn: &mut AdminTransaction) -> Result<BindingId> {
+		GeneratorU64::next(txn, &BINDING_KEY, Some(SYSTEM_RESERVED)).map(BindingId)
 	}
 }

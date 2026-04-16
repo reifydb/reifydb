@@ -10,13 +10,14 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			authentication::{Authentication, AuthenticationId},
+			binding::Binding,
 			config::{Config, ConfigKey},
 			dictionary::Dictionary,
 			flow::{Flow, FlowId},
 			handler::Handler,
 			id::{
-				HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId, SinkId,
-				SourceId, TableId, TestId, ViewId,
+				BindingId, HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
+				SinkId, SourceId, TableId, TestId, ViewId,
 			},
 			identity::{GrantedRole, Identity, Role, RoleId},
 			migration::Migration,
@@ -47,14 +48,14 @@ use tracing::instrument;
 use crate::{
 	TransactionId,
 	change::{
-		TransactionalAuthenticationChanges, TransactionalChanges, TransactionalConfigChanges,
-		TransactionalDictionaryChanges, TransactionalFlowChanges, TransactionalGrantedRoleChanges,
-		TransactionalHandlerChanges, TransactionalIdentityChanges, TransactionalMigrationChanges,
-		TransactionalNamespaceChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
-		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalRowTtlChanges,
-		TransactionalSeriesChanges, TransactionalSinkChanges, TransactionalSourceChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
-		TransactionalViewChanges,
+		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
+		TransactionalConfigChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
+		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityChanges,
+		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalPolicyChanges,
+		TransactionalProcedureChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
+		TransactionalRowTtlChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
+		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
+		TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -542,6 +543,16 @@ impl TransactionalRowTtlChanges for QueryTransaction {
 	}
 
 	fn is_row_ttl_deleted(&self, _shape: ShapeId) -> bool {
+		false
+	}
+}
+
+impl TransactionalBindingChanges for QueryTransaction {
+	fn find_binding(&self, _id: BindingId) -> Option<&Binding> {
+		None
+	}
+
+	fn is_binding_deleted(&self, _id: BindingId) -> bool {
 		false
 	}
 }

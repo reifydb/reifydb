@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub(crate) mod authentication;
+pub(crate) mod binding;
 pub mod column;
 pub(crate) mod column_property;
 pub(crate) mod config;
