@@ -54,6 +54,7 @@ pub struct QueryResponse {
 /// Query parameters for response format control.
 #[derive(Debug, Deserialize)]
 pub struct FormatParams {
+	#[serde(default)]
 	pub format: WireFormat,
 	pub unwrap: Option<bool>,
 }

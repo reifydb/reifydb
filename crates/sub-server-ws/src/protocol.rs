@@ -48,7 +48,8 @@ pub struct AdminRequest {
 	pub statements: Vec<String>,
 	/// Optional parameters for the statements.
 	pub params: Option<WireParams>,
-	/// Required response format.
+	/// Response format. Defaults to `Frames` when absent.
+	#[serde(default)]
 	pub format: WireFormat,
 	/// When true with format="json", return the first element directly instead of an array.
 	pub unwrap: Option<bool>,
@@ -69,7 +70,8 @@ pub struct CommandRequest {
 	pub statements: Vec<String>,
 	/// Optional parameters for the statements.
 	pub params: Option<WireParams>,
-	/// Required response format.
+	/// Response format. Defaults to `Frames` when absent.
+	#[serde(default)]
 	pub format: WireFormat,
 	/// When true with format="json", return the first element directly instead of an array.
 	pub unwrap: Option<bool>,
@@ -82,7 +84,8 @@ pub struct QueryRequest {
 	pub statements: Vec<String>,
 	/// Optional parameters for the queries.
 	pub params: Option<WireParams>,
-	/// Required response format.
+	/// Response format. Defaults to `Frames` when absent.
+	#[serde(default)]
 	pub format: WireFormat,
 	/// When true with format="json", return the first element directly instead of an array.
 	pub unwrap: Option<bool>,
@@ -96,7 +99,8 @@ pub struct QueryRequest {
 pub struct SubscribeRequest {
 	/// RQL query to subscribe to.
 	pub rql: String,
-	/// Required wire format for pushed changes.
+	/// Wire format for pushed changes. Defaults to `Frames` when absent.
+	#[serde(default)]
 	pub format: WireFormat,
 }
 

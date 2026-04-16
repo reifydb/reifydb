@@ -17,3 +17,9 @@ pub enum WireFormat {
 	Frames,
 	Rbcf,
 }
+
+impl Default for WireFormat {
+	fn default() -> Self {
+		WireFormat::Frames
+	}
+}
