@@ -59,7 +59,7 @@ impl CatalogStore {
 	}
 }
 
-fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -> Result<Vec<ProcedureParam>> {
+pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -> Result<Vec<ProcedureParam>> {
 	let mut entries: Vec<(u16, ProcedureParam)> = Vec::new();
 	let mut stream = rx.range(ProcedureParamKey::full_scan(procedure_id), 1024)?;
 	for entry in stream.by_ref() {
@@ -82,7 +82,7 @@ fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -> Result<Ve
 	Ok(entries.into_iter().map(|(_, p)| p).collect())
 }
 
-pub(super) fn decode_procedure(row: &EncodedRow, params: Vec<ProcedureParam>) -> Procedure {
+pub(crate) fn decode_procedure(row: &EncodedRow, params: Vec<ProcedureParam>) -> Procedure {
 	let id = ProcedureId::from_raw(procedure::SHAPE.get_u64(row, procedure::ID));
 	let namespace = NamespaceId(procedure::SHAPE.get_u64(row, procedure::NAMESPACE));
 	let name = procedure::SHAPE.get_utf8(row, procedure::NAME).to_string();

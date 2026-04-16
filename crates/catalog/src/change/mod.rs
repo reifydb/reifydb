@@ -22,6 +22,8 @@ mod namespace;
 mod passthrough;
 mod policy;
 mod primary_key;
+mod procedure;
+mod procedure_param;
 mod retention;
 mod ringbuffer;
 mod row_shape;
@@ -47,6 +49,8 @@ use namespace::NamespaceApplier;
 use passthrough::PassthroughApplier;
 use policy::PolicyApplier;
 use primary_key::PrimaryKeyApplier;
+use procedure::ProcedureApplier;
+use procedure_param::ProcedureParamApplier;
 use retention::{OperatorRetentionStrategyApplier, ShapeRetentionStrategyApplier};
 use ringbuffer::RingBufferApplier;
 use role::RoleApplier;
@@ -105,6 +109,9 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::Shape => dispatch::<RowShapeHeaderApplier>(catalog, txn, change),
 		KeyKind::RowShapeField => dispatch::<RowShapeFieldApplier>(catalog, txn, change),
 
+		KeyKind::Procedure => dispatch::<ProcedureApplier>(catalog, txn, change),
+		KeyKind::ProcedureParam => dispatch::<ProcedureParamApplier>(catalog, txn, change),
+
 		KeyKind::Column | KeyKind::Columns => dispatch::<ColumnApplier>(catalog, txn, change),
 
 		// Secondary index keys — write to txn, no materialized catalog action
@@ -115,6 +122,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		| KeyKind::NamespaceDictionary
 		| KeyKind::NamespaceSumType
 		| KeyKind::NamespaceHandler
+		| KeyKind::NamespaceProcedure
 		| KeyKind::NamespaceSource
 		| KeyKind::NamespaceSink
 		| KeyKind::NamespaceSeries
