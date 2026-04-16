@@ -10,6 +10,7 @@ pub mod namespace;
 pub mod operator_retention_strategy;
 pub mod policy;
 pub mod primary_key;
+pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_shape;
@@ -30,6 +31,7 @@ use namespace::load_namespaces;
 use operator_retention_strategy::load_operator_retention_strategies;
 use policy::load_policies;
 use primary_key::load_primary_keys;
+use procedure::load_procedures;
 use reifydb_transaction::transaction::Transaction;
 use ringbuffer::load_ringbuffers;
 use role::load_roles;
@@ -68,6 +70,7 @@ impl MaterializedCatalogLoader {
 
 		load_dictionaries(rx, catalog)?;
 		load_sumtypes(rx, catalog)?;
+		load_procedures(rx, catalog)?;
 
 		load_sources(rx, catalog)?;
 		load_sinks(rx, catalog)?;

@@ -3,7 +3,7 @@
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{
-	interface::catalog::{procedure::ProcedureTrigger, sumtype::SumTypeKind},
+	interface::catalog::{procedure::RqlTrigger, sumtype::SumTypeKind},
 	internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -98,7 +98,7 @@ impl<'bump> Compiler<'bump> {
 			name: self.interner.intern_fragment(&create.procedure.name),
 			params: vec![],
 			body_source: create.body_source,
-			trigger: ProcedureTrigger::Event {
+			trigger: RqlTrigger::Event {
 				variant: VariantRef {
 					sumtype_id: sumtype.id,
 					variant_tag: variant.tag,

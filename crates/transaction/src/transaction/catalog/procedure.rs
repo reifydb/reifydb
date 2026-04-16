@@ -53,11 +53,11 @@ impl TransactionalProcedureChanges for AdminTransaction {
 	fn find_procedure(&self, id: ProcedureId) -> Option<&Procedure> {
 		for change in self.changes.procedure.iter().rev() {
 			if let Some(procedure) = &change.post {
-				if procedure.id == id {
+				if procedure.id() == id {
 					return Some(procedure);
 				}
 			} else if let Some(procedure) = &change.pre
-				&& procedure.id == id && change.op == Delete
+				&& procedure.id() == id && change.op == Delete
 			{
 				return None;
 			}
@@ -66,11 +66,9 @@ impl TransactionalProcedureChanges for AdminTransaction {
 	}
 
 	fn find_procedure_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Procedure> {
-		self.changes
-			.procedure
-			.iter()
-			.rev()
-			.find_map(|change| change.post.as_ref().filter(|p| p.namespace == namespace && p.name == name))
+		self.changes.procedure.iter().rev().find_map(|change| {
+			change.post.as_ref().filter(|p| p.namespace() == namespace && p.name() == name)
+		})
 	}
 
 	fn is_procedure_deleted(&self, id: ProcedureId) -> bool {
@@ -78,7 +76,7 @@ impl TransactionalProcedureChanges for AdminTransaction {
 			.procedure
 			.iter()
 			.rev()
-			.any(|change| change.op == Delete && change.pre.as_ref().map(|p| p.id) == Some(id))
+			.any(|change| change.op == Delete && change.pre.as_ref().map(|p| p.id()) == Some(id))
 	}
 
 	fn is_procedure_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
@@ -87,7 +85,7 @@ impl TransactionalProcedureChanges for AdminTransaction {
 				&& change
 					.pre
 					.as_ref()
-					.map(|p| p.namespace == namespace && p.name == name)
+					.map(|p| p.namespace() == namespace && p.name() == name)
 					.unwrap_or(false)
 		})
 	}

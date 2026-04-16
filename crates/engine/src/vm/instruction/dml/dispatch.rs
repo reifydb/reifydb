@@ -102,7 +102,7 @@ pub(crate) fn dispatch(
 
 	// Fire each catalog (RQL) procedure in declaration order
 	for procedure in &procedures {
-		let compiled = services.compiler.compile(tx, &procedure.body)?;
+		let compiled = services.compiler.compile(tx, procedure.body().unwrap_or_default())?;
 
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
@@ -126,7 +126,7 @@ pub(crate) fn dispatch(
 						tx.record_test_handler(CapturedInvocation {
 							sequence: 0,
 							namespace: plan.namespace.name().to_string(),
-							handler: procedure.name.clone(),
+							handler: procedure.name().to_string(),
 							event: sumtype.name.clone(),
 							variant: plan.variant_name.clone(),
 							duration_ns: handler_start.elapsed().as_nanos() as u64,
@@ -143,7 +143,7 @@ pub(crate) fn dispatch(
 				tx.record_test_handler(CapturedInvocation {
 					sequence: 0,
 					namespace: plan.namespace.name().to_string(),
-					handler: procedure.name.clone(),
+					handler: procedure.name().to_string(),
 					event: sumtype.name.clone(),
 					variant: plan.variant_name.clone(),
 					duration_ns: handler_start.elapsed().as_nanos() as u64,

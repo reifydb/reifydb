@@ -622,10 +622,47 @@ impl<'de> Deserialize<'de> for RingBufferId {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct ProcedureId(pub u64);
+pub struct ProcedureId(u64);
 
 impl ProcedureId {
-	pub const SYSTEM_CONFIG_SET: ProcedureId = ProcedureId(1);
+	/// Lower bound of the id band reserved for ephemeral (Native/Ffi/Wasm) procedures.
+	/// Persistent ids are strictly below this; ephemeral ids are at or above it.
+	/// The split is enforced by the `persistent` / `ephemeral` constructors.
+	pub const SYSTEM_RESERVED_START: u64 = 1 << 48;
+
+	/// Reserved id for the built-in `system::config::set` Native procedure.
+	/// Retained for backwards-compat references; ephemeral procedures now get
+	/// fresh ids from a per-boot counter starting at `SYSTEM_RESERVED_START`.
+	pub const SYSTEM_CONFIG_SET: ProcedureId = ProcedureId::persistent(1);
+
+	/// Construct a persistent procedure id. Panics if `id >= SYSTEM_RESERVED_START`
+	/// — that band is reserved for ephemeral (Native/Ffi/Wasm) procedures.
+	pub const fn persistent(id: u64) -> Self {
+		assert!(id < Self::SYSTEM_RESERVED_START, "persistent ProcedureId must be below SYSTEM_RESERVED_START");
+		Self(id)
+	}
+
+	/// Construct an ephemeral procedure id. Panics if `id < SYSTEM_RESERVED_START`
+	/// — that band belongs to persistent procedures.
+	pub const fn ephemeral(id: u64) -> Self {
+		assert!(
+			id >= Self::SYSTEM_RESERVED_START,
+			"ephemeral ProcedureId must be at or above SYSTEM_RESERVED_START"
+		);
+		Self(id)
+	}
+
+	/// Construct a `ProcedureId` from a raw `u64` without checking which band it
+	/// falls in. Use this only for decoding trusted bytes (storage rows, key scans,
+	/// deserialization) where the value has already been validated upstream.
+	pub const fn from_raw(id: u64) -> Self {
+		Self(id)
+	}
+
+	/// Returns `true` if this id was allocated from the ephemeral band.
+	pub const fn is_ephemeral(&self) -> bool {
+		self.0 >= Self::SYSTEM_RESERVED_START
+	}
 }
 
 impl Display for ProcedureId {
@@ -654,18 +691,6 @@ impl From<ProcedureId> for u64 {
 	}
 }
 
-impl From<i32> for ProcedureId {
-	fn from(value: i32) -> Self {
-		Self(value as u64)
-	}
-}
-
-impl From<u64> for ProcedureId {
-	fn from(value: u64) -> Self {
-		Self(value)
-	}
-}
-
 impl Serialize for ProcedureId {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -690,7 +715,7 @@ impl<'de> Deserialize<'de> for ProcedureId {
 			}
 
 			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
-				Ok(ProcedureId(value))
+				Ok(ProcedureId::from_raw(value))
 			}
 		}
 

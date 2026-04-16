@@ -94,6 +94,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::DropSumType(_) => unimplemented!(),
 		LogicalPlan::DropSubscription(_) => unimplemented!(),
 		LogicalPlan::DropSeries(_) => unimplemented!(),
+		LogicalPlan::DropProcedure(_) => unimplemented!(),
 		LogicalPlan::CreateSource(_) => unimplemented!(),
 		LogicalPlan::CreateSink(_) => unimplemented!(),
 		LogicalPlan::DropSource(_) => unimplemented!(),

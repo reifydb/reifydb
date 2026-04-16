@@ -4,10 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{
-		procedure::{Procedure, ProcedureTrigger},
-		vtable::VTable,
-	},
+	interface::catalog::{procedure::Procedure, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -55,13 +52,12 @@ impl BaseVTable for SystemHandlers {
 		let mut variant_tags = Vec::new();
 
 		let mut collect = |proc_def: &Procedure| {
-			if let ProcedureTrigger::Event {
-				variant,
-			} = &proc_def.trigger && !ids.contains(&proc_def.id.0)
+			if let Some(variant) = proc_def.event_variant()
+				&& !ids.contains(&*proc_def.id())
 			{
-				ids.push(proc_def.id.0);
-				namespace_ids.push(proc_def.namespace.0);
-				names.push(proc_def.name.clone());
+				ids.push(*proc_def.id());
+				namespace_ids.push(proc_def.namespace().0);
+				names.push(proc_def.name().to_string());
 				sumtype_ids.push(variant.sumtype_id.0);
 				variant_tags.push(variant.variant_tag);
 			}

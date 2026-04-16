@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	error::diagnostic::catalog::namespace_not_found,
-	interface::catalog::procedure::{ProcedureParam, ProcedureTrigger},
+	interface::catalog::procedure::{ProcedureParam, RqlTrigger},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
@@ -54,7 +54,7 @@ impl<'bump> Compiler<'bump> {
 			name: self.interner.intern_fragment(&create.procedure.name),
 			params,
 			body_source: create.body_source,
-			trigger: ProcedureTrigger::Call,
+			trigger: RqlTrigger::Call,
 			is_test: create.is_test,
 		}))
 	}

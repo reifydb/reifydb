@@ -1443,6 +1443,11 @@ impl IntoDiagnostic for TypeError {
 						"Check the procedure name and available procedures",
 						"unknown procedure",
 					),
+					ProcedureErrorKind::NoRegisteredImplementation { .. } => (
+						"PROCEDURE_002",
+						"the catalog references a native/FFI/WASM binding that is not loaded in this binary — rebuild with the registration or drop/replace the catalog entry",
+						"native binding not loaded",
+					),
 				};
 
 				Diagnostic {

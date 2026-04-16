@@ -17,6 +17,7 @@ pub(crate) mod namespace;
 pub(crate) mod policy;
 #[allow(dead_code)]
 pub(crate) mod primary_key;
+pub(crate) mod procedure;
 #[allow(dead_code)]
 pub(crate) mod retention_strategy;
 pub mod ringbuffer;

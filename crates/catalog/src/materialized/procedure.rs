@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		id::{NamespaceId, ProcedureId},
-		procedure::{Procedure, ProcedureTrigger},
+		procedure::Procedure,
 	},
 };
 use reifydb_type::value::sumtype::VariantRef;
@@ -64,38 +64,34 @@ impl MaterializedCatalog {
 			&& let Some(pre) = entry.value().get_latest()
 		{
 			// Remove old name from index
-			self.procedures_by_name.remove(&(pre.namespace, pre.name.clone()));
+			self.procedures_by_name.remove(&(pre.namespace(), pre.name().to_string()));
 
 			// Remove from variant index if it had an event binding
-			if let ProcedureTrigger::Event {
-				variant,
-			} = &pre.trigger && let Some(ids_entry) = self.procedures_by_variant.get(variant)
+			if let Some(variant) = pre.event_variant()
+				&& let Some(ids_entry) = self.procedures_by_variant.get(&variant)
 			{
 				let mut ids = ids_entry.value().clone();
 				ids.retain(|existing| *existing != id);
 				drop(ids_entry);
-				self.procedures_by_variant.insert(*variant, ids);
+				self.procedures_by_variant.insert(variant, ids);
 			}
 		}
 
 		let multi = self.procedures.get_or_insert_with(id, MultiVersionProcedure::new);
 		if let Some(new) = procedure {
-			self.procedures_by_name.insert((new.namespace, new.name.clone()), id);
+			self.procedures_by_name.insert((new.namespace(), new.name().to_string()), id);
 
 			// Add to variant index if it has an event binding
-			if let ProcedureTrigger::Event {
-				variant,
-			} = &new.trigger
-			{
-				if let Some(entry) = self.procedures_by_variant.get(variant) {
+			if let Some(variant) = new.event_variant() {
+				if let Some(entry) = self.procedures_by_variant.get(&variant) {
 					let mut ids = entry.value().clone();
 					if !ids.contains(&id) {
 						ids.push(id);
 					}
 					drop(entry);
-					self.procedures_by_variant.insert(*variant, ids);
+					self.procedures_by_variant.insert(variant, ids);
 				} else {
-					self.procedures_by_variant.insert(*variant, vec![id]);
+					self.procedures_by_variant.insert(variant, vec![id]);
 				}
 			}
 

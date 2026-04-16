@@ -34,6 +34,8 @@ pub enum CatalogObjectKind {
 	Column,
 	Source,
 	Sink,
+	Procedure,
+	TestProcedure,
 }
 
 impl Display for CatalogObjectKind {
@@ -58,6 +60,8 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Column => f.write_str("column"),
 			CatalogObjectKind::Source => f.write_str("source"),
 			CatalogObjectKind::Sink => f.write_str("sink"),
+			CatalogObjectKind::Procedure => f.write_str("procedure"),
+			CatalogObjectKind::TestProcedure => f.write_str("test procedure"),
 		}
 	}
 }
@@ -184,6 +188,20 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
+	#[error(
+		"cannot drop {kind} procedure `{name}`: native/FFI/WASM procedures are managed by the runtime registry, not DDL"
+	)]
+	CannotDropEphemeralProcedure {
+		kind: String,
+		name: String,
+		fragment: Fragment,
+	},
+
+	#[error("cannot register {kind} procedure as ephemeral: only Native/FFI/WASM variants are accepted")]
+	CannotRegisterPersistentAsEphemeral {
+		kind: String,
+	},
+
 	#[error("unknown config key `{0}`")]
 	ConfigStorageKeyNotFound(String),
 
@@ -298,6 +316,16 @@ impl IntoDiagnostic for CatalogError {
 						"CA_061",
 						"sink",
 						"choose a different name, drop the existing sink or create sink in a different namespace",
+					),
+					CatalogObjectKind::Procedure => (
+						"CA_080",
+						"procedure",
+						"choose a different name, drop the existing procedure or create procedure in a different namespace",
+					),
+					CatalogObjectKind::TestProcedure => (
+						"CA_081",
+						"test procedure",
+						"choose a different name or drop the existing test procedure first",
 					),
 				};
 				let message = if matches!(
@@ -423,6 +451,16 @@ impl IntoDiagnostic for CatalogError {
 						"CA_063",
 						"sink",
 						"ensure the sink exists or create it first using `CREATE SINK`".to_string(),
+					),
+					CatalogObjectKind::Procedure => (
+						"CA_082",
+						"procedure",
+						"ensure the procedure exists or create it first using `CREATE PROCEDURE`".to_string(),
+					),
+					CatalogObjectKind::TestProcedure => (
+						"CA_083",
+						"test procedure",
+						"ensure the test procedure exists or create it first using `CREATE TEST PROCEDURE`".to_string(),
 					),
 				};
 				let message = match kind {
@@ -969,6 +1007,50 @@ impl IntoDiagnostic for CatalogError {
 					operator_chain: None,
 				}
 			}
+
+			CatalogError::CannotDropEphemeralProcedure {
+				kind,
+				name,
+				fragment,
+			} => Diagnostic {
+				code: "CA_084".to_string(),
+				statement: None,
+				message: format!(
+					"cannot drop {} procedure `{}`: native/FFI/WASM procedures are managed by the runtime registry, not DDL",
+					kind, name
+				),
+				fragment,
+				label: Some("cannot drop system-managed procedure".to_string()),
+				help: Some(
+					"native, FFI, and WASM procedures are repopulated on every boot from the runtime registry — remove them from the binary or plugin directory instead"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::CannotRegisterPersistentAsEphemeral {
+				kind,
+			} => Diagnostic {
+				code: "CA_085".to_string(),
+				statement: None,
+				message: format!(
+					"cannot register {} procedure as ephemeral: only Native/FFI/WASM variants are accepted",
+					kind
+				),
+				fragment: Fragment::None,
+				label: Some("variant not accepted by ephemeral registrar".to_string()),
+				help: Some(
+					"persistent Rql/Test procedures must be created via `CREATE PROCEDURE`, not via the ephemeral registrar"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 		}
 	}
 }

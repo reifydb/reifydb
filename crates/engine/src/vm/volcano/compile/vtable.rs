@@ -36,7 +36,10 @@ use reifydb_catalog::{
 			policy_operations::SystemPolicyOperations,
 			primary_key_columns::SystemPrimaryKeyColumns,
 			primary_keys::SystemPrimaryKeys,
-			procedures::SystemProcedures,
+			procedures::{
+				ffi::SystemProceduresFfi, native::SystemProceduresNative, rql::SystemProceduresRql,
+				test::SystemProceduresTest, wasm::SystemProceduresWasm,
+			},
 			ringbuffers::SystemRingBuffers,
 			roles::SystemRoles,
 			sequences::SystemSequences,
@@ -81,6 +84,8 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 		compile_metrics_storage_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_METRICS_CDC {
 		compile_metrics_cdc_vtable(&table.name, &context)
+	} else if namespace.id() == NamespaceId::SYSTEM_PROCEDURES {
+		compile_procedures_vtable(&table.name, &context)
 	} else {
 		panic!("Unknown virtual table type: {}.{}", namespace.name(), table.name)
 	};
@@ -139,7 +144,6 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"enum_variants" => VTables::EnumVariants(SystemEnumVariants::new()),
 		"events" => VTables::Events(SystemEvents::new()),
 		"event_variants" => VTables::EventVariants(SystemEventVariants::new()),
-		"procedures" => VTables::Procedures(SystemProcedures::new(context.services.catalog.clone())),
 		"handlers" => VTables::Handlers(SystemHandlers::new(context.services.catalog.clone())),
 		"tags" => VTables::Tags(SystemTags::new()),
 		"tag_variants" => VTables::TagVariants(SystemTagVariants::new()),
@@ -199,4 +203,16 @@ fn compile_metrics_cdc_vtable(name: &str, context: &QueryContext) -> VTables {
 		_ => panic!("Unknown metrics cdc virtual table: {}", name),
 	};
 	VTables::MetricsCdc(SystemMetricsCdc::new(vtable, primitive, reader))
+}
+
+fn compile_procedures_vtable(name: &str, context: &QueryContext) -> VTables {
+	let catalog = context.services.catalog.clone();
+	match name {
+		"rql" => VTables::ProceduresRql(SystemProceduresRql::new()),
+		"test" => VTables::ProceduresTest(SystemProceduresTest::new()),
+		"native" => VTables::ProceduresNative(SystemProceduresNative::new(catalog)),
+		"ffi" => VTables::ProceduresFfi(SystemProceduresFfi::new(catalog)),
+		"wasm" => VTables::ProceduresWasm(SystemProceduresWasm::new(catalog)),
+		_ => panic!("Unknown system::procedures virtual table: {}", name),
+	}
 }

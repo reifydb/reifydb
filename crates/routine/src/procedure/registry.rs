@@ -66,6 +66,12 @@ impl ProceduresInner {
 		self.state.lock().unwrap().procedures.contains_key(name)
 	}
 
+	/// Snapshot of all registered procedure names. Used by the ephemeral procedure
+	/// registrar to repopulate the materialized catalog on every boot.
+	pub fn procedure_names(&self) -> Vec<String> {
+		self.state.lock().unwrap().procedures.keys().cloned().collect()
+	}
+
 	pub fn get_handlers(&self, catalog: &MaterializedCatalog, variant: VariantRef) -> Vec<Box<dyn Procedure>> {
 		let mut state = self.state.lock().unwrap();
 		if !state.deferred_handlers.is_empty() {

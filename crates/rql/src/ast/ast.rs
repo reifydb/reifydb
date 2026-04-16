@@ -518,6 +518,7 @@ pub enum AstDrop<'bump> {
 	Policy(AstDropPolicy<'bump>),
 	Source(AstDropSource<'bump>),
 	Sink(AstDropSink<'bump>),
+	Procedure(AstDropProcedure<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -598,6 +599,13 @@ pub struct AstDropSink<'bump> {
 	pub if_exists: bool,
 	pub sink: MaybeQualifiedSinkIdentifier<'bump>,
 	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropProcedure<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
 }
 
 #[derive(Debug)]
@@ -992,6 +1000,7 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Policy(AstDropPolicy<'bump>),
 	Source(AstDropSource<'bump>),
 	Sink(AstDropSink<'bump>),
+	Procedure(AstDropProcedure<'bump>),
 );
 
 #[derive(Debug)]

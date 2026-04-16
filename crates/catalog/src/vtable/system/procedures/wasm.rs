@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{procedure::ProcedureTrigger, vtable::VTable},
+	interface::catalog::{procedure::Procedure, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -17,24 +17,24 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes procedures with trigger = Call or NativeCall
-pub struct SystemProcedures {
+/// Virtual table that exposes WASM procedures loaded from compiled modules.
+pub struct SystemProceduresWasm {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl SystemProcedures {
+impl SystemProceduresWasm {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_procedures_table().clone(),
+			vtable: SystemCatalog::get_system_procedures_wasm_table().clone(),
 			catalog,
 			exhausted: false,
 		}
 	}
 }
 
-impl BaseVTable for SystemProcedures {
+impl BaseVTable for SystemProceduresWasm {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -45,41 +45,28 @@ impl BaseVTable for SystemProcedures {
 			return Ok(None);
 		}
 
-		let mut ids = Vec::new();
-		let mut namespace_ids = Vec::new();
-		let mut names = Vec::new();
-		let mut is_tests = Vec::new();
+		let mut id_col = ColumnData::uint8_with_capacity(0);
+		let mut ns_col = ColumnData::uint8_with_capacity(0);
+		let mut name_col = ColumnData::utf8_with_capacity(0);
+		let mut native_col = ColumnData::utf8_with_capacity(0);
+		let mut module_col = ColumnData::uint8_with_capacity(0);
 
 		for entry in self.catalog.materialized.procedures.iter() {
-			if let Some(proc_def) = entry.value().get_latest()
-				&& matches!(
-					proc_def.trigger,
-					ProcedureTrigger::Call | ProcedureTrigger::NativeCall { .. }
-				) {
-				ids.push(proc_def.id.0);
-				namespace_ids.push(proc_def.namespace.0);
-				names.push(proc_def.name.clone());
-				is_tests.push(proc_def.is_test);
+			if let Some(Procedure::Wasm {
+				id,
+				namespace,
+				name,
+				native_name,
+				module_id,
+				..
+			}) = entry.value().get_latest()
+			{
+				id_col.push(*id);
+				ns_col.push(namespace.0);
+				name_col.push(name.as_str());
+				native_col.push(native_name.as_str());
+				module_col.push(module_id.0);
 			}
-		}
-
-		let len = ids.len();
-		let mut id_col = ColumnData::uint8_with_capacity(len);
-		let mut ns_col = ColumnData::uint8_with_capacity(len);
-		let mut name_col = ColumnData::utf8_with_capacity(len);
-		let mut is_test_col = ColumnData::bool_with_capacity(len);
-
-		for id in &ids {
-			id_col.push(*id);
-		}
-		for ns in &namespace_ids {
-			ns_col.push(*ns);
-		}
-		for name in &names {
-			name_col.push(name.as_str());
-		}
-		for is_test in &is_tests {
-			is_test_col.push(*is_test);
 		}
 
 		let columns = vec![
@@ -96,8 +83,12 @@ impl BaseVTable for SystemProcedures {
 				data: name_col,
 			},
 			Column {
-				name: Fragment::internal("is_test"),
-				data: is_test_col,
+				name: Fragment::internal("native_name"),
+				data: native_col,
+			},
+			Column {
+				name: Fragment::internal("module_id"),
+				data: module_col,
 			},
 		];
 

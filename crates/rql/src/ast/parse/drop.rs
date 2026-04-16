@@ -7,15 +7,15 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			AstDrop, AstDropDictionary, AstDropNamespace, AstDropRingBuffer, AstDropSeries, AstDropSink,
-			AstDropSource, AstDropSubscription, AstDropSumType, AstDropTable, AstDropView,
-			AstPolicyTargetType,
+			AstDrop, AstDropDictionary, AstDropNamespace, AstDropProcedure, AstDropRingBuffer,
+			AstDropSeries, AstDropSink, AstDropSource, AstDropSubscription, AstDropSumType, AstDropTable,
+			AstDropView, AstPolicyTargetType,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier,
-			MaybeQualifiedTableIdentifier, MaybeQualifiedViewIdentifier,
+			MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedViewIdentifier,
 		},
 		parse::Parser,
 	},
@@ -98,8 +98,11 @@ impl<'bump> Parser<'bump> {
 			return self.parse_drop_policy(token, AstPolicyTargetType::Function);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
-			self.consume_keyword(Keyword::Policy)?;
-			return self.parse_drop_policy(token, AstPolicyTargetType::Procedure);
+			// `DROP PROCEDURE POLICY ...` vs `DROP PROCEDURE [IF EXISTS] ns::name`
+			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
+				return self.parse_drop_policy(token, AstPolicyTargetType::Procedure);
+			}
+			return self.parse_drop_procedure(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Source))?).is_some() {
 			return self.parse_drop_source(token);
@@ -334,6 +337,23 @@ impl<'bump> Parser<'bump> {
 				})
 			},
 		)
+	}
+
+	fn parse_drop_procedure(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+		let if_exists = self.parse_if_exists()?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let procedure = if namespace.is_empty() {
+			MaybeQualifiedProcedureIdentifier::new(name)
+		} else {
+			MaybeQualifiedProcedureIdentifier::new(name).with_namespace(namespace)
+		};
+		Ok(AstDrop::Procedure(AstDropProcedure {
+			token,
+			if_exists,
+			procedure,
+		}))
 	}
 
 	fn parse_drop_sink(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {

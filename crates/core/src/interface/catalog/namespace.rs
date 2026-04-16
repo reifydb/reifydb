@@ -13,6 +13,7 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS: NamespaceId = NamespaceId(4);
 	pub const SYSTEM_METRICS_STORAGE: NamespaceId = NamespaceId(5);
 	pub const SYSTEM_METRICS_CDC: NamespaceId = NamespaceId(6);
+	pub const SYSTEM_PROCEDURES: NamespaceId = NamespaceId(7);
 }
 
 #[derive(Debug, Clone, PartialEq)]

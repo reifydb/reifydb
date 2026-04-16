@@ -417,6 +417,7 @@ pub enum LogicalPlan<'bump> {
 	DropSeries(DropSeriesNode<'bump>),
 	DropSource(DropSourceNode<'bump>),
 	DropSink(DropSinkNode<'bump>),
+	DropProcedure(DropProcedureNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
@@ -974,6 +975,12 @@ pub struct DropTableNode<'bump> {
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_exists: bool,
 	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropProcedureNode<'bump> {
+	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
+	pub if_exists: bool,
 }
 
 #[derive(Debug)]

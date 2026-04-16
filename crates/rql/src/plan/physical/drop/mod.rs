@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::error::diagnostic::catalog::{
-	dictionary_not_found, namespace_not_found, ringbuffer_not_found, series_not_found, sumtype_not_found,
-	table_not_found, view_not_found,
+	dictionary_not_found, namespace_not_found, procedure_not_found, ringbuffer_not_found, series_not_found,
+	sumtype_not_found, table_not_found, view_not_found,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
@@ -359,6 +359,52 @@ impl<'bump> Compiler<'bump> {
 			name: self.interner.intern_fragment(&drop.source.name),
 			cascade: drop.cascade,
 		}))
+	}
+
+	pub(crate) fn compile_drop_procedure(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropProcedureNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.procedure.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.procedure.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default".to_string())
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		let procedure_name = self.interner.intern_fragment(&drop.procedure.name);
+		let ns_fragment = if let Some(n) = drop.procedure.namespace.first() {
+			self.interner.intern_fragment(n).with_text(namespace.name())
+		} else {
+			Fragment::internal(namespace.name().to_string())
+		};
+
+		match self.catalog.find_procedure_by_name(rx, namespace.id(), drop.procedure.name.text())? {
+			Some(def) => Ok(PhysicalPlan::DropProcedure(nodes::DropProcedureNode {
+				namespace_name: ns_fragment,
+				procedure_name,
+				procedure_id: Some(def.id()),
+				if_exists: drop.if_exists,
+			})),
+			None if drop.if_exists => Ok(PhysicalPlan::DropProcedure(nodes::DropProcedureNode {
+				namespace_name: ns_fragment,
+				procedure_name,
+				procedure_id: None,
+				if_exists: true,
+			})),
+			None => {
+				return_error!(procedure_not_found(
+					procedure_name,
+					namespace.name(),
+					drop.procedure.name.text()
+				));
+			}
+		}
 	}
 
 	pub(crate) fn compile_drop_sink(

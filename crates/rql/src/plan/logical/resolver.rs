@@ -85,7 +85,10 @@ pub fn resolve_unresolved_source(
 	// dispatch in `compile/vtable.rs` matches by namespace id + leaf name.
 	if matches!(
 		ns_def.id(),
-		NamespaceId::SYSTEM | NamespaceId::SYSTEM_METRICS_STORAGE | NamespaceId::SYSTEM_METRICS_CDC
+		NamespaceId::SYSTEM
+			| NamespaceId::SYSTEM_METRICS_STORAGE
+			| NamespaceId::SYSTEM_METRICS_CDC
+			| NamespaceId::SYSTEM_PROCEDURES
 	) {
 		let def = VTable {
 			id: VTableId(0), // Placeholder ID - compile.rs handles actual lookup

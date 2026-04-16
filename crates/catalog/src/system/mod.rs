@@ -86,7 +86,10 @@ use policies::policies;
 use policy_operations::policy_operations;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
-use procedures::procedures;
+use procedures::{
+	ffi::procedures_ffi, native::procedures_native, rql::procedures_rql, test::procedures_test,
+	wasm::procedures_wasm,
+};
 use roles::roles;
 use sequence::sequences;
 use series::series;
@@ -299,14 +302,78 @@ pub mod ids {
 		}
 
 		pub mod procedures {
-			use reifydb_core::interface::catalog::id::ColumnId;
+			pub mod rql {
+				use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const ID: ColumnId = ColumnId(1);
-			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
-			pub const NAME: ColumnId = ColumnId(3);
-			pub const IS_TEST: ColumnId = ColumnId(4);
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const RETURN_TYPE: ColumnId = ColumnId(4);
+				pub const BODY: ColumnId = ColumnId(5);
+				pub const TRIGGER_KIND: ColumnId = ColumnId(6);
+				pub const EVENT_VARIANT_SUMTYPE_ID: ColumnId = ColumnId(7);
+				pub const EVENT_VARIANT_INDEX: ColumnId = ColumnId(8);
 
-			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, IS_TEST];
+				pub const ALL: [ColumnId; 8] = [
+					ID,
+					NAMESPACE_ID,
+					NAME,
+					RETURN_TYPE,
+					BODY,
+					TRIGGER_KIND,
+					EVENT_VARIANT_SUMTYPE_ID,
+					EVENT_VARIANT_INDEX,
+				];
+			}
+
+			pub mod test {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const RETURN_TYPE: ColumnId = ColumnId(4);
+				pub const BODY: ColumnId = ColumnId(5);
+
+				pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, RETURN_TYPE, BODY];
+			}
+
+			pub mod native {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const NATIVE_NAME: ColumnId = ColumnId(4);
+
+				pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, NATIVE_NAME];
+			}
+
+			pub mod ffi {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const NATIVE_NAME: ColumnId = ColumnId(4);
+				pub const LIBRARY_PATH: ColumnId = ColumnId(5);
+				pub const ENTRY_SYMBOL: ColumnId = ColumnId(6);
+
+				pub const ALL: [ColumnId; 6] =
+					[ID, NAMESPACE_ID, NAME, NATIVE_NAME, LIBRARY_PATH, ENTRY_SYMBOL];
+			}
+
+			pub mod wasm {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const NATIVE_NAME: ColumnId = ColumnId(4);
+				pub const MODULE_ID: ColumnId = ColumnId(5);
+
+				pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, NATIVE_NAME, MODULE_ID];
+			}
 		}
 
 		pub mod tag_variants {
@@ -740,7 +807,6 @@ pub mod ids {
 		pub const SHAPE_FIELDS: VTableId = VTableId(33);
 		pub const ENUMS: VTableId = VTableId(34);
 		pub const EVENTS: VTableId = VTableId(35);
-		pub const PROCEDURES: VTableId = VTableId(36);
 		pub const HANDLERS: VTableId = VTableId(37);
 		pub const TAGS: VTableId = VTableId(38);
 		pub const SERIES: VTableId = VTableId(39);
@@ -757,6 +823,13 @@ pub mod ids {
 		pub const EVENT_VARIANTS: VTableId = VTableId(50);
 		pub const TAG_VARIANTS: VTableId = VTableId(51);
 		pub const SUBSCRIPTIONS: VTableId = VTableId(52);
+
+		// `system::procedures::*` virtual tables.
+		pub const PROCEDURES_RQL: VTableId = VTableId(53);
+		pub const PROCEDURES_TEST: VTableId = VTableId(54);
+		pub const PROCEDURES_NATIVE: VTableId = VTableId(55);
+		pub const PROCEDURES_FFI: VTableId = VTableId(56);
+		pub const PROCEDURES_WASM: VTableId = VTableId(57);
 
 		// `system::metrics::storage::*` virtual tables.
 		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
@@ -780,7 +853,7 @@ pub mod ids {
 		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 63] = [
+		pub const ALL: [VTableId; 67] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -809,7 +882,11 @@ pub mod ids {
 			SHAPE_FIELDS,
 			ENUMS,
 			EVENTS,
-			PROCEDURES,
+			PROCEDURES_RQL,
+			PROCEDURES_TEST,
+			PROCEDURES_NATIVE,
+			PROCEDURES_FFI,
+			PROCEDURES_WASM,
 			HANDLERS,
 			TAGS,
 			SERIES,
@@ -1097,9 +1174,29 @@ impl SystemCatalog {
 		event_variants()
 	}
 
-	/// Get the procedures virtual table definition
-	pub fn get_system_procedures_table() -> Arc<VTable> {
-		procedures()
+	/// Get the `system::procedures::rql` virtual table definition.
+	pub fn get_system_procedures_rql_table() -> Arc<VTable> {
+		procedures_rql()
+	}
+
+	/// Get the `system::procedures::test` virtual table definition.
+	pub fn get_system_procedures_test_table() -> Arc<VTable> {
+		procedures_test()
+	}
+
+	/// Get the `system::procedures::native` virtual table definition.
+	pub fn get_system_procedures_native_table() -> Arc<VTable> {
+		procedures_native()
+	}
+
+	/// Get the `system::procedures::ffi` virtual table definition.
+	pub fn get_system_procedures_ffi_table() -> Arc<VTable> {
+		procedures_ffi()
+	}
+
+	/// Get the `system::procedures::wasm` virtual table definition.
+	pub fn get_system_procedures_wasm_table() -> Arc<VTable> {
+		procedures_wasm()
 	}
 
 	/// Get the handlers virtual table definition

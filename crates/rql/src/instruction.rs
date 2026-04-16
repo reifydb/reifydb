@@ -177,6 +177,7 @@ pub enum Instruction {
 	DropSeries(nodes::DropSeriesNode),
 	DropSource(nodes::DropSourceNode),
 	DropSink(nodes::DropSinkNode),
+	DropProcedure(nodes::DropProcedureNode),
 
 	CreateIdentity(nodes::CreateIdentityNode),
 	CreateRole(nodes::CreateRoleNode),

@@ -115,7 +115,7 @@ export function ShapeBrowser({ executor }: ShapeBrowserProps) {
   const loadShape = async () => {
     setLoading(true);
     try {
-      const [nsRows, tableRows, viewRows, vtableRows, rbRows, colRows, vtableColRows, procRows, handlerRows, enumRows, eventRows, dictRows, migrationRows] = await Promise.all([
+      const [nsRows, tableRows, viewRows, vtableRows, rbRows, colRows, vtableColRows, procRqlRows, procTestRows, procNativeRows, procFfiRows, procWasmRows, handlerRows, enumRows, eventRows, dictRows, migrationRows] = await Promise.all([
         queryRows(executor, 'FROM system::namespaces MAP { id, name }'),
         queryRows(executor, 'FROM system::tables MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::views MAP { id, namespace_id, name, kind }'),
@@ -123,13 +123,18 @@ export function ShapeBrowser({ executor }: ShapeBrowserProps) {
         queryRows(executor, 'FROM system::ringbuffers MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::columns MAP { shape_id, shape_type, name, type, position }'),
         queryRows(executor, 'FROM system::virtual_table_columns MAP { vtable_id, name, type, position }'),
-        queryRows(executor, 'FROM system::procedures MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::procedures::rql MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::procedures::test MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::procedures::native MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::procedures::ffi MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::procedures::wasm MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::handlers MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::enums MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::events MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::dictionaries MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::migrations MAP { name }'),
       ]);
+      const procRows = [...procRqlRows, ...procTestRows, ...procNativeRows, ...procFfiRows, ...procWasmRows];
 
       // Build namespace map: id → name
       const nsMap = new Map<number, string>();

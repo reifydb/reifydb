@@ -7,6 +7,7 @@ pub mod dictionary;
 pub mod identity;
 pub mod namespace;
 pub mod policy;
+pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
 pub mod series;

@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	change::CatalogTrackProcedureChangeOperations,
-	id::{NamespaceId, ProcedureId},
-	procedure::{Procedure, ProcedureParam, ProcedureTrigger},
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{
+		change::CatalogTrackProcedureChangeOperations,
+		id::{NamespaceId, ProcedureId},
+		procedure::{Procedure, ProcedureParam, RqlTrigger},
+	},
 };
 use reifydb_transaction::{
 	change::TransactionalProcedureChanges,
@@ -16,7 +19,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::{Result, catalog::Catalog, store::sequence::system::SystemSequence};
+use crate::{CatalogStore, Result, catalog::Catalog, error::CatalogError, materialized::MaterializedCatalog};
 
 /// Result of resolving a qualified procedure name.
 /// Distinguishes between locally-defined procedures and those in remote namespaces.
@@ -32,15 +35,54 @@ pub enum ResolvedProcedure {
 }
 
 /// Procedure creation specification for the Catalog API.
+/// Only persistent variants (Rql, Test) can be created via DDL. Native/Ffi/Wasm
+/// procedures enter the catalog through `Catalog::register_ephemeral_procedure`,
+/// driven by the runtime registry on every boot.
 #[derive(Debug, Clone)]
-pub struct ProcedureToCreate {
-	pub name: Fragment,
-	pub namespace: NamespaceId,
-	pub params: Vec<ProcedureParam>,
-	pub return_type: Option<TypeConstraint>,
-	pub body: String,
-	pub trigger: ProcedureTrigger,
-	pub is_test: bool,
+pub enum ProcedureToCreate {
+	Rql {
+		name: Fragment,
+		namespace: NamespaceId,
+		params: Vec<ProcedureParam>,
+		return_type: Option<TypeConstraint>,
+		body: String,
+		trigger: RqlTrigger,
+	},
+	Test {
+		name: Fragment,
+		namespace: NamespaceId,
+		params: Vec<ProcedureParam>,
+		return_type: Option<TypeConstraint>,
+		body: String,
+	},
+}
+
+impl ProcedureToCreate {
+	pub fn name(&self) -> &Fragment {
+		match self {
+			ProcedureToCreate::Rql {
+				name,
+				..
+			}
+			| ProcedureToCreate::Test {
+				name,
+				..
+			} => name,
+		}
+	}
+
+	pub fn namespace(&self) -> NamespaceId {
+		match self {
+			ProcedureToCreate::Rql {
+				namespace,
+				..
+			}
+			| ProcedureToCreate::Test {
+				namespace,
+				..
+			} => *namespace,
+		}
+	}
 }
 
 impl Catalog {
@@ -208,7 +250,7 @@ impl Catalog {
 					}));
 				}
 				return Ok(self.find_procedure_by_name(txn, ns.id(), proc_name)?.map(|p| {
-					if p.is_test {
+					if matches!(p, Procedure::Test { .. }) {
 						ResolvedProcedure::Test(p)
 					} else {
 						ResolvedProcedure::Local(p)
@@ -218,7 +260,7 @@ impl Catalog {
 			Ok(None)
 		} else {
 			Ok(self.find_procedure_by_name(txn, NamespaceId::DEFAULT, qualified_name)?.map(|p| {
-				if p.is_test {
+				if matches!(p, Procedure::Test { .. }) {
 					ResolvedProcedure::Test(p)
 				} else {
 					ResolvedProcedure::Local(p)
@@ -245,11 +287,9 @@ impl Catalog {
 				// Also check transactional changes for newly created procedures with event binding
 				for change in &admin.changes.procedure {
 					if let Some(p) = &change.post
-						&& let ProcedureTrigger::Event {
-							variant: v,
-						} = &p.trigger && *v == variant && !procedures
+						&& p.event_variant() == Some(variant) && !procedures
 						.iter()
-						.any(|existing| existing.id == p.id)
+						.any(|existing| existing.id() == p.id())
 					{
 						procedures.push(p.clone());
 					}
@@ -268,11 +308,9 @@ impl Catalog {
 				// Also check transactional changes for newly created procedures with event binding
 				for change in &t.inner.changes.procedure {
 					if let Some(p) = &change.post
-						&& let ProcedureTrigger::Event {
-							variant: v,
-						} = &p.trigger && *v == variant && !procedures
+						&& p.event_variant() == Some(variant) && !procedures
 						.iter()
-						.any(|existing| existing.id == p.id)
+						.any(|existing| existing.id() == p.id())
 					{
 						procedures.push(p.clone());
 					}
@@ -288,44 +326,58 @@ impl Catalog {
 
 	#[instrument(name = "catalog::procedure::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_procedure(&self, txn: &mut AdminTransaction, to_create: ProcedureToCreate) -> Result<Procedure> {
-		let id = SystemSequence::next_procedure_id(txn)?;
-
-		let procedure = Procedure {
-			id,
-			namespace: to_create.namespace,
-			name: to_create.name.text().to_string(),
-			params: to_create.params,
-			return_type: to_create.return_type,
-			body: to_create.body,
-			trigger: to_create.trigger,
-			is_test: to_create.is_test,
-		};
-
+		let procedure = CatalogStore::create_procedure(txn, to_create)?;
 		txn.track_procedure_created(procedure.clone())?;
-
 		Ok(procedure)
 	}
 
-	/// Create a procedure with a specific ID. Used for bootstrapping system procedures.
+	/// Create a procedure with a specific ID. Used for bootstrapping system procedures
+	/// that need a stable, predetermined id.
 	pub fn create_procedure_with_id(
 		&self,
 		txn: &mut AdminTransaction,
 		id: ProcedureId,
 		to_create: ProcedureToCreate,
 	) -> Result<Procedure> {
-		let procedure = Procedure {
-			id,
-			namespace: to_create.namespace,
-			name: to_create.name.text().to_string(),
-			params: to_create.params,
-			return_type: to_create.return_type,
-			body: to_create.body,
-			trigger: to_create.trigger,
-			is_test: to_create.is_test,
-		};
-
+		let procedure = CatalogStore::create_procedure_with_id(txn, id, to_create)?;
 		txn.track_procedure_created(procedure.clone())?;
-
 		Ok(procedure)
+	}
+
+	/// Drop a persistent (Rql or Test) procedure. Refuses to drop ephemeral
+	/// (Native/Ffi/Wasm) procedures since those are owned by the runtime registry.
+	#[instrument(name = "catalog::procedure::drop", level = "debug", skip(self, txn))]
+	pub fn drop_procedure(&self, txn: &mut AdminTransaction, id: ProcedureId) -> Result<()> {
+		let pre = CatalogStore::get_procedure(&mut Transaction::Admin(&mut *txn), id)?;
+		if !pre.is_persistent() {
+			return Err(CatalogError::CannotDropEphemeralProcedure {
+				kind: pre.kind().as_str().to_string(),
+				name: pre.name().to_string(),
+				fragment: Fragment::internal(pre.name().to_string()),
+			}
+			.into());
+		}
+		CatalogStore::drop_procedure(txn, id)?;
+		txn.track_procedure_deleted(pre)?;
+		Ok(())
+	}
+
+	/// Register an ephemeral (Native/Ffi/Wasm) procedure directly into the materialized
+	/// catalog. Bypasses transaction and storage — used by the bootstrap registrar to
+	/// repopulate the runtime-bound procedure tier on every boot. Refuses persistent
+	/// (Rql/Test) variants since those must go through `create_procedure`.
+	pub fn register_ephemeral_procedure(
+		catalog: &MaterializedCatalog,
+		version: CommitVersion,
+		procedure: Procedure,
+	) -> Result<()> {
+		if procedure.is_persistent() {
+			return Err(CatalogError::CannotRegisterPersistentAsEphemeral {
+				kind: procedure.kind().as_str().to_string(),
+			}
+			.into());
+		}
+		catalog.set_procedure(procedure.id(), version, Some(procedure));
+		Ok(())
 	}
 }

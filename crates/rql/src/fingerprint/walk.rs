@@ -870,6 +870,13 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 					}
 					buf.write_str(n.sink.name.text());
 				}
+				AstDrop::Procedure(n) => {
+					buf.write_u8(0x0F);
+					for ns in &n.procedure.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.procedure.name.text());
+				}
 			}
 		}
 		Ast::Describe(AstDescribe::Query {

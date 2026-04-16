@@ -20,6 +20,7 @@ use namespace::NamespaceKey;
 use namespace_dictionary::NamespaceDictionaryKey;
 use namespace_flow::NamespaceFlowKey;
 use namespace_handler::NamespaceHandlerKey;
+use namespace_procedure::NamespaceProcedureKey;
 use namespace_ringbuffer::NamespaceRingBufferKey;
 use namespace_series::NamespaceSeriesKey;
 use namespace_sink::NamespaceSinkKey;
@@ -30,6 +31,8 @@ use namespace_view::NamespaceViewKey;
 use policy::PolicyKey;
 use policy_op::PolicyOpKey;
 use primary_key::PrimaryKeyKey;
+use procedure::ProcedureKey;
+use procedure_param::ProcedureParamKey;
 use property::ColumnPropertyKey;
 use retention_strategy::{OperatorRetentionStrategyKey, ShapeRetentionStrategyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
@@ -78,6 +81,7 @@ pub mod namespace;
 pub mod namespace_dictionary;
 pub mod namespace_flow;
 pub mod namespace_handler;
+pub mod namespace_procedure;
 pub mod namespace_ringbuffer;
 pub mod namespace_series;
 pub mod namespace_sink;
@@ -88,6 +92,8 @@ pub mod namespace_view;
 pub mod policy;
 pub mod policy_op;
 pub mod primary_key;
+pub mod procedure;
+pub mod procedure_param;
 pub mod property;
 pub mod retention_strategy;
 pub mod ringbuffer;
@@ -160,6 +166,9 @@ pub enum Key {
 	NamespaceSource(NamespaceSourceKey),
 	Sink(SinkKey),
 	NamespaceSink(NamespaceSinkKey),
+	Procedure(ProcedureKey),
+	NamespaceProcedure(NamespaceProcedureKey),
+	ProcedureParam(ProcedureParamKey),
 }
 
 impl Key {
@@ -215,6 +224,9 @@ impl Key {
 			Key::NamespaceSource(key) => key.encode(),
 			Key::Sink(key) => key.encode(),
 			Key::NamespaceSink(key) => key.encode(),
+			Key::Procedure(key) => key.encode(),
+			Key::NamespaceProcedure(key) => key.encode(),
+			Key::ProcedureParam(key) => key.encode(),
 		}
 	}
 }
@@ -360,6 +372,9 @@ impl Key {
 				// RowTtl keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
+			KeyKind::Procedure => ProcedureKey::decode(key).map(Self::Procedure),
+			KeyKind::NamespaceProcedure => NamespaceProcedureKey::decode(key).map(Self::NamespaceProcedure),
+			KeyKind::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
 		}
 	}
 }

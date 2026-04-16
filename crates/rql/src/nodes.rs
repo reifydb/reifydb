@@ -11,9 +11,9 @@ use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::{
 		catalog::{
-			id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+			id::{NamespaceId, ProcedureId, RingBufferId, SeriesId, TableId, ViewId},
 			namespace::Namespace,
-			procedure::{ProcedureParam, ProcedureTrigger},
+			procedure::{ProcedureParam, RqlTrigger},
 			property::ColumnPropertyKind,
 			series::SeriesKey,
 		},
@@ -315,7 +315,8 @@ pub struct CreateProcedureNode {
 	pub name: Fragment,
 	pub params: Vec<ProcedureParam>,
 	pub body_source: String,
-	pub trigger: ProcedureTrigger,
+	/// Ignored when `is_test = true` (test procedures have no trigger).
+	pub trigger: RqlTrigger,
 	pub is_test: bool,
 }
 
@@ -391,6 +392,15 @@ pub struct DropSinkNode {
 	pub namespace: Namespace,
 	pub name: Fragment,
 	pub cascade: bool,
+}
+
+/// Physical node for DROP PROCEDURE
+#[derive(Debug, Clone)]
+pub struct DropProcedureNode {
+	pub namespace_name: Fragment,
+	pub procedure_name: Fragment,
+	pub procedure_id: Option<ProcedureId>,
+	pub if_exists: bool,
 }
 
 // Assert Block node (multi-statement ASSERT or ASSERT ERROR)

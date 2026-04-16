@@ -77,7 +77,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 				.post
 				.as_ref()
 				.or(change.pre.as_ref())
-				.map(|p| p.id)
+				.map(|p| p.id())
 				.expect("Change must have either pre or post state");
 			self.catalog.set_procedure(id, version, change.post.clone());
 		}

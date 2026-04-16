@@ -500,7 +500,7 @@ impl TransactionalCatalogChanges {
 			.post
 			.as_ref()
 			.or(change.pre.as_ref())
-			.map(|p| p.id)
+			.map(|p| p.id())
 			.expect("Change must have either pre or post state");
 		let op = change.op;
 		self.procedure.push(change);

@@ -36,8 +36,8 @@ use super::{
 				transactional::create_transactional_view,
 			},
 			drop::{
-				dictionary::drop_dictionary, namespace::drop_namespace, ringbuffer::drop_ringbuffer,
-				series::drop_series, sink::drop_sink, source::drop_source,
+				dictionary::drop_dictionary, namespace::drop_namespace, procedure::drop_procedure,
+				ringbuffer::drop_ringbuffer, series::drop_series, sink::drop_sink, source::drop_source,
 				subscription::drop_subscription, sumtype::drop_sumtype, table::drop_table,
 				view::drop_view,
 			},
@@ -516,6 +516,9 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::DropSink(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_sink(s, t, n.clone()))?
+				}
+				Instruction::DropProcedure(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_procedure(s, t, n.clone()))?
 				}
 				Instruction::DropIdentity(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_identity(s, t, n.clone()))?

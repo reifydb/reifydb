@@ -7,7 +7,7 @@ use reifydb_catalog::catalog::{Catalog, procedure::ResolvedProcedure};
 use reifydb_core::{
 	interface::catalog::{
 		policy::PolicyTargetType,
-		procedure::{Procedure, ProcedureParam, ProcedureTrigger},
+		procedure::{Procedure, ProcedureParam},
 	},
 	internal_error,
 	value::column::{Column, columns::Columns, data::ColumnData},
@@ -475,9 +475,18 @@ impl<'a> Vm<'a> {
 			PolicyTargetType::Procedure,
 		)?;
 
-		match &proc_def.trigger {
-			ProcedureTrigger::NativeCall {
+		match proc_def {
+			Procedure::Native {
 				native_name,
+				..
+			}
+			| Procedure::Ffi {
+				native_name,
+				..
+			}
+			| Procedure::Wasm {
+				native_name,
+				..
 			} => {
 				let native_name = native_name.clone();
 				if let Some(proc_impl) = ctx.services.procedures.get_procedure(&native_name) {
@@ -495,25 +504,36 @@ impl<'a> Vm<'a> {
 					self.stack.push(Variable::columns(columns));
 					Ok(())
 				} else {
-					Err(internal_error!(
-						"NativeCall procedure '{}' has no registered implementation",
-						native_name
-					))
+					Err(TypeError::Procedure {
+						kind: ProcedureErrorKind::NoRegisteredImplementation {
+							name: native_name.clone(),
+						},
+						message: format!(
+							"native procedure '{}' has no registered implementation",
+							native_name
+						),
+						fragment: name.clone(),
+					}
+					.into())
 				}
 			}
-			_ => {
+			Procedure::Rql {
+				body,
+				params,
+				..
+			}
+			| Procedure::Test {
+				body,
+				params,
+				..
+			} => {
 				// Catalog-stored RQL procedure
-				let source = proc_def.body.clone();
+				let source = body.clone();
+				let params = params.clone();
 				let compiled = ctx.services.compiler.compile(ctx.tx, &source)?;
 				match compiled {
 					CompilationResult::Ready(compiled_list) => {
-						self.execute_procedure_body(
-							ctx,
-							&compiled_list,
-							&proc_def.params,
-							args,
-							name,
-						)?;
+						self.execute_procedure_body(ctx, &compiled_list, &params, args, name)?;
 						Ok(())
 					}
 					CompilationResult::Incremental(_) => Err(internal_error!(
@@ -543,11 +563,12 @@ impl<'a> Vm<'a> {
 			.into());
 		}
 
-		let source = proc_def.body.clone();
+		let source = proc_def.body().unwrap_or_default().to_string();
+		let params = proc_def.params().to_vec();
 		let compiled = ctx.services.compiler.compile(ctx.tx, &source)?;
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
-				self.execute_procedure_body(ctx, &compiled_list, &proc_def.params, args, name)?;
+				self.execute_procedure_body(ctx, &compiled_list, &params, args, name)?;
 				Ok(())
 			}
 			CompilationResult::Incremental(_) => {

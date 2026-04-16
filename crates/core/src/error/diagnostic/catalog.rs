@@ -261,6 +261,21 @@ pub fn view_not_found(fragment: Fragment, namespace: &str, view: &str) -> Diagno
 	}
 }
 
+pub fn procedure_not_found(fragment: Fragment, namespace: &str, procedure: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_082".to_string(),
+		statement: None,
+		message: format!("procedure `{}::{}` not found", namespace, procedure),
+		fragment,
+		label: Some("unknown procedure reference".to_string()),
+		help: Some("ensure the procedure exists or create it first using `CREATE PROCEDURE`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn view_column_already_exists(fragment: Fragment, namespace: &str, view: &str, column: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_005".to_string(),

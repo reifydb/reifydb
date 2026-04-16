@@ -10,18 +10,17 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-use super::ids::{columns::procedures::*, vtable::PROCEDURES};
+use crate::system::ids::{columns::procedures::wasm::*, vtable::PROCEDURES_WASM};
 
-/// Returns the static definition for the system.procedures virtual table
-/// This table exposes information about all procedures with trigger = Call
-pub fn procedures() -> Arc<VTable> {
+/// Returns the static definition for the `system::procedures::wasm` virtual table.
+pub fn procedures_wasm() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
-			id: PROCEDURES,
-			namespace: NamespaceId::SYSTEM,
-			name: "procedures".to_string(),
+			id: PROCEDURES_WASM,
+			namespace: NamespaceId::SYSTEM_PROCEDURES,
+			name: "wasm".to_string(),
 			columns: vec![
 				Column {
 					id: ID,
@@ -51,11 +50,20 @@ pub fn procedures() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: IS_TEST,
-					name: "is_test".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Boolean),
+					id: NATIVE_NAME,
+					name: "native_name".to_string(),
+					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					properties: vec![],
 					index: ColumnIndex(3),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: MODULE_ID,
+					name: "module_id".to_string(),
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					properties: vec![],
+					index: ColumnIndex(4),
 					auto_increment: false,
 					dictionary_id: None,
 				},

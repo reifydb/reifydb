@@ -75,6 +75,9 @@ pub enum KeyKind {
 	NamespaceSink = 0x41,
 	SourceCheckpoint = 0x42,
 	RowTtl = 0x43,
+	Procedure = 0x44,
+	NamespaceProcedure = 0x45,
+	ProcedureParam = 0x46,
 }
 
 impl From<KeyKind> for u8 {
@@ -154,6 +157,9 @@ impl TryFrom<u8> for KeyKind {
 			0x41 => Ok(Self::NamespaceSink),
 			0x42 => Ok(Self::SourceCheckpoint),
 			0x43 => Ok(Self::RowTtl),
+			0x44 => Ok(Self::Procedure),
+			0x45 => Ok(Self::NamespaceProcedure),
+			0x46 => Ok(Self::ProcedureParam),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

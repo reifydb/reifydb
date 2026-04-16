@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
+# Verify procedures (Rql variant) are persisted as first-class catalog items:
+# - CREATE PROCEDURE writes through MVCC storage
+# - duplicate CREATE errors
+# - DROP PROCEDURE removes them
+# - DROP PROCEDURE IF EXISTS is a no-op for missing procedures
+# - DROP PROCEDURE refuses to drop ephemeral (Native) procedures
+
+CREATE NAMESPACE pp;
+
+CREATE PROCEDURE pp::greet AS {
+    "hello"
+};
+
+# After commit, system::procedures::rql should expose the new Rql procedure
+CREATE TEST pp::created_proc_appears_in_system_view {
+    FROM system::procedures::rql | FILTER name == "greet" | ASSERT { name == "greet" }
+};
+
+# Duplicate creation must error
+CREATE TEST pp::duplicate_create_errors {
+    ASSERT ERROR {
+        CREATE PROCEDURE pp::greet AS { "again" }
+    }
+};
+
+# DROP a persistent procedure removes it
+CREATE PROCEDURE pp::throwaway AS {
+    "bye"
+};
+DROP PROCEDURE pp::throwaway;
+
+CREATE TEST pp::dropped_proc_gone {
+    FROM system::procedures::rql | FILTER name == "throwaway" | ASSERT { false }
+};
+
+# DROP PROCEDURE IF EXISTS is silent on missing
+DROP PROCEDURE IF EXISTS pp::never_existed;
+
+# Ephemeral (Native) procedures cannot be DROPped via DDL
+CREATE TEST pp::cannot_drop_native {
+    ASSERT ERROR {
+        DROP PROCEDURE system::config::set
+    }
+};
+
+RUN TESTS pp
