@@ -4,8 +4,6 @@
 import type { ConnectionStatus } from '../connection/ConnectionPanel';
 import type { TransactionType } from '../../types';
 
-const TX_TYPES: TransactionType[] = ['query', 'command', 'admin'];
-
 interface EditorToolbarProps {
   onRun: () => void;
   onClear: () => void;
@@ -16,6 +14,7 @@ interface EditorToolbarProps {
   onToggleConnectionPanel: () => void;
   connection_mode: 'wasm' | 'websocket';
   transaction_type: TransactionType;
+  transaction_types: readonly TransactionType[];
   onTransactionTypeChange: (type: TransactionType) => void;
 }
 
@@ -29,8 +28,10 @@ export function EditorToolbar({
   onToggleConnectionPanel,
   connection_mode,
   transaction_type,
+  transaction_types,
   onTransactionTypeChange,
 }: EditorToolbarProps) {
+  const show_tx_selector = connection_mode === 'websocket' && transaction_types.length > 1;
   return (
     <div className="rdb-editor-toolbar">
       <div className="rdb-editor-toolbar__left">
@@ -48,9 +49,9 @@ export function EditorToolbar({
             <span>[{connectionLabel}]</span>
           </button>
         )}
-        {connection_mode === 'websocket' && (
+        {show_tx_selector && (
           <div className="rdb-editor-toolbar__tx-type">
-            {TX_TYPES.map((t) => (
+            {transaction_types.map((t) => (
               <button
                 key={t}
                 className={`rdb-editor-toolbar__tx-type-btn${t === transaction_type ? ' rdb-editor-toolbar__tx-type-btn--active' : ''}`}

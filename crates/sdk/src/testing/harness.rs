@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, ffi::c_void, marker::PhantomData, ptr};
+use std::{collections::HashMap, ffi::c_void, marker::PhantomData, ops::Index, ptr};
 
 use ptr::null;
 use reifydb_abi::context::context::ContextFFI;
@@ -10,6 +10,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::EncodableKey,
+	row::Row,
 	value::column::columns::Columns,
 };
 use reifydb_type::{
@@ -20,7 +21,10 @@ use reifydb_type::{
 use crate::{
 	error::Result,
 	operator::{FFIOperator, FFIOperatorMetadata, context::OperatorContext},
-	testing::{callbacks::create_test_callbacks, context::TestContext, state::TestStateStore},
+	testing::{
+		builders::TestChangeBuilder, callbacks::create_test_callbacks, context::TestContext,
+		state::TestStateStore,
+	},
 };
 
 /// Test harness for FFI operators
@@ -37,6 +41,7 @@ pub struct OperatorTestHarness<T: FFIOperator> {
 	ffi_context: Box<ContextFFI>,
 	config: HashMap<String, Value>,
 	node_id: FlowNodeId,
+	history: Vec<Change>,
 }
 
 impl<T: FFIOperator> OperatorTestHarness<T> {
@@ -45,10 +50,57 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		TestHarnessBuilder::new()
 	}
 
-	/// Apply a flow change to the operator
+	/// Apply a flow change to the operator.
+	///
+	/// The returned `Change` is also appended to the harness history, so it can be
+	/// inspected later via `harness[i]`, `last_change()`, or `history_len()`.
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
 		let mut ctx = self.create_operator_context();
-		self.operator.apply(&mut ctx, input)
+		let output = self.operator.apply(&mut ctx, input)?;
+		self.history.push(output.clone());
+		Ok(output)
+	}
+
+	/// Chainable Insert: applies immediately, records output in history, panics on error.
+	///
+	/// Use for seeding state and/or inspecting emissions:
+	/// ```ignore
+	/// harness.insert(row1).insert(row2);
+	/// assert_eq!(harness[0].diffs.len(), 1);
+	/// ```
+	pub fn insert(&mut self, row: Row) -> &mut Self {
+		let change = TestChangeBuilder::new().insert(row).build();
+		self.apply(change).expect("insert failed");
+		self
+	}
+
+	/// Chainable Update: applies immediately, records output in history, panics on error.
+	pub fn update(&mut self, pre: Row, post: Row) -> &mut Self {
+		let change = TestChangeBuilder::new().update(pre, post).build();
+		self.apply(change).expect("update failed");
+		self
+	}
+
+	/// Chainable Remove: applies immediately, records output in history, panics on error.
+	pub fn remove(&mut self, row: Row) -> &mut Self {
+		let change = TestChangeBuilder::new().remove(row).build();
+		self.apply(change).expect("remove failed");
+		self
+	}
+
+	/// Number of changes recorded in the history so far.
+	pub fn history_len(&self) -> usize {
+		self.history.len()
+	}
+
+	/// Reference to the most recent change, or `None` if the history is empty.
+	pub fn last_change(&self) -> Option<&Change> {
+		self.history.last()
+	}
+
+	/// Clear the recorded history without affecting operator state.
+	pub fn clear_history(&mut self) {
+		self.history.clear();
 	}
 
 	/// Pull rows by their row numbers
@@ -118,6 +170,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		(*self.context).clear_state();
 		(*self.context).clear_logs();
 		(*self.context).set_version(CommitVersion(1));
+		self.history.clear();
 
 		// Recreate the operator
 		self.operator = T::new(self.node_id, &self.config)?;
@@ -153,6 +206,17 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	/// Get the node ID
 	pub fn node_id(&self) -> FlowNodeId {
 		self.node_id
+	}
+}
+
+/// Index into the harness history — `harness[i]` returns the i-th recorded `Change`.
+///
+/// Panics if `i` is out of bounds.
+impl<T: FFIOperator> Index<usize> for OperatorTestHarness<T> {
+	type Output = Change;
+
+	fn index(&self, index: usize) -> &Self::Output {
+		&self.history[index]
 	}
 }
 
@@ -248,6 +312,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 			ffi_context,
 			config: self.config,
 			node_id: self.node_id,
+			history: Vec::new(),
 		})
 	}
 }
@@ -301,7 +366,7 @@ pub mod tests {
 	use super::{super::helpers::encode_key, *};
 	use crate::{
 		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumn, context::OperatorContext},
-		testing::builders::TestChangeBuilder,
+		testing::builders::{TestChangeBuilder, TestRowBuilder},
 	};
 
 	// Simple pass-through operator for basic tests
@@ -443,6 +508,45 @@ pub mod tests {
 
 		// Assert the state was set through the FFI bridge
 		state.assert_value(&key, &[Value::Int8(42i64)], &shape);
+	}
+
+	#[test]
+	fn test_harness_history_index() {
+		let mut harness = TestHarnessBuilder::<StatefulTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.expect("Failed to build harness");
+
+		// History starts empty
+		assert_eq!(harness.history_len(), 0);
+		assert!(harness.last_change().is_none());
+
+		// Each apply() call records a Change
+		let input_a = TestChangeBuilder::new().insert_row(1, vec![Value::Int8(1i64)]).build();
+		harness.apply(input_a).expect("apply a failed");
+		assert_eq!(harness.history_len(), 1);
+
+		let input_b = TestChangeBuilder::new().insert_row(2, vec![Value::Int8(2i64)]).build();
+		harness.apply(input_b).expect("apply b failed");
+		assert_eq!(harness.history_len(), 2);
+
+		// Index returns the i-th recorded Change
+		assert_eq!(harness[0].diffs.len(), 1);
+		assert_eq!(harness[1].diffs.len(), 1);
+
+		// Chainable insert also records
+		harness.insert(TestRowBuilder::new(3).add_value(Value::Int8(3i64)).build());
+		assert_eq!(harness.history_len(), 3);
+
+		// last_change returns the most recent
+		assert!(harness.last_change().is_some());
+
+		// clear_history resets without affecting state
+		let state_count_before = harness.state().len();
+		harness.clear_history();
+		assert_eq!(harness.history_len(), 0);
+		assert!(harness.last_change().is_none());
+		assert_eq!(harness.state().len(), state_count_before);
 	}
 
 	#[test]
