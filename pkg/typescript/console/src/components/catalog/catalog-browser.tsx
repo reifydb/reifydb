@@ -3,9 +3,10 @@
 
 import { useEffect, useState } from 'react';
 import type { Executor } from '../../types';
-import { ShapeNode } from './shape-node';
+import { useConsoleStore } from '../../state/use-console-store';
+import { CatalogNode } from './catalog-node';
 
-interface ShapeBrowserProps {
+interface CatalogBrowserProps {
   executor: Executor;
 }
 
@@ -84,19 +85,21 @@ function type_color_class(type_name: string): string | undefined {
     case 'Int1': case 'Int2': case 'Int4': case 'Int8': case 'Int16':
     case 'Uint1': case 'Uint2': case 'Uint4': case 'Uint8': case 'Uint16':
     case 'Int': case 'Uint': case 'Decimal':
-      return 'rdb-shape__node-type--numeric';
+      return 'rdb-catalog__node-type--numeric';
     case 'Utf8': case 'Blob':
-      return 'rdb-shape__node-type--string';
+      return 'rdb-catalog__node-type--string';
     case 'Boolean':
-      return 'rdb-shape__node-type--boolean';
+      return 'rdb-catalog__node-type--boolean';
     case 'Date': case 'DateTime': case 'Time': case 'Duration':
-      return 'rdb-shape__node-type--temporal';
+      return 'rdb-catalog__node-type--temporal';
     case 'IdentityId': case 'Uuid4': case 'Uuid7': case 'DictionaryId':
-      return 'rdb-shape__node-type--identity';
+      return 'rdb-catalog__node-type--identity';
     default:
       return undefined;
   }
 }
+
+const QUERYABLE_CATEGORIES = new Set<SourceInfo['category']>(['table', 'view', 'vtable', 'ringbuffer']);
 
 const CATEGORY_GROUPS: { key: SourceInfo['category']; label: string }[] = [
   { key: 'table', label: 'Tables' },
@@ -111,11 +114,12 @@ const CATEGORY_GROUPS: { key: SourceInfo['category']; label: string }[] = [
   { key: 'migration', label: 'Migrations' },
 ];
 
-export function ShapeBrowser({ executor }: ShapeBrowserProps) {
+export function CatalogBrowser({ executor }: CatalogBrowserProps) {
+  const { dispatch } = useConsoleStore();
   const [roots, setRoots] = useState<NamespaceTree[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load_shape = async () => {
+  const load_catalog = async () => {
     setLoading(true);
     try {
       const [ns_rows, table_rows, view_rows, vtable_rows, rb_rows, col_rows, vtable_col_rows, proc_rql_rows, proc_test_rows, proc_native_rows, proc_ffi_rows, proc_wasm_rows, handler_rows, enum_rows, event_rows, dict_rows, migration_rows] = await Promise.all([
@@ -263,14 +267,14 @@ export function ShapeBrowser({ executor }: ShapeBrowserProps) {
   };
 
   useEffect(() => {
-    load_shape();
+    load_catalog();
   }, [executor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toolbar = (
-    <div className="rdb-shape__toolbar">
+    <div className="rdb-catalog__toolbar">
       <button
-        className="rdb-shape__reload-btn"
-        onClick={load_shape}
+        className="rdb-catalog__reload-btn"
+        onClick={load_catalog}
         disabled={loading}
       >
         {loading ? '[loading...]' : '[reload]'}
@@ -282,7 +286,7 @@ export function ShapeBrowser({ executor }: ShapeBrowserProps) {
     return (
       <>
         {toolbar}
-        <div className="rdb-history__empty">$ loading shape...</div>
+        <div className="rdb-history__empty">$ loading catalog...</div>
       </>
     );
   }
@@ -296,37 +300,43 @@ export function ShapeBrowser({ executor }: ShapeBrowserProps) {
     );
   }
 
-  const render_sources = (sources: SourceInfo[]) =>
+  const render_sources = (sources: SourceInfo[], namespace_name: string) =>
     CATEGORY_GROUPS.map(({ key, label }) => {
       const matching = sources.filter(s => s.category === key);
       if (matching.length === 0) return null;
       return (
-        <ShapeNode key={key} label={`${label} (${matching.length})`} label_class="rdb-shape__node-label--category">
+        <CatalogNode key={key} label={`${label} (${matching.length})`} label_class="rdb-catalog__node-label--category">
           {matching.map(source => (
-            <ShapeNode key={source.name} label={source.name}>
+            <CatalogNode
+              key={source.name}
+              label={source.name}
+              on_click={QUERYABLE_CATEGORIES.has(source.category) ? () => {
+                dispatch({ type: 'LOAD_QUERY', code: `FROM ${namespace_name}::${source.name}\nTAKE 10;` });
+              } : undefined}
+            >
               {source.columns.length > 0
                 ? source.columns.map(col => (
-                  <ShapeNode
+                  <CatalogNode
                     key={col.name}
                     label={col.name}
-                    label_class="rdb-shape__node-label--column"
+                    label_class="rdb-catalog__node-label--column"
                     type={col.type}
                     type_class={type_color_class(col.type)}
                   />
                 ))
                 : undefined}
-            </ShapeNode>
+            </CatalogNode>
           ))}
-        </ShapeNode>
+        </CatalogNode>
       );
     });
 
   const render_tree = (nodes: NamespaceTree[]) =>
     nodes.map(ns => (
-      <ShapeNode key={ns.id} label={ns.local_name} label_class="rdb-shape__node-label--namespace">
-        {render_sources(ns.sources)}
+      <CatalogNode key={ns.id} label={ns.local_name} label_class="rdb-catalog__node-label--namespace">
+        {render_sources(ns.sources, ns.name)}
         {render_tree(ns.children)}
-      </ShapeNode>
+      </CatalogNode>
     ));
 
   return (

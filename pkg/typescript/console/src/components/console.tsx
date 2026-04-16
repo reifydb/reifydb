@@ -13,7 +13,7 @@ import { TabBar } from './layout/tab-bar';
 import { QueryEditor } from './editor/query-editor';
 import { EditorToolbar } from './editor/editor-toolbar';
 import { ResultsPanel } from './results/results-panel';
-import { ShapeBrowser } from './shape/shape-browser';
+import { CatalogBrowser } from './catalog/catalog-browser';
 import { HistoryPanel } from './history/history-panel';
 import { ConnectionPanel } from './connection/connection-panel';
 import type { ConnectionMode, ConnectionStatus } from './connection/connection-panel';
@@ -113,7 +113,7 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
           client = await custom_connect(locked_ws_url ?? '') as unknown as { disconnect(): void } & WsClient;
           owns_client_ref.current = false;
         } else {
-          client = await Client.connect_ws(locked_ws_url!, { timeoutMs: 30_000 }) as unknown as { disconnect(): void } & WsClient;
+          client = await Client.connect_ws(locked_ws_url!, { timeout_ms: 30_000 }) as unknown as { disconnect(): void } & WsClient;
           owns_client_ref.current = true;
           if (cancelled) {
             client.disconnect();
@@ -181,7 +181,7 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
         ws_client_ref.current = null;
       }
 
-      const client = await Client.connect_ws(ws_url, { timeoutMs: 30_000 });
+      const client = await Client.connect_ws(ws_url, { timeout_ms: 30_000 });
       ws_client_ref.current = client;
       const ws_executor = new WsExecutor(client as unknown as WsClient);
       ws_executor.transaction_type = transaction_type;
@@ -331,7 +331,7 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
         ) : state.active_tab === 'history' ? (
           <HistoryPanel entries={state.history} on_select={handle_select_history} />
         ) : state.active_tab === 'catalog' ? (
-          <ShapeBrowser executor={active_executor} />
+          <CatalogBrowser executor={active_executor} />
         ) : null}
       </div>
     </div>
