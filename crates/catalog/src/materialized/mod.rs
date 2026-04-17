@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+pub mod authentication;
 pub mod binding;
 pub mod config;
 pub mod dictionary;
@@ -35,6 +36,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
+		authentication::{Authentication, AuthenticationId},
 		binding::Binding,
 		config::{Config, ConfigKey, GetConfig},
 		dictionary::Dictionary,
@@ -104,6 +106,7 @@ pub type MultiVersionSource = MultiVersionContainer<Source>;
 pub type MultiVersionSink = MultiVersionContainer<Sink>;
 pub type MultiVersionRowTtl = MultiVersionContainer<RowTtl>;
 pub type MultiVersionConfig = MultiVersionContainer<Value>;
+pub type MultiVersionAuthentication = MultiVersionContainer<Authentication>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -185,6 +188,10 @@ pub struct MaterializedCatalogInner {
 	pub(crate) roles_by_name: SkipMap<String, RoleId>,
 	/// MultiVersion granted-role definitions indexed by (identity_id, role_id)
 	pub(crate) granted_roles: SkipMap<(IdentityId, RoleId), MultiVersionGrantedRole>,
+	/// MultiVersion authentication definitions indexed by AuthenticationId
+	pub(crate) authentications: SkipMap<AuthenticationId, MultiVersionAuthentication>,
+	/// Index from (identity_id, method) to AuthenticationId for fast lookups
+	pub(crate) authentications_by_identity_method: SkipMap<(IdentityId, String), AuthenticationId>,
 	/// MultiVersion policy definitions indexed by policy ID
 	pub(crate) policies: SkipMap<PolicyId, MultiVersionPolicy>,
 	/// Index from policy name to policy ID for fast name lookups
@@ -284,6 +291,8 @@ impl MaterializedCatalog {
 			roles: SkipMap::new(),
 			roles_by_name: SkipMap::new(),
 			granted_roles: SkipMap::new(),
+			authentications: SkipMap::new(),
+			authentications_by_identity_method: SkipMap::new(),
 			policies: SkipMap::new(),
 			policies_by_name: SkipMap::new(),
 			policy_operations: SkipMap::new(),

@@ -74,4 +74,15 @@ impl TransactionalAuthenticationChanges for AdminTransaction {
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|a| a.id) == Some(id))
 	}
+
+	fn is_authentication_deleted_by_identity_and_method(&self, identity: IdentityId, method: &str) -> bool {
+		self.changes.authentication.iter().rev().any(|change| {
+			change.op == Delete
+				&& change
+					.pre
+					.as_ref()
+					.map(|a| a.identity == identity && a.method == method)
+					.unwrap_or(false)
+		})
+	}
 }

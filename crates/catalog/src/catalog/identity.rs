@@ -195,10 +195,22 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(ident) = TransactionalIdentityChanges::find_identity(t.inner, identity) {
+					return Ok(Some(ident.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalIdentityChanges::is_identity_deleted(t.inner, identity) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
 				if let Some(ident) = self.materialized.find_identity_at(identity, t.inner.version()) {
 					return Ok(Some(ident));
 				}
 
+				// 4. Fall back to storage
 				if let Some(ident) =
 					CatalogStore::find_identity(&mut Transaction::Admin(&mut *t.inner), identity)?
 				{
@@ -254,6 +266,39 @@ impl Catalog {
 			CatalogStore::drop_identity(txn, identity)?;
 		}
 		Ok(())
+	}
+
+	#[instrument(name = "catalog::identity::list_all", level = "debug", skip(self, txn))]
+	pub fn list_identities_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Identity>> {
+		match txn.reborrow() {
+			Transaction::Command(cmd) => Ok(self.materialized.list_all_identities_at(cmd.version())),
+			Transaction::Admin(admin) => {
+				let mut idents = self.materialized.list_all_identities_at(admin.version());
+				for change in &admin.changes.identity {
+					if let Some(ident) = &change.post
+						&& !idents.iter().any(|existing| existing.id == ident.id)
+					{
+						idents.push(ident.clone());
+					}
+				}
+				idents.retain(|i| !admin.is_identity_deleted(i.id));
+				Ok(idents)
+			}
+			Transaction::Query(qry) => Ok(self.materialized.list_all_identities_at(qry.version())),
+			Transaction::Test(t) => {
+				let mut idents = self.materialized.list_all_identities_at(t.inner.version());
+				for change in &t.inner.changes.identity {
+					if let Some(ident) = &change.post
+						&& !idents.iter().any(|existing| existing.id == ident.id)
+					{
+						idents.push(ident.clone());
+					}
+				}
+				idents.retain(|i| !t.inner.is_identity_deleted(i.id));
+				Ok(idents)
+			}
+			Transaction::Replica(rep) => Ok(self.materialized.list_all_identities_at(rep.version())),
+		}
 	}
 
 	#[instrument(name = "catalog::role::find_by_name", level = "trace", skip(self, txn))]

@@ -218,6 +218,8 @@ pub trait TransactionalAuthenticationChanges {
 	) -> Option<&Authentication>;
 
 	fn is_authentication_deleted(&self, id: AuthenticationId) -> bool;
+
+	fn is_authentication_deleted_by_identity_and_method(&self, identity: IdentityId, method: &str) -> bool;
 }
 
 pub trait TransactionalGrantedRoleChanges {

@@ -497,6 +497,10 @@ impl TransactionalAuthenticationChanges for QueryTransaction {
 	fn is_authentication_deleted(&self, _id: AuthenticationId) -> bool {
 		false
 	}
+
+	fn is_authentication_deleted_by_identity_and_method(&self, _identity: IdentityId, _method: &str) -> bool {
+		false
+	}
 }
 
 impl TransactionalSourceChanges for QueryTransaction {

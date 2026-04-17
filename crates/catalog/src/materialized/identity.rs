@@ -31,6 +31,11 @@ impl MaterializedCatalog {
 		})
 	}
 
+	/// List all identities at a specific version
+	pub fn list_all_identities_at(&self, version: CommitVersion) -> Vec<Identity> {
+		self.identities.iter().filter_map(|entry| entry.value().get(version)).collect()
+	}
+
 	pub fn set_identity(&self, id: IdentityId, version: CommitVersion, ident: Option<Identity>) {
 		if let Some(entry) = self.identities.get(&id)
 			&& let Some(pre) = entry.value().get_latest()

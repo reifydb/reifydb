@@ -14,7 +14,6 @@ use crate::{
 };
 
 impl CatalogStore {
-	#[allow(dead_code)]
 	pub(crate) fn find_authentication(
 		rx: &mut Transaction<'_>,
 		id: AuthenticationId,
@@ -39,24 +38,5 @@ impl CatalogStore {
 		}
 
 		Ok(None)
-	}
-
-	/// List all authentications for a given method (e.g., "token").
-	pub(crate) fn list_authentications_by_method(
-		rx: &mut Transaction<'_>,
-		method: &str,
-	) -> Result<Vec<Authentication>> {
-		let stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
-		let mut results = Vec::new();
-
-		for entry in stream {
-			let multi = entry?;
-			let auth_method = authentication::SHAPE.get_utf8(&multi.row, authentication::METHOD);
-			if auth_method == method {
-				results.push(convert_authentication(multi));
-			}
-		}
-
-		Ok(results)
 	}
 }
