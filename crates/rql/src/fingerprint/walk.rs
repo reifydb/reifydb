@@ -723,6 +723,17 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 					}
 					buf.write_str(n.grpc.text());
 				}
+				AstCreate::Binding(n) => {
+					buf.write_u8(0x1a);
+					for ns in &n.name.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.name.name.text());
+					for ns in &n.procedure.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.procedure.name.text());
+				}
 			}
 		}
 		Ast::Alter(node) => {
@@ -890,6 +901,13 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 						buf.write_str(ns.text());
 					}
 					buf.write_str(n.test.name.text());
+				}
+				AstDrop::Binding(n) => {
+					buf.write_u8(0x12);
+					for ns in &n.binding.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.binding.name.text());
 				}
 			}
 		}

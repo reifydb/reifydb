@@ -105,8 +105,10 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::DropTest(_) => unimplemented!(),
 		PhysicalPlan::CreateSource(_) => unimplemented!(),
 		PhysicalPlan::CreateSink(_) => unimplemented!(),
+		PhysicalPlan::CreateBinding(_) => unimplemented!(),
 		PhysicalPlan::DropSource(_) => unimplemented!(),
 		PhysicalPlan::DropSink(_) => unimplemented!(),
+		PhysicalPlan::DropBinding(_) => unimplemented!(),
 		PhysicalPlan::CreateIdentity(n) => {
 			write_node_header(output, prefix, is_last, &format!("CreateIdentity name={}", n.name.text()));
 		}

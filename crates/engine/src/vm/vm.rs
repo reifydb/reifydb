@@ -26,7 +26,7 @@ use super::{
 				table::execute_alter_table,
 			},
 			create::{
-				deferred::create_deferred_view, dictionary::create_dictionary,
+				binding::create_binding, deferred::create_deferred_view, dictionary::create_dictionary,
 				migration::create_migration, namespace::create_namespace,
 				primary_key::create_primary_key, procedure::create_procedure,
 				property::create_column_property, remote_namespace::create_remote_namespace,
@@ -36,10 +36,10 @@ use super::{
 				transactional::create_transactional_view,
 			},
 			drop::{
-				dictionary::drop_dictionary, namespace::drop_namespace, procedure::drop_procedure,
-				ringbuffer::drop_ringbuffer, series::drop_series, sink::drop_sink, source::drop_source,
-				subscription::drop_subscription, sumtype::drop_sumtype, table::drop_table,
-				view::drop_view,
+				binding::drop_binding, dictionary::drop_dictionary, namespace::drop_namespace,
+				procedure::drop_procedure, ringbuffer::drop_ringbuffer, series::drop_series,
+				sink::drop_sink, source::drop_source, subscription::drop_subscription,
+				sumtype::drop_sumtype, table::drop_table, view::drop_view,
 			},
 		},
 		dml::{
@@ -450,6 +450,9 @@ impl<'a> Vm<'a> {
 				Instruction::CreateSink(n) => {
 					self.exec_ddl(services, tx, |s, t| create_sink(s, t, n.clone()))?
 				}
+				Instruction::CreateBinding(n) => {
+					self.exec_ddl(services, tx, |s, t| create_binding(s, t, n.clone()))?
+				}
 				Instruction::CreateTest(n) => {
 					self.exec_ddl(services, tx, |s, t| create_test(s, t, n.clone()))?
 				}
@@ -525,6 +528,9 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::DropTest(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_test(s, t, n.clone()))?
+				}
+				Instruction::DropBinding(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_binding(s, t, n.clone()))?
 				}
 				Instruction::DropIdentity(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_identity(s, t, n.clone()))?

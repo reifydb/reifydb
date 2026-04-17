@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		binding::Binding,
-		id::{BindingId, ProcedureId},
+		id::{BindingId, NamespaceId, ProcedureId},
 	},
 };
 
@@ -26,6 +26,25 @@ impl MaterializedCatalog {
 		})
 	}
 
+	pub fn find_binding_by_name_at(
+		&self,
+		namespace: NamespaceId,
+		name: &str,
+		version: CommitVersion,
+	) -> Option<Binding> {
+		self.bindings_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
+			let id = *entry.value();
+			self.find_binding_at(id, version)
+		})
+	}
+
+	pub fn find_binding_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Binding> {
+		self.bindings_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
+			let id = *entry.value();
+			self.find_binding(id)
+		})
+	}
+
 	pub fn list_bindings_for_procedure_at(
 		&self,
 		procedure_id: ProcedureId,
@@ -41,16 +60,18 @@ impl MaterializedCatalog {
 	pub fn set_binding(&self, id: BindingId, version: CommitVersion, binding: Option<Binding>) {
 		if let Some(entry) = self.bindings.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
-			&& let Some(ids_entry) = self.bindings_by_procedure.get(&pre.procedure_id)
 		{
-			let mut ids = ids_entry.value().clone();
-			ids.retain(|existing| *existing != id);
-			drop(ids_entry);
-			if ids.is_empty() {
-				self.bindings_by_procedure.remove(&pre.procedure_id);
-			} else {
-				self.bindings_by_procedure.insert(pre.procedure_id, ids);
+			if let Some(ids_entry) = self.bindings_by_procedure.get(&pre.procedure_id) {
+				let mut ids = ids_entry.value().clone();
+				ids.retain(|existing| *existing != id);
+				drop(ids_entry);
+				if ids.is_empty() {
+					self.bindings_by_procedure.remove(&pre.procedure_id);
+				} else {
+					self.bindings_by_procedure.insert(pre.procedure_id, ids);
+				}
 			}
+			self.bindings_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 
 		let multi = self.bindings.get_or_insert_with(id, MultiVersionBinding::new);
@@ -65,6 +86,8 @@ impl MaterializedCatalog {
 			} else {
 				self.bindings_by_procedure.insert(new.procedure_id, vec![id]);
 			}
+
+			self.bindings_by_name.insert((new.namespace, new.name.clone()), id);
 
 			multi.value().insert(version, new);
 		} else {

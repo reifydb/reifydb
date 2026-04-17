@@ -10,6 +10,7 @@ use reifydb_type::{fragment::Fragment, value::duration::Duration};
 use crate::{Result, flow::compiler::compile_flow};
 
 pub mod authentication;
+pub mod binding;
 pub mod deferred;
 pub mod dictionary;
 pub mod event;

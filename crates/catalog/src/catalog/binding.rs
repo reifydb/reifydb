@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	binding::Binding,
+	binding::{Binding, BindingFormat, BindingProtocol},
 	change::CatalogTrackBindingChangeOperations,
-	id::{BindingId, ProcedureId},
+	id::{BindingId, NamespaceId, ProcedureId},
 };
 use reifydb_transaction::{
 	change::TransactionalBindingChanges,
@@ -12,7 +12,27 @@ use reifydb_transaction::{
 };
 use tracing::instrument;
 
-use crate::{CatalogStore, Result, catalog::Catalog, store::binding::create::BindingToCreate};
+use crate::{CatalogStore, Result, catalog::Catalog, store::binding::create::BindingToCreate as StoreBindingToCreate};
+
+pub struct BindingToCreate {
+	pub namespace: NamespaceId,
+	pub name: String,
+	pub procedure: ProcedureId,
+	pub protocol: BindingProtocol,
+	pub format: BindingFormat,
+}
+
+impl From<BindingToCreate> for StoreBindingToCreate {
+	fn from(to_create: BindingToCreate) -> Self {
+		StoreBindingToCreate {
+			namespace: to_create.namespace,
+			name: to_create.name,
+			procedure: to_create.procedure,
+			protocol: to_create.protocol,
+			format: to_create.format,
+		}
+	}
+}
 
 impl Catalog {
 	#[instrument(name = "catalog::binding::find", level = "trace", skip(self, txn))]
@@ -63,6 +83,81 @@ impl Catalog {
 		}
 	}
 
+	#[instrument(name = "catalog::binding::find_by_name", level = "trace", skip(self, txn, name))]
+	pub fn find_binding_by_name(
+		&self,
+		txn: &mut Transaction<'_>,
+		namespace: NamespaceId,
+		name: &str,
+	) -> Result<Option<Binding>> {
+		match txn.reborrow() {
+			Transaction::Command(cmd) => {
+				if let Some(binding) =
+					self.materialized.find_binding_by_name_at(namespace, name, cmd.version())
+				{
+					return Ok(Some(binding));
+				}
+				CatalogStore::find_binding_by_name(
+					&mut Transaction::Command(&mut *cmd),
+					namespace,
+					name,
+				)
+			}
+			Transaction::Admin(admin) => {
+				if let Some(binding) =
+					TransactionalBindingChanges::find_binding_by_name(admin, namespace, name)
+				{
+					return Ok(Some(binding.clone()));
+				}
+				if TransactionalBindingChanges::is_binding_deleted_by_name(admin, namespace, name) {
+					return Ok(None);
+				}
+				if let Some(binding) =
+					self.materialized.find_binding_by_name_at(namespace, name, admin.version())
+				{
+					return Ok(Some(binding));
+				}
+				CatalogStore::find_binding_by_name(
+					&mut Transaction::Admin(&mut *admin),
+					namespace,
+					name,
+				)
+			}
+			Transaction::Query(qry) => {
+				if let Some(binding) =
+					self.materialized.find_binding_by_name_at(namespace, name, qry.version())
+				{
+					return Ok(Some(binding));
+				}
+				Ok(None)
+			}
+			Transaction::Test(t) => {
+				if let Some(binding) =
+					TransactionalBindingChanges::find_binding_by_name(t.inner, namespace, name)
+				{
+					return Ok(Some(binding.clone()));
+				}
+				if TransactionalBindingChanges::is_binding_deleted_by_name(t.inner, namespace, name) {
+					return Ok(None);
+				}
+				if let Some(binding) =
+					self.materialized.find_binding_by_name_at(namespace, name, t.inner.version())
+				{
+					return Ok(Some(binding));
+				}
+				Ok(None)
+			}
+			Transaction::Replica(rep) => {
+				if let Some(binding) =
+					self.materialized.find_binding_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(binding));
+				}
+				Ok(None)
+			}
+		}
+	}
+
 	#[instrument(name = "catalog::binding::list_for_procedure", level = "trace", skip(self, txn))]
 	pub fn list_bindings_for_procedure(
 		&self,
@@ -87,6 +182,7 @@ impl Catalog {
 					}
 				}
 
+				bindings.retain(|b| !admin.is_binding_deleted(b.id));
 				Ok(bindings)
 			}
 			Transaction::Query(qry) => {
@@ -107,6 +203,7 @@ impl Catalog {
 					}
 				}
 
+				bindings.retain(|b| !t.inner.is_binding_deleted(b.id));
 				Ok(bindings)
 			}
 			Transaction::Replica(rep) => {
@@ -117,7 +214,7 @@ impl Catalog {
 
 	#[instrument(name = "catalog::binding::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_binding(&self, txn: &mut AdminTransaction, to_create: BindingToCreate) -> Result<Binding> {
-		let binding = CatalogStore::create_binding(txn, to_create)?;
+		let binding = CatalogStore::create_binding(txn, to_create.into())?;
 		txn.track_binding_created(binding.clone())?;
 		Ok(binding)
 	}

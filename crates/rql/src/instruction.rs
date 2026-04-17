@@ -156,6 +156,7 @@ pub enum Instruction {
 	CreateTag(CreateTagNode),
 	CreateSource(nodes::CreateSourceNode),
 	CreateSink(nodes::CreateSinkNode),
+	CreateBinding(nodes::CreateBindingNode),
 	CreateTest(CreateTestNode),
 	AssertBlock(nodes::AssertBlockNode),
 
@@ -180,6 +181,7 @@ pub enum Instruction {
 	DropProcedure(nodes::DropProcedureNode),
 	DropHandler(nodes::DropHandlerNode),
 	DropTest(nodes::DropTestNode),
+	DropBinding(nodes::DropBindingNode),
 
 	CreateIdentity(nodes::CreateIdentityNode),
 	CreateRole(nodes::CreateRoleNode),

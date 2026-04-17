@@ -8,18 +8,20 @@ pub(crate) mod binding {
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAMESPACE: usize = 1;
-	pub(crate) const PROCEDURE_ID: usize = 2;
-	pub(crate) const PROTOCOL: usize = 3;
-	pub(crate) const HTTP_METHOD: usize = 4;
-	pub(crate) const HTTP_PATH: usize = 5;
-	pub(crate) const RPC_NAME: usize = 6;
-	pub(crate) const FORMAT: usize = 7;
-	pub(crate) const ENABLED: usize = 8;
+	pub(crate) const NAME: usize = 2;
+	pub(crate) const PROCEDURE_ID: usize = 3;
+	pub(crate) const PROTOCOL: usize = 4;
+	pub(crate) const HTTP_METHOD: usize = 5;
+	pub(crate) const HTTP_PATH: usize = 6;
+	pub(crate) const RPC_NAME: usize = 7;
+	pub(crate) const FORMAT: usize = 8;
+	pub(crate) const ENABLED: usize = 9;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
 			RowShapeField::unconstrained("id", Type::Uint8),
 			RowShapeField::unconstrained("namespace", Type::Uint8),
+			RowShapeField::unconstrained("name", Type::Utf8),
 			RowShapeField::unconstrained("procedure_id", Type::Uint8),
 			RowShapeField::unconstrained("protocol", Type::Utf8),
 			RowShapeField::unconstrained("http_method", Type::Utf8),
@@ -37,7 +39,12 @@ pub(crate) mod binding_namespace {
 	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const ID: usize = 0;
+	pub(crate) const NAME: usize = 1;
 
-	pub(crate) static SHAPE: Lazy<RowShape> =
-		Lazy::new(|| RowShape::new(vec![RowShapeField::unconstrained("id", Type::Uint8)]));
+	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
+		RowShape::new(vec![
+			RowShapeField::unconstrained("id", Type::Uint8),
+			RowShapeField::unconstrained("name", Type::Utf8),
+		])
+	});
 }

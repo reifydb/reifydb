@@ -560,7 +560,15 @@ impl TransactionalBindingChanges for QueryTransaction {
 		None
 	}
 
+	fn find_binding_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Binding> {
+		None
+	}
+
 	fn is_binding_deleted(&self, _id: BindingId) -> bool {
+		false
+	}
+
+	fn is_binding_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

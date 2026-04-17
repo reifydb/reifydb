@@ -13,12 +13,12 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind, AstColumnToCreate, AstCreate,
-			AstCreateColumnProperty, AstCreateDeferredView, AstCreateDictionary, AstCreateEvent,
-			AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
-			AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries,
-			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest,
-			AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKey,
+			AstBindingProtocolKind, AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind,
+			AstColumnToCreate, AstCreate, AstCreateColumnProperty, AstCreateDeferredView,
+			AstCreateDictionary, AstCreateEvent, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
+			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer,
+			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
+			AstCreateTest, AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKey,
 			AstProcedureParam, AstRowTtl, AstStatement, AstTimestampPrecision, AstType, AstVariant,
 			AstViewStorageKind,
 		},
@@ -245,6 +245,21 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Sink))?).is_some() {
 			return self.parse_sink(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Http))?).is_some() {
+			self.consume_keyword(Keyword::Binding)?;
+			return self.parse_create_binding(token, AstBindingProtocolKind::Http);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Grpc))?).is_some() {
+			self.consume_keyword(Keyword::Binding)?;
+			return self.parse_create_binding(token, AstBindingProtocolKind::Grpc);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Ws))?).is_some() {
+			self.consume_keyword(Keyword::Binding)?;
+			return self.parse_create_binding(token, AstBindingProtocolKind::Ws);
 		}
 
 		if self.peek_is_index_creation()? {

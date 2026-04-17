@@ -542,3 +542,24 @@ impl<'bump> MaybeQualifiedSinkIdentifier<'bump> {
 		self
 	}
 }
+
+/// Maybe-qualified binding identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedBindingIdentifier<'bump> {
+	pub namespace: Vec<BumpFragment<'bump>>,
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedBindingIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}

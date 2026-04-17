@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 mod authentication;
+mod binding;
 mod dictionary;
 mod handler;
 mod identity;

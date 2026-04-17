@@ -120,6 +120,8 @@ pub struct MaterializedCatalogInner {
 	pub(crate) bindings: SkipMap<BindingId, MultiVersionBinding>,
 	/// Index from procedure ID to binding IDs for fast procedure->binding lookups
 	pub(crate) bindings_by_procedure: SkipMap<ProcedureId, Vec<BindingId>>,
+	/// Index from (namespace_id, binding_name) to binding ID for fast name lookups
+	pub(crate) bindings_by_name: SkipMap<(NamespaceId, String), BindingId>,
 	/// Runtime configuration registry (shared with the oracle)
 	pub(crate) configs: SkipMap<ConfigKey, MultiVersionConfig>,
 	/// MultiVersion namespace definitions indexed by namespace ID
@@ -257,6 +259,7 @@ impl MaterializedCatalog {
 		let inner = MaterializedCatalogInner {
 			bindings: SkipMap::new(),
 			bindings_by_procedure: SkipMap::new(),
+			bindings_by_name: SkipMap::new(),
 			configs: SkipMap::new(),
 			namespaces,
 			namespaces_by_name,

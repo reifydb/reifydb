@@ -87,6 +87,7 @@ pub enum PhysicalPlan<'bump> {
 	CreateTag(nodes::CreateTagNode),
 	CreateSource(nodes::CreateSourceNode),
 	CreateSink(nodes::CreateSinkNode),
+	CreateBinding(nodes::CreateBindingNode),
 	CreateTest(nodes::CreateTestNode),
 	RunTests(nodes::RunTestsNode),
 	CreateMigration(nodes::CreateMigrationNode),
@@ -107,6 +108,7 @@ pub enum PhysicalPlan<'bump> {
 	DropProcedure(nodes::DropProcedureNode),
 	DropHandler(nodes::DropHandlerNode),
 	DropTest(nodes::DropTestNode),
+	DropBinding(nodes::DropBindingNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode<'bump>),
@@ -756,6 +758,10 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_sink(rx, create)?);
 				}
 
+				LogicalPlan::CreateBinding(create) => {
+					stack.push(self.compile_create_binding(rx, create)?);
+				}
+
 				LogicalPlan::CreateMigration(create) => {
 					stack.push(PhysicalPlan::CreateMigration(nodes::CreateMigrationNode {
 						name: create.name,
@@ -835,6 +841,9 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::DropTest(drop) => {
 					stack.push(self.compile_drop_test(rx, drop)?);
+				}
+				LogicalPlan::DropBinding(drop) => {
+					stack.push(self.compile_drop_binding(rx, drop)?);
 				}
 
 				// Auth/Permissions - pass through logical to physical directly

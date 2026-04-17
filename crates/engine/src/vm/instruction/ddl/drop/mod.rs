@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod authentication;
+pub mod binding;
 pub mod dependent;
 pub mod dictionary;
 pub mod handler;

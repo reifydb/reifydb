@@ -97,6 +97,7 @@ impl BindingProtocol {
 pub struct Binding {
 	pub id: BindingId,
 	pub namespace: NamespaceId,
+	pub name: String,
 	pub procedure_id: ProcedureId,
 	pub protocol: BindingProtocol,
 	pub format: BindingFormat,

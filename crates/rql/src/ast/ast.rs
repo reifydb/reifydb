@@ -10,7 +10,7 @@ use reifydb_core::{
 
 use crate::{
 	ast::identifier::{
-		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
+		MaybeQualifiedBindingIdentifier, MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedHandlerIdentifier,
 		MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier,
 		MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
@@ -472,6 +472,7 @@ pub enum AstCreate<'bump> {
 	Test(AstCreateTest<'bump>),
 	Source(AstCreateSource<'bump>),
 	Sink(AstCreateSink<'bump>),
+	Binding(AstCreateBinding<'bump>),
 }
 
 #[derive(Debug)]
@@ -522,6 +523,7 @@ pub enum AstDrop<'bump> {
 	Procedure(AstDropProcedure<'bump>),
 	Handler(AstDropHandler<'bump>),
 	Test(AstDropTest<'bump>),
+	Binding(AstDropBinding<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -623,6 +625,37 @@ pub struct AstDropTest<'bump> {
 	pub token: Token<'bump>,
 	pub if_exists: bool,
 	pub test: MaybeQualifiedTestIdentifier<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropBinding<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub binding: MaybeQualifiedBindingIdentifier<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstBindingProtocol<'bump> {
+	pub kind: AstBindingProtocolKind,
+	pub method: Option<BumpFragment<'bump>>,
+	pub path: Option<BumpFragment<'bump>>,
+	pub rpc_name: Option<BumpFragment<'bump>>,
+	pub format: Option<BumpFragment<'bump>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AstBindingProtocolKind {
+	Http,
+	Grpc,
+	Ws,
+}
+
+#[derive(Debug)]
+pub struct AstCreateBinding<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedBindingIdentifier<'bump>,
+	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
+	pub protocol: AstBindingProtocol<'bump>,
 }
 
 #[derive(Debug)]
@@ -993,6 +1026,7 @@ impl_token_for_enum!(AstCreate, 'bump,
 	Test(AstCreateTest<'bump>),
 	Source(AstCreateSource<'bump>),
 	Sink(AstCreateSink<'bump>),
+	Binding(AstCreateBinding<'bump>),
 );
 
 impl_token_for_enum!(AstAlter, 'bump,
@@ -1020,6 +1054,7 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Procedure(AstDropProcedure<'bump>),
 	Handler(AstDropHandler<'bump>),
 	Test(AstDropTest<'bump>),
+	Binding(AstDropBinding<'bump>),
 );
 
 #[derive(Debug)]

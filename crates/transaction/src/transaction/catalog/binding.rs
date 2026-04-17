@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::{binding::Binding, change::CatalogTrackBindingChangeOperations, id::BindingId};
+use reifydb_core::interface::catalog::{
+	binding::Binding,
+	change::CatalogTrackBindingChangeOperations,
+	id::{BindingId, NamespaceId},
+};
 use reifydb_type::Result;
 
 use crate::{
@@ -47,11 +51,38 @@ impl TransactionalBindingChanges for AdminTransaction {
 		None
 	}
 
+	fn find_binding_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Binding> {
+		for change in self.changes.binding.iter().rev() {
+			if let Some(binding) = &change.post {
+				if binding.namespace == namespace && binding.name == name {
+					return Some(binding);
+				}
+			} else if let Some(binding) = &change.pre
+				&& binding.namespace == namespace
+				&& binding.name == name && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
+	}
+
 	fn is_binding_deleted(&self, id: BindingId) -> bool {
 		self.changes
 			.binding
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|b| b.id) == Some(id))
+	}
+
+	fn is_binding_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
+		self.changes.binding.iter().rev().any(|change| {
+			change.op == Delete
+				&& change
+					.pre
+					.as_ref()
+					.map(|b| b.namespace == namespace && b.name == name)
+					.unwrap_or(false)
+		})
 	}
 }

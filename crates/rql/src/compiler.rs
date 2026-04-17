@@ -900,6 +900,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateSink(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateBinding(node) => {
+				self.emit(Instruction::CreateBinding(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateTest(node) => {
 				self.emit(Instruction::CreateTest(node));
 				self.emit(Instruction::Emit);
@@ -977,6 +981,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DropTest(node) => {
 				self.emit(Instruction::DropTest(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropBinding(node) => {
+				self.emit(Instruction::DropBinding(node));
 				self.emit(Instruction::Emit);
 			}
 

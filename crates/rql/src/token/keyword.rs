@@ -169,6 +169,10 @@ Error => "ERROR",
 Returning => "RETURNING",
 Source => "SOURCE",
 Sink => "SINK",
+Binding => "BINDING",
+Http => "HTTP",
+Grpc => "GRPC",
+Ws => "WS",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -277,6 +281,10 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("RETURNING", Keyword::Returning);
 	map.insert("SOURCE", Keyword::Source);
 	map.insert("SINK", Keyword::Sink);
+	map.insert("BINDING", Keyword::Binding);
+	map.insert("HTTP", Keyword::Http);
+	map.insert("GRPC", Keyword::Grpc);
+	map.insert("WS", Keyword::Ws);
 	map
 });
 

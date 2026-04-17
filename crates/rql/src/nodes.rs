@@ -11,6 +11,7 @@ use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::{
 		catalog::{
+			binding::{BindingFormat, BindingProtocol},
 			id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId},
 			namespace::Namespace,
 			procedure::{ProcedureParam, RqlTrigger},
@@ -392,6 +393,24 @@ pub struct DropSinkNode {
 	pub namespace: Namespace,
 	pub name: Fragment,
 	pub cascade: bool,
+}
+
+/// Physical node for CREATE BINDING
+#[derive(Debug, Clone)]
+pub struct CreateBindingNode {
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub procedure_id: ProcedureId,
+	pub protocol: BindingProtocol,
+	pub format: BindingFormat,
+}
+
+/// Physical node for DROP BINDING
+#[derive(Debug, Clone)]
+pub struct DropBindingNode {
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub if_exists: bool,
 }
 
 /// Physical node for DROP PROCEDURE

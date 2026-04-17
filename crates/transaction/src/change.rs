@@ -65,7 +65,11 @@ pub trait TransactionalChanges:
 pub trait TransactionalBindingChanges {
 	fn find_binding(&self, id: BindingId) -> Option<&Binding>;
 
+	fn find_binding_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Binding>;
+
 	fn is_binding_deleted(&self, id: BindingId) -> bool;
+
+	fn is_binding_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
 pub trait TransactionalRowTtlChanges {

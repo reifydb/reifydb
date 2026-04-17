@@ -5,10 +5,10 @@ use crate::{
 	Result,
 	ast::ast::AstDrop,
 	plan::logical::{
-		Compiler, DropAuthenticationNode, DropDictionaryNode, DropHandlerNode, DropIdentityNode,
-		DropNamespaceNode, DropPolicyNode, DropProcedureNode, DropRingBufferNode, DropRoleNode, DropSeriesNode,
-		DropSinkNode, DropSourceNode, DropSubscriptionNode, DropSumTypeNode, DropTableNode, DropTestNode,
-		DropViewNode, LogicalPlan,
+		Compiler, DropAuthenticationNode, DropBindingNode, DropDictionaryNode, DropHandlerNode,
+		DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode, DropRingBufferNode,
+		DropRoleNode, DropSeriesNode, DropSinkNode, DropSourceNode, DropSubscriptionNode, DropSumTypeNode,
+		DropTableNode, DropTestNode, DropViewNode, LogicalPlan,
 	},
 };
 
@@ -93,6 +93,10 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstDrop::Test(node) => Ok(LogicalPlan::DropTest(DropTestNode {
 				test: node.test,
+				if_exists: node.if_exists,
+			})),
+			AstDrop::Binding(node) => Ok(LogicalPlan::DropBinding(DropBindingNode {
+				binding: node.binding,
 				if_exists: node.if_exists,
 			})),
 		}

@@ -117,11 +117,14 @@ impl<'bump> Parser<'bump> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::Test))?).is_some() {
 			return self.parse_drop_test(token);
 		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Binding))?).is_some() {
+			return self.parse_drop_binding(token);
+		}
 
 		let fragment = self.current()?.fragment.to_owned();
 		Err(Error::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
-				expected: "AUTHENTICATION, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, SERIES, SOURCE, SINK, HANDLER, or TEST"
+				expected: "AUTHENTICATION, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, SERIES, SOURCE, SINK, HANDLER, TEST, or BINDING"
 					.to_string(),
 			},
 			message: format!(

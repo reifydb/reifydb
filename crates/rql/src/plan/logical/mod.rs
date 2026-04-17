@@ -42,19 +42,19 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstConfigPair, AstInfix,
+			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstBindingProtocol, AstConfigPair, AstInfix,
 			AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstRunTests,
 			AstStatement, AstType, AstVariant, AstViewStorageKind, InfixOperator,
 		},
 		identifier::{
-			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedHandlerIdentifier, MaybeQualifiedIdentifier,
-			MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier,
-			MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier,
-			MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
-			MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
-			MaybeQualifiedViewIdentifier,
+			MaybeQualifiedBindingIdentifier, MaybeQualifiedColumnIdentifier,
+			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
+			MaybeQualifiedHandlerIdentifier, MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier,
+			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
+			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
@@ -402,6 +402,7 @@ pub enum LogicalPlan<'bump> {
 	CreateTag(CreateTagNode<'bump>),
 	CreateSource(CreateSourceNode<'bump>),
 	CreateSink(CreateSinkNode<'bump>),
+	CreateBinding(CreateBindingNode<'bump>),
 
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),
@@ -421,6 +422,7 @@ pub enum LogicalPlan<'bump> {
 	DropProcedure(DropProcedureNode<'bump>),
 	DropHandler(DropHandlerNode<'bump>),
 	DropTest(DropTestNode<'bump>),
+	DropBinding(DropBindingNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
@@ -1158,6 +1160,19 @@ pub struct DropSinkNode<'bump> {
 	pub sink: MaybeQualifiedSinkIdentifier<'bump>,
 	pub if_exists: bool,
 	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateBindingNode<'bump> {
+	pub name: MaybeQualifiedBindingIdentifier<'bump>,
+	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
+	pub protocol: AstBindingProtocol<'bump>,
+}
+
+#[derive(Debug)]
+pub struct DropBindingNode<'bump> {
+	pub binding: MaybeQualifiedBindingIdentifier<'bump>,
+	pub if_exists: bool,
 }
 
 #[derive(Debug)]
