@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+pub mod authentication;
 pub mod binding;
 pub mod config;
 pub mod dictionary;
@@ -23,6 +24,7 @@ pub mod sumtype;
 pub mod table;
 pub mod view;
 
+use authentication::load_authentications;
 use binding::load_bindings;
 use config::load_configs;
 use dictionary::load_dictionaries;
@@ -78,6 +80,7 @@ impl MaterializedCatalogLoader {
 		load_sinks(rx, catalog)?;
 
 		load_identities(rx, catalog)?;
+		load_authentications(rx, catalog)?;
 		load_roles(rx, catalog)?;
 		load_granted_roles(rx, catalog)?;
 		load_policies(rx, catalog)?;
