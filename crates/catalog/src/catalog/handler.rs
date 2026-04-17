@@ -40,7 +40,12 @@ impl Catalog {
 					return Ok(Some(handler.clone()));
 				}
 
-				// 2. Check MaterializedCatalog
+				// 2. Check if deleted in this transaction
+				if TransactionalHandlerChanges::is_handler_deleted(admin, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
 				if let Some(handler) = self.materialized.find_handler_at(id, admin.version()) {
 					return Ok(Some(handler));
 				}
@@ -59,7 +64,12 @@ impl Catalog {
 					return Ok(Some(handler.clone()));
 				}
 
-				// 2. Check MaterializedCatalog
+				// 2. Check if deleted in this transaction
+				if TransactionalHandlerChanges::is_handler_deleted(t.inner, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
 				if let Some(handler) = self.materialized.find_handler_at(id, t.inner.version()) {
 					return Ok(Some(handler));
 				}
@@ -207,6 +217,15 @@ impl Catalog {
 				Ok(self.materialized.list_handlers_for_variant_at(variant, rep.version()))
 			}
 		}
+	}
+
+	#[instrument(name = "catalog::handler::drop", level = "debug", skip(self, txn))]
+	pub fn drop_handler(&self, txn: &mut AdminTransaction, id: HandlerId) -> Result<()> {
+		if let Some(handler) = self.find_handler_by_id(&mut Transaction::Admin(&mut *txn), id)? {
+			CatalogStore::drop_handler(txn, id)?;
+			txn.track_handler_deleted(handler)?;
+		}
+		Ok(())
 	}
 
 	#[instrument(name = "catalog::handler::create", level = "debug", skip(self, txn, to_create))]

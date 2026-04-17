@@ -295,6 +295,9 @@ impl Catalog {
 					}
 				}
 
+				// Remove procedures deleted in this transaction
+				procedures.retain(|p| !admin.is_procedure_deleted(p.id()));
+
 				Ok(procedures)
 			}
 			Transaction::Query(qry) => {
@@ -315,6 +318,9 @@ impl Catalog {
 						procedures.push(p.clone());
 					}
 				}
+
+				// Remove procedures deleted in this transaction
+				procedures.retain(|p| !t.inner.is_procedure_deleted(p.id()));
 
 				Ok(procedures)
 			}

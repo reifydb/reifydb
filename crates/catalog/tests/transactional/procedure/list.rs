@@ -35,7 +35,10 @@ fn create_and_drop_in_same_txn_reflects_both() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
@@ -49,8 +52,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	let r = txn.rql("DROP PROCEDURE plist_a::keep", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let procs =
-		catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn), variant_ref).unwrap();
+	let procs = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn), variant_ref).unwrap();
 	assert!(
 		procs.iter().any(|p| p.name() == "new"),
 		"within-txn created handler must appear in list_procedures_for_variant"
@@ -81,22 +83,21 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	txn.rql(
-		"CREATE HANDLER plist_b::new ON plist_b::evt::Foo { INSERT plist_b::sink [{ id: 2 }] }",
-		Params::None,
-	);
+	txn.rql("CREATE HANDLER plist_b::new ON plist_b::evt::Foo { INSERT plist_b::sink [{ id: 2 }] }", Params::None);
 	txn.rql("DROP PROCEDURE plist_b::keep", Params::None);
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let procs =
-		catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
+	let procs = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
 	assert!(!procs.iter().any(|p| p.name() == "new"));
 	assert!(procs.iter().any(|p| p.name() == "keep"));
 }
@@ -121,22 +122,21 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	txn.rql(
-		"CREATE HANDLER plist_c::new ON plist_c::evt::Foo { INSERT plist_c::sink [{ id: 2 }] }",
-		Params::None,
-	);
+	txn.rql("CREATE HANDLER plist_c::new ON plist_c::evt::Foo { INSERT plist_c::sink [{ id: 2 }] }", Params::None);
 	txn.rql("DROP PROCEDURE plist_c::keep", Params::None);
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let procs =
-		catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
+	let procs = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
 	assert!(procs.iter().any(|p| p.name() == "new"));
 	assert!(!procs.iter().any(|p| p.name() == "keep"));
 }
@@ -161,21 +161,20 @@ fn concurrent_txn_sees_only_committed_state() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
 
 	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
-	txn1.rql(
-		"CREATE HANDLER plist_d::new ON plist_d::evt::Foo { INSERT plist_d::sink [{ id: 2 }] }",
-		Params::None,
-	);
+	txn1.rql("CREATE HANDLER plist_d::new ON plist_d::evt::Foo { INSERT plist_d::sink [{ id: 2 }] }", Params::None);
 	txn1.rql("DROP PROCEDURE plist_d::keep", Params::None);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let in_txn2 =
-		catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
+	let in_txn2 = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
 	assert!(!in_txn2.iter().any(|p| p.name() == "new"));
 	assert!(in_txn2.iter().any(|p| p.name() == "keep"));
 
@@ -183,8 +182,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let in_txn3 =
-		catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn3), variant_ref).unwrap();
+	let in_txn3 = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn3), variant_ref).unwrap();
 	assert!(in_txn3.iter().any(|p| p.name() == "new"));
 	assert!(!in_txn3.iter().any(|p| p.name() == "keep"));
 }

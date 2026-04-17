@@ -16,9 +16,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	let r = txn.rql("DROP TABLE POLICY pol_drop_a_policy", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let found = catalog
-		.find_policy_by_name(&mut Transaction::Admin(&mut txn), "pol_drop_a_policy")
-		.unwrap();
+	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn), "pol_drop_a_policy").unwrap();
 	assert!(found.is_none());
 }
 
@@ -36,9 +34,7 @@ fn rolled_back_drop_leaves_policy_intact() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_drop_b_policy")
-		.unwrap();
+	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_drop_b_policy").unwrap();
 	assert!(found.is_some());
 }
 
@@ -56,9 +52,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_drop_c_policy")
-		.unwrap();
+	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_drop_c_policy").unwrap();
 	assert!(found.is_none());
 }
 
@@ -75,17 +69,15 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn2 = catalog
-		.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_drop_d_policy")
-		.unwrap();
+	let found_in_txn2 =
+		catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_drop_d_policy").unwrap();
 	assert!(found_in_txn2.is_some());
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn3 = catalog
-		.find_policy_by_name(&mut Transaction::Admin(&mut txn3), "pol_drop_d_policy")
-		.unwrap();
+	let found_in_txn3 =
+		catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn3), "pol_drop_d_policy").unwrap();
 	assert!(found_in_txn3.is_none());
 }

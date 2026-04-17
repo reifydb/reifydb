@@ -11,12 +11,13 @@ use reifydb_core::{
 use crate::{
 	ast::identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIdentifier,
-		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-		MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier,
-		MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier,
-		MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
-		MaybeQualifiedViewIdentifier, UnqualifiedIdentifier, UnresolvedShapeIdentifier,
+		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedHandlerIdentifier,
+		MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier,
+		MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
+		MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier,
+		MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+		MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
+		UnqualifiedIdentifier, UnresolvedShapeIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
 	token::token::{Literal, Token, TokenKind},
@@ -519,6 +520,8 @@ pub enum AstDrop<'bump> {
 	Source(AstDropSource<'bump>),
 	Sink(AstDropSink<'bump>),
 	Procedure(AstDropProcedure<'bump>),
+	Handler(AstDropHandler<'bump>),
+	Test(AstDropTest<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -606,6 +609,20 @@ pub struct AstDropProcedure<'bump> {
 	pub token: Token<'bump>,
 	pub if_exists: bool,
 	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropHandler<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub handler: MaybeQualifiedHandlerIdentifier<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropTest<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub test: MaybeQualifiedTestIdentifier<'bump>,
 }
 
 #[derive(Debug)]
@@ -1001,6 +1018,8 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Source(AstDropSource<'bump>),
 	Sink(AstDropSink<'bump>),
 	Procedure(AstDropProcedure<'bump>),
+	Handler(AstDropHandler<'bump>),
+	Test(AstDropTest<'bump>),
 );
 
 #[derive(Debug)]

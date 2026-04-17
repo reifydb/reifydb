@@ -499,6 +499,29 @@ impl<'bump> MaybeQualifiedSourceIdentifier<'bump> {
 	}
 }
 
+/// Maybe-qualified handler identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedHandlerIdentifier<'bump> {
+	/// Namespace chain (may be empty or partial)
+	pub namespace: Vec<BumpFragment<'bump>>,
+	/// Handler name
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedHandlerIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}
+
 /// Maybe-qualified sink identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSinkIdentifier<'bump> {

@@ -101,6 +101,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::DropSubscription(_) => unimplemented!(),
 		PhysicalPlan::DropSeries(_) => unimplemented!(),
 		PhysicalPlan::DropProcedure(_) => unimplemented!(),
+		PhysicalPlan::DropHandler(_) => unimplemented!(),
+		PhysicalPlan::DropTest(_) => unimplemented!(),
 		PhysicalPlan::CreateSource(_) => unimplemented!(),
 		PhysicalPlan::CreateSink(_) => unimplemented!(),
 		PhysicalPlan::DropSource(_) => unimplemented!(),

@@ -183,6 +183,8 @@ pub trait TransactionalHandlerChanges {
 
 	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Handler>;
 
+	fn is_handler_deleted(&self, id: HandlerId) -> bool;
+
 	fn is_handler_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 

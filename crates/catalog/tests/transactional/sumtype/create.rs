@@ -25,12 +25,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	let r = txn.rql("CREATE ENUM stns_create_a::status { Active, Inactive }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	assert!(
-		catalog
-			.find_sumtype_by_name(&mut Transaction::Admin(&mut txn), ns_id, "status")
-			.unwrap()
-			.is_some()
-	);
+	assert!(catalog.find_sumtype_by_name(&mut Transaction::Admin(&mut txn), ns_id, "status").unwrap().is_some());
 	let all = catalog.list_sumtypes(&mut Transaction::Admin(&mut txn), ns_id).unwrap();
 	assert!(all.iter().any(|x| x.name == "status"));
 }
@@ -58,12 +53,7 @@ fn rolled_back_create_is_not_visible() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	assert!(
-		catalog
-			.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "status")
-			.unwrap()
-			.is_none()
-	);
+	assert!(catalog.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "status").unwrap().is_none());
 }
 
 #[test]
@@ -89,12 +79,7 @@ fn committed_create_is_visible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	assert!(
-		catalog
-			.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "status")
-			.unwrap()
-			.is_some()
-	);
+	assert!(catalog.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "status").unwrap().is_some());
 }
 
 #[test]
@@ -119,21 +104,11 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	assert!(
-		catalog
-			.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "status")
-			.unwrap()
-			.is_none()
-	);
+	assert!(catalog.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "status").unwrap().is_none());
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	assert!(
-		catalog
-			.find_sumtype_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "status")
-			.unwrap()
-			.is_some()
-	);
+	assert!(catalog.find_sumtype_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "status").unwrap().is_some());
 }

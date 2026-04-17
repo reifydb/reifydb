@@ -26,9 +26,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	let r = txn.rql("DROP PROCEDURE pns_drop_a::greet", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let found = catalog
-		.find_procedure_by_name(&mut Transaction::Admin(&mut txn), ns_id, "greet")
-		.unwrap();
+	let found = catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn), ns_id, "greet").unwrap();
 	assert!(found.is_none(), "uncommitted DROP PROCEDURE must hide the procedure within its dropping txn");
 }
 
@@ -56,9 +54,7 @@ fn rolled_back_drop_leaves_procedure_intact() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "greet")
-		.unwrap();
+	let found = catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "greet").unwrap();
 	assert!(found.is_some(), "rolled-back DROP must leave the procedure visible in a later txn");
 }
 
@@ -86,9 +82,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "greet")
-		.unwrap();
+	let found = catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "greet").unwrap();
 	assert!(found.is_none(), "committed DROP PROCEDURE must not be visible in a new txn");
 }
 
@@ -115,17 +109,13 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn2 = catalog
-		.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "greet")
-		.unwrap();
+	let found_in_txn2 = catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "greet").unwrap();
 	assert!(found_in_txn2.is_some(), "txn2 must still observe the procedure while txn1's DROP is uncommitted");
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn3 = catalog
-		.find_procedure_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "greet")
-		.unwrap();
+	let found_in_txn3 = catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "greet").unwrap();
 	assert!(found_in_txn3.is_none(), "after txn1 commits, the procedure must not be visible in a later txn");
 }

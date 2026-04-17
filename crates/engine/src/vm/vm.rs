@@ -62,8 +62,8 @@ use crate::{
 			policy::create_policy, role::create_role,
 		},
 		drop::{
-			authentication::drop_authentication, identity::drop_identity, policy::drop_policy,
-			role::drop_role,
+			authentication::drop_authentication, handler::drop_handler, identity::drop_identity,
+			policy::drop_policy, role::drop_role, test::drop_test,
 		},
 		grant::grant,
 		revoke::revoke,
@@ -519,6 +519,12 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::DropProcedure(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_procedure(s, t, n.clone()))?
+				}
+				Instruction::DropHandler(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_handler(s, t, n.clone()))?
+				}
+				Instruction::DropTest(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_test(s, t, n.clone()))?
 				}
 				Instruction::DropIdentity(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_identity(s, t, n.clone()))?

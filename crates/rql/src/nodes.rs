@@ -11,7 +11,7 @@ use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::{
 		catalog::{
-			id::{NamespaceId, ProcedureId, RingBufferId, SeriesId, TableId, ViewId},
+			id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId},
 			namespace::Namespace,
 			procedure::{ProcedureParam, RqlTrigger},
 			property::ColumnPropertyKind,
@@ -400,6 +400,25 @@ pub struct DropProcedureNode {
 	pub namespace_name: Fragment,
 	pub procedure_name: Fragment,
 	pub procedure_id: Option<ProcedureId>,
+	pub if_exists: bool,
+}
+
+/// Physical node for DROP HANDLER
+#[derive(Debug, Clone)]
+pub struct DropHandlerNode {
+	pub namespace_name: Fragment,
+	pub handler_name: Fragment,
+	pub procedure_id: Option<ProcedureId>,
+	pub handler_id: Option<HandlerId>,
+	pub if_exists: bool,
+}
+
+/// Physical node for DROP TEST
+#[derive(Debug, Clone)]
+pub struct DropTestNode {
+	pub namespace_name: Fragment,
+	pub test_name: Fragment,
+	pub test_id: Option<TestId>,
 	pub if_exists: bool,
 }
 

@@ -22,9 +22,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let found = catalog
-		.find_policy_by_name(&mut Transaction::Admin(&mut txn), "pol_create_a_policy")
-		.unwrap();
+	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn), "pol_create_a_policy").unwrap();
 	assert!(found.is_some());
 }
 
@@ -44,9 +42,7 @@ fn rolled_back_create_is_not_visible() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_create_b_policy")
-		.unwrap();
+	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_create_b_policy").unwrap();
 	assert!(found.is_none());
 }
 
@@ -66,9 +62,7 @@ fn committed_create_is_visible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_create_c_policy")
-		.unwrap();
+	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_create_c_policy").unwrap();
 	assert!(found.is_some());
 }
 
@@ -87,17 +81,15 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn2 = catalog
-		.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_create_d_policy")
-		.unwrap();
+	let found_in_txn2 =
+		catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_create_d_policy").unwrap();
 	assert!(found_in_txn2.is_none());
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn3 = catalog
-		.find_policy_by_name(&mut Transaction::Admin(&mut txn3), "pol_create_d_policy")
-		.unwrap();
+	let found_in_txn3 =
+		catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn3), "pol_create_d_policy").unwrap();
 	assert!(found_in_txn3.is_some());
 }

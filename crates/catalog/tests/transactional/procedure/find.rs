@@ -39,7 +39,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 		.find_procedure_by_name(&mut Transaction::Admin(&mut txn), ns_id, "new")
 		.unwrap()
 		.expect("within-txn created procedure must be findable by name");
-	
+
 	let new_id = new_proc.id();
 	assert!(
 		catalog.find_procedure(&mut Transaction::Admin(&mut txn), new_id).unwrap().is_some(),
@@ -84,12 +84,8 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	assert!(
-		catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "new").unwrap().is_none()
-	);
-	assert!(
-		catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "keep").unwrap().is_some()
-	);
+	assert!(catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "new").unwrap().is_none());
+	assert!(catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "keep").unwrap().is_some());
 	assert!(
 		catalog.find_procedure(&mut Transaction::Admin(&mut txn2), keep_id).unwrap().is_some(),
 		"rolled-back drop must leave procedure findable by id"
@@ -133,9 +129,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 		catalog.find_procedure(&mut Transaction::Admin(&mut txn2), new_id).unwrap().is_some(),
 		"committed create must be findable by id"
 	);
-	assert!(
-		catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "keep").unwrap().is_none()
-	);
+	assert!(catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "keep").unwrap().is_none());
 	assert!(
 		catalog.find_procedure(&mut Transaction::Admin(&mut txn2), keep_id).unwrap().is_none(),
 		"committed drop must not be findable by id"
@@ -169,12 +163,8 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.rql("DROP PROCEDURE pns_find_d::keep", Params::None);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	assert!(
-		catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "new").unwrap().is_none()
-	);
-	assert!(
-		catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "keep").unwrap().is_some()
-	);
+	assert!(catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "new").unwrap().is_none());
+	assert!(catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "keep").unwrap().is_some());
 	assert!(
 		catalog.find_procedure(&mut Transaction::Admin(&mut txn2), keep_id).unwrap().is_some(),
 		"txn2 must see keep by id while txn1 is uncommitted"
@@ -190,10 +180,6 @@ fn concurrent_txn_sees_only_committed_state() {
 		.expect("after commit, new procedure must be findable by name");
 	let new_id = new_proc.id();
 	assert!(catalog.find_procedure(&mut Transaction::Admin(&mut txn3), new_id).unwrap().is_some());
-	assert!(
-		catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "keep").unwrap().is_none()
-	);
-	assert!(
-		catalog.find_procedure(&mut Transaction::Admin(&mut txn3), keep_id).unwrap().is_none()
-	);
+	assert!(catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "keep").unwrap().is_none());
+	assert!(catalog.find_procedure(&mut Transaction::Admin(&mut txn3), keep_id).unwrap().is_none());
 }

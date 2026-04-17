@@ -26,12 +26,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	let r = txn.rql("DROP SERIES sens_drop_a::s", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	assert!(
-		catalog
-			.find_series_by_name(&mut Transaction::Admin(&mut txn), ns_id, "s")
-			.unwrap()
-			.is_none()
-	);
+	assert!(catalog.find_series_by_name(&mut Transaction::Admin(&mut txn), ns_id, "s").unwrap().is_none());
 	let all = catalog.list_series_all(&mut Transaction::Admin(&mut txn)).unwrap();
 	assert!(!all.iter().any(|x| x.namespace == ns_id && x.name() == "s"));
 }
@@ -60,12 +55,7 @@ fn rolled_back_drop_leaves_series_intact() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	assert!(
-		catalog
-			.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s")
-			.unwrap()
-			.is_some()
-	);
+	assert!(catalog.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s").unwrap().is_some());
 }
 
 #[test]
@@ -92,12 +82,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	assert!(
-		catalog
-			.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s")
-			.unwrap()
-			.is_none()
-	);
+	assert!(catalog.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s").unwrap().is_none());
 }
 
 #[test]
@@ -123,21 +108,11 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	assert!(
-		catalog
-			.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s")
-			.unwrap()
-			.is_some()
-	);
+	assert!(catalog.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s").unwrap().is_some());
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	assert!(
-		catalog
-			.find_series_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "s")
-			.unwrap()
-			.is_none()
-	);
+	assert!(catalog.find_series_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "s").unwrap().is_none());
 }

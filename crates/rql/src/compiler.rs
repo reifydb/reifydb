@@ -971,6 +971,14 @@ impl InstructionCompiler {
 				self.emit(Instruction::DropProcedure(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::DropHandler(node) => {
+				self.emit(Instruction::DropHandler(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropTest(node) => {
+				self.emit(Instruction::DropTest(node));
+				self.emit(Instruction::Emit);
+			}
 
 			// Auth/Permissions — leaf instructions
 			PhysicalPlan::CreateIdentity(node) => {

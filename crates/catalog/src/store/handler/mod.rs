@@ -12,6 +12,7 @@ use reifydb_type::value::sumtype::{SumTypeId, VariantRef};
 use shape::handler;
 
 pub mod create;
+pub mod drop;
 pub mod find;
 pub mod get;
 pub(crate) mod shape;

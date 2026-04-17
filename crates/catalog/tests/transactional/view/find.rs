@@ -13,9 +13,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE vwf_ns_a");
 	t.admin("CREATE TABLE vwf_ns_a::src { id: int4 }");
-	t.admin(
-		"CREATE DEFERRED VIEW vwf_ns_a::keep { id: int4 } AS { FROM vwf_ns_a::src MAP { id: id } }",
-	);
+	t.admin("CREATE DEFERRED VIEW vwf_ns_a::keep { id: int4 } AS { FROM vwf_ns_a::src MAP { id: id } }");
 
 	let (ns_id, keep_id) = {
 		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
@@ -65,9 +63,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE vwf_ns_b");
 	t.admin("CREATE TABLE vwf_ns_b::src { id: int4 }");
-	t.admin(
-		"CREATE DEFERRED VIEW vwf_ns_b::keep { id: int4 } AS { FROM vwf_ns_b::src MAP { id: id } }",
-	);
+	t.admin("CREATE DEFERRED VIEW vwf_ns_b::keep { id: int4 } AS { FROM vwf_ns_b::src MAP { id: id } }");
 
 	let (ns_id, keep_id) = {
 		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
@@ -107,9 +103,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE vwf_ns_c");
 	t.admin("CREATE TABLE vwf_ns_c::src { id: int4 }");
-	t.admin(
-		"CREATE DEFERRED VIEW vwf_ns_c::keep { id: int4 } AS { FROM vwf_ns_c::src MAP { id: id } }",
-	);
+	t.admin("CREATE DEFERRED VIEW vwf_ns_c::keep { id: int4 } AS { FROM vwf_ns_c::src MAP { id: id } }");
 
 	let (ns_id, keep_id) = {
 		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
@@ -154,9 +148,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE vwf_ns_d");
 	t.admin("CREATE TABLE vwf_ns_d::src { id: int4 }");
-	t.admin(
-		"CREATE DEFERRED VIEW vwf_ns_d::keep { id: int4 } AS { FROM vwf_ns_d::src MAP { id: id } }",
-	);
+	t.admin("CREATE DEFERRED VIEW vwf_ns_d::keep { id: int4 } AS { FROM vwf_ns_d::src MAP { id: id } }");
 
 	let (ns_id, keep_id) = {
 		let mut probe = t.begin_admin(IdentityId::system()).unwrap();

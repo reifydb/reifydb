@@ -13,9 +13,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	let r = txn.rql("CREATE NAMESPACE ns_create_a", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let found = catalog
-		.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "ns_create_a")
-		.unwrap();
+	let found = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "ns_create_a").unwrap();
 	assert!(found.is_some(), "uncommitted CREATE NAMESPACE must be visible within its creating txn");
 
 	let all = catalog.list_namespaces_all(&mut Transaction::Admin(&mut txn)).unwrap();
@@ -36,9 +34,7 @@ fn rolled_back_create_is_not_visible() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_namespace_by_name(&mut Transaction::Admin(&mut txn2), "ns_create_b")
-		.unwrap();
+	let found = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn2), "ns_create_b").unwrap();
 	assert!(found.is_none(), "rolled-back namespace must not be visible in a later txn");
 
 	let all = catalog.list_namespaces_all(&mut Transaction::Admin(&mut txn2)).unwrap();
@@ -59,9 +55,7 @@ fn committed_create_is_visible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_namespace_by_name(&mut Transaction::Admin(&mut txn2), "ns_create_c")
-		.unwrap();
+	let found = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn2), "ns_create_c").unwrap();
 	assert!(found.is_some(), "committed namespace must be visible in a new txn");
 
 	let all = catalog.list_namespaces_all(&mut Transaction::Admin(&mut txn2)).unwrap();
@@ -81,13 +75,8 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn2 = catalog
-		.find_namespace_by_name(&mut Transaction::Admin(&mut txn2), "ns_create_d")
-		.unwrap();
-	assert!(
-		found_in_txn2.is_none(),
-		"txn2 must not observe txn1's uncommitted CREATE NAMESPACE"
-	);
+	let found_in_txn2 = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn2), "ns_create_d").unwrap();
+	assert!(found_in_txn2.is_none(), "txn2 must not observe txn1's uncommitted CREATE NAMESPACE");
 	let all_in_txn2 = catalog.list_namespaces_all(&mut Transaction::Admin(&mut txn2)).unwrap();
 	assert!(
 		!all_in_txn2.iter().any(|n| n.name() == "ns_create_d"),
@@ -98,8 +87,6 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn3 = catalog
-		.find_namespace_by_name(&mut Transaction::Admin(&mut txn3), "ns_create_d")
-		.unwrap();
+	let found_in_txn3 = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn3), "ns_create_d").unwrap();
 	assert!(found_in_txn3.is_some(), "after txn1 commits, namespace must be visible in a later txn");
 }

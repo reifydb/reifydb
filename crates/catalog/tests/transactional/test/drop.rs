@@ -10,7 +10,6 @@ use reifydb_engine::test_prelude::*;
 use reifydb_transaction::transaction::Transaction;
 
 #[test]
-#[ignore = "awaiting RQL DROP TEST"]
 fn uncommitted_drop_is_reflected_within_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -32,9 +31,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	let r = txn.rql("DROP TEST tns_drop_a::foo", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let found = catalog
-		.find_test_by_name(&mut Transaction::Admin(&mut txn), ns_id, "foo")
-		.unwrap();
+	let found = catalog.find_test_by_name(&mut Transaction::Admin(&mut txn), ns_id, "foo").unwrap();
 	assert!(found.is_none(), "uncommitted DROP TEST must hide the test within its dropping txn");
 
 	let all = catalog.list_all_tests(&mut Transaction::Admin(&mut txn)).unwrap();
@@ -45,7 +42,6 @@ fn uncommitted_drop_is_reflected_within_txn() {
 }
 
 #[test]
-#[ignore = "awaiting RQL DROP TEST"]
 fn rolled_back_drop_leaves_test_intact() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -69,14 +65,11 @@ fn rolled_back_drop_leaves_test_intact() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo")
-		.unwrap();
+	let found = catalog.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo").unwrap();
 	assert!(found.is_some(), "rolled-back DROP TEST must leave the test visible in a later txn");
 }
 
 #[test]
-#[ignore = "awaiting RQL DROP TEST"]
 fn committed_drop_is_invisible_in_new_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -100,14 +93,11 @@ fn committed_drop_is_invisible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo")
-		.unwrap();
+	let found = catalog.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo").unwrap();
 	assert!(found.is_none(), "committed DROP TEST must not be visible in a new txn");
 }
 
 #[test]
-#[ignore = "awaiting RQL DROP TEST"]
 fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -130,17 +120,13 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn2 = catalog
-		.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo")
-		.unwrap();
+	let found_in_txn2 = catalog.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo").unwrap();
 	assert!(found_in_txn2.is_some(), "txn2 must still observe the test while txn1's DROP is uncommitted");
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn3 = catalog
-		.find_test_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "foo")
-		.unwrap();
+	let found_in_txn3 = catalog.find_test_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "foo").unwrap();
 	assert!(found_in_txn3.is_none(), "after txn1 commits, the test must not be visible in a later txn");
 }

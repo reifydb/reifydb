@@ -156,6 +156,8 @@ impl Catalog {
 						tests.push(t.clone());
 					}
 				}
+				// Remove tests deleted in this transaction
+				tests.retain(|t| !admin.is_test_deleted(t.id));
 				Ok(tests)
 			}
 			Transaction::Query(qry) => {
@@ -166,14 +168,16 @@ impl Catalog {
 					self.materialized.list_tests_in_namespace_at(namespace, t.inner.version());
 				// Add transactional additions
 				for change in &t.inner.changes.test {
-					if let Some(t) = &change.post
-						&& t.namespace == namespace && !tests
+					if let Some(tst) = &change.post
+						&& tst.namespace == namespace && !tests
 						.iter()
-						.any(|existing| existing.id == t.id)
+						.any(|existing| existing.id == tst.id)
 					{
-						tests.push(t.clone());
+						tests.push(tst.clone());
 					}
 				}
+				// Remove tests deleted in this transaction
+				tests.retain(|tst| !t.inner.is_test_deleted(tst.id));
 				Ok(tests)
 			}
 			Transaction::Replica(rep) => {
@@ -195,22 +199,34 @@ impl Catalog {
 						tests.push(t.clone());
 					}
 				}
+				// Remove tests deleted in this transaction
+				tests.retain(|t| !admin.is_test_deleted(t.id));
 				Ok(tests)
 			}
 			Transaction::Query(qry) => Ok(self.materialized.list_all_tests_at(qry.version())),
 			Transaction::Test(t) => {
 				let mut tests = self.materialized.list_all_tests_at(t.inner.version());
 				for change in &t.inner.changes.test {
-					if let Some(t) = &change.post
-						&& !tests.iter().any(|existing| existing.id == t.id)
+					if let Some(tst) = &change.post
+						&& !tests.iter().any(|existing| existing.id == tst.id)
 					{
-						tests.push(t.clone());
+						tests.push(tst.clone());
 					}
 				}
+				// Remove tests deleted in this transaction
+				tests.retain(|tst| !t.inner.is_test_deleted(tst.id));
 				Ok(tests)
 			}
 			Transaction::Replica(rep) => Ok(self.materialized.list_all_tests_at(rep.version())),
 		}
+	}
+
+	#[instrument(name = "catalog::test::drop", level = "debug", skip(self, txn))]
+	pub fn drop_test(&self, txn: &mut AdminTransaction, id: TestId) -> Result<()> {
+		if let Some(test) = self.find_test(&mut Transaction::Admin(&mut *txn), id)? {
+			txn.track_test_deleted(test)?;
+		}
+		Ok(())
 	}
 
 	#[instrument(name = "catalog::test::create", level = "debug", skip(self, txn, to_create))]

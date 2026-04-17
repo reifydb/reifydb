@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::procedure::ProcedureToCreate;
+use reifydb_catalog::catalog::{handler::HandlerToCreate, procedure::ProcedureToCreate};
 use reifydb_core::{interface::catalog::procedure::RqlTrigger, value::column::columns::Columns};
 use reifydb_rql::nodes::CreateProcedureNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -31,14 +31,29 @@ pub(crate) fn create_procedure(
 			params: plan.params,
 			return_type: None,
 			body: plan.body_source,
-			trigger: plan.trigger,
+			trigger: plan.trigger.clone(),
 		}
 	};
 
 	let procedure = services.catalog.create_procedure(txn, to_create)?;
 
 	if is_handler {
-		// Return handler-style output for backwards compatibility
+		// Also register in the handler store for handler-specific lookups
+		if let RqlTrigger::Event {
+			variant,
+		} = plan.trigger
+		{
+			services.catalog.create_handler(
+				txn,
+				HandlerToCreate {
+					name: plan.name,
+					namespace: plan.namespace.id(),
+					variant,
+					body_source: procedure.body().unwrap_or("").to_string(),
+				},
+			)?;
+		}
+
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
 			("handler", Value::Utf8(procedure.name().to_string())),

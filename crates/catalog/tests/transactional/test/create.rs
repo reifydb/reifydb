@@ -25,9 +25,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	let r = txn.rql("CREATE TEST tns_create_a::foo { ASSERT { true } }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let found = catalog
-		.find_test_by_name(&mut Transaction::Admin(&mut txn), ns_id, "foo")
-		.unwrap();
+	let found = catalog.find_test_by_name(&mut Transaction::Admin(&mut txn), ns_id, "foo").unwrap();
 	assert!(found.is_some(), "uncommitted CREATE TEST must be visible within its creating txn");
 
 	let all = catalog.list_all_tests(&mut Transaction::Admin(&mut txn)).unwrap();
@@ -66,9 +64,7 @@ fn rolled_back_create_is_not_visible() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo")
-		.unwrap();
+	let found = catalog.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo").unwrap();
 	assert!(found.is_none(), "rolled-back test must not be visible in a later txn");
 
 	let all = catalog.list_all_tests(&mut Transaction::Admin(&mut txn2)).unwrap();
@@ -98,9 +94,7 @@ fn committed_create_is_visible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo")
-		.unwrap();
+	let found = catalog.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo").unwrap();
 	assert!(found.is_some(), "committed test must be visible in a new txn");
 
 	let all = catalog.list_all_tests(&mut Transaction::Admin(&mut txn2)).unwrap();
@@ -129,9 +123,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn2 = catalog
-		.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo")
-		.unwrap();
+	let found_in_txn2 = catalog.find_test_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "foo").unwrap();
 	assert!(found_in_txn2.is_none(), "txn2 must not observe txn1's uncommitted CREATE TEST");
 	let all_in_txn2 = catalog.list_all_tests(&mut Transaction::Admin(&mut txn2)).unwrap();
 	assert!(!all_in_txn2.iter().any(|x| x.namespace == ns_id && x.name == "foo"));
@@ -140,8 +132,6 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn3 = catalog
-		.find_test_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "foo")
-		.unwrap();
+	let found_in_txn3 = catalog.find_test_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "foo").unwrap();
 	assert!(found_in_txn3.is_some(), "after txn1 commits, the test must be visible in a later txn");
 }

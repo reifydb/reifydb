@@ -26,9 +26,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	let r = txn.rql("DROP TABLE tabns_drop_a::t", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let found = catalog
-		.find_table_by_name(&mut Transaction::Admin(&mut txn), ns_id, "t")
-		.unwrap();
+	let found = catalog.find_table_by_name(&mut Transaction::Admin(&mut txn), ns_id, "t").unwrap();
 	assert!(found.is_none());
 
 	let all = catalog.list_tables_all(&mut Transaction::Admin(&mut txn)).unwrap();
@@ -59,9 +57,7 @@ fn rolled_back_drop_leaves_table_intact() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_table_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "t")
-		.unwrap();
+	let found = catalog.find_table_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "t").unwrap();
 	assert!(found.is_some());
 }
 
@@ -89,9 +85,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_table_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "t")
-		.unwrap();
+	let found = catalog.find_table_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "t").unwrap();
 	assert!(found.is_none());
 }
 
@@ -118,17 +112,13 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn2 = catalog
-		.find_table_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "t")
-		.unwrap();
+	let found_in_txn2 = catalog.find_table_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "t").unwrap();
 	assert!(found_in_txn2.is_some());
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn3 = catalog
-		.find_table_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "t")
-		.unwrap();
+	let found_in_txn3 = catalog.find_table_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "t").unwrap();
 	assert!(found_in_txn3.is_none());
 }

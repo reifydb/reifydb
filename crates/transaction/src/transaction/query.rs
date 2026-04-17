@@ -386,6 +386,10 @@ impl TransactionalHandlerChanges for QueryTransaction {
 		None
 	}
 
+	fn is_handler_deleted(&self, _id: HandlerId) -> bool {
+		false
+	}
+
 	fn is_handler_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}

@@ -11,7 +11,6 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::VariantRef;
 
 #[test]
-#[ignore = "awaiting RQL DROP HANDLER"]
 fn uncommitted_drop_is_reflected_within_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -31,7 +30,10 @@ fn uncommitted_drop_is_reflected_within_txn() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
@@ -48,7 +50,6 @@ fn uncommitted_drop_is_reflected_within_txn() {
 }
 
 #[test]
-#[ignore = "awaiting RQL DROP HANDLER"]
 fn rolled_back_drop_leaves_handler_intact() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -68,7 +69,10 @@ fn rolled_back_drop_leaves_handler_intact() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
@@ -84,7 +88,6 @@ fn rolled_back_drop_leaves_handler_intact() {
 }
 
 #[test]
-#[ignore = "awaiting RQL DROP HANDLER"]
 fn committed_drop_is_invisible_in_new_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -104,7 +107,10 @@ fn committed_drop_is_invisible_in_new_txn() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
@@ -120,7 +126,6 @@ fn committed_drop_is_invisible_in_new_txn() {
 }
 
 #[test]
-#[ignore = "awaiting RQL DROP HANDLER"]
 fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -140,7 +145,10 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
@@ -151,7 +159,10 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	let in_txn2 = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
-	assert!(in_txn2.iter().any(|p| p.name() == "h1"), "txn2 must still observe the handler while txn1's DROP is uncommitted");
+	assert!(
+		in_txn2.iter().any(|p| p.name() == "h1"),
+		"txn2 must still observe the handler while txn1's DROP is uncommitted"
+	);
 
 	txn1.commit().unwrap();
 	drop(txn2);

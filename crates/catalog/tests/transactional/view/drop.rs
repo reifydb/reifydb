@@ -4,14 +4,10 @@
 use reifydb_engine::test_prelude::*;
 use reifydb_transaction::transaction::Transaction;
 
-const SETUP_V_A: &str =
-	"CREATE DEFERRED VIEW vns_drop_a::v { id: int4 } AS { FROM vns_drop_a::src MAP { id: id } }";
-const SETUP_V_B: &str =
-	"CREATE DEFERRED VIEW vns_drop_b::v { id: int4 } AS { FROM vns_drop_b::src MAP { id: id } }";
-const SETUP_V_C: &str =
-	"CREATE DEFERRED VIEW vns_drop_c::v { id: int4 } AS { FROM vns_drop_c::src MAP { id: id } }";
-const SETUP_V_D: &str =
-	"CREATE DEFERRED VIEW vns_drop_d::v { id: int4 } AS { FROM vns_drop_d::src MAP { id: id } }";
+const SETUP_V_A: &str = "CREATE DEFERRED VIEW vns_drop_a::v { id: int4 } AS { FROM vns_drop_a::src MAP { id: id } }";
+const SETUP_V_B: &str = "CREATE DEFERRED VIEW vns_drop_b::v { id: int4 } AS { FROM vns_drop_b::src MAP { id: id } }";
+const SETUP_V_C: &str = "CREATE DEFERRED VIEW vns_drop_c::v { id: int4 } AS { FROM vns_drop_c::src MAP { id: id } }";
+const SETUP_V_D: &str = "CREATE DEFERRED VIEW vns_drop_d::v { id: int4 } AS { FROM vns_drop_d::src MAP { id: id } }";
 
 #[test]
 fn uncommitted_drop_is_reflected_within_txn() {
@@ -36,9 +32,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	let r = txn.rql("DROP VIEW vns_drop_a::v", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let found = catalog
-		.find_view_by_name(&mut Transaction::Admin(&mut txn), ns_id, "v")
-		.unwrap();
+	let found = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn), ns_id, "v").unwrap();
 	assert!(found.is_none());
 
 	let all = catalog.list_views_all(&mut Transaction::Admin(&mut txn)).unwrap();
@@ -70,9 +64,7 @@ fn rolled_back_drop_leaves_view_intact() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v")
-		.unwrap();
+	let found = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v").unwrap();
 	assert!(found.is_some());
 }
 
@@ -101,9 +93,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v")
-		.unwrap();
+	let found = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v").unwrap();
 	assert!(found.is_none());
 }
 
@@ -131,17 +121,13 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn2 = catalog
-		.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v")
-		.unwrap();
+	let found_in_txn2 = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v").unwrap();
 	assert!(found_in_txn2.is_some());
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn3 = catalog
-		.find_view_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "v")
-		.unwrap();
+	let found_in_txn3 = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "v").unwrap();
 	assert!(found_in_txn3.is_none());
 }

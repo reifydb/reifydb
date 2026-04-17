@@ -641,3 +641,33 @@ pub fn series_not_found(fragment: Fragment, namespace: &str, series: &str) -> Di
 		operator_chain: None,
 	}
 }
+
+pub fn handler_not_found(fragment: Fragment, namespace: &str, handler: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_083".to_string(),
+		statement: None,
+		message: format!("handler `{}::{}` not found", namespace, handler),
+		fragment,
+		label: Some("unknown handler reference".to_string()),
+		help: Some("ensure the handler exists or create it first using `CREATE HANDLER`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn test_not_found(fragment: Fragment, namespace: &str, test: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_084".to_string(),
+		statement: None,
+		message: format!("test `{}::{}` not found", namespace, test),
+		fragment,
+		label: Some("unknown test reference".to_string()),
+		help: Some("ensure the test exists or create it first using `CREATE TEST`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

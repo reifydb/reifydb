@@ -30,9 +30,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	let r = txn.rql(CREATE_A, Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let found = catalog
-		.find_series_by_name(&mut Transaction::Admin(&mut txn), ns_id, "s")
-		.unwrap();
+	let found = catalog.find_series_by_name(&mut Transaction::Admin(&mut txn), ns_id, "s").unwrap();
 	assert!(found.is_some());
 
 	let all = catalog.list_series_all(&mut Transaction::Admin(&mut txn)).unwrap();
@@ -62,9 +60,7 @@ fn rolled_back_create_is_not_visible() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s")
-		.unwrap();
+	let found = catalog.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s").unwrap();
 	assert!(found.is_none());
 }
 
@@ -91,9 +87,7 @@ fn committed_create_is_visible_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found = catalog
-		.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s")
-		.unwrap();
+	let found = catalog.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s").unwrap();
 	assert!(found.is_some());
 }
 
@@ -119,17 +113,13 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn2 = catalog
-		.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s")
-		.unwrap();
+	let found_in_txn2 = catalog.find_series_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "s").unwrap();
 	assert!(found_in_txn2.is_none());
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let found_in_txn3 = catalog
-		.find_series_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "s")
-		.unwrap();
+	let found_in_txn3 = catalog.find_series_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "s").unwrap();
 	assert!(found_in_txn3.is_some());
 }

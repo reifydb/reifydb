@@ -4,6 +4,7 @@
 pub mod authentication;
 pub mod dependent;
 pub mod dictionary;
+pub mod handler;
 pub mod identity;
 pub mod namespace;
 pub mod policy;
@@ -16,4 +17,5 @@ pub mod source;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
+pub mod test;
 pub mod view;

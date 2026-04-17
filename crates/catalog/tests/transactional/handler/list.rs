@@ -12,7 +12,6 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::VariantRef;
 
 #[test]
-#[ignore = "awaiting RQL DROP HANDLER"]
 fn create_and_drop_in_same_txn_reflects_both() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -32,7 +31,10 @@ fn create_and_drop_in_same_txn_reflects_both() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
@@ -58,7 +60,6 @@ fn create_and_drop_in_same_txn_reflects_both() {
 }
 
 #[test]
-#[ignore = "awaiting RQL DROP HANDLER"]
 fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -78,7 +79,10 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
@@ -98,7 +102,6 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 }
 
 #[test]
-#[ignore = "awaiting RQL DROP HANDLER"]
 fn committed_create_and_drop_are_reflected_in_new_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -118,7 +121,10 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};
@@ -138,7 +144,6 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 }
 
 #[test]
-#[ignore = "awaiting RQL DROP HANDLER"]
 fn concurrent_txn_sees_only_committed_state() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
@@ -158,7 +163,10 @@ fn concurrent_txn_sees_only_committed_state() {
 			.unwrap()
 			.unwrap();
 		let variant = sumtype.variants.iter().find(|v| v.name == "foo").unwrap();
-		let v = VariantRef { sumtype_id: sumtype.id, variant_tag: variant.tag };
+		let v = VariantRef {
+			sumtype_id: sumtype.id,
+			variant_tag: variant.tag,
+		};
 		drop(probe);
 		v
 	};

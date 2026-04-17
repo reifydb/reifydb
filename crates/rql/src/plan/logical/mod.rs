@@ -48,12 +48,13 @@ use crate::{
 		},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier,
-			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
+			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedHandlerIdentifier, MaybeQualifiedIdentifier,
+			MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier,
+			MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier,
+			MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
@@ -418,6 +419,8 @@ pub enum LogicalPlan<'bump> {
 	DropSource(DropSourceNode<'bump>),
 	DropSink(DropSinkNode<'bump>),
 	DropProcedure(DropProcedureNode<'bump>),
+	DropHandler(DropHandlerNode<'bump>),
+	DropTest(DropTestNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
@@ -980,6 +983,18 @@ pub struct DropTableNode<'bump> {
 #[derive(Debug)]
 pub struct DropProcedureNode<'bump> {
 	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
+	pub if_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct DropHandlerNode<'bump> {
+	pub handler: MaybeQualifiedHandlerIdentifier<'bump>,
+	pub if_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct DropTestNode<'bump> {
+	pub test: MaybeQualifiedTestIdentifier<'bump>,
 	pub if_exists: bool,
 }
 

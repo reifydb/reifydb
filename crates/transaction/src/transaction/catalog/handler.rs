@@ -63,6 +63,14 @@ impl TransactionalHandlerChanges for AdminTransaction {
 			.find_map(|change| change.post.as_ref().filter(|h| h.namespace == namespace && h.name == name))
 	}
 
+	fn is_handler_deleted(&self, id: HandlerId) -> bool {
+		self.changes
+			.handler
+			.iter()
+			.rev()
+			.any(|change| change.op == Delete && change.pre.as_ref().map(|h| h.id == id).unwrap_or(false))
+	}
+
 	fn is_handler_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
 		self.changes.handler.iter().rev().any(|change| {
 			change.op == Delete

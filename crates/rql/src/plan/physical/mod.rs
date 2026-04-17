@@ -105,6 +105,8 @@ pub enum PhysicalPlan<'bump> {
 	DropSource(nodes::DropSourceNode),
 	DropSink(nodes::DropSinkNode),
 	DropProcedure(nodes::DropProcedureNode),
+	DropHandler(nodes::DropHandlerNode),
+	DropTest(nodes::DropTestNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode<'bump>),
@@ -827,6 +829,12 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::DropProcedure(drop) => {
 					stack.push(self.compile_drop_procedure(rx, drop)?);
+				}
+				LogicalPlan::DropHandler(drop) => {
+					stack.push(self.compile_drop_handler(rx, drop)?);
+				}
+				LogicalPlan::DropTest(drop) => {
+					stack.push(self.compile_drop_test(rx, drop)?);
 				}
 
 				// Auth/Permissions - pass through logical to physical directly
