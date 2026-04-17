@@ -45,7 +45,7 @@ impl RemoteRegistry {
 		let (tx, rx) = mpsc::sync_channel(1);
 
 		self.runtime.spawn(async move {
-			let result = client.query(&rql, params_opt).await.map(|r| r.frames);
+			let result = client.query(&rql, params_opt).await;
 			let _ = tx.send(result);
 		});
 

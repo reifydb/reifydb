@@ -3,7 +3,7 @@
 
 use std::io::{self, Write};
 
-use reifydb_client::{Frame, QueryResult, WireFormat, WsClient};
+use reifydb_client::{Frame, WireFormat, WsClient};
 use rustyline::{DefaultEditor, error::ReadlineError};
 use terminal_size::{Width, terminal_size};
 
@@ -207,8 +207,8 @@ async fn execute_query(client: &mut WsClient, statement: &str, display_mode: Dis
 	}
 }
 
-fn print_query_result(result: &QueryResult, display_mode: DisplayMode) {
-	if result.frames.is_empty() {
+fn print_query_result(frames: &[Frame], display_mode: DisplayMode) {
+	if frames.is_empty() {
 		println!("(no results)\n");
 		return;
 	}
@@ -219,8 +219,8 @@ fn print_query_result(result: &QueryResult, display_mode: DisplayMode) {
 		DisplayMode::Full => None,
 	};
 
-	for (i, frame) in result.frames.iter().enumerate() {
-		if result.frames.len() > 1 {
+	for (i, frame) in frames.iter().enumerate() {
+		if frames.len() > 1 {
 			println!("--- Frame {} ---", i + 1);
 		}
 

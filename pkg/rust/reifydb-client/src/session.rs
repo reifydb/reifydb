@@ -11,10 +11,12 @@ pub fn parse_admin_response(response: Response) -> Result<AdminResult, Error> {
 	match response.payload {
 		ResponsePayload::Admin(admin_response) => Ok(AdminResult {
 			frames: convert_envelope_response(admin_response.body),
+			meta: admin_response.meta,
 		}),
 		// Admin responses may come back as Command responses from the server
 		ResponsePayload::Command(cmd_response) => Ok(AdminResult {
 			frames: convert_envelope_response(cmd_response.body),
+			meta: cmd_response.meta,
 		}),
 		ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
@@ -30,6 +32,7 @@ pub fn parse_command_response(response: Response) -> Result<CommandResult, Error
 	match response.payload {
 		ResponsePayload::Command(cmd_response) => Ok(CommandResult {
 			frames: convert_envelope_response(cmd_response.body),
+			meta: cmd_response.meta,
 		}),
 		ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
@@ -47,6 +50,7 @@ pub fn parse_query_response(response: Response) -> Result<QueryResult, Error> {
 			let frames = convert_envelope_response(query_response.body);
 			Ok(QueryResult {
 				frames,
+				meta: query_response.meta,
 			})
 		}
 		ResponsePayload::Err(err) => {

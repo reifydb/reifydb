@@ -43,7 +43,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("admin: {rql}");
 
 				let result = self.runtime.block_on(client.admin(&rql, None))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"command" => {
@@ -51,7 +51,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("command: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, None))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"command_positional" => {
@@ -59,7 +59,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("command_positional: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, Some(params)))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"command_named" => {
@@ -67,7 +67,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("command_named: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, Some(params)))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"query" => {
@@ -75,7 +75,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("query: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, None))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"query_positional" => {
@@ -83,7 +83,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("query_positional: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, Some(params)))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"query_named" => {
@@ -91,7 +91,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("query_named: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, Some(params)))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			name => Err(format!("invalid command {name}").into()),

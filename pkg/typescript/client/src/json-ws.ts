@@ -13,6 +13,7 @@ import type {
     LoginResult,
     LogoutRequest,
     LogoutResponse,
+    ResponseMeta,
 } from "./types";
 import {
     ReifyError
@@ -128,60 +129,52 @@ export class JsonWsClient {
         statements: string | string[],
         params?: any,
     ): Promise<any> {
-        const id = `req-${this.next_id++}`;
+        const { data } = await this.admin_with_meta(statements, params);
+        return data;
+    }
 
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
-
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
-            : undefined;
-
-        return this.send({
-            id,
-            type: "Admin",
-            payload: {
-                statements: output_statements,
-                params: encoded_params,
-                format: "json",
-                ...(this.options.unwrap ? {unwrap: true} : {}),
-            },
-        });
+    async admin_with_meta(
+        statements: string | string[],
+        params?: any,
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        return this.execute("Admin", statements, params);
     }
 
     async command(
         statements: string | string[],
         params?: any,
     ): Promise<any> {
-        const id = `req-${this.next_id++}`;
+        const { data } = await this.command_with_meta(statements, params);
+        return data;
+    }
 
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
-
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
-            : undefined;
-
-        return this.send({
-            id,
-            type: "Command",
-            payload: {
-                statements: output_statements,
-                params: encoded_params,
-                format: "json",
-                ...(this.options.unwrap ? {unwrap: true} : {}),
-            },
-        });
+    async command_with_meta(
+        statements: string | string[],
+        params?: any,
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        return this.execute("Command", statements, params);
     }
 
     async query(
         statements: string | string[],
         params?: any,
     ): Promise<any> {
+        const { data } = await this.query_with_meta(statements, params);
+        return data;
+    }
+
+    async query_with_meta(
+        statements: string | string[],
+        params?: any,
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        return this.execute("Query", statements, params);
+    }
+
+    private async execute(
+        type: "Admin" | "Command" | "Query",
+        statements: string | string[],
+        params?: any,
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
         const id = `req-${this.next_id++}`;
 
         const statement_array = Array.isArray(statements) ? statements : [statements];
@@ -193,19 +186,26 @@ export class JsonWsClient {
             ? encode_params(params)
             : undefined;
 
-        return this.send({
+        return this.send_with_meta({
             id,
-            type: "Query",
+            type,
             payload: {
                 statements: output_statements,
                 params: encoded_params,
                 format: "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
-        });
+        } as AdminRequest | CommandRequest | QueryRequest);
     }
 
     async send(req: AdminRequest | CommandRequest | QueryRequest): Promise<any> {
+        const { data } = await this.send_with_meta(req);
+        return data;
+    }
+
+    async send_with_meta(
+        req: AdminRequest | CommandRequest | QueryRequest,
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
         const id = req.id;
 
         if (this.socket.readyState !== 1) {
@@ -248,7 +248,8 @@ export class JsonWsClient {
             throw new Error(`Unexpected response type: ${response.type}`);
         }
 
-        return response.payload.body;
+        const meta = (response.payload as any).meta as ResponseMeta | undefined;
+        return { data: response.payload.body, meta };
     }
 
     async login_with_password(identity: string, password: string): Promise<LoginResult> {

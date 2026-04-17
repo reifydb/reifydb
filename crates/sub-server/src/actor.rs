@@ -64,6 +64,7 @@ impl ServerActor {
 			reply.send(ServerResponse::Success {
 				frames: result.frames,
 				duration: t.elapsed(),
+				metrics: result.metrics,
 			});
 		}
 	}
@@ -123,6 +124,7 @@ impl Actor for ServerActor {
 					reply.send(ServerSubscribeResponse::Subscribed {
 						frames: result.frames,
 						duration: t.elapsed(),
+						metrics: result.metrics,
 					});
 				}
 			}

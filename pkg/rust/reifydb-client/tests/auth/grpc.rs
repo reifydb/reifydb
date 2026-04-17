@@ -28,7 +28,7 @@ fn test_password_login_success() {
 
 		// Verify authenticated queries work
 		let query_result = client.query("MAP {v: 42}", None).await.unwrap();
-		assert_eq!(query_result.frames.len(), 1);
+		assert_eq!(query_result.len(), 1);
 	});
 
 	cleanup_server(Some(server));
@@ -85,7 +85,7 @@ fn test_token_login_success() {
 
 		// Verify authenticated queries work
 		let query_result = client.query("MAP {v: 42}", None).await.unwrap();
-		assert_eq!(query_result.frames.len(), 1);
+		assert_eq!(query_result.len(), 1);
 	});
 
 	cleanup_server(Some(server));
@@ -125,7 +125,7 @@ fn test_sequential_logins() {
 
 		// Verify query works as alice
 		let query_result = client.query("MAP {v: 1}", None).await.unwrap();
-		assert_eq!(query_result.frames.len(), 1);
+		assert_eq!(query_result.len(), 1);
 
 		// Login as bob (replaces alice session)
 		let result_b = client.login_with_token("bob-secret-token").await.unwrap();
@@ -134,7 +134,7 @@ fn test_sequential_logins() {
 
 		// Verify query works as bob
 		let query_result = client.query("MAP {v: 2}", None).await.unwrap();
-		assert_eq!(query_result.frames.len(), 1);
+		assert_eq!(query_result.len(), 1);
 	});
 
 	cleanup_server(Some(server));
@@ -155,7 +155,7 @@ fn test_logout_success() {
 
 		// Verify query works before logout
 		let query_result = client.query("MAP {v: 1}", None).await.unwrap();
-		assert_eq!(query_result.frames.len(), 1);
+		assert_eq!(query_result.len(), 1);
 
 		// Logout
 		client.logout().await.unwrap();
@@ -255,7 +255,7 @@ fn test_logout_independent_sessions() {
 
 		// client_b should still work
 		let query_result = client_b.query("MAP {v: 42}", None).await.unwrap();
-		assert_eq!(query_result.frames.len(), 1);
+		assert_eq!(query_result.len(), 1);
 	});
 
 	cleanup_server(Some(server));

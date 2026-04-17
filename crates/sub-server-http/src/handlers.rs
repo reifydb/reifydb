@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use axum::{
 	Json,
 	extract::{Query, State},
-	http::{HeaderMap, StatusCode, header},
+	http::{HeaderMap, HeaderValue, StatusCode, header},
 	response::{IntoResponse, Response},
 };
 use reifydb_core::actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage};
@@ -26,7 +26,10 @@ use reifydb_sub_server::{
 	response::{encode_frames_rbcf, resolve_response_json},
 	wire::WireParams,
 };
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_type::{
+	params::Params,
+	value::{duration::Duration as ReifyDuration, identity::IdentityId},
+};
 use reifydb_wire_format::json::{to::convert_frames, types::ResponseFrame};
 use serde::{Deserialize, Serialize};
 
@@ -300,7 +303,7 @@ async fn execute_and_respond(
 		metadata,
 	};
 
-	let (frames, wall_duration) = dispatch(state, ctx).await?;
+	let (frames, wall_duration, metrics) = dispatch(state, ctx).await?;
 
 	let mut response = match format_params.format {
 		WireFormat::Rbcf => match encode_frames_rbcf(&frames) {
@@ -318,7 +321,9 @@ async fn execute_and_respond(
 		})
 		.into_response(),
 	};
-	response.headers_mut().insert("x-duration-ms", wall_duration.as_millis().to_string().parse().unwrap());
+	let duration = ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
+	response.headers_mut().insert("x-fingerprint", HeaderValue::from_str(&metrics.fingerprint.to_hex()).unwrap());
+	response.headers_mut().insert("x-duration", HeaderValue::from_str(&duration.to_string()).unwrap());
 	Ok(response)
 }
 

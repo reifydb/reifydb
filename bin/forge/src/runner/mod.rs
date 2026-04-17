@@ -71,9 +71,9 @@ pub fn start(url: &str) {
 		// Process any already-pending job_runs that existed before subscription
 		match client.query("FROM forge::job_runs | FILTER status == \"pending\"", None).await {
 			Ok(result) => {
-				if !result.frames.is_empty() {
+				if !result.is_empty() {
 					info!("Found existing pending job_runs, processing...");
-					process_frames(&result.frames, &client);
+					process_frames(&result, &client);
 				}
 			}
 			Err(e) => {

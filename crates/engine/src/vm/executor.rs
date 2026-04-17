@@ -169,7 +169,7 @@ struct ExecutionFailure {
 fn build_metrics(statements: Vec<StatementMetric>) -> ExecutionMetrics {
 	let fps: Vec<_> = statements.iter().map(|m| m.fingerprint).collect();
 	ExecutionMetrics {
-		request_fingerprint: fingerprint_request(&fps),
+		fingerprint: fingerprint_request(&fps),
 		statements,
 	}
 }

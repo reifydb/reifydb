@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::id::SubscriptionId,
+	metric::ExecutionMetrics,
 };
 use reifydb_remote_proxy::{connect_remote, proxy_remote};
 use reifydb_runtime::actor::reply::reply_channel;
@@ -15,7 +16,10 @@ use reifydb_sub_server::{
 	interceptor::{Protocol, RequestContext, RequestMetadata},
 	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
 };
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_type::{
+	params::Params,
+	value::{duration::Duration as ReifyDuration, identity::IdentityId},
+};
 use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use tokio::{
 	select, spawn,
@@ -23,7 +27,10 @@ use tokio::{
 	task::spawn_blocking,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tonic::{Request, Response, Status, metadata::KeyAndValueRef};
+use tonic::{
+	Request, Response, Status,
+	metadata::{KeyAndValueRef, MetadataMap},
+};
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -219,7 +226,7 @@ impl ReifyDb for ReifyDbService {
 		};
 
 		let format = WireFormat::from_proto_i32(inner.format);
-		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
+		let (frames, duration, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
 
 		let payload = match format {
 			WireFormat::Rbcf => admin_response::Payload::Rbcf(
@@ -230,9 +237,11 @@ impl ReifyDb for ReifyDbService {
 			}),
 		};
 
-		Ok(Response::new(AdminResponse {
+		let mut response = Response::new(AdminResponse {
 			payload: Some(payload),
-		}))
+		});
+		insert_meta_headers(response.metadata_mut(), &metrics, duration);
+		Ok(response)
 	}
 
 	async fn command(&self, request: Request<CommandRequest>) -> Result<Response<CommandResponse>, Status> {
@@ -249,7 +258,7 @@ impl ReifyDb for ReifyDbService {
 		};
 
 		let format = WireFormat::from_proto_i32(inner.format);
-		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
+		let (frames, duration, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
 
 		let payload = match format {
 			WireFormat::Rbcf => command_response::Payload::Rbcf(
@@ -260,9 +269,11 @@ impl ReifyDb for ReifyDbService {
 			}),
 		};
 
-		Ok(Response::new(CommandResponse {
+		let mut response = Response::new(CommandResponse {
 			payload: Some(payload),
-		}))
+		});
+		insert_meta_headers(response.metadata_mut(), &metrics, duration);
+		Ok(response)
 	}
 
 	async fn query(&self, request: Request<QueryRequest>) -> Result<Response<QueryResponse>, Status> {
@@ -279,7 +290,7 @@ impl ReifyDb for ReifyDbService {
 		};
 
 		let format = WireFormat::from_proto_i32(inner.format);
-		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
+		let (frames, duration, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
 
 		let payload = match format {
 			WireFormat::Rbcf => query_response::Payload::Rbcf(
@@ -290,9 +301,11 @@ impl ReifyDb for ReifyDbService {
 			}),
 		};
 
-		Ok(Response::new(QueryResponse {
+		let mut response = Response::new(QueryResponse {
 			payload: Some(payload),
-		}))
+		});
+		insert_meta_headers(response.metadata_mut(), &metrics, duration);
+		Ok(response)
 	}
 
 	type SubscribeStream = UnboundedReceiverStream<Result<SubscriptionEvent, Status>>;
@@ -432,4 +445,10 @@ impl ReifyDb for ReifyDbService {
 			ServerLogoutResponse::Error(reason) => Err(Status::internal(reason)),
 		}
 	}
+}
+
+fn insert_meta_headers(metadata: &mut MetadataMap, metrics: &ExecutionMetrics, duration: Duration) {
+	let pretty = ReifyDuration::from_nanoseconds(duration.as_nanos() as i64).unwrap_or_default();
+	metadata.insert("x-fingerprint", metrics.fingerprint.to_hex().parse().unwrap());
+	metadata.insert("x-duration", pretty.to_string().parse().unwrap());
 }

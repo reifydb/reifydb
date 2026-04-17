@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// - `Json`  — rows-shape JSON: `[[{col: val, ...}, ...], ...]` (one inner array per frame)
 /// - `Frames` — frames-shape JSON: `{frames: [ResponseFrame, ...]}` with columnar payloads
 /// - `Rbcf`  — frames-shape binary, RBCF-encoded
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum WireFormat {
 	Json,

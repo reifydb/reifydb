@@ -8,13 +8,14 @@ use reifydb_type::{
 	value::frame::frame::Frame,
 };
 use reifydb_wire_format::{decode::decode_frames, json::types::ResponseFrame};
-use reqwest::Client as ReqwestClient;
+use reqwest::{Client as ReqwestClient, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, json};
 
 use crate::{
 	AdminRequest, AdminResponse, AdminResult, CommandRequest, CommandResponse, CommandResult, ErrResponse,
-	LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, WireFormat, params_to_wire,
+	LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponseMeta, ResponsePayload, WireFormat,
+	params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 };
 
@@ -25,26 +26,38 @@ struct HttpFrameResponse {
 }
 
 impl HttpFrameResponse {
-	fn into_admin(self) -> AdminResponse {
+	fn into_admin(self, meta: Option<ResponseMeta>) -> AdminResponse {
 		AdminResponse {
 			content_type: "application/vnd.reifydb.json".to_string(),
 			body: json!({ "frames": self.frames }),
+			meta,
 		}
 	}
 
-	fn into_command(self) -> CommandResponse {
+	fn into_command(self, meta: Option<ResponseMeta>) -> CommandResponse {
 		CommandResponse {
 			content_type: "application/vnd.reifydb.json".to_string(),
 			body: json!({ "frames": self.frames }),
+			meta,
 		}
 	}
 
-	fn into_query(self) -> QueryResponse {
+	fn into_query(self, meta: Option<ResponseMeta>) -> QueryResponse {
 		QueryResponse {
 			content_type: "application/vnd.reifydb.json".to_string(),
 			body: json!({ "frames": self.frames }),
+			meta,
 		}
 	}
+}
+
+fn extract_meta(headers: &HeaderMap) -> Option<ResponseMeta> {
+	let fingerprint = headers.get("x-fingerprint").and_then(|v| v.to_str().ok())?;
+	let duration = headers.get("x-duration").and_then(|v| v.to_str().ok())?;
+	Some(ResponseMeta {
+		fingerprint: fingerprint.to_string(),
+		duration: duration.to_string(),
+	})
 }
 
 /// HTTP-specific error response matching the server's format
@@ -198,7 +211,12 @@ impl HttpClient {
 	}
 
 	/// Execute an admin (DDL + DML + Query) statement.
-	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.admin_with_meta(rql, params).await?.frames)
+	}
+
+	/// Execute an admin statement and return frames together with server-reported metadata.
+	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = AdminRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_wire),
@@ -206,32 +224,10 @@ impl HttpClient {
 		};
 
 		if self.format == WireFormat::Rbcf {
-			let frames = self.send_rbcf("/v1/admin", &request).await?;
+			let (frames, meta) = self.send_rbcf("/v1/admin", &request).await?;
 			return Ok(AdminResult {
 				frames,
-			});
-		}
-
-		let response = self.send_admin(&request).await?;
-		let ws_response = Response {
-			id: String::new(),
-			payload: ResponsePayload::Admin(response),
-		};
-		parse_admin_response(ws_response)
-	}
-
-	/// Execute multiple admin statements in a batch.
-	pub async fn admin_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<AdminResult, Error> {
-		let request = AdminRequest {
-			statements: statements.into_iter().map(String::from).collect(),
-			params: params.and_then(params_to_wire),
-			format: None,
-		};
-
-		if self.format == WireFormat::Rbcf {
-			let frames = self.send_rbcf("/v1/admin", &request).await?;
-			return Ok(AdminResult {
-				frames,
+				meta,
 			});
 		}
 
@@ -244,7 +240,12 @@ impl HttpClient {
 	}
 
 	/// Execute a command (write) statement.
-	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.command_with_meta(rql, params).await?.frames)
+	}
+
+	/// Execute a command statement and return frames together with server-reported metadata.
+	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let request = CommandRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_wire),
@@ -252,9 +253,10 @@ impl HttpClient {
 		};
 
 		if self.format == WireFormat::Rbcf {
-			let frames = self.send_rbcf("/v1/command", &request).await?;
+			let (frames, meta) = self.send_rbcf("/v1/command", &request).await?;
 			return Ok(CommandResult {
 				frames,
+				meta,
 			});
 		}
 
@@ -267,7 +269,12 @@ impl HttpClient {
 	}
 
 	/// Execute a query (read) statement.
-	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.query_with_meta(rql, params).await?.frames)
+	}
+
+	/// Execute a query statement and return frames together with server-reported metadata.
+	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = QueryRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_wire),
@@ -275,59 +282,10 @@ impl HttpClient {
 		};
 
 		if self.format == WireFormat::Rbcf {
-			let frames = self.send_rbcf("/v1/query", &request).await?;
+			let (frames, meta) = self.send_rbcf("/v1/query", &request).await?;
 			return Ok(QueryResult {
 				frames,
-			});
-		}
-
-		let response = self.send_query(&request).await?;
-		let ws_response = Response {
-			id: String::new(),
-			payload: ResponsePayload::Query(response),
-		};
-		parse_query_response(ws_response)
-	}
-
-	/// Execute multiple command statements in a batch.
-	pub async fn command_batch(
-		&self,
-		statements: Vec<&str>,
-		params: Option<Params>,
-	) -> Result<CommandResult, Error> {
-		let request = CommandRequest {
-			statements: statements.into_iter().map(String::from).collect(),
-			params: params.and_then(params_to_wire),
-			format: None,
-		};
-
-		if self.format == WireFormat::Rbcf {
-			let frames = self.send_rbcf("/v1/command", &request).await?;
-			return Ok(CommandResult {
-				frames,
-			});
-		}
-
-		let response = self.send_command(&request).await?;
-		let ws_response = Response {
-			id: String::new(),
-			payload: ResponsePayload::Command(response),
-		};
-		parse_command_response(ws_response)
-	}
-
-	/// Execute multiple query statements in a batch.
-	pub async fn query_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<QueryResult, Error> {
-		let request = QueryRequest {
-			statements: statements.into_iter().map(String::from).collect(),
-			params: params.and_then(params_to_wire),
-			format: None,
-		};
-
-		if self.format == WireFormat::Rbcf {
-			let frames = self.send_rbcf("/v1/query", &request).await?;
-			return Ok(QueryResult {
-				frames,
+				meta,
 			});
 		}
 
@@ -342,10 +300,10 @@ impl HttpClient {
 	/// Send an admin request to the server.
 	async fn send_admin(&self, request: &AdminRequest) -> Result<AdminResponse, Error> {
 		let url = format!("{}/v1/admin?format=frames", self.base_url);
-		let response_body = self.send_request(&url, request).await?;
+		let (response_body, meta) = self.send_request(&url, request).await?;
 
 		match from_str::<HttpFrameResponse>(&response_body) {
-			Ok(response) => Ok(response.into_admin()),
+			Ok(response) => Ok(response.into_admin(meta)),
 			Err(_) => Err(self.parse_error_response(&response_body)),
 		}
 	}
@@ -353,10 +311,10 @@ impl HttpClient {
 	/// Send a command request to the server.
 	async fn send_command(&self, request: &CommandRequest) -> Result<CommandResponse, Error> {
 		let url = format!("{}/v1/command?format=frames", self.base_url);
-		let response_body = self.send_request(&url, request).await?;
+		let (response_body, meta) = self.send_request(&url, request).await?;
 
 		match from_str::<HttpFrameResponse>(&response_body) {
-			Ok(response) => Ok(response.into_command()),
+			Ok(response) => Ok(response.into_command(meta)),
 			Err(_) => Err(self.parse_error_response(&response_body)),
 		}
 	}
@@ -364,29 +322,38 @@ impl HttpClient {
 	/// Send a query request to the server.
 	async fn send_query(&self, request: &QueryRequest) -> Result<QueryResponse, Error> {
 		let url = format!("{}/v1/query?format=frames", self.base_url);
-		let response_body = self.send_request(&url, request).await?;
+		let (response_body, meta) = self.send_request(&url, request).await?;
 
 		match from_str::<HttpFrameResponse>(&response_body) {
-			Ok(response) => Ok(response.into_query()),
+			Ok(response) => Ok(response.into_query(meta)),
 			Err(_) => Err(self.parse_error_response(&response_body)),
 		}
 	}
 
 	/// Send an RBCF request: append ?format=rbcf, decode binary response.
-	async fn send_rbcf<T: Serialize>(&self, path: &str, body: &T) -> Result<Vec<Frame>, Error> {
+	async fn send_rbcf<T: Serialize>(
+		&self,
+		path: &str,
+		body: &T,
+	) -> Result<(Vec<Frame>, Option<ResponseMeta>), Error> {
 		let url = format!("{}{}?format=rbcf", self.base_url, path);
-		let bytes = self.send_request_bytes(&url, body).await?;
-		decode_frames(&bytes).map_err(|e| {
+		let (bytes, meta) = self.send_request_bytes(&url, body).await?;
+		let frames = decode_frames(&bytes).map_err(|e| {
 			Error(Box::new(Diagnostic {
 				code: "RBCF_DECODE".to_string(),
 				message: format!("Failed to decode RBCF response: {}", e),
 				..Default::default()
 			}))
-		})
+		})?;
+		Ok((frames, meta))
 	}
 
-	/// Send an HTTP POST request and return the response body as text.
-	async fn send_request<T: Serialize>(&self, url: &str, body: &T) -> Result<String, Error> {
+	/// Send an HTTP POST request and return the response body as text plus extracted meta.
+	async fn send_request<T: Serialize>(
+		&self,
+		url: &str,
+		body: &T,
+	) -> Result<(String, Option<ResponseMeta>), Error> {
 		let mut request = self.inner.post(url).json(body);
 
 		if let Some(ref token) = self.token {
@@ -394,12 +361,16 @@ impl HttpClient {
 		}
 
 		let response = request.send().await.unwrap(); // FIXME better error handling
-
-		Ok(response.text().await.unwrap()) // FIXME better error handling
+		let meta = extract_meta(response.headers());
+		Ok((response.text().await.unwrap(), meta)) // FIXME better error handling
 	}
 
-	/// Send an HTTP POST request and return the response body as bytes.
-	async fn send_request_bytes<T: Serialize>(&self, url: &str, body: &T) -> Result<Vec<u8>, Error> {
+	/// Send an HTTP POST request and return the response body as bytes plus extracted meta.
+	async fn send_request_bytes<T: Serialize>(
+		&self,
+		url: &str,
+		body: &T,
+	) -> Result<(Vec<u8>, Option<ResponseMeta>), Error> {
 		let mut request = self.inner.post(url).json(body);
 
 		if let Some(ref token) = self.token {
@@ -413,7 +384,8 @@ impl HttpClient {
 			return Err(self.parse_error_response(&body));
 		}
 
-		Ok(response.bytes().await.unwrap().to_vec()) // FIXME better error handling
+		let meta = extract_meta(response.headers());
+		Ok((response.bytes().await.unwrap().to_vec(), meta)) // FIXME better error handling
 	}
 
 	/// Parse an error response body into an Error.

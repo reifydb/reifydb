@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import type {
     LoginResult,
+    ResponseMeta,
 } from "./types";
 import {
     ReifyError
@@ -121,16 +122,16 @@ export class JsonHttpClient {
         params?: any,
         req_opts?: RequestOptions
     ): Promise<any> {
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
+        const { data } = await this.admin_with_meta(statements, params, req_opts);
+        return data;
+    }
 
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
-            : undefined;
-
-        return this.send('admin', output_statements, encoded_params, req_opts);
+    async admin_with_meta(
+        statements: string | string[],
+        params?: any,
+        req_opts?: RequestOptions
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        return this.execute('admin', statements, params, req_opts);
     }
 
     async command(
@@ -138,16 +139,16 @@ export class JsonHttpClient {
         params?: any,
         req_opts?: RequestOptions
     ): Promise<any> {
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
+        const { data } = await this.command_with_meta(statements, params, req_opts);
+        return data;
+    }
 
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
-            : undefined;
-
-        return this.send('command', output_statements, encoded_params, req_opts);
+    async command_with_meta(
+        statements: string | string[],
+        params?: any,
+        req_opts?: RequestOptions
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        return this.execute('command', statements, params, req_opts);
     }
 
     async query(
@@ -155,6 +156,24 @@ export class JsonHttpClient {
         params?: any,
         req_opts?: RequestOptions
     ): Promise<any> {
+        const { data } = await this.query_with_meta(statements, params, req_opts);
+        return data;
+    }
+
+    async query_with_meta(
+        statements: string | string[],
+        params?: any,
+        req_opts?: RequestOptions
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        return this.execute('query', statements, params, req_opts);
+    }
+
+    private async execute(
+        endpoint: 'admin' | 'command' | 'query',
+        statements: string | string[],
+        params: any,
+        req_opts?: RequestOptions
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
         const statement_array = Array.isArray(statements) ? statements : [statements];
         const output_statements = statement_array.length > 1
             ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
@@ -164,10 +183,15 @@ export class JsonHttpClient {
             ? encode_params(params)
             : undefined;
 
-        return this.send('query', output_statements, encoded_params, req_opts);
+        return this.send(endpoint, output_statements, encoded_params, req_opts);
     }
 
-    private async send(endpoint: string, statements: string[], params: any, req_opts?: RequestOptions): Promise<any> {
+    private async send(
+        endpoint: string,
+        statements: string[],
+        params: any,
+        req_opts?: RequestOptions,
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
         const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeout_ms);
@@ -211,6 +235,8 @@ export class JsonHttpClient {
 
             clearTimeout(timeout);
 
+            const meta = extract_meta(response.headers);
+
             const response_body = await response.text();
             let parsed: any;
             try {
@@ -230,7 +256,7 @@ export class JsonHttpClient {
                 throw new Error(parsed.error || `HTTP ${response.status}: ${response_body}`);
             }
 
-            return parsed;
+            return { data: parsed, meta };
         } catch (err: any) {
             clearTimeout(timeout);
             if (err.name === 'AbortError') {
@@ -239,4 +265,11 @@ export class JsonHttpClient {
             throw err;
         }
     }
+}
+
+function extract_meta(headers: Headers | undefined): ResponseMeta | undefined {
+    const fingerprint = headers?.get?.('x-fingerprint');
+    const duration = headers?.get?.('x-duration');
+    if (!fingerprint || !duration) return undefined;
+    return { fingerprint, duration };
 }

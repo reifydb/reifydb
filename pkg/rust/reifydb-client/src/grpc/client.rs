@@ -36,7 +36,7 @@ use serde_json::from_str as serde_json_from_str;
 use tonic::{
 	Request, Status,
 	codec::Streaming,
-	metadata::{Ascii, MetadataValue},
+	metadata::{Ascii, MetadataMap, MetadataValue},
 	transport::Channel,
 };
 use uuid::Uuid;
@@ -49,7 +49,16 @@ use super::generated::{
 	UnsubscribeRequest as ProtoUnsubscribeRequest, admin_response, change_event, command_response,
 	params::Params as ProtoParamsOneof, query_response, reify_db_client::ReifyDbClient, subscription_event,
 };
-use crate::{AdminResult, CommandResult, LoginResult, QueryResult, WireFormat};
+use crate::{AdminResult, CommandResult, LoginResult, QueryResult, ResponseMeta, WireFormat};
+
+fn extract_meta(metadata: &MetadataMap) -> Option<ResponseMeta> {
+	let fingerprint = metadata.get("x-fingerprint").and_then(|v| v.to_str().ok())?;
+	let duration = metadata.get("x-duration").and_then(|v| v.to_str().ok())?;
+	Some(ResponseMeta {
+		fingerprint: fingerprint.to_string(),
+		duration: duration.to_string(),
+	})
+}
 
 #[derive(Clone)]
 pub struct GrpcClient {
@@ -157,7 +166,11 @@ impl GrpcClient {
 		}
 	}
 
-	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.admin_with_meta(rql, params).await?.frames)
+	}
+
+	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = ProtoAdminRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_proto),
@@ -168,32 +181,20 @@ impl GrpcClient {
 		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
-		let inner = client.admin(req).await.map_err(status_to_error)?.into_inner();
-		let frames = decode_admin_payload(inner.payload)?;
+		let response = client.admin(req).await.map_err(status_to_error)?;
+		let meta = extract_meta(response.metadata());
+		let frames = decode_admin_payload(response.into_inner().payload)?;
 		Ok(AdminResult {
 			frames,
+			meta,
 		})
 	}
 
-	pub async fn admin_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<AdminResult, Error> {
-		let request = ProtoAdminRequest {
-			statements: statements.into_iter().map(String::from).collect(),
-			params: params.and_then(params_to_proto),
-			format: self.wire_format(),
-		};
-
-		let mut client = self.inner.clone();
-		let mut req = Request::new(request);
-		self.attach_auth(&mut req);
-
-		let inner = client.admin(req).await.map_err(status_to_error)?.into_inner();
-		let frames = decode_admin_payload(inner.payload)?;
-		Ok(AdminResult {
-			frames,
-		})
+	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.command_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let request = ProtoCommandRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_proto),
@@ -204,36 +205,20 @@ impl GrpcClient {
 		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
-		let inner = client.command(req).await.map_err(status_to_error)?.into_inner();
-		let frames = decode_command_payload(inner.payload)?;
+		let response = client.command(req).await.map_err(status_to_error)?;
+		let meta = extract_meta(response.metadata());
+		let frames = decode_command_payload(response.into_inner().payload)?;
 		Ok(CommandResult {
 			frames,
+			meta,
 		})
 	}
 
-	pub async fn command_batch(
-		&self,
-		statements: Vec<&str>,
-		params: Option<Params>,
-	) -> Result<CommandResult, Error> {
-		let request = ProtoCommandRequest {
-			statements: statements.into_iter().map(String::from).collect(),
-			params: params.and_then(params_to_proto),
-			format: self.wire_format(),
-		};
-
-		let mut client = self.inner.clone();
-		let mut req = Request::new(request);
-		self.attach_auth(&mut req);
-
-		let inner = client.command(req).await.map_err(status_to_error)?.into_inner();
-		let frames = decode_command_payload(inner.payload)?;
-		Ok(CommandResult {
-			frames,
-		})
+	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.query_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = ProtoQueryRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_proto),
@@ -244,28 +229,12 @@ impl GrpcClient {
 		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
-		let inner = client.query(req).await.map_err(status_to_error)?.into_inner();
-		let frames = decode_query_payload(inner.payload)?;
+		let response = client.query(req).await.map_err(status_to_error)?;
+		let meta = extract_meta(response.metadata());
+		let frames = decode_query_payload(response.into_inner().payload)?;
 		Ok(QueryResult {
 			frames,
-		})
-	}
-
-	pub async fn query_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<QueryResult, Error> {
-		let request = ProtoQueryRequest {
-			statements: statements.into_iter().map(String::from).collect(),
-			params: params.and_then(params_to_proto),
-			format: self.wire_format(),
-		};
-
-		let mut client = self.inner.clone();
-		let mut req = Request::new(request);
-		self.attach_auth(&mut req);
-
-		let inner = client.query(req).await.map_err(status_to_error)?.into_inner();
-		let frames = decode_query_payload(inner.payload)?;
-		Ok(QueryResult {
-			frames,
+			meta,
 		})
 	}
 

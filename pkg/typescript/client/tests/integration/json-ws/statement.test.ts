@@ -3,6 +3,7 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {wait_for_database} from "../setup";
 import {Client, JsonWsClient} from "../../../src";
+import {assertMeta} from "../helpers";
 
 
 describe('Statement', () => {
@@ -279,5 +280,42 @@ describe('Statement', () => {
 
     });
 
+    describe('with_meta', () => {
+        it('admin', async () => {
+            const { data, meta } = await ws_client.admin_with_meta(';');
+            expect(data).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+
+        it('command', async () => {
+            const { data, meta } = await ws_client.command_with_meta(';');
+            expect(data).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+
+        it('query', async () => {
+            const { data, meta } = await ws_client.query_with_meta(';');
+            expect(data).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+
+        it('send', async () => {
+            const { data, meta } = await ws_client.send_with_meta({
+                id: 'test-send',
+                type: 'Query',
+                payload: {
+                    statements: [';'],
+                    format: 'json'
+                }
+            } as any);
+            expect(data).toBeDefined();
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+    });
 
 });
+

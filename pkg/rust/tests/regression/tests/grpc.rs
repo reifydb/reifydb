@@ -47,7 +47,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("admin: {rql}");
 
 				let result = self.runtime.block_on(admin_client.admin(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -58,7 +58,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("command: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -69,7 +69,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("query: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}

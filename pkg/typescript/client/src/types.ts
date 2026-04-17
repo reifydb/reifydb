@@ -18,12 +18,18 @@ export interface AdminRequest {
     }
 }
 
+export interface ResponseMeta {
+    fingerprint: string;
+    duration: string;
+}
+
 export interface AdminResponse {
     id: string;
     type: "Admin";
     payload: {
         content_type: string;
         body: any;
+        meta?: ResponseMeta;
     };
 }
 
@@ -44,6 +50,7 @@ export interface CommandResponse {
     payload: {
         content_type: string;
         body: any;
+        meta?: ResponseMeta;
     };
 }
 
@@ -64,6 +71,7 @@ export interface QueryResponse {
     payload: {
         content_type: string;
         body: any;
+        meta?: ResponseMeta;
     };
 }
 

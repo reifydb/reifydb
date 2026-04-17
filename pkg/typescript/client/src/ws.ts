@@ -23,6 +23,7 @@ import type {
     LoginResult,
     LogoutRequest,
     LogoutResponse,
+    ResponseMeta,
     SubscribeRequest,
     SubscribedResponse,
     UnsubscribeRequest,
@@ -45,10 +46,11 @@ const enum BinaryKind {
 interface BinaryEnvelope {
     kind: BinaryKind;
     id: string;
+    meta?: ResponseMeta;
     rbcf: Uint8Array;
 }
 
-// Wire format: `[u8 kind][u32 LE id_len][id UTF-8 bytes][RBCF payload]`.
+// Wire format: `[u8 kind][u32 LE id_len][id UTF-8 bytes][u32 LE meta_len][meta UTF-8 JSON bytes][RBCF payload]`.
 // Must stay in sync with `encode_rbcf_envelope` in
 // `crates/sub-server-ws/src/handler.rs`.
 function decode_envelope(bytes: Uint8Array): BinaryEnvelope | null {
@@ -56,10 +58,25 @@ function decode_envelope(bytes: Uint8Array): BinaryEnvelope | null {
     const kind = bytes[0] as BinaryKind;
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const id_len = view.getUint32(1, true);
-    if (bytes.length < 5 + id_len) return null;
-    const id = new TextDecoder("utf-8").decode(bytes.subarray(5, 5 + id_len));
-    const rbcf = bytes.subarray(5 + id_len);
-    return {kind, id, rbcf};
+    if (bytes.length < 5 + id_len + 4) return null;
+    const decoder = new TextDecoder("utf-8");
+    const id = decoder.decode(bytes.subarray(5, 5 + id_len));
+
+    const meta_len = view.getUint32(5 + id_len, true);
+    if (bytes.length < 5 + id_len + 4 + meta_len) return null;
+
+    let meta: ResponseMeta | undefined;
+    if (meta_len > 0) {
+        const meta_json = decoder.decode(bytes.subarray(5 + id_len + 4, 5 + id_len + 4 + meta_len));
+        try {
+            meta = JSON.parse(meta_json);
+        } catch (e) {
+            console.error("Failed to parse RBCF metadata", e);
+        }
+    }
+
+    const rbcf = bytes.subarray(5 + id_len + 4 + meta_len);
+    return {kind, id, meta, rbcf};
 }
 
 export interface WsClientOptions {
@@ -207,39 +224,16 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const id = `req-${this.next_id++}`;
+        const { frames } = await this.admin_with_meta(statements, params, shapes);
+        return frames;
+    }
 
-        // Normalize statements to array
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so results are returned.
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
-
-        // Encode params without shape assumptions
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
-            : undefined;
-
-        const result = await this.send({
-            id,
-            type: "Admin",
-            payload: {
-                statements: output_statements,
-                params: encoded_params
-            },
-        });
-
-        // Transform each frame with its corresponding shape
-        const transformed_frames = result.map((frame: any, frame_index: number) => {
-            const frame_shape = shapes[frame_index];
-            if (!frame_shape) {
-                return frame; // No shape for this frame, return as-is
-            }
-            return frame.map((row: any) => this.transform_result(row, frame_shape));
-        });
-
-        return transformed_frames as FrameResults<S>;
+    async admin_with_meta<const S extends readonly ShapeNode[]>(
+        statements: string | string[],
+        params: any,
+        shapes: S
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute("Admin", statements, params, shapes);
     }
 
     /**
@@ -253,39 +247,16 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const id = `req-${this.next_id++}`;
+        const { frames } = await this.command_with_meta(statements, params, shapes);
+        return frames;
+    }
 
-        // Normalize statements to array
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so results are returned.
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
-
-        // Encode params without shape assumptions
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
-            : undefined;
-
-        const result = await this.send({
-            id,
-            type: "Command",
-            payload: {
-                statements: output_statements,
-                params: encoded_params
-            },
-        });
-
-        // Transform each frame with its corresponding shape
-        const transformed_frames = result.map((frame: any, frame_index: number) => {
-            const frame_shape = shapes[frame_index];
-            if (!frame_shape) {
-                return frame; // No shape for this frame, return as-is
-            }
-            return frame.map((row: any) => this.transform_result(row, frame_shape));
-        });
-
-        return transformed_frames as FrameResults<S>;
+    async command_with_meta<const S extends readonly ShapeNode[]>(
+        statements: string | string[],
+        params: any,
+        shapes: S
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute("Command", statements, params, shapes);
     }
 
 
@@ -300,6 +271,24 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
+        const { frames } = await this.query_with_meta(statements, params, shapes);
+        return frames;
+    }
+
+    async query_with_meta<const S extends readonly ShapeNode[]>(
+        statements: string | string[],
+        params: any,
+        shapes: S
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute("Query", statements, params, shapes);
+    }
+
+    private async execute<const S extends readonly ShapeNode[]>(
+        type: "Admin" | "Command" | "Query",
+        statements: string | string[],
+        params: any,
+        shapes: S
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
         const id = `req-${this.next_id++}`;
 
         // Normalize statements to array
@@ -314,14 +303,14 @@ export class WsClient {
             ? encode_params(params)
             : undefined;
 
-        const result = await this.send({
+        const { result, meta } = await this.send_with_meta({
             id,
-            type: "Query",
+            type,
             payload: {
                 statements: output_statements,
                 params: encoded_params
             },
-        });
+        } as AdminRequest | CommandRequest | QueryRequest);
 
         // Transform each frame with its corresponding shape
         const transformed_frames = result.map((frame: any, frame_index: number) => {
@@ -332,7 +321,7 @@ export class WsClient {
             return frame.map((row: any) => this.transform_result(row, frame_shape));
         });
 
-        return transformed_frames as FrameResults<S>;
+        return { frames: transformed_frames as FrameResults<S>, meta };
     }
 
     async subscribe<T = any>(
@@ -410,6 +399,13 @@ export class WsClient {
     }
 
     async send(req: AdminRequest | CommandRequest | QueryRequest): Promise<any> {
+        const { result } = await this.send_with_meta(req);
+        return result;
+    }
+
+    async send_with_meta(
+        req: AdminRequest | CommandRequest | QueryRequest,
+    ): Promise<{ result: any, meta?: ResponseMeta }> {
         const id = req.id;
 
         if (this.socket.readyState !== 1) {
@@ -458,17 +454,20 @@ export class WsClient {
             throw new Error(`Unexpected response type: ${response.type}`);
         }
 
+        const meta = (response.payload as any).meta as ResponseMeta | undefined;
+
         // Response shape depends on wire format:
         // - "json"   → body is `[[{col: val}, ...], ...]` already in rows shape
         // - "frames" → body is `{frames: [ColumnarFrame, ...]}` needing column→row pivot
         // - "rbcf"   → handle_binary_message synthesizes `{frames}` so it matches "frames"
         if (this.wire_format() === "json") {
-            return response.payload.body ?? [];
+            return { result: response.payload.body ?? [], meta };
         }
         const frames = response.payload.body?.frames || [];
-        return frames.map((frame: any) =>
-            columns_to_rows(frame.columns)
-        );
+        return {
+            result: frames.map((frame: any) => columns_to_rows(frame.columns)),
+            meta,
+        };
     }
 
     private wire_format(): "json" | "frames" | "rbcf" {
@@ -941,6 +940,7 @@ export class WsClient {
                 payload: {
                     content_type: CONTENT_TYPE_RBCF,
                     body: { frames },
+                    meta: envelope.meta,
                 },
             } as ResponsePayload);
             return;

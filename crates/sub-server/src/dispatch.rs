@@ -40,7 +40,7 @@ mod native {
 	pub async fn dispatch(
 		state: &AppState,
 		mut ctx: RequestContext,
-	) -> Result<(Vec<Frame>, Duration), ExecuteError> {
+	) -> Result<(Vec<Frame>, Duration, ExecutionMetrics), ExecuteError> {
 		// Pre-execute interceptors
 		if !state.request_interceptors().is_empty() {
 			state.request_interceptors().pre_execute(&mut ctx).await?;
@@ -68,11 +68,12 @@ mod native {
 			.map_err(|_| ExecuteError::Disconnected)?;
 
 		let wall_duration = start.elapsed();
-		let (frames, compute_duration) = match server_response {
+		let (frames, compute_duration, metrics) = match server_response {
 			ServerResponse::Success {
 				frames,
 				duration,
-			} => Ok((frames, duration)),
+				metrics,
+			} => Ok((frames, duration, metrics)),
 			ServerResponse::EngineError {
 				diagnostic,
 				statement,
@@ -90,7 +91,7 @@ mod native {
 				statements: ctx.statements,
 				params: ctx.params,
 				metadata: ctx.metadata,
-				metrics: ExecutionMetrics::default(),
+				metrics: metrics.clone(),
 				result: Ok(frames.len()),
 				total: ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64)
 					.unwrap_or_default(),
@@ -100,7 +101,7 @@ mod native {
 			state.request_interceptors().post_execute(&response_ctx).await;
 		}
 
-		Ok((frames, wall_duration))
+		Ok((frames, wall_duration, metrics))
 	}
 
 	/// Dispatch a subscribe operation through the actor with interceptors.
@@ -110,7 +111,7 @@ mod native {
 	pub async fn dispatch_subscribe(
 		state: &AppState,
 		mut ctx: RequestContext,
-	) -> Result<(Vec<Frame>, Duration), ExecuteError> {
+	) -> Result<(Vec<Frame>, Duration, ExecutionMetrics), ExecuteError> {
 		// Pre-execute interceptors
 		if !state.request_interceptors().is_empty() {
 			state.request_interceptors().pre_execute(&mut ctx).await?;
@@ -135,11 +136,12 @@ mod native {
 
 		let wall_duration = start.elapsed();
 
-		let (frames, compute_duration) = match response {
+		let (frames, compute_duration, metrics) = match response {
 			ServerSubscribeResponse::Subscribed {
 				frames,
 				duration,
-			} => (frames, duration),
+				metrics,
+			} => (frames, duration, metrics),
 			ServerSubscribeResponse::EngineError {
 				diagnostic,
 				statement,
@@ -159,7 +161,7 @@ mod native {
 				statements: ctx.statements,
 				params: ctx.params,
 				metadata: ctx.metadata,
-				metrics: ExecutionMetrics::default(),
+				metrics: metrics.clone(),
 				result: Ok(frames.len()),
 				total: ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64)
 					.unwrap_or_default(),
@@ -169,6 +171,6 @@ mod native {
 			state.request_interceptors().post_execute(&response_ctx).await;
 		}
 
-		Ok((frames, wall_duration))
+		Ok((frames, wall_duration, metrics))
 	}
 }

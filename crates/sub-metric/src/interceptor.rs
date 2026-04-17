@@ -64,16 +64,16 @@ impl RequestInterceptor for RequestMetricsInterceptor {
 					}
 
 					Request::Query {
-						fingerprint: ctx.metrics.request_fingerprint,
+						fingerprint: ctx.metrics.fingerprint,
 						statements: ctx.metrics.statements.clone(),
 					}
 				}
 				Operation::Command => Request::Command {
-					fingerprint: ctx.metrics.request_fingerprint,
+					fingerprint: ctx.metrics.fingerprint,
 					statements: ctx.metrics.statements.clone(),
 				},
 				Operation::Admin => Request::Admin {
-					fingerprint: ctx.metrics.request_fingerprint,
+					fingerprint: ctx.metrics.fingerprint,
 					statements: ctx.metrics.statements.clone(),
 				},
 				Operation::Subscribe => return, // Ignore for request metrics

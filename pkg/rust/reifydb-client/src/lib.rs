@@ -67,22 +67,33 @@ use serde_json::Value as JsonValue;
 #[cfg(feature = "ws")]
 pub use ws::WsClient;
 
+/// Server-reported metadata about a single executed request.
+#[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
+#[derive(Debug, Clone)]
+pub struct ResponseMeta {
+	pub fingerprint: String,
+	pub duration: String,
+}
+
 /// Result type for admin operations
 #[derive(Debug)]
 pub struct AdminResult {
 	pub frames: Vec<Frame>,
+	pub meta: Option<ResponseMeta>,
 }
 
 /// Result type for command operations
 #[derive(Debug)]
 pub struct CommandResult {
 	pub frames: Vec<Frame>,
+	pub meta: Option<ResponseMeta>,
 }
 
 /// Result type for query operations
 #[derive(Debug)]
 pub struct QueryResult {
 	pub frames: Vec<Frame>,
+	pub meta: Option<ResponseMeta>,
 }
 
 /// Result type for authentication login operations
@@ -273,6 +284,8 @@ pub enum ResponsePayload {
 pub struct AdminResponse {
 	pub content_type: String,
 	pub body: JsonValue,
+	#[serde(default)]
+	pub meta: Option<ResponseMeta>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -300,6 +313,8 @@ pub struct ErrResponse {
 pub struct CommandResponse {
 	pub content_type: String,
 	pub body: JsonValue,
+	#[serde(default)]
+	pub meta: Option<ResponseMeta>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -307,6 +322,8 @@ pub struct CommandResponse {
 pub struct QueryResponse {
 	pub content_type: String,
 	pub body: JsonValue,
+	#[serde(default)]
+	pub meta: Option<ResponseMeta>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]

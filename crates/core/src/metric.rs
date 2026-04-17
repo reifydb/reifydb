@@ -7,7 +7,7 @@ use crate::fingerprint::{RequestFingerprint, StatementFingerprint};
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionMetrics {
-	pub request_fingerprint: RequestFingerprint,
+	pub fingerprint: RequestFingerprint,
 	pub statements: Vec<StatementMetric>,
 }
 

@@ -20,9 +20,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	// Execute a query
 	let result = client.query("from system.tables", None).await?;
 
-	println!("Query executed: {} frames returned", result.frames.len());
+	println!("Query executed: {} frames returned", result.len());
 
-	for frame in result.frames {
+	for frame in result {
 		println!("{}", frame);
 	}
 

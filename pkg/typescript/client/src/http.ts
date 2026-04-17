@@ -12,6 +12,7 @@ import type {
 import type {
     Column,
     LoginResult,
+    ResponseMeta,
 } from "./types";
 import {
     ReifyError
@@ -141,26 +142,17 @@ export class HttpClient {
         shapes: S,
         req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
+        const { frames } = await this.admin_with_meta(statements, params, shapes, req_opts);
+        return frames;
+    }
 
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
-            : undefined;
-
-        const result = await this.send('admin', output_statements, encoded_params, req_opts);
-
-        const transformed_frames = result.map((frame: any, frame_index: number) => {
-            const frame_shape = shapes[frame_index];
-            if (!frame_shape) {
-                return frame;
-            }
-            return frame.map((row: any) => this.transform_result(row, frame_shape));
-        });
-
-        return transformed_frames as FrameResults<S>;
+    async admin_with_meta<const S extends readonly ShapeNode[]>(
+        statements: string | string[],
+        params: any,
+        shapes: S,
+        req_opts?: RequestOptions
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute('admin', statements, params, shapes, req_opts);
     }
 
     async command<const S extends readonly ShapeNode[]>(
@@ -169,26 +161,17 @@ export class HttpClient {
         shapes: S,
         req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
+        const { frames } = await this.command_with_meta(statements, params, shapes, req_opts);
+        return frames;
+    }
 
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
-            : undefined;
-
-        const result = await this.send('command', output_statements, encoded_params, req_opts);
-
-        const transformed_frames = result.map((frame: any, frame_index: number) => {
-            const frame_shape = shapes[frame_index];
-            if (!frame_shape) {
-                return frame;
-            }
-            return frame.map((row: any) => this.transform_result(row, frame_shape));
-        });
-
-        return transformed_frames as FrameResults<S>;
+    async command_with_meta<const S extends readonly ShapeNode[]>(
+        statements: string | string[],
+        params: any,
+        shapes: S,
+        req_opts?: RequestOptions
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute('command', statements, params, shapes, req_opts);
     }
 
     async query<const S extends readonly ShapeNode[]>(
@@ -197,6 +180,26 @@ export class HttpClient {
         shapes: S,
         req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
+        const { frames } = await this.query_with_meta(statements, params, shapes, req_opts);
+        return frames;
+    }
+
+    async query_with_meta<const S extends readonly ShapeNode[]>(
+        statements: string | string[],
+        params: any,
+        shapes: S,
+        req_opts?: RequestOptions
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute('query', statements, params, shapes, req_opts);
+    }
+
+    private async execute<const S extends readonly ShapeNode[]>(
+        endpoint: 'admin' | 'command' | 'query',
+        statements: string | string[],
+        params: any,
+        shapes: S,
+        req_opts?: RequestOptions
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
         const statement_array = Array.isArray(statements) ? statements : [statements];
         const output_statements = statement_array.length > 1
             ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
@@ -206,7 +209,7 @@ export class HttpClient {
             ? encode_params(params)
             : undefined;
 
-        const result = await this.send('query', output_statements, encoded_params, req_opts);
+        const { result, meta } = await this.send(endpoint, output_statements, encoded_params, req_opts);
 
         const transformed_frames = result.map((frame: any, frame_index: number) => {
             const frame_shape = shapes[frame_index];
@@ -216,10 +219,15 @@ export class HttpClient {
             return frame.map((row: any) => this.transform_result(row, frame_shape));
         });
 
-        return transformed_frames as FrameResults<S>;
+        return { frames: transformed_frames as FrameResults<S>, meta };
     }
 
-    private async send(endpoint: string, statements: string[], params: any, req_opts?: RequestOptions): Promise<any> {
+    private async send(
+        endpoint: string,
+        statements: string[],
+        params: any,
+        req_opts?: RequestOptions,
+    ): Promise<{ result: any, meta?: ResponseMeta }> {
         const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeout_ms);
@@ -261,6 +269,8 @@ export class HttpClient {
 
             clearTimeout(timeout);
 
+            const meta = extract_meta(response.headers);
+
             const content_type = response.headers?.get?.('content-type') ?? '';
             const is_binary = response.ok &&
                 (content_type.startsWith(CONTENT_TYPE_RBCF) || content_type.startsWith('application/octet-stream'));
@@ -268,7 +278,7 @@ export class HttpClient {
             if (is_binary) {
                 const buf = await response.arrayBuffer();
                 const frames = rbcf.decode(new Uint8Array(buf));
-                return frames.map((frame: any) => columns_to_rows(frame.columns));
+                return { result: frames.map((frame: any) => columns_to_rows(frame.columns)), meta };
             }
 
             const response_body = await response.text();
@@ -294,12 +304,13 @@ export class HttpClient {
             // - "json"   → `[[{col: val}, ...], ...]` already in rows shape
             // - "frames" → `{frames: [ColumnarFrame, ...]}` needing column→row pivot
             if (format === "json") {
-                return parsed ?? [];
+                return { result: parsed ?? [], meta };
             }
             const frames = parsed.frames || [];
-            return frames.map((frame: any) =>
-                columns_to_rows(frame.columns)
-            );
+            return {
+                result: frames.map((frame: any) => columns_to_rows(frame.columns)),
+                meta,
+            };
         } catch (err: any) {
             clearTimeout(timeout);
             if (err.name === 'AbortError') {
@@ -389,4 +400,11 @@ function columns_to_rows(columns: Column[]): Record<string, Value>[] {
         }
         return row;
     });
+}
+
+function extract_meta(headers: Headers | undefined): ResponseMeta | undefined {
+    const fingerprint = headers?.get?.('x-fingerprint');
+    const duration = headers?.get?.('x-duration');
+    if (!fingerprint || !duration) return undefined;
+    return { fingerprint, duration };
 }

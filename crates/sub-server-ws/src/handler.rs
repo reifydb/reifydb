@@ -22,10 +22,10 @@ use reifydb_sub_server::{
 };
 use reifydb_type::{
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
+	value::{duration::Duration as ReifyDuration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
 use reifydb_wire_format::json::to::convert_frames;
-use serde_json::{Value as JsonValue, from_str, json};
+use serde_json::{Value as JsonValue, from_str, json, to_string as json_to_string};
 use tokio::{
 	net::TcpStream,
 	select,
@@ -39,7 +39,7 @@ use uuid::Builder;
 
 use crate::{
 	protocol::{Request, RequestPayload},
-	response::{CONTENT_TYPE_JSON, Response, ServerPush},
+	response::{CONTENT_TYPE_JSON, Response, ResponseMeta, ServerPush},
 	subscription::{
 		handler::handle_subscribe,
 		registry::{PushMessage, SubscriptionRegistry},
@@ -65,13 +65,23 @@ pub(crate) enum BinaryKind {
 }
 
 /// Build a binary envelope for RBCF-encoded frames:
-/// `[u8 kind][u32 LE id_len][id bytes][RBCF payload]`.
-pub(crate) fn encode_rbcf_envelope(kind: BinaryKind, id: &str, rbcf_bytes: &[u8]) -> Vec<u8> {
+/// `[u8 kind][u32 LE id_len][id bytes][u32 LE meta_len][meta bytes][RBCF payload]`.
+pub(crate) fn encode_rbcf_envelope(
+	kind: BinaryKind,
+	id: &str,
+	rbcf_bytes: &[u8],
+	meta: Option<&ResponseMeta>,
+) -> Vec<u8> {
 	let id_bytes = id.as_bytes();
-	let mut envelope = Vec::with_capacity(1 + 4 + id_bytes.len() + rbcf_bytes.len());
+	let meta_json = meta.map(|m| json_to_string(m).unwrap()).unwrap_or_default();
+	let meta_bytes = meta_json.as_bytes();
+
+	let mut envelope = Vec::with_capacity(1 + 4 + id_bytes.len() + 4 + meta_bytes.len() + rbcf_bytes.len());
 	envelope.push(kind as u8);
 	envelope.extend_from_slice(&(id_bytes.len() as u32).to_le_bytes());
 	envelope.extend_from_slice(id_bytes);
+	envelope.extend_from_slice(&(meta_bytes.len() as u32).to_le_bytes());
+	envelope.extend_from_slice(meta_bytes);
 	envelope.extend_from_slice(rbcf_bytes);
 	envelope
 }
@@ -384,7 +394,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				params,
 				format,
 				unwrap,
-				|id, content_type, body| Response::admin(id, content_type, body).to_json(),
+				|id, content_type, body, meta| Response::admin(id, content_type, body, meta).to_json(),
 			)
 			.await
 		}
@@ -426,7 +436,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				params,
 				format,
 				unwrap,
-				|id, content_type, body| Response::query(id, content_type, body).to_json(),
+				|id, content_type, body, meta| Response::query(id, content_type, body, meta).to_json(),
 			)
 			.await
 		}
@@ -468,7 +478,9 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				params,
 				format,
 				unwrap,
-				|id, content_type, body| Response::command(id, content_type, body).to_json(),
+				|id, content_type, body, meta| {
+					Response::command(id, content_type, body, meta).to_json()
+				},
 			)
 			.await
 		}
@@ -580,7 +592,7 @@ async fn execute_via_dispatch(
 	params: Params,
 	format: WireFormat,
 	unwrap: bool,
-	build_response: impl FnOnce(&str, String, JsonValue) -> String,
+	build_response: impl FnOnce(&str, String, JsonValue, Option<ResponseMeta>) -> String,
 ) -> Option<WsResponse> {
 	let metadata = build_ws_metadata(conn.auth_token);
 	let ctx = RequestContext {
@@ -592,24 +604,38 @@ async fn execute_via_dispatch(
 	};
 
 	match dispatch(conn.state, ctx).await {
-		Ok((frames, _duration)) => match format {
-			WireFormat::Rbcf => match encode_frames_rbcf(&frames) {
-				Ok(rbcf_bytes) => Some(WsResponse::Binary(encode_rbcf_envelope(
-					BinaryKind::Response,
-					request_id,
-					&rbcf_bytes,
-				))),
-				Err(e) => Some(WsResponse::Text(build_error(
-					request_id,
-					"ENCODE_ERROR",
-					&format!("RBCF encode error: {}", e),
-				))),
-			},
-			WireFormat::Json | WireFormat::Frames => {
-				let (content_type, body) = build_response_body(frames, format, unwrap);
-				Some(WsResponse::Text(build_response(request_id, content_type, body)))
+		Ok((frames, duration, metrics)) => {
+			let pretty = ReifyDuration::from_nanoseconds(duration.as_nanos() as i64).unwrap_or_default();
+			let meta = ResponseMeta {
+				fingerprint: metrics.fingerprint.to_hex(),
+				duration: pretty.to_string(),
+			};
+
+			match format {
+				WireFormat::Rbcf => match encode_frames_rbcf(&frames) {
+					Ok(rbcf_bytes) => Some(WsResponse::Binary(encode_rbcf_envelope(
+						BinaryKind::Response,
+						request_id,
+						&rbcf_bytes,
+						Some(&meta),
+					))),
+					Err(e) => Some(WsResponse::Text(build_error(
+						request_id,
+						"ENCODE_ERROR",
+						&format!("RBCF encode error: {}", e),
+					))),
+				},
+				WireFormat::Json | WireFormat::Frames => {
+					let (content_type, body) = build_response_body(frames, format, unwrap);
+					Some(WsResponse::Text(build_response(
+						request_id,
+						content_type,
+						body,
+						Some(meta),
+					)))
+				}
 			}
-		},
+		}
 		Err(e) => Some(WsResponse::Text(error_to_response(request_id, e))),
 	}
 }

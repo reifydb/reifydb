@@ -16,6 +16,8 @@ use reifydb_type::{
 	value::{frame::frame::Frame, identity::IdentityId},
 };
 
+use crate::metric::ExecutionMetrics;
+
 /// The type of database operation being executed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operation {
@@ -76,6 +78,7 @@ pub enum ServerResponse {
 	Success {
 		frames: Vec<Frame>,
 		duration: Duration,
+		metrics: ExecutionMetrics,
 	},
 	/// Engine returned an error.
 	EngineError {
@@ -120,6 +123,7 @@ pub enum ServerSubscribeResponse {
 	Subscribed {
 		frames: Vec<Frame>,
 		duration: Duration,
+		metrics: ExecutionMetrics,
 	},
 	/// Engine returned an error.
 	EngineError {

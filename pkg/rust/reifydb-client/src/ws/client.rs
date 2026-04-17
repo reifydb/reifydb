@@ -22,8 +22,8 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_conf
 
 use crate::{
 	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, LoginResult,
-	QueryRequest, QueryResult, Request, RequestPayload, Response, ResponsePayload, ServerPush, SubscribeRequest,
-	UnsubscribeRequest, WireFormat, params_to_wire,
+	QueryRequest, QueryResult, Request, RequestPayload, Response, ResponseMeta, ResponsePayload, ServerPush,
+	SubscribeRequest, UnsubscribeRequest, WireFormat, params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 	utils::generate_request_id,
 };
@@ -31,7 +31,7 @@ use crate::{
 /// Internal response type that can carry either a JSON Response or decoded RBCF frames.
 enum ClientResponse {
 	Json(Box<Response>),
-	Frames(Vec<Frame>),
+	Frames(Vec<Frame>, Option<ResponseMeta>),
 }
 
 type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<ClientResponse>>>>;
@@ -130,15 +130,32 @@ impl WsClient {
 							}
 						}
 						Ok(Message::Binary(data)) => {
-							// Binary envelope: [u8 kind][u32 LE id_len][id bytes][RBCF payload].
+							// Binary envelope:
+							// [u8 kind][u32 LE id_len][id bytes][u32 LE meta_len][meta bytes][RBCF payload].
 							// kind 0x00 = one-shot response (id = request_id);
 							// kind 0x01 = subscription change (id = subscription_id).
 							if data.len() < 5 { continue; }
 							let kind = data[0];
 							let id_len = u32::from_le_bytes([data[1], data[2], data[3], data[4]]) as usize;
-							if data.len() < 5 + id_len { continue; }
-							let id = String::from_utf8_lossy(&data[5..5 + id_len]).to_string();
-							let rbcf_data = &data[5 + id_len..];
+							let meta_len_pos = 5 + id_len;
+							if data.len() < meta_len_pos + 4 { continue; }
+							let id = String::from_utf8_lossy(&data[5..meta_len_pos]).to_string();
+							let meta_len = u32::from_le_bytes([
+								data[meta_len_pos],
+								data[meta_len_pos + 1],
+								data[meta_len_pos + 2],
+								data[meta_len_pos + 3],
+							]) as usize;
+							let meta_start = meta_len_pos + 4;
+							if data.len() < meta_start + meta_len { continue; }
+							let meta = if meta_len > 0 {
+								from_str::<ResponseMeta>(
+									&String::from_utf8_lossy(&data[meta_start..meta_start + meta_len])
+								).ok()
+							} else {
+								None
+							};
+							let rbcf_data = &data[meta_start + meta_len..];
 							let frames = match decode_frames(rbcf_data) {
 								Ok(f) => f,
 								Err(_) => continue,
@@ -147,7 +164,7 @@ impl WsClient {
 								0x00 => {
 									let mut pending_guard = pending.lock().await;
 									if let Some(tx) = pending_guard.remove(&id) {
-										let _ = tx.send(ClientResponse::Frames(frames));
+										let _ = tx.send(ClientResponse::Frames(frames, meta));
 									}
 								}
 								0x01 => {
@@ -316,7 +333,12 @@ impl WsClient {
 	}
 
 	/// Execute an admin (DDL + DML + Query) statement.
-	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.admin_with_meta(rql, params).await?.frames)
+	}
+
+	/// Execute an admin statement and return frames together with server-reported metadata.
+	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
@@ -328,35 +350,21 @@ impl WsClient {
 		};
 
 		match self.send_request(request).await? {
-			ClientResponse::Frames(frames) => Ok(AdminResult {
+			ClientResponse::Frames(frames, meta) => Ok(AdminResult {
 				frames,
-			}),
-			ClientResponse::Json(resp) => parse_admin_response(*resp),
-		}
-	}
-
-	/// Execute multiple admin statements in a batch.
-	pub async fn admin_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<AdminResult, Error> {
-		let id = generate_request_id();
-		let request = Request {
-			id,
-			payload: RequestPayload::Admin(AdminRequest {
-				statements: statements.into_iter().map(String::from).collect(),
-				params: params.and_then(params_to_wire),
-				format: self.wire_format(),
-			}),
-		};
-
-		match self.send_request(request).await? {
-			ClientResponse::Frames(frames) => Ok(AdminResult {
-				frames,
+				meta,
 			}),
 			ClientResponse::Json(resp) => parse_admin_response(*resp),
 		}
 	}
 
 	/// Execute a command (write) statement.
-	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.command_with_meta(rql, params).await?.frames)
+	}
+
+	/// Execute a command statement and return frames together with server-reported metadata.
+	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
@@ -368,15 +376,21 @@ impl WsClient {
 		};
 
 		match self.send_request(request).await? {
-			ClientResponse::Frames(frames) => Ok(CommandResult {
+			ClientResponse::Frames(frames, meta) => Ok(CommandResult {
 				frames,
+				meta,
 			}),
 			ClientResponse::Json(resp) => parse_command_response(*resp),
 		}
 	}
 
 	/// Execute a query (read) statement.
-	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.query_with_meta(rql, params).await?.frames)
+	}
+
+	/// Execute a query statement and return frames together with server-reported metadata.
+	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
@@ -388,52 +402,9 @@ impl WsClient {
 		};
 
 		match self.send_request(request).await? {
-			ClientResponse::Frames(frames) => Ok(QueryResult {
+			ClientResponse::Frames(frames, meta) => Ok(QueryResult {
 				frames,
-			}),
-			ClientResponse::Json(resp) => parse_query_response(*resp),
-		}
-	}
-
-	/// Execute multiple command statements in a batch.
-	pub async fn command_batch(
-		&self,
-		statements: Vec<&str>,
-		params: Option<Params>,
-	) -> Result<CommandResult, Error> {
-		let id = generate_request_id();
-		let request = Request {
-			id,
-			payload: RequestPayload::Command(CommandRequest {
-				statements: statements.into_iter().map(String::from).collect(),
-				params: params.and_then(params_to_wire),
-				format: self.wire_format(),
-			}),
-		};
-
-		match self.send_request(request).await? {
-			ClientResponse::Frames(frames) => Ok(CommandResult {
-				frames,
-			}),
-			ClientResponse::Json(resp) => parse_command_response(*resp),
-		}
-	}
-
-	/// Execute multiple query statements in a batch.
-	pub async fn query_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<QueryResult, Error> {
-		let id = generate_request_id();
-		let request = Request {
-			id,
-			payload: RequestPayload::Query(QueryRequest {
-				statements: statements.into_iter().map(String::from).collect(),
-				params: params.and_then(params_to_wire),
-				format: self.wire_format(),
-			}),
-		};
-
-		match self.send_request(request).await? {
-			ClientResponse::Frames(frames) => Ok(QueryResult {
-				frames,
+				meta,
 			}),
 			ClientResponse::Json(resp) => parse_query_response(*resp),
 		}
@@ -499,8 +470,8 @@ impl WsClient {
 	async fn send_request_json(&self, request: Request) -> Result<Response, Error> {
 		match self.send_request(request).await? {
 			ClientResponse::Json(resp) => Ok(*resp),
-			ClientResponse::Frames(_) => panic!("unexpected binary response"), /* FIXME better error
-			                                                                    * handling */
+			ClientResponse::Frames(_, _) => panic!("unexpected binary response"), /* FIXME better error
+			                                                                       * handling */
 		}
 	}
 

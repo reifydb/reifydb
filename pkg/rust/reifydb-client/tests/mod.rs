@@ -5,4 +5,5 @@
 pub mod auth;
 pub(crate) mod common;
 pub mod grpc;
+pub mod meta;
 pub mod ws;

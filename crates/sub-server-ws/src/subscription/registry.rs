@@ -235,6 +235,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 					BinaryKind::Change,
 					&subscription_id.to_string(),
 					&rbcf_bytes,
+					None,
 				);
 				PushMessage::ChangeRbcf {
 					subscription_id: *subscription_id,

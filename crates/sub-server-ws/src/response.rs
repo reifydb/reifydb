@@ -67,21 +67,33 @@ pub struct ErrResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct ResponseMeta {
+	pub fingerprint: String,
+	pub duration: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct AdminResponse {
 	pub content_type: String,
 	pub body: JsonValue,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub meta: Option<ResponseMeta>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CommandResponse {
 	pub content_type: String,
 	pub body: JsonValue,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub meta: Option<ResponseMeta>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct QueryResponse {
 	pub content_type: String,
 	pub body: JsonValue,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub meta: Option<ResponseMeta>,
 }
 
 #[derive(Debug, Serialize)]
@@ -154,32 +166,50 @@ impl Response {
 		}
 	}
 
-	pub fn admin(id: impl Into<String>, content_type: impl Into<String>, body: JsonValue) -> Self {
+	pub fn admin(
+		id: impl Into<String>,
+		content_type: impl Into<String>,
+		body: JsonValue,
+		meta: Option<ResponseMeta>,
+	) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Admin(AdminResponse {
 				content_type: content_type.into(),
 				body,
+				meta,
 			}),
 		}
 	}
 
-	pub fn query(id: impl Into<String>, content_type: impl Into<String>, body: JsonValue) -> Self {
+	pub fn query(
+		id: impl Into<String>,
+		content_type: impl Into<String>,
+		body: JsonValue,
+		meta: Option<ResponseMeta>,
+	) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Query(QueryResponse {
 				content_type: content_type.into(),
 				body,
+				meta,
 			}),
 		}
 	}
 
-	pub fn command(id: impl Into<String>, content_type: impl Into<String>, body: JsonValue) -> Self {
+	pub fn command(
+		id: impl Into<String>,
+		content_type: impl Into<String>,
+		body: JsonValue,
+		meta: Option<ResponseMeta>,
+	) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Command(CommandResponse {
 				content_type: content_type.into(),
 				body,
+				meta,
 			}),
 		}
 	}

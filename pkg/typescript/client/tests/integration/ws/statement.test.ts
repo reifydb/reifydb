@@ -4,6 +4,7 @@ import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {wait_for_database} from "../setup";
 import {Client, WsClient} from "../../../src";
 import {Shape} from "@reifydb/core";
+import {assertMeta} from "../helpers";
 
 
 describe.each([
@@ -383,5 +384,41 @@ describe.each([
 
     });
 
+    describe('with_meta', () => {
+        it('admin', async () => {
+            const { frames, meta } = await ws_client.admin_with_meta(';', {}, []);
+            expect(frames).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+
+        it('command', async () => {
+            const { frames, meta } = await ws_client.command_with_meta(';', {}, []);
+            expect(frames).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+
+        it('query', async () => {
+            const { frames, meta } = await ws_client.query_with_meta(';', {}, []);
+            expect(frames).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+
+        it('send', async () => {
+            const { result, meta } = await ws_client.send_with_meta({
+                id: 'test-send',
+                type: 'Query',
+                payload: {
+                    statements: [';']
+                }
+            } as any);
+            expect(result).toBeDefined();
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+    });
 
 });
+

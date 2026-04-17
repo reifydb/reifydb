@@ -107,6 +107,7 @@ pub(crate) async fn handle_subscribe(
 							BinaryKind::Change,
 							&subscription_id.to_string(),
 							&rbcf_bytes,
+							None,
 						);
 						PushMessage::ChangeRbcf {
 							subscription_id,

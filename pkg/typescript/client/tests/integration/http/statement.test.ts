@@ -3,6 +3,7 @@
 import {beforeAll, describe, expect, it} from 'vitest';
 import {Client, HttpClient} from "../../../src";
 import {Shape} from "@reifydb/core";
+import {assertMeta} from "../helpers";
 
 
 describe.each([
@@ -360,5 +361,28 @@ describe.each([
 
     });
 
+    describe('with_meta', () => {
+        it('admin', async () => {
+            const { frames, meta } = await httpClient.admin_with_meta(';', {}, []);
+            expect(frames).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+
+        it('command', async () => {
+            const { frames, meta } = await httpClient.command_with_meta(';', {}, []);
+            expect(frames).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+
+        it('query', async () => {
+            const { frames, meta } = await httpClient.query_with_meta(';', {}, []);
+            expect(frames).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+    });
 
 });
+

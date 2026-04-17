@@ -90,7 +90,7 @@ pub async fn create_subscription(
 		metadata,
 	};
 
-	let (frames, _duration) = dispatch_subscribe(state, ctx).await?;
+	let (frames, _duration, _metrics) = dispatch_subscribe(state, ctx).await?;
 
 	let frame = frames.first().ok_or(CreateSubscriptionError::ExtractionFailed)?;
 

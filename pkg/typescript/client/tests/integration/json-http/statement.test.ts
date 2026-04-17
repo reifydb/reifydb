@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {beforeAll, describe, expect, it} from 'vitest';
 import {Client, JsonHttpClient} from "../../../src";
+import {assertMeta} from "../helpers";
 
 
 describe('Statement', () => {
@@ -256,5 +257,28 @@ describe('Statement', () => {
 
     });
 
+    describe('with_meta', () => {
+        it('admin', async () => {
+            const { data, meta } = await httpClient.admin_with_meta(';');
+            expect(data).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+
+        it('command', async () => {
+            const { data, meta } = await httpClient.command_with_meta(';');
+            expect(data).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+
+        it('query', async () => {
+            const { data, meta } = await httpClient.query_with_meta(';');
+            expect(data).toHaveLength(0);
+            expect(meta).toBeDefined();
+            assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
+        });
+    });
 
 });
+

@@ -32,7 +32,6 @@ pub async fn execute_job(client: &GrpcClient, job_run_id: &str, job_id: &str, ru
 
 	// Collect step IDs upfront so the non-Send FrameRows iterator doesn't live across awaits
 	let step_ids: Vec<String> = steps_result
-		.frames
 		.first()
 		.map(|f| f.rows().filter_map(|row| row.get_value("id").map(|v| v.to_string())).collect())
 		.unwrap_or_default();
@@ -52,7 +51,6 @@ pub async fn execute_job(client: &GrpcClient, job_run_id: &str, job_id: &str, ru
 			.await?;
 
 		let step_run_id = match step_run_result
-			.frames
 			.first()
 			.and_then(|f| f.rows().next())
 			.and_then(|row| row.get_value("id").map(|v| v.to_string()))
@@ -107,7 +105,6 @@ async fn execute_step(
 		client.query(&format!("FROM forge::steps | FILTER id == uuid::v4(\"{step_id}\")"), None).await?;
 
 	let command_str = step_result
-		.frames
 		.first()
 		.and_then(|f| f.rows().next().and_then(|row| row.get_value("command").map(|v| v.to_string())))
 		.unwrap_or_default();
@@ -152,7 +149,6 @@ async fn execute_step(
 
 				// Read exit_code from result frames
 				let exit_code = command_result
-					.frames
 					.first()
 					.and_then(|f| f.rows().next())
 					.and_then(|row| row.get_value("exit_code"))
@@ -223,7 +219,7 @@ async fn execute_step(
 			} else {
 				// Pure RQL step — collect log lines from result frames
 				let mut log_lines: Vec<String> = Vec::new();
-				for frame in &command_result.frames {
+				for frame in &command_result {
 					let headers: Vec<&str> =
 						frame.columns.iter().map(|c| c.name.as_str()).collect();
 					log_lines.push(headers.join(" | "));
