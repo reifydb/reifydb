@@ -140,11 +140,18 @@ export interface AuthResponse {
     id: string;
     type: "Auth";
     payload: {
-        status?: string;
+        status?: "authenticated" | "challenge" | "failed";
         token?: string;
         identity?: string;
+        challenge_id?: string;
+        payload?: { message: string; nonce: string };
+        reason?: string;
     };
 }
+
+export type LoginChallengeResult =
+    | { kind: "authenticated"; token: string; identity: string }
+    | { kind: "challenge"; challenge_id: string; message: string; nonce: string };
 
 export interface LogoutRequest {
     id: string;

@@ -11,6 +11,7 @@ import type {
 
 import type {
     Column,
+    LoginChallengeResult,
     LoginResult,
     ResponseMeta,
 } from "./types";
@@ -62,7 +63,7 @@ export class HttpClient {
         const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeout_ms);
-        
+
         let signal = controller.signal;
         if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
             signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
@@ -89,6 +90,54 @@ export class HttpClient {
             this.options = {...this.options, token: body.token};
 
             return {token: body.token, identity: body.identity};
+        } catch (err: any) {
+            clearTimeout(timeout);
+            if (err.name === 'AbortError') throw new Error("Login timeout or aborted");
+            throw err;
+        }
+    }
+
+    async login_challenge(method: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginChallengeResult> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+
+        let signal = controller.signal;
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
+        }
+
+        try {
+            const response = await fetch(`${this.options.url}/v1/authenticate`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({method, credentials}),
+                signal,
+            });
+
+            clearTimeout(timeout);
+            const body = await response.json();
+
+            if (body.status === "challenge") {
+                if (!body.challenge_id || !body.payload?.message || !body.payload?.nonce) {
+                    throw new Error("Malformed challenge response");
+                }
+                return {
+                    kind: "challenge",
+                    challenge_id: body.challenge_id,
+                    message: body.payload.message,
+                    nonce: body.payload.nonce,
+                };
+            }
+
+            if (body.status === "authenticated" && body.token && body.identity) {
+                this.options = {...this.options, token: body.token};
+                return {kind: "authenticated", token: body.token, identity: body.identity};
+            }
+
+            throw new Error(body.reason || "Authentication failed");
         } catch (err: any) {
             clearTimeout(timeout);
             if (err.name === 'AbortError') throw new Error("Login timeout or aborted");

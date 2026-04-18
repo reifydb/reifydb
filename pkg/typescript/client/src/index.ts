@@ -68,6 +68,7 @@ export type {
     ChangeMessage,
     SubscriptionCallbacks,
     SubscriptionOperation,
+    LoginChallengeResult,
     LoginResult,
     LogoutRequest,
     LogoutResponse,

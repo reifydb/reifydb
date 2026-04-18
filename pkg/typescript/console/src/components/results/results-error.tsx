@@ -29,7 +29,7 @@ function render_flat(d: Diagnostic): string {
 
     const line_content = get_line(statement, line);
 
-    lines.push('CODE');
+    lines.push('RQL');
     lines.push(`  ${line} \u2502 ${line_content}`);
     const fragment_start = line_content.indexOf(fragment) !== -1
       ? line_content.indexOf(fragment)

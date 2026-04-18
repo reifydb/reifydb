@@ -20,6 +20,7 @@ import type {
     QueryResponse,
     Column,
     ErrorResponse,
+    LoginChallengeResult,
     LoginResult,
     LogoutRequest,
     LogoutResponse,
@@ -607,6 +608,63 @@ export class WsClient {
         this.options.token = payload.token;
 
         return {token: payload.token, identity: payload.identity};
+    }
+
+    async login_challenge(method: string, credentials: Record<string, string>): Promise<LoginChallengeResult> {
+        const id = `auth-${this.next_id++}`;
+
+        const request: AuthRequest = {
+            id,
+            type: "Auth",
+            payload: {method, credentials}
+        };
+
+        const response = await new Promise<ResponsePayload>((resolve, reject) => {
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
+            const timeout = setTimeout(() => {
+                this.pending.delete(id);
+                reject(new Error("Login timeout"));
+            }, timeout_ms);
+
+            this.pending.set(id, {
+                type: "Auth",
+                handler: (res) => {
+                    clearTimeout(timeout);
+                    resolve(res);
+                }
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
+
+        if (response.type === "Err") {
+            throw new ReifyError(response);
+        }
+
+        if (response.type !== "Auth") {
+            throw new Error(`Unexpected response type: ${response.type}`);
+        }
+
+        const payload = (response as AuthResponse).payload;
+
+        if (payload.status === "challenge") {
+            if (!payload.challenge_id || !payload.payload?.message || !payload.payload?.nonce) {
+                throw new Error("Malformed challenge response");
+            }
+            return {
+                kind: "challenge",
+                challenge_id: payload.challenge_id,
+                message: payload.payload.message,
+                nonce: payload.payload.nonce,
+            };
+        }
+
+        if (payload.status === "authenticated" && payload.token && payload.identity) {
+            this.options.token = payload.token;
+            return {kind: "authenticated", token: payload.token, identity: payload.identity};
+        }
+
+        throw new Error(`Authentication failed: ${payload.reason ?? "unknown"}`);
     }
 
     async logout(): Promise<void> {

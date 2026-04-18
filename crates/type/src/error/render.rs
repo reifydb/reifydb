@@ -54,7 +54,7 @@ impl DefaultRenderer {
 
 			let line_content = get_line(statement, line);
 
-			let _ = writeln!(output, "CODE");
+			let _ = writeln!(output, "RQL");
 			let _ = writeln!(output, "  {} │ {}", line, line_content);
 			let fragment_start = line_content.find(fragment.as_ref()).unwrap_or(col as usize);
 			let _ = writeln!(output, "    │ {}{}", " ".repeat(fragment_start), "~".repeat(fragment.len()));
