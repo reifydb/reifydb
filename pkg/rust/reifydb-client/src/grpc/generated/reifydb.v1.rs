@@ -9,8 +9,8 @@ pub struct FramesPayload {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AdminRequest {
-    #[prost(string, repeated, tag = "1")]
-    pub statements: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, tag = "1")]
+    pub rql: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
     #[prost(enumeration = "Format", tag = "3")]
@@ -33,8 +33,8 @@ pub mod admin_response {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommandRequest {
-    #[prost(string, repeated, tag = "1")]
-    pub statements: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, tag = "1")]
+    pub rql: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
     #[prost(enumeration = "Format", tag = "3")]
@@ -57,8 +57,8 @@ pub mod command_response {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryRequest {
-    #[prost(string, repeated, tag = "1")]
-    pub statements: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, tag = "1")]
+    pub rql: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub params: ::core::option::Option<Params>,
     #[prost(enumeration = "Format", tag = "3")]

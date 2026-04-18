@@ -343,7 +343,7 @@ impl WsClient {
 		let request = Request {
 			id,
 			payload: RequestPayload::Admin(AdminRequest {
-				statements: vec![rql.to_string()],
+				rql: rql.to_string(),
 				params: params.and_then(params_to_wire),
 				format: self.wire_format(),
 			}),
@@ -369,7 +369,7 @@ impl WsClient {
 		let request = Request {
 			id,
 			payload: RequestPayload::Command(CommandRequest {
-				statements: vec![rql.to_string()],
+				rql: rql.to_string(),
 				params: params.and_then(params_to_wire),
 				format: self.wire_format(),
 			}),
@@ -395,7 +395,7 @@ impl WsClient {
 		let request = Request {
 			id,
 			payload: RequestPayload::Query(QueryRequest {
-				statements: vec![rql.to_string()],
+				rql: rql.to_string(),
 				params: params.and_then(params_to_wire),
 				format: self.wire_format(),
 			}),

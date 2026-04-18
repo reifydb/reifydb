@@ -136,80 +136,93 @@ export class HttpClient {
         }
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async admin<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S,
         req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.admin_with_meta(statements, params, shapes, req_opts);
+        const { frames } = await this.admin_with_meta(rql, params, shapes, req_opts);
         return frames;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async admin_with_meta<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S,
         req_opts?: RequestOptions
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        return this.execute('admin', statements, params, shapes, req_opts);
+        return this.execute('admin', rql, params, shapes, req_opts);
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async command<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S,
         req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.command_with_meta(statements, params, shapes, req_opts);
+        const { frames } = await this.command_with_meta(rql, params, shapes, req_opts);
         return frames;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async command_with_meta<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S,
         req_opts?: RequestOptions
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        return this.execute('command', statements, params, shapes, req_opts);
+        return this.execute('command', rql, params, shapes, req_opts);
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async query<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S,
         req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.query_with_meta(statements, params, shapes, req_opts);
+        const { frames } = await this.query_with_meta(rql, params, shapes, req_opts);
         return frames;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async query_with_meta<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S,
         req_opts?: RequestOptions
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        return this.execute('query', statements, params, shapes, req_opts);
+        return this.execute('query', rql, params, shapes, req_opts);
     }
 
     private async execute<const S extends readonly ShapeNode[]>(
         endpoint: 'admin' | 'command' | 'query',
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S,
         req_opts?: RequestOptions
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
-
         const encoded_params = params !== undefined && params !== null
             ? encode_params(params)
             : undefined;
 
-        const { result, meta } = await this.send(endpoint, output_statements, encoded_params, req_opts);
+        const { result, meta } = await this.send(endpoint, rql, encoded_params, req_opts);
 
         const transformed_frames = result.map((frame: any, frame_index: number) => {
             const frame_shape = shapes[frame_index];
@@ -224,7 +237,7 @@ export class HttpClient {
 
     private async send(
         endpoint: string,
-        statements: string[],
+        rql: string,
         params: any,
         req_opts?: RequestOptions,
     ): Promise<{ result: any, meta?: ResponseMeta }> {
@@ -251,7 +264,7 @@ export class HttpClient {
             headers['Authorization'] = `Bearer ${this.options.token}`;
         }
 
-        const body: any = {statements};
+        const body: any = { rql };
         if (params !== undefined) {
             body.params = params;
         }

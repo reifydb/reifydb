@@ -48,14 +48,14 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
     const execution_id_ref = useRef(0);
 
     // Stash pending call if client isn't ready yet
-    const pending_ref = useRef<{statements: string | string[], params?: any, shapes?: readonly ShapeNode[]} | null>(null);
+    const pending_ref = useRef<{rql: string, params?: any, shapes?: readonly ShapeNode[]} | null>(null);
 
     const admin = useCallback(
-        (statements: string | string[], params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
+        (rql: string, params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
             const current_client = client_ref.current;
             // If no client yet, stash the request for replay when client connects
             if (!current_client) {
-                pending_ref.current = {statements, params, shapes};
+                pending_ref.current = {rql, params, shapes};
                 setState(prev => ({...prev, is_executing: true, error: undefined}));
                 return Promise.resolve();
             }
@@ -69,7 +69,7 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
 
             return (async () => {
                 try {
-                    const frame_results = await current_client.admin(statements, params || null, shapes || []) || [];
+                    const frame_results = await current_client.admin(rql, params || null, shapes || []) || [];
 
                     // If this execution was superseded by a newer one, discard results
                     if (execution_id_ref.current !== this_execution) return;
@@ -159,8 +159,8 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
     // Replay pending request when client becomes available
     useEffect(() => {
         if (client && pending_ref.current) {
-            const {statements, params, shapes} = pending_ref.current;
-            admin(statements, params, shapes);
+            const {rql, params, shapes} = pending_ref.current;
+            admin(rql, params, shapes);
         }
     }, [client, admin]);
 

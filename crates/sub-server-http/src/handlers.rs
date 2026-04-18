@@ -40,8 +40,8 @@ const CONTENT_TYPE_RBCF: &str = "application/vnd.reifydb.rbcf";
 /// Request body for query and command endpoints.
 #[derive(Debug, Deserialize)]
 pub struct StatementRequest {
-	/// One or more RQL statements to execute.
-	pub statements: Vec<String>,
+	/// RQL string to execute.
+	pub rql: String,
 	/// Optional query parameters.
 	#[serde(default)]
 	pub params: Option<WireParams>,
@@ -298,7 +298,7 @@ async fn execute_and_respond(
 	let ctx = RequestContext {
 		identity,
 		operation,
-		statements: request.statements,
+		rql: request.rql,
 		params,
 		metadata,
 	};
@@ -352,9 +352,9 @@ pub mod tests {
 
 	#[test]
 	fn test_statement_request_deserialization() {
-		let json = r#"{"statements": ["SELECT 1"]}"#;
+		let json = r#"{"rql": "SELECT 1"}"#;
 		let request: StatementRequest = from_str(json).unwrap();
-		assert_eq!(request.statements, vec!["SELECT 1"]);
+		assert_eq!(request.rql, "SELECT 1");
 		assert!(request.params.is_none());
 	}
 

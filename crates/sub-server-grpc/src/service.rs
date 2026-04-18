@@ -220,7 +220,7 @@ impl ReifyDb for ReifyDbService {
 		let ctx = RequestContext {
 			identity,
 			operation: Operation::Admin,
-			statements: inner.statements,
+			rql: inner.rql,
 			params,
 			metadata,
 		};
@@ -252,7 +252,7 @@ impl ReifyDb for ReifyDbService {
 		let ctx = RequestContext {
 			identity,
 			operation: Operation::Command,
-			statements: inner.statements,
+			rql: inner.rql,
 			params,
 			metadata,
 		};
@@ -284,7 +284,7 @@ impl ReifyDb for ReifyDbService {
 		let ctx = RequestContext {
 			identity,
 			operation: Operation::Query,
-			statements: inner.statements,
+			rql: inner.rql,
 			params,
 			metadata,
 		};

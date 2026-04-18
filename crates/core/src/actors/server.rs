@@ -35,21 +35,21 @@ pub enum ServerMessage {
 	/// Execute a read-only query.
 	Query {
 		identity: IdentityId,
-		statements: Vec<String>,
+		rql: String,
 		params: Params,
 		reply: Reply<ServerResponse>,
 	},
 	/// Execute a write command.
 	Command {
 		identity: IdentityId,
-		statements: Vec<String>,
+		rql: String,
 		params: Params,
 		reply: Reply<ServerResponse>,
 	},
 	/// Execute an admin operation.
 	Admin {
 		identity: IdentityId,
-		statements: Vec<String>,
+		rql: String,
 		params: Params,
 		reply: Reply<ServerResponse>,
 	},
@@ -139,26 +139,26 @@ pub enum ServerSubscribeResponse {
 pub fn build_server_message(
 	operation: Operation,
 	identity: IdentityId,
-	statements: Vec<String>,
+	rql: String,
 	params: Params,
 	reply: Reply<ServerResponse>,
 ) -> ServerMessage {
 	match operation {
 		Operation::Query => ServerMessage::Query {
 			identity,
-			statements,
+			rql,
 			params,
 			reply,
 		},
 		Operation::Command => ServerMessage::Command {
 			identity,
-			statements,
+			rql,
 			params,
 			reply,
 		},
 		Operation::Admin => ServerMessage::Admin {
 			identity,
-			statements,
+			rql,
 			params,
 			reply,
 		},

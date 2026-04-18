@@ -53,11 +53,7 @@ describe('useQueryExecutor Hook', () => {
         // Execute multiple statements with shapes
         act(() => {
             result.current.query(
-                [
-                    `MAP {first: 1}`,
-                    `MAP {second: 2}`,
-                    `MAP {third: 3}`
-                ],
+                `OUTPUT MAP {first: 1}; OUTPUT MAP {second: 2}; OUTPUT MAP {third: 3}`,
                 undefined,
                 [
                     Shape.object({ first: Shape.number() }),

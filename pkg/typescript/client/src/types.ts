@@ -11,7 +11,7 @@ export interface AdminRequest {
     id: string;
     type: "Admin";
     payload: {
-        statements: string[];
+        rql: string;
         params?: Params;
         format?: "json" | "rbcf";
         unwrap?: boolean;
@@ -37,7 +37,7 @@ export interface CommandRequest {
     id: string;
     type: "Command";
     payload: {
-        statements: string[];
+        rql: string;
         params?: Params;
         format?: "json" | "rbcf";
         unwrap?: boolean;
@@ -58,7 +58,7 @@ export interface QueryRequest {
     id: string;
     type: "Query";
     payload: {
-        statements: string[];
+        rql: string;
         params?: Params;
         format?: "json" | "rbcf";
         unwrap?: boolean;

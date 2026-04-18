@@ -12,7 +12,7 @@ export interface CommandOptions extends CommandExecutorOptions {
 
 // Single command hook - returns a single result
 export function useCommandOne<S extends ShapeNode = any>(
-    statement: string,
+    rql: string,
     params?: any,
     shape?: S,
     options?: CommandOptions
@@ -31,8 +31,8 @@ export function useCommandOne<S extends ShapeNode = any>(
     useEffect(() => {
         // Pass shape as array for the executor
         const shapes = shape ? [shape] : undefined;
-        command(statement, params, shapes);
-    }, [statement, params, command]);
+        command(rql, params, shapes);
+    }, [rql, params, command]);
 
     // Extract first result for single command convenience
     const result = useMemo(() => {
@@ -44,7 +44,7 @@ export function useCommandOne<S extends ShapeNode = any>(
 
 // Multiple command hook - returns multiple results
 export function useCommandMany<S extends readonly ShapeNode[] = readonly ShapeNode[]>(
-    statements: string | string[],
+    rql: string,
     params?: any,
     shapes?: S,
     options?: CommandOptions
@@ -61,8 +61,8 @@ export function useCommandMany<S extends readonly ShapeNode[] = readonly ShapeNo
     } = useCommandExecutor<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>(options);
 
     useEffect(() => {
-        command(statements, params, shapes);
-    }, [statements, params, command]);
+        command(rql, params, shapes);
+    }, [rql, params, command]);
 
     return {is_executing, results, error};
 }

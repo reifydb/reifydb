@@ -411,7 +411,7 @@ describe.each([
                 id: 'test-send',
                 type: 'Query',
                 payload: {
-                    statements: [';']
+                    rql: ';'
                 }
             } as any);
             expect(result).toBeDefined();

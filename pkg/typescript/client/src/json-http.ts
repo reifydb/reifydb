@@ -117,78 +117,91 @@ export class JsonHttpClient {
         }
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async admin(
-        statements: string | string[],
+        rql: string,
         params?: any,
         req_opts?: RequestOptions
     ): Promise<any> {
-        const { data } = await this.admin_with_meta(statements, params, req_opts);
+        const { data } = await this.admin_with_meta(rql, params, req_opts);
         return data;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async admin_with_meta(
-        statements: string | string[],
+        rql: string,
         params?: any,
         req_opts?: RequestOptions
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        return this.execute('admin', statements, params, req_opts);
+        return this.execute('admin', rql, params, req_opts);
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async command(
-        statements: string | string[],
+        rql: string,
         params?: any,
         req_opts?: RequestOptions
     ): Promise<any> {
-        const { data } = await this.command_with_meta(statements, params, req_opts);
+        const { data } = await this.command_with_meta(rql, params, req_opts);
         return data;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async command_with_meta(
-        statements: string | string[],
+        rql: string,
         params?: any,
         req_opts?: RequestOptions
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        return this.execute('command', statements, params, req_opts);
+        return this.execute('command', rql, params, req_opts);
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async query(
-        statements: string | string[],
+        rql: string,
         params?: any,
         req_opts?: RequestOptions
     ): Promise<any> {
-        const { data } = await this.query_with_meta(statements, params, req_opts);
+        const { data } = await this.query_with_meta(rql, params, req_opts);
         return data;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async query_with_meta(
-        statements: string | string[],
+        rql: string,
         params?: any,
         req_opts?: RequestOptions
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        return this.execute('query', statements, params, req_opts);
+        return this.execute('query', rql, params, req_opts);
     }
 
     private async execute(
         endpoint: 'admin' | 'command' | 'query',
-        statements: string | string[],
+        rql: string,
         params: any,
         req_opts?: RequestOptions
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
-
         const encoded_params = params !== undefined && params !== null
             ? encode_params(params)
             : undefined;
 
-        return this.send(endpoint, output_statements, encoded_params, req_opts);
+        return this.send(endpoint, rql, encoded_params, req_opts);
     }
 
     private async send(
         endpoint: string,
-        statements: string[],
+        rql: string,
         params: any,
         req_opts?: RequestOptions,
     ): Promise<{ data: any, meta?: ResponseMeta }> {
@@ -213,7 +226,7 @@ export class JsonHttpClient {
             headers['Authorization'] = `Bearer ${this.options.token}`;
         }
 
-        const body: any = {statements};
+        const body: any = { rql };
         if (params !== undefined) {
             body.params = params;
         }

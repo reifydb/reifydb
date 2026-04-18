@@ -125,62 +125,75 @@ export class JsonWsClient {
         return new JsonWsClient(socket, options);
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async admin(
-        statements: string | string[],
+        rql: string,
         params?: any,
     ): Promise<any> {
-        const { data } = await this.admin_with_meta(statements, params);
+        const { data } = await this.admin_with_meta(rql, params);
         return data;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async admin_with_meta(
-        statements: string | string[],
+        rql: string,
         params?: any,
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        return this.execute("Admin", statements, params);
+        return this.execute("Admin", rql, params);
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async command(
-        statements: string | string[],
+        rql: string,
         params?: any,
     ): Promise<any> {
-        const { data } = await this.command_with_meta(statements, params);
+        const { data } = await this.command_with_meta(rql, params);
         return data;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async command_with_meta(
-        statements: string | string[],
+        rql: string,
         params?: any,
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        return this.execute("Command", statements, params);
+        return this.execute("Command", rql, params);
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async query(
-        statements: string | string[],
+        rql: string,
         params?: any,
     ): Promise<any> {
-        const { data } = await this.query_with_meta(statements, params);
+        const { data } = await this.query_with_meta(rql, params);
         return data;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async query_with_meta(
-        statements: string | string[],
+        rql: string,
         params?: any,
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        return this.execute("Query", statements, params);
+        return this.execute("Query", rql, params);
     }
 
     private async execute(
         type: "Admin" | "Command" | "Query",
-        statements: string | string[],
+        rql: string,
         params?: any,
     ): Promise<{ data: any, meta?: ResponseMeta }> {
         const id = `req-${this.next_id++}`;
-
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
 
         const encoded_params = params !== undefined && params !== null
             ? encode_params(params)
@@ -190,7 +203,7 @@ export class JsonWsClient {
             id,
             type,
             payload: {
-                statements: output_statements,
+                rql,
                 params: encoded_params,
                 format: "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),

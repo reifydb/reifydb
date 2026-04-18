@@ -44,8 +44,8 @@ pub enum RequestPayload {
 /// Admin (DDL + DML + Query) request payload.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminRequest {
-	/// RQL statements to execute.
-	pub statements: Vec<String>,
+	/// RQL string to execute.
+	pub rql: String,
 	/// Optional parameters for the statements.
 	pub params: Option<WireParams>,
 	/// Response format. Defaults to `Frames` when absent.
@@ -66,8 +66,8 @@ pub struct AuthRequest {
 /// Command (write) request payload.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandRequest {
-	/// RQL statements to execute.
-	pub statements: Vec<String>,
+	/// RQL string to execute.
+	pub rql: String,
 	/// Optional parameters for the statements.
 	pub params: Option<WireParams>,
 	/// Response format. Defaults to `Frames` when absent.
@@ -80,8 +80,8 @@ pub struct CommandRequest {
 /// Query (read) request payload.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryRequest {
-	/// RQL query statements to execute.
-	pub statements: Vec<String>,
+	/// RQL string to execute.
+	pub rql: String,
 	/// Optional parameters for the queries.
 	pub params: Option<WireParams>,
 	/// Response format. Defaults to `Frames` when absent.

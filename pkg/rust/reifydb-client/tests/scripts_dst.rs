@@ -34,49 +34,49 @@ impl testscript::runner::Runner for DstRunner {
 			"admin" => {
 				let rql = parse_rql(command);
 				println!("admin: {rql}");
-				let response = ctx.client.admin(identity, vec![rql], Params::None);
+				let response = ctx.client.admin(identity, rql, Params::None);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"command" => {
 				let rql = parse_rql(command);
 				println!("command: {rql}");
-				let response = ctx.client.command(identity, vec![rql], Params::None);
+				let response = ctx.client.command(identity, rql, Params::None);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"command_positional" => {
 				let (rql, params) = parse_positional_params(command);
 				println!("command_positional: {rql}");
-				let response = ctx.client.command(identity, vec![rql], params);
+				let response = ctx.client.command(identity, rql, params);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"command_named" => {
 				let (rql, params) = parse_named_params(command);
 				println!("command_named: {rql}");
-				let response = ctx.client.command(identity, vec![rql], params);
+				let response = ctx.client.command(identity, rql, params);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"query" => {
 				let rql = parse_rql(command);
 				println!("query: {rql}");
-				let response = ctx.client.query(identity, vec![rql], Params::None);
+				let response = ctx.client.query(identity, rql, Params::None);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"query_positional" => {
 				let (rql, params) = parse_positional_params(command);
 				println!("query_positional: {rql}");
-				let response = ctx.client.query(identity, vec![rql], params);
+				let response = ctx.client.query(identity, rql, params);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"query_named" => {
 				let (rql, params) = parse_named_params(command);
 				println!("query_named: {rql}");
-				let response = ctx.client.query(identity, vec![rql], params);
+				let response = ctx.client.query(identity, rql, params);
 				write_frames(dst_response_to_result(response)?)
 			}
 

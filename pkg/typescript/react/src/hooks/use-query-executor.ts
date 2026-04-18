@@ -43,14 +43,14 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
     }, []);
 
     const execution_id_ref = useRef(0);
-    const pending_ref = useRef<{statements: string | string[], params?: any, shapes?: readonly ShapeNode[]} | null>(null);
+    const pending_ref = useRef<{rql: string, params?: any, shapes?: readonly ShapeNode[]} | null>(null);
 
     const query = useCallback(
-        (statements: string | string[], params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
+        (rql: string, params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
             const current_client = client_ref.current;
 
             if (!current_client) {
-                pending_ref.current = {statements, params, shapes};
+                pending_ref.current = {rql, params, shapes};
                 setState(prev => ({...prev, is_executing: true, error: undefined}));
                 return Promise.resolve();
             }
@@ -64,7 +64,7 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
 
             return (async () => {
                 try {
-                    const frame_results = await current_client.query(statements, params || null, shapes || []) || [];
+                    const frame_results = await current_client.query(rql, params || null, shapes || []) || [];
 
                     if (execution_id_ref.current !== this_execution) return;
 
@@ -149,8 +149,8 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
 
     useEffect(() => {
         if (client && pending_ref.current) {
-            const {statements, params, shapes} = pending_ref.current;
-            query(statements, params, shapes);
+            const {rql, params, shapes} = pending_ref.current;
+            query(rql, params, shapes);
         }
     }, [client, query]);
 

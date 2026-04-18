@@ -44,7 +44,7 @@ export function useQueryOne<S extends ShapeNode = any>(
 
 // Multiple query hook - returns multiple results
 export function useQueryMany<S extends readonly ShapeNode[] = readonly ShapeNode[]>(
-    statements: string | string[],
+    rql: string,
     params?: any,
     shapes?: S,
     options?: QueryOptions
@@ -61,8 +61,8 @@ export function useQueryMany<S extends readonly ShapeNode[] = readonly ShapeNode
     } = useQueryExecutor<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>(options);
 
     useEffect(() => {
-        query(statements, params, shapes);
-    }, [statements, params, query]);
+        query(rql, params, shapes);
+    }, [rql, params, query]);
 
     return {is_executing, results, error};
 }

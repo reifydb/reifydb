@@ -208,7 +208,7 @@ pub enum RequestPayload {
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminRequest {
-	pub statements: Vec<String>,
+	pub rql: String,
 	pub params: Option<WireParams>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub format: Option<String>,
@@ -228,7 +228,7 @@ pub struct AuthRequest {
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandRequest {
-	pub statements: Vec<String>,
+	pub rql: String,
 	pub params: Option<WireParams>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub format: Option<String>,
@@ -237,7 +237,7 @@ pub struct CommandRequest {
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryRequest {
-	pub statements: Vec<String>,
+	pub rql: String,
 	pub params: Option<WireParams>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub format: Option<String>,

@@ -172,7 +172,7 @@ impl GrpcClient {
 
 	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = ProtoAdminRequest {
-			statements: vec![rql.to_string()],
+			rql: rql.to_string(),
 			params: params.and_then(params_to_proto),
 			format: self.wire_format(),
 		};
@@ -196,7 +196,7 @@ impl GrpcClient {
 
 	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let request = ProtoCommandRequest {
-			statements: vec![rql.to_string()],
+			rql: rql.to_string(),
 			params: params.and_then(params_to_proto),
 			format: self.wire_format(),
 		};
@@ -220,7 +220,7 @@ impl GrpcClient {
 
 	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = ProtoQueryRequest {
-			statements: vec![rql.to_string()],
+			rql: rql.to_string(),
 			params: params.and_then(params_to_proto),
 			format: self.wire_format(),
 		};

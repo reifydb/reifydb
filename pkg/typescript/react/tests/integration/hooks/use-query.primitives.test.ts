@@ -404,11 +404,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
 
     describe('useQueryMany with mixed shapes', () => {
         it('should handle multiple queries without shapes', async () => {
-            const queries = [
-                `MAP {str: 'test'}`,
-                `MAP {num: 42}`,
-                `MAP {bool: true}`
-            ];
+            const queries = `OUTPUT MAP {str: 'test'}; OUTPUT MAP {num: 42}; OUTPUT MAP {bool: true}`;
 
             const { result } = renderHook(() =>
                 useQueryMany(queries)
@@ -430,10 +426,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
                 Shape.object({ value: Shape.string() }),
                 Shape.object({ value: Shape.number() })
             ] as const;
-            const queries = [
-                `MAP {value: 'hello'}`,
-                `MAP {value: 123}`
-            ];
+            const queries = `OUTPUT MAP {value: 'hello'}; OUTPUT MAP {value: 123}`;
 
             const { result } = renderHook(() => 
                 useQueryMany(queries, undefined, shapes)

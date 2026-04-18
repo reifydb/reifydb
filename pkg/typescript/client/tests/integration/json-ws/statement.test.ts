@@ -307,7 +307,7 @@ describe('Statement', () => {
                 id: 'test-send',
                 type: 'Query',
                 payload: {
-                    statements: [';'],
+                    rql: ';',
                     format: 'json'
                 }
             } as any);

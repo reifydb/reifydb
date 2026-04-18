@@ -119,8 +119,8 @@ pub struct RequestContext {
 	pub identity: IdentityId,
 	/// The operation type.
 	pub operation: Operation,
-	/// The RQL statements being executed.
-	pub statements: Vec<String>,
+	/// The RQL string being executed.
+	pub rql: String,
 	/// Query parameters.
 	pub params: Params,
 	/// Protocol-agnostic request metadata (headers, etc.).
@@ -133,8 +133,8 @@ pub struct ResponseContext {
 	pub identity: IdentityId,
 	/// The operation type.
 	pub operation: Operation,
-	/// The RQL statements that were executed.
-	pub statements: Vec<String>,
+	/// The RQL string that was executed.
+	pub rql: String,
 	/// Rich metrics for each statement in the request.
 	pub metrics: ExecutionMetrics,
 	/// Query parameters.

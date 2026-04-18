@@ -215,88 +215,81 @@ export class WsClient {
     /**
      * Execute admin operation(s) with shapes for each statement for proper type inference.
      * Admin operations support DDL (CREATE TABLE, ALTER, etc.), DML, and queries.
-     * @param statements - Single statement or array of RQL statements
+     * @param rql - RQL string to execute
      * @param params - Parameters for the statements (use null or {} if no params)
      * @param shapes - Shape for each statement's result
      */
     async admin<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.admin_with_meta(statements, params, shapes);
+        const { frames } = await this.admin_with_meta(rql, params, shapes);
         return frames;
     }
 
     async admin_with_meta<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        return this.execute("Admin", statements, params, shapes);
+        return this.execute("Admin", rql, params, shapes);
     }
 
     /**
      * Execute command(s) with shapes for each statement for proper type inference
-     * @param statements - Single statement or array of RQL commands
+     * @param rql - RQL string to execute
      * @param params - Parameters for the commands (use null or {} if no params)
      * @param shapes - Shape for each statement's result
      */
     async command<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.command_with_meta(statements, params, shapes);
+        const { frames } = await this.command_with_meta(rql, params, shapes);
         return frames;
     }
 
     async command_with_meta<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        return this.execute("Command", statements, params, shapes);
+        return this.execute("Command", rql, params, shapes);
     }
 
 
     /**
      * Execute query(s) with shapes for each statement for proper type inference
-     * @param statements - Single statement or array of RQL queries
+     * @param rql - RQL string to execute
      * @param params - Parameters for the queries (use null or {} if no params)
      * @param shapes - Shape for each statement's result
      */
     async query<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.query_with_meta(statements, params, shapes);
+        const { frames } = await this.query_with_meta(rql, params, shapes);
         return frames;
     }
 
     async query_with_meta<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        return this.execute("Query", statements, params, shapes);
+        return this.execute("Query", rql, params, shapes);
     }
 
     private async execute<const S extends readonly ShapeNode[]>(
         type: "Admin" | "Command" | "Query",
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
         const id = `req-${this.next_id++}`;
-
-        // Normalize statements to array
-        const statement_array = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so results are returned.
-        const output_statements = statement_array.length > 1
-            ? statement_array.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statement_array;
 
         // Encode params without shape assumptions
         const encoded_params = params !== undefined && params !== null
@@ -307,7 +300,7 @@ export class WsClient {
             id,
             type,
             payload: {
-                statements: output_statements,
+                rql,
                 params: encoded_params
             },
         } as AdminRequest | CommandRequest | QueryRequest);

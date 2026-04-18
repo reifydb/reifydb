@@ -12,7 +12,7 @@ export interface AdminOptions extends AdminExecutorOptions {
 
 // Single admin hook - returns a single result
 export function useAdminOne<S extends ShapeNode = any>(
-    statement: string,
+    rql: string,
     params?: any,
     shape?: S,
     options?: AdminOptions
@@ -31,8 +31,8 @@ export function useAdminOne<S extends ShapeNode = any>(
     useEffect(() => {
         // Pass shape as array for the executor
         const shapes = shape ? [shape] : undefined;
-        admin(statement, params, shapes);
-    }, [statement, params, admin]);
+        admin(rql, params, shapes);
+    }, [rql, params, admin]);
 
     // Extract first result for single admin convenience
     const result = useMemo(() => {
@@ -44,7 +44,7 @@ export function useAdminOne<S extends ShapeNode = any>(
 
 // Multiple admin hook - returns multiple results
 export function useAdminMany<S extends readonly ShapeNode[] = readonly ShapeNode[]>(
-    statements: string | string[],
+    rql: string,
     params?: any,
     shapes?: S,
     options?: AdminOptions
@@ -61,8 +61,8 @@ export function useAdminMany<S extends readonly ShapeNode[] = readonly ShapeNode
     } = useAdminExecutor<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>(options);
 
     useEffect(() => {
-        admin(statements, params, shapes);
-    }, [statements, params, admin]);
+        admin(rql, params, shapes);
+    }, [rql, params, admin]);
 
     return {is_executing, results, error};
 }

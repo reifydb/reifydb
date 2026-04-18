@@ -21,11 +21,11 @@ enum Format {
 
 message FramesPayload { repeated Frame frames = 1; }
 
-message AdminRequest  { repeated string statements = 1; optional Params params = 2; Format format = 3; }
+message AdminRequest  { string rql = 1; optional Params params = 2; Format format = 3; }
 message AdminResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
-message CommandRequest  { repeated string statements = 1; optional Params params = 2; Format format = 3; }
+message CommandRequest  { string rql = 1; optional Params params = 2; Format format = 3; }
 message CommandResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
-message QueryRequest  { repeated string statements = 1; optional Params params = 2; Format format = 3; }
+message QueryRequest  { string rql = 1; optional Params params = 2; Format format = 3; }
 message QueryResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
 
 message SubscribeRequest { string rql = 1; Format format = 2; }

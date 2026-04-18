@@ -8,17 +8,17 @@ export type TransactionType = 'admin' | 'query' | 'command';
 
 export interface WsClient {
   admin<const S extends readonly unknown[]>(
-    statements: string | string[],
+    rql: string,
     params: unknown,
     shapes: S
   ): Promise<unknown[][]>;
   query<const S extends readonly unknown[]>(
-    statements: string | string[],
+    rql: string,
     params: unknown,
     shapes: S
   ): Promise<unknown[][]>;
   command<const S extends readonly unknown[]>(
-    statements: string | string[],
+    rql: string,
     params: unknown,
     shapes: S
   ): Promise<unknown[][]>;

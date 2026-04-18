@@ -34,21 +34,21 @@ impl DstClient {
 		self.system.run_until_idle();
 	}
 
-	pub fn query(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
+	pub fn query(&self, identity: IdentityId, rql: String, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(build_server_message(Operation::Query, identity, statements, params, reply));
+		self.send(build_server_message(Operation::Query, identity, rql, params, reply));
 		receiver.try_recv().expect("no reply from actor")
 	}
 
-	pub fn command(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
+	pub fn command(&self, identity: IdentityId, rql: String, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(build_server_message(Operation::Command, identity, statements, params, reply));
+		self.send(build_server_message(Operation::Command, identity, rql, params, reply));
 		receiver.try_recv().expect("no reply from actor")
 	}
 
-	pub fn admin(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
+	pub fn admin(&self, identity: IdentityId, rql: String, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(build_server_message(Operation::Admin, identity, statements, params, reply));
+		self.send(build_server_message(Operation::Admin, identity, rql, params, reply));
 		receiver.try_recv().expect("no reply from actor")
 	}
 

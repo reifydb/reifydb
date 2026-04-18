@@ -50,13 +50,7 @@ mod native {
 
 		// Build message and send to per-request actor
 		let (reply, receiver) = reply_channel();
-		let msg = build_server_message(
-			ctx.operation,
-			ctx.identity,
-			ctx.statements.clone(),
-			ctx.params.clone(),
-			reply,
-		);
+		let msg = build_server_message(ctx.operation, ctx.identity, ctx.rql.clone(), ctx.params.clone(), reply);
 
 		let (actor_ref, _handle) = state.spawn_server_actor();
 		actor_ref.send(msg).ok().ok_or(ExecuteError::Disconnected)?;
@@ -88,7 +82,7 @@ mod native {
 			let response_ctx = ResponseContext {
 				identity: ctx.identity,
 				operation: ctx.operation,
-				statements: ctx.statements,
+				rql: ctx.rql,
 				params: ctx.params,
 				metadata: ctx.metadata,
 				metrics: metrics.clone(),
@@ -122,7 +116,7 @@ mod native {
 		let (reply, receiver) = reply_channel();
 		let msg = ServerMessage::Subscribe {
 			identity: ctx.identity,
-			rql: ctx.statements.join("; "),
+			rql: ctx.rql.clone(),
 			reply,
 		};
 
@@ -158,7 +152,7 @@ mod native {
 			let response_ctx = ResponseContext {
 				identity: ctx.identity,
 				operation: ctx.operation,
-				statements: ctx.statements,
+				rql: ctx.rql,
 				params: ctx.params,
 				metadata: ctx.metadata,
 				metrics: metrics.clone(),

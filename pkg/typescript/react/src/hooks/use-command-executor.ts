@@ -44,14 +44,14 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
     }, []);
 
     const execution_id_ref = useRef(0);
-    const pending_ref = useRef<{statements: string | string[], params?: any, shapes?: readonly ShapeNode[]} | null>(null);
+    const pending_ref = useRef<{rql: string, params?: any, shapes?: readonly ShapeNode[]} | null>(null);
 
     const command = useCallback(
-        (statements: string | string[], params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
+        (rql: string, params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
             const current_client = client_ref.current;
 
             if (!current_client) {
-                pending_ref.current = {statements, params, shapes};
+                pending_ref.current = {rql, params, shapes};
                 setState(prev => ({...prev, is_executing: true, error: undefined}));
                 return Promise.resolve();
             }
@@ -65,7 +65,7 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
 
             return (async () => {
                 try {
-                    const frame_results = await current_client.command(statements, params || null, shapes || []) || [];
+                    const frame_results = await current_client.command(rql, params || null, shapes || []) || [];
 
                     if (execution_id_ref.current !== this_execution) return;
 
@@ -151,8 +151,8 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
 
     useEffect(() => {
         if (client && pending_ref.current) {
-            const {statements, params, shapes} = pending_ref.current;
-            command(statements, params, shapes);
+            const {rql, params, shapes} = pending_ref.current;
+            command(rql, params, shapes);
         }
     }, [client, command]);
 

@@ -9,7 +9,7 @@ import type { Executor, ExecutionResult } from '../types';
  */
 export interface WsClient {
   admin<const S extends readonly unknown[]>(
-    statements: string | string[],
+    rql: string,
     params: unknown,
     shapes: S
   ): Promise<unknown[][]>;

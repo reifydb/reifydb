@@ -170,11 +170,7 @@ describe('useCommand Hooks (JSON WS)', () => {
                 Shape.object({second: Shape.number()}),
                 Shape.object({third: Shape.number()})
             ] as const;
-            const queries = [
-                `MAP {first: 1}`,
-                `MAP {second: 2}`,
-                `MAP {third: 3}`
-            ];
+            const queries = `OUTPUT MAP {first: 1}; OUTPUT MAP {second: 2}; OUTPUT MAP {third: 3}`;
 
             const {result} = renderHook(() =>
                 useCommandMany(queries, undefined, shapes)
@@ -213,10 +209,7 @@ describe('useCommand Hooks (JSON WS)', () => {
                 Shape.object({first: Shape.number()}),
                 Shape.object({second: Shape.number()})
             ] as const;
-            const queries = [
-                `MAP {first: $x}`,
-                `MAP {second: $y}`
-            ];
+            const queries = `OUTPUT MAP {first: $x}; OUTPUT MAP {second: $y}`;
             const params = {x: 10, y: 20};
 
             const {result} = renderHook(() =>
@@ -237,10 +230,7 @@ describe('useCommand Hooks (JSON WS)', () => {
                 Shape.object({name: Shape.string()})
             ] as const;
 
-            const queries = [
-                `MAP {value: 100}`,
-                `MAP {name: 'test'}`
-            ];
+            const queries = `OUTPUT MAP {value: 100}; OUTPUT MAP {name: 'test'}`;
 
             const {result} = renderHook(() =>
                 useCommandMany(queries, undefined, shapes)
@@ -257,7 +247,7 @@ describe('useCommand Hooks (JSON WS)', () => {
         it('should re-execute when statements change', async () => {
             const {result, rerender} = renderHook(
                 ({queries}) => useCommandMany(queries, undefined, [Shape.object({x: Shape.number()})]),
-                {initialProps: {queries: [`MAP {x: 1}`]}, wrapper}
+                {initialProps: {queries: `MAP {x: 1}`}, wrapper}
             );
 
             await waitFor(() => {
@@ -267,7 +257,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             expect(result.current.results).toHaveLength(1);
 
             // Change queries
-            rerender({queries: [`MAP {x: 1}`, `MAP {y: 2}`]});
+            rerender({queries: `OUTPUT MAP {x: 1}; OUTPUT MAP {y: 2}`});
 
             await waitFor(() => {
                 expect(result.current.results).toHaveLength(2);
@@ -275,11 +265,7 @@ describe('useCommand Hooks (JSON WS)', () => {
         });
 
         it('should handle mixed success and empty results', async () => {
-            const queries = [
-                `MAP {value: 1}`,
-                `FROM [{x:1}] FILTER x > 10`,
-                `MAP {value: 2}`
-            ];
+            const queries = `OUTPUT MAP {value: 1}; OUTPUT FROM [{x:1}] FILTER x > 10; OUTPUT MAP {value: 2}`;
             const shapes = [
                 Shape.object({value: Shape.number()}),
                 Shape.object({value: Shape.number()}),
@@ -300,11 +286,7 @@ describe('useCommand Hooks (JSON WS)', () => {
         });
 
         it('should handle errors in one of multiple queries', async () => {
-            const queries = [
-                `MAP {valid: 1}`,
-                'INVALID SYNTAX',
-                `MAP {valid: 2}`
-            ];
+            const queries = `OUTPUT MAP {valid: 1}; INVALID SYNTAX; OUTPUT MAP {valid: 2}`;
             const shapes = [
                 Shape.object({valid: Shape.number()}),
                 Shape.object({valid: Shape.number()}),
@@ -331,7 +313,7 @@ describe('useCommand Hooks (JSON WS)', () => {
                 useCommandOne(`MAP {value: 100}`, undefined, shape1)
             , {wrapper});
 
-            const queries2 = [`MAP {x: 200}`, `MAP {y: 300}`];
+            const queries2 = `OUTPUT MAP {x: 200}; OUTPUT MAP {y: 300}`;
             const shapes2 = [
                 Shape.object({x: Shape.number()}),
                 Shape.object({y: Shape.number()})

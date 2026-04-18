@@ -45,20 +45,19 @@ impl ServerActor {
 	fn dispatch_execute(
 		&self,
 		identity: IdentityId,
-		statements: Vec<String>,
+		rql: String,
 		params: Params,
 		reply: Reply<ServerResponse>,
 		execute: impl Fn(&StandardEngine, IdentityId, &str, Params) -> ExecutionResult,
 	) {
-		let combined = statements.join("; ");
 		let t = self.clock.instant();
-		let result = self.retry.execute(self.engine.rng(), &combined, || {
-			execute(&self.engine, identity, &combined, params.clone())
-		});
+		let result = self
+			.retry
+			.execute(self.engine.rng(), &rql, || execute(&self.engine, identity, &rql, params.clone()));
 		if let Some(err) = result.error {
 			reply.send(ServerResponse::EngineError {
 				diagnostic: Box::new(err.diagnostic()),
-				statement: combined,
+				statement: rql,
 			});
 		} else {
 			reply.send(ServerResponse::Success {
@@ -80,33 +79,29 @@ impl Actor for ServerActor {
 		match msg {
 			ServerMessage::Query {
 				identity,
-				statements,
+				rql,
 				params,
 				reply,
 			} => {
-				self.dispatch_execute(identity, statements, params, reply, |e, id, s, p| {
-					e.query_as(id, s, p)
-				});
+				self.dispatch_execute(identity, rql, params, reply, |e, id, s, p| e.query_as(id, s, p));
 			}
 			ServerMessage::Command {
 				identity,
-				statements,
+				rql,
 				params,
 				reply,
 			} => {
-				self.dispatch_execute(identity, statements, params, reply, |e, id, s, p| {
+				self.dispatch_execute(identity, rql, params, reply, |e, id, s, p| {
 					e.command_as(id, s, p)
 				});
 			}
 			ServerMessage::Admin {
 				identity,
-				statements,
+				rql,
 				params,
 				reply,
 			} => {
-				self.dispatch_execute(identity, statements, params, reply, |e, id, s, p| {
-					e.admin_as(id, s, p)
-				});
+				self.dispatch_execute(identity, rql, params, reply, |e, id, s, p| e.admin_as(id, s, p));
 			}
 			ServerMessage::Subscribe {
 				identity,

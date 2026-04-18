@@ -85,7 +85,7 @@ pub async fn create_subscription(
 	let ctx = RequestContext {
 		identity,
 		operation: Operation::Subscribe,
-		statements: vec![statement],
+		rql: statement,
 		params: Params::None,
 		metadata,
 	};
