@@ -46,13 +46,13 @@ impl DefaultRenderer {
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
-			let statement = diagnostic.rql.as_deref().unwrap_or("");
+			let rql = diagnostic.rql.as_deref().unwrap_or("");
 
 			let _ = writeln!(output, "LOCATION");
 			let _ = writeln!(output, "  line {}, column {}", line, col);
 			let _ = writeln!(output);
 
-			let line_content = get_line(statement, line);
+			let line_content = get_line(rql, line);
 
 			let _ = writeln!(output, "RQL");
 			let _ = writeln!(output, "  {} │ {}", line, line_content);
@@ -136,13 +136,13 @@ impl DefaultRenderer {
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
-			let statement = diagnostic.rql.as_deref().unwrap_or("");
+			let rql = diagnostic.rql.as_deref().unwrap_or("");
 
 			let _ = writeln!(
 				output,
 				"{}  at {} (line {}, column {})",
 				indent,
-				if statement.is_empty() {
+				if rql.is_empty() {
 					"unknown".to_string()
 				} else {
 					format!("\"{}\"", fragment)
@@ -153,7 +153,7 @@ impl DefaultRenderer {
 			let _ = writeln!(output);
 
 			// Code visualization
-			let line_content = get_line(statement, line);
+			let line_content = get_line(rql, line);
 
 			let _ = writeln!(output, "{}  {} │ {}", indent, line, line_content);
 			let fragment_start = line_content.find(fragment.as_ref()).unwrap_or(col as usize);

@@ -214,11 +214,7 @@ export class WsClient {
     }
 
     /**
-     * Execute admin operation(s) with shapes for each statement for proper type inference.
-     * Admin operations support DDL (CREATE TABLE, ALTER, etc.), DML, and queries.
      * @param rql - RQL string to execute
-     * @param params - Parameters for the statements (use null or {} if no params)
-     * @param shapes - Shape for each statement's result
      */
     async admin<const S extends readonly ShapeNode[]>(
         rql: string,
@@ -238,10 +234,7 @@ export class WsClient {
     }
 
     /**
-     * Execute command(s) with shapes for each statement for proper type inference
      * @param rql - RQL string to execute
-     * @param params - Parameters for the commands (use null or {} if no params)
-     * @param shapes - Shape for each statement's result
      */
     async command<const S extends readonly ShapeNode[]>(
         rql: string,
@@ -262,10 +255,7 @@ export class WsClient {
 
 
     /**
-     * Execute query(s) with shapes for each statement for proper type inference
      * @param rql - RQL string to execute
-     * @param params - Parameters for the queries (use null or {} if no params)
-     * @param shapes - Shape for each statement's result
      */
     async query<const S extends readonly ShapeNode[]>(
         rql: string,
