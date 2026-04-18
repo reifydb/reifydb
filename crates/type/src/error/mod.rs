@@ -31,7 +31,7 @@ pub struct OperatorChainEntry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Diagnostic {
 	pub code: String,
-	pub statement: Option<String>,
+	pub rql: Option<String>,
 	pub message: String,
 	pub column: Option<DiagnosticColumn>,
 	pub fragment: Fragment,
@@ -53,7 +53,7 @@ impl Default for Diagnostic {
 	fn default() -> Self {
 		Self {
 			code: String::new(),
-			statement: None,
+			rql: None,
 			message: String::new(),
 			column: None,
 			fragment: Fragment::None,
@@ -73,15 +73,14 @@ impl Display for Diagnostic {
 }
 
 impl Diagnostic {
-	/// Set the statement for this diagnostic and all nested diagnostics
+	/// Set the RQL for this diagnostic and all nested diagnostics
 	/// recursively
-	pub fn with_statement(&mut self, statement: String) {
-		self.statement = Some(statement.clone());
+	pub fn with_rql(&mut self, rql: String) {
+		self.rql = Some(rql.clone());
 
-		// Recursively set statement for all nested diagnostics
 		if let Some(ref mut cause) = self.cause {
 			let mut updated_cause = mem::take(cause.as_mut());
-			updated_cause.with_statement(statement);
+			updated_cause.with_rql(rql);
 			**cause = updated_cause;
 		}
 	}

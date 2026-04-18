@@ -37,7 +37,7 @@ impl IntoDiagnostic for PolicyError {
 				target,
 			} => Diagnostic {
 				code: "POLICY_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Policy '{}' denied {} on {}", policy_name, operation, target),
 				column: None,
 				fragment: Fragment::None,
@@ -53,7 +53,7 @@ impl IntoDiagnostic for PolicyError {
 				target_type,
 			} => Diagnostic {
 				code: "POLICY_002".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("No {} policy defined for {} on {}", operation, operation, target),
 				column: None,
 				fragment: Fragment::None,
@@ -86,7 +86,7 @@ impl IntoDiagnostic for PolicyError {
 				session_type,
 			} => Diagnostic {
 				code: "SESSION_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("{} session denied for identity", session_type),
 				column: None,
 				fragment: Fragment::None,

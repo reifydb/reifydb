@@ -20,9 +20,9 @@ export interface ExecutionResult {
  */
 export interface Executor {
   /**
-   * Execute a statement and return the result
+   * Execute RQL and return the result
    */
-  execute(statement: string): Promise<ExecutionResult>;
+  execute(rql: string): Promise<ExecutionResult>;
 
   /**
    * Get list of tables (optional, used by .tables command)

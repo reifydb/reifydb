@@ -33,7 +33,7 @@ impl CatalogStore {
 		let properties_json = to_string(&properties).map_err(|e| {
 			Error(Box::new(Diagnostic {
 				code: "CT_020".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("failed to serialize authentication properties: {}", e),
 				fragment: Fragment::None,
 				label: Some("serialization failed".to_string()),

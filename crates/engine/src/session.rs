@@ -284,7 +284,7 @@ mod retry_tests {
 			frames: vec![],
 			error: Some(Error(Box::new(Diagnostic {
 				code: code.to_string(),
-				statement: None,
+				rql: None,
 				message: format!("{} test", code),
 				column: None,
 				fragment: Fragment::None,

@@ -141,11 +141,11 @@ impl From<GrpcError> for Status {
 				ExecuteError::Disconnected => Status::internal(err.to_string()),
 				ExecuteError::Engine {
 					diagnostic,
-					statement,
+					rql,
 				} => {
 					let mut diag = (**diagnostic).clone();
-					if diag.statement.is_none() && !statement.is_empty() {
-						diag.with_statement(statement.clone());
+					if diag.rql.is_none() && !rql.is_empty() {
+						diag.with_rql(rql.clone());
 					}
 					let json = to_json(&diag).unwrap_or_else(|_| diagnostic.message.clone());
 					Status::invalid_argument(json)

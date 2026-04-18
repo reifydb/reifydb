@@ -63,15 +63,15 @@ struct QueryArgs {
 	/// Statement(s) as trailing arguments (no quotes needed)
 	/// Example: reifydb ws query FROM system.tables
 	#[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-	statement: Vec<String>,
+	rql: Vec<String>,
 }
 
 impl QueryArgs {
-	fn get_statements(&self) -> String {
+	fn get_rql(&self) -> String {
 		if let Some(ref stmt) = self.c {
 			stmt.clone()
 		} else {
-			self.statement.join(" ")
+			self.rql.join(" ")
 		}
 	}
 }
@@ -97,15 +97,15 @@ struct CommandArgs {
 	/// Statement(s) as trailing arguments (no quotes needed)
 	/// Example: reifydb ws command CREATE TABLE users { id: int4 }
 	#[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-	statement: Vec<String>,
+	rql: Vec<String>,
 }
 
 impl CommandArgs {
-	fn get_statements(&self) -> String {
+	fn get_rql(&self) -> String {
 		if let Some(ref stmt) = self.c {
 			stmt.clone()
 		} else {
-			self.statement.join(" ")
+			self.rql.join(" ")
 		}
 	}
 }
@@ -131,15 +131,15 @@ struct AdminArgs {
 	/// Statement(s) as trailing arguments (no quotes needed)
 	/// Example: reifydb ws admin CREATE TABLE users { id: int4 }
 	#[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-	statement: Vec<String>,
+	rql: Vec<String>,
 }
 
 impl AdminArgs {
-	fn get_statements(&self) -> String {
+	fn get_rql(&self) -> String {
 		if let Some(ref stmt) = self.c {
 			stmt.clone()
 		} else {
-			self.statement.join(" ")
+			self.rql.join(" ")
 		}
 	}
 }
@@ -171,16 +171,16 @@ async fn main() -> Result<()> {
 async fn handle_ws(ws_cmd: WsCommand) -> Result<()> {
 	match ws_cmd.action {
 		WsAction::Query(args) => {
-			let statements = args.get_statements();
-			ws::query::execute_query(&args.host, args.port, args.token, &statements).await
+			let rql = args.get_rql();
+			ws::query::execute_query(&args.host, args.port, args.token, &rql).await
 		}
 		WsAction::Admin(args) => {
-			let statements = args.get_statements();
-			ws::admin::execute_admin(&args.host, args.port, args.token, &statements).await
+			let rql = args.get_rql();
+			ws::admin::execute_admin(&args.host, args.port, args.token, &rql).await
 		}
 		WsAction::Command(args) => {
-			let statements = args.get_statements();
-			ws::command::execute_command(&args.host, args.port, args.token, &statements).await
+			let rql = args.get_rql();
+			ws::command::execute_command(&args.host, args.port, args.token, &rql).await
 		}
 		WsAction::Repl(args) => ws::repl::start_repl(&args.host, args.port, args.token).await,
 	}

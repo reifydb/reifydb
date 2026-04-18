@@ -71,7 +71,7 @@ impl ProcedureError {
 				cause.with_fragment(procedure.clone());
 				Error(Box::new(Diagnostic {
 					code: "PROCEDURE_003".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("Procedure {} execution failed", name),
 					column: None,
 					fragment: procedure,
@@ -104,7 +104,7 @@ impl IntoDiagnostic for ProcedureError {
 				let name = procedure.text().to_string();
 				Diagnostic {
 					code: "PROCEDURE_001".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"Procedure {} expects {} arguments, got {}",
 						name, expected, actual
@@ -132,7 +132,7 @@ impl IntoDiagnostic for ProcedureError {
 					expected.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(", ");
 				Diagnostic {
 					code: "PROCEDURE_002".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"Procedure {} argument {} has invalid type: expected one of [{}], got {:?}",
 						name,
@@ -156,7 +156,7 @@ impl IntoDiagnostic for ProcedureError {
 				let name = procedure.text().to_string();
 				Diagnostic {
 					code: "PROCEDURE_003".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("Procedure {} execution failed: {}", name, reason),
 					column: None,
 					fragment: procedure,

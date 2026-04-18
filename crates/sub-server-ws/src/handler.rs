@@ -668,11 +668,11 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 		} => Response::rejected(id, &code, &message).to_json(),
 		ExecuteError::Engine {
 			diagnostic,
-			statement,
+			rql,
 		} => {
 			let mut diag = (*diagnostic).clone();
-			if diag.statement.is_none() && !statement.is_empty() {
-				diag.statement = Some(statement);
+			if diag.rql.is_none() && !rql.is_empty() {
+				diag.rql = Some(rql);
 			}
 			Response::error(id, diag).to_json()
 		}

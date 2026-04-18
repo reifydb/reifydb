@@ -79,13 +79,13 @@ pub async fn create_subscription(
 	rql: &str,
 	metadata: RequestMetadata,
 ) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
-	let statement = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
-	debug!("Subscription statement: {}", statement);
+	let subscription_rql = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
+	debug!("Subscription rql: {}", subscription_rql);
 
 	let ctx = RequestContext {
 		identity,
 		operation: Operation::Subscribe,
-		rql: statement,
+		rql: subscription_rql,
 		params: Params::None,
 		metadata,
 	};

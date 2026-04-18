@@ -247,7 +247,7 @@ impl Response {
 			payload: ResponsePayload::Err(ErrResponse {
 				diagnostic: Diagnostic {
 					code: code.into(),
-					statement: None,
+					rql: None,
 					message: message.into(),
 					column: None,
 					fragment: Fragment::None,

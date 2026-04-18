@@ -203,7 +203,7 @@ impl IntoDiagnostic for RqlError {
 				let value = fragment.text().to_string();
 				Diagnostic {
 					code: "TAKE_001".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("TAKE operator requires non-negative value, got {}", value),
 					column: None,
 					fragment,
@@ -221,7 +221,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::MissingAggregateMapBlock { fragment } => Diagnostic {
 				code: "AGGREGATE_001".to_string(),
-				statement: None,
+				rql: None,
 				message: "AGGREGATE operator requires at least one aggregation expression".to_string(),
 				column: None,
 				fragment,
@@ -315,7 +315,7 @@ impl IntoDiagnostic for RqlError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message: message.to_string(),
 					column: None,
 					fragment,
@@ -436,7 +436,7 @@ impl IntoDiagnostic for RqlError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message: message.to_string(),
 					column: None,
 					fragment,
@@ -450,7 +450,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::WindowMissingSlideParameter { fragment } => Diagnostic {
 				code: "WINDOW_002".to_string(),
-				statement: None,
+				rql: None,
 				message: "Sliding windows must specify a slide parameter".to_string(),
 				column: None,
 				fragment,
@@ -467,7 +467,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::WindowSlideTooLarge { fragment, slide_value, window_value } => Diagnostic {
 				code: "WINDOW_003".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"Slide interval ({}) must be smaller than window interval ({}) for overlapping sliding windows",
 					slide_value, window_value
@@ -489,7 +489,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::WindowIncompatibleSlideType { fragment, window_type, slide_type } => Diagnostic {
 				code: "WINDOW_004".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Incompatible slide type {} with window type {}", slide_type, window_type),
 				column: None,
 				fragment,
@@ -509,7 +509,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::WindowTumblingWithSlide { fragment } => Diagnostic {
 				code: "WINDOW_005".to_string(),
-				statement: None,
+				rql: None,
 				message: "Tumbling windows should not specify a slide parameter".to_string(),
 				column: None,
 				fragment,
@@ -529,7 +529,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::WindowIncompatibleTypeSize { fragment, window_type, size_type } => Diagnostic {
 				code: "WINDOW_006".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"Incompatible window type {} and size type {} for window",
 					window_type, size_type
@@ -550,7 +550,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::WindowMissingTypeOrSize { fragment } => Diagnostic {
 				code: "WINDOW_007".to_string(),
-				statement: None,
+				rql: None,
 				message: "Window type and size must be specified for window".to_string(),
 				column: None,
 				fragment,
@@ -571,7 +571,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::UpdateMissingAssignmentsBlock { fragment } => Diagnostic {
 				code: "UPDATE_001".to_string(),
-				statement: None,
+				rql: None,
 				message: "UPDATE requires an assignments block".to_string(),
 				column: None,
 				fragment,
@@ -591,7 +591,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::UpdateEmptyAssignmentsBlock { fragment } => Diagnostic {
 				code: "UPDATE_002".to_string(),
-				statement: None,
+				rql: None,
 				message: "UPDATE assignments block cannot be empty".to_string(),
 				column: None,
 				fragment,
@@ -610,7 +610,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::UpdateMissingFilterClause { fragment } => Diagnostic {
 				code: "UPDATE_003".to_string(),
-				statement: None,
+				rql: None,
 				message: "UPDATE requires a FILTER clause".to_string(),
 				column: None,
 				fragment,
@@ -630,7 +630,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::DeleteMissingTarget { fragment } => Diagnostic {
 				code: "DELETE_001".to_string(),
-				statement: None,
+				rql: None,
 				message: "DELETE requires a target table".to_string(),
 				column: None,
 				fragment,
@@ -647,7 +647,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::DeleteMissingFilterClause { fragment } => Diagnostic {
 				code: "DELETE_002".to_string(),
-				statement: None,
+				rql: None,
 				message: "DELETE requires a FILTER clause".to_string(),
 				column: None,
 				fragment,
@@ -667,7 +667,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::InsertMissingTarget { fragment } => Diagnostic {
 				code: "INSERT_001".to_string(),
-				statement: None,
+				rql: None,
 				message: "INSERT requires a target table".to_string(),
 				column: None,
 				fragment,
@@ -687,7 +687,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::InsertMissingSource { fragment } => Diagnostic {
 				code: "INSERT_002".to_string(),
-				statement: None,
+				rql: None,
 				message: "INSERT requires a data source".to_string(),
 				column: None,
 				fragment,
@@ -706,7 +706,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::InsertMixedRowTypes { fragment } => Diagnostic {
 				code: "INSERT_003".to_string(),
-				statement: None,
+				rql: None,
 				message: "Cannot mix keyed {key: value} and positional (value, ...) rows in the same INSERT"
 					.to_string(),
 				column: None,
@@ -724,7 +724,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::InsertPositionalWrongLength { fragment, expected, actual, column_names } => Diagnostic {
 				code: "INSERT_004".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"Positional INSERT expects {} values (one per column), got {}",
 					expected, actual
@@ -746,7 +746,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::ColumnNotFound { fragment } => Diagnostic {
 				code: "QUERY_001".to_string(),
-				statement: None,
+				rql: None,
 				message: "column not found".to_string(),
 				fragment,
 				label: Some("this column does not exist in the current context".to_string()),
@@ -759,7 +759,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::ExtendDuplicateColumn { column_name } => Diagnostic {
 				code: "EXTEND_002".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Cannot extend with duplicate column name '{}'", column_name),
 				fragment: Fragment::None,
 				label: Some("column already exists in the current frame".to_string()),
@@ -776,7 +776,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::UnsupportedSourceQualification { fragment, name } => Diagnostic {
 				code: "QUERY_002".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Source qualification '{}' is not supported in RQL expressions", name),
 				fragment,
 				label: Some(
@@ -799,7 +799,7 @@ impl IntoDiagnostic for RqlError {
 
 			RqlError::JoinColumnAliasError { fragment, message } => Diagnostic {
 				code: "QUERY_003".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Join column alias error: {}", message),
 				fragment,
 				label: Some("invalid column qualification in using clause".to_string()),
@@ -816,7 +816,7 @@ impl IntoDiagnostic for RqlError {
 			},
 			RqlError::BreakOutsideLoop => Diagnostic {
 				code: "RUNTIME_004".to_string(),
-				statement: None,
+				rql: None,
 				message: "BREAK can only be used inside a loop".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -828,7 +828,7 @@ impl IntoDiagnostic for RqlError {
 			},
 			RqlError::ContinueOutsideLoop => Diagnostic {
 				code: "RUNTIME_005".to_string(),
-				statement: None,
+				rql: None,
 				message: "CONTINUE can only be used inside a loop".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -840,7 +840,7 @@ impl IntoDiagnostic for RqlError {
 			},
 			RqlError::MissingSemicolon { fragment, count } => Diagnostic {
 				code: "SYNTAX_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"found {} statements where only one was expected — are you missing semicolons?",
 					count,
@@ -858,7 +858,7 @@ impl IntoDiagnostic for RqlError {
 			},
 			RqlError::InternalFunctionError { name, fragment, details } => Diagnostic {
 				code: "FUNCTION_008".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Internal error in function {}: {}", name, details),
 				column: None,
 				fragment,
@@ -981,7 +981,7 @@ impl From<IdentifierError> for Error {
 				}
 				Error(Box::new(Diagnostic {
 					code: "REMOTE_001".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"Remote namespace '{}': source '{}' is on remote instance at {}",
 						namespace, name, address

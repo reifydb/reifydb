@@ -61,7 +61,7 @@ impl IntoDiagnostic for AstError {
 				message,
 			} => Diagnostic {
 				code: "AST_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("tokenizer error: {}", message),
 				column: None,
 				fragment: Fragment::None,
@@ -73,7 +73,7 @@ impl IntoDiagnostic for AstError {
 			},
 			AstError::UnexpectedEof => Diagnostic {
 				code: "AST_002".to_string(),
-				statement: None,
+				rql: None,
 				message: "Unexpected end of file".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -90,7 +90,7 @@ impl IntoDiagnostic for AstError {
 				let label = Some(format!("found `{}`", value));
 				Diagnostic {
 					code: "AST_003".to_string(),
-					statement: None,
+					rql: None,
 					message: "unexpected token: expected `identifier`".to_string(),
 					column: None,
 					fragment,
@@ -110,7 +110,7 @@ impl IntoDiagnostic for AstError {
 				let label = Some(format!("found `{}`", value));
 				Diagnostic {
 					code: "AST_005".to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment,
@@ -129,7 +129,7 @@ impl IntoDiagnostic for AstError {
 				let label = Some(format!("found `{}`", value));
 				Diagnostic {
 					code: "AST_006".to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment,
@@ -146,7 +146,7 @@ impl IntoDiagnostic for AstError {
 				let keyword = fragment.text().to_string();
 				Diagnostic {
 					code: "AST_007".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("multiple expressions in `{}` require curly braces", &keyword),
 					fragment,
 					label: Some("missing `{ … }` around expressions".to_string()),
@@ -166,7 +166,7 @@ impl IntoDiagnostic for AstError {
 				let type_name = fragment.text().to_string();
 				Diagnostic {
 					code: "AST_008".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("cannot find type `{}`", &type_name),
 					fragment,
 					label: Some("type not found".to_string()),
@@ -182,7 +182,7 @@ impl IntoDiagnostic for AstError {
 				fragment,
 			} => Diagnostic {
 				code: "AST_009".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("unsupported query syntax: {}", node_type),
 				fragment,
 				label: Some("not supported in this context".to_string()),
@@ -197,7 +197,7 @@ impl IntoDiagnostic for AstError {
 				fragment,
 			} => Diagnostic {
 				code: "AST_010".to_string(),
-				statement: None,
+				rql: None,
 				message: "maximum nesting depth exceeded".to_string(),
 				fragment,
 				label: Some("expression is too deeply nested".to_string()),

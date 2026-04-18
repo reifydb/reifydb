@@ -69,7 +69,7 @@ impl FunctionError {
 				cause.with_fragment(function.clone());
 				Error(Box::new(Diagnostic {
 					code: "FUNCTION_007".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("Function {} execution failed", name),
 					column: None,
 					fragment: function,
@@ -102,7 +102,7 @@ impl IntoDiagnostic for FunctionError {
 				let name = function.text().to_string();
 				Diagnostic {
 					code: "FUNCTION_002".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"Function {} expects {} arguments, got {}",
 						name, expected, actual
@@ -130,7 +130,7 @@ impl IntoDiagnostic for FunctionError {
 					expected.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(", ");
 				Diagnostic {
 					code: "FUNCTION_004".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"Function {} argument {} has invalid type: expected one of [{}], got {:?}",
 						name,
@@ -154,7 +154,7 @@ impl IntoDiagnostic for FunctionError {
 				let name = function.text().to_string();
 				Diagnostic {
 					code: "FUNCTION_007".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("Function {} execution failed: {}", name, reason),
 					column: None,
 					fragment: function,
@@ -171,7 +171,7 @@ impl IntoDiagnostic for FunctionError {
 				let name = function.text().to_string();
 				Diagnostic {
 					code: "FUNCTION_009".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("Generator function '{}' not found", name),
 					column: None,
 					fragment: function,

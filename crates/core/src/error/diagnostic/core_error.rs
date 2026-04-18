@@ -17,7 +17,7 @@ impl IntoDiagnostic for CoreError {
 
 			CoreError::IndexVariableLengthNotSupported => Diagnostic {
 				code: "CA_009".to_string(),
-				statement: None,
+				rql: None,
 				message: "variable-length types (UTF8, BLOB) are not supported in indexes".to_string(),
 				fragment: Fragment::None,
 				label: Some("unsupported type for indexing".to_string()),
@@ -33,7 +33,7 @@ impl IntoDiagnostic for CoreError {
 				directions_len,
 			} => Diagnostic {
 				code: "CA_010".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"mismatch between number of types ({}) and directions ({})",
 					types_len, directions_len
@@ -51,7 +51,7 @@ impl IntoDiagnostic for CoreError {
 				message,
 			} => Diagnostic {
 				code: "ENG_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Frame processing error: {}", message),
 				column: None,
 				fragment: Fragment::None,
@@ -66,7 +66,7 @@ impl IntoDiagnostic for CoreError {
 				message,
 			} => Diagnostic {
 				code: "FLOW_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Flow processing error: {}", message),
 				column: None,
 				fragment: Fragment::None,
@@ -81,7 +81,7 @@ impl IntoDiagnostic for CoreError {
 				key,
 			} => Diagnostic {
 				code: "FLOW_002".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"FlowTransaction keyspace overlap: key {} was already written by another FlowTransaction",
 					key
@@ -101,7 +101,7 @@ impl IntoDiagnostic for CoreError {
 				flow_id,
 			} => Diagnostic {
 				code: "FLOW_003".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Flow {} is already registered", flow_id),
 				column: None,
 				fragment: Fragment::None,
@@ -120,7 +120,7 @@ impl IntoDiagnostic for CoreError {
 				byte_count,
 			} => Diagnostic {
 				code: "FLOW_004".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"Flow {} version data is corrupted: expected 8 bytes, found {} bytes",
 					flow_id, byte_count
@@ -142,7 +142,7 @@ impl IntoDiagnostic for CoreError {
 				timeout_secs,
 			} => Diagnostic {
 				code: "FLOW_005".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"Timeout waiting for flow {} backfill to complete after {} seconds",
 					flow_id, timeout_secs
@@ -161,7 +161,7 @@ impl IntoDiagnostic for CoreError {
 
 			CoreError::FlowDispatcherUnavailable => Diagnostic {
 				code: "FLOW_006".to_string(),
-				statement: None,
+				rql: None,
 				message: "Flow dispatcher is unavailable (channel closed)".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -187,7 +187,7 @@ impl IntoDiagnostic for CoreError {
 				};
 				Diagnostic {
 					code: "INDEX_001".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"Primary key violation: duplicate key in table '{}' for columns {}",
 						table_name, columns_str
@@ -218,7 +218,7 @@ impl IntoDiagnostic for CoreError {
 				};
 				Diagnostic {
 					code: "INDEX_002".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"Unique index violation: duplicate key in index '{}' on table '{}' for columns {}",
 						index_name, table_name, columns_str
@@ -275,7 +275,7 @@ impl IntoDiagnostic for CoreError {
 				);
 				Diagnostic {
 					code: "INTERNAL_ERROR".to_string(),
-					statement: None,
+					rql: None,
 					message: detailed_message,
 					column: None,
 					fragment: Fragment::None,
@@ -300,7 +300,7 @@ impl IntoDiagnostic for CoreError {
 				component,
 			} => Diagnostic {
 				code: "SHUTDOWN".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("{} is shutting down", component),
 				column: None,
 				fragment: Fragment::None,
@@ -324,7 +324,7 @@ impl IntoDiagnostic for CoreError {
 				let max = value_max(value_type.clone());
 				Diagnostic {
 					code: "SEQUENCE_001".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("sequence generator of type `{}` is exhausted", value_type),
 					fragment: Fragment::None,
 					label: Some("no more values can be generated".to_string()),
@@ -342,7 +342,7 @@ impl IntoDiagnostic for CoreError {
 				let col_name = fragment.text().to_string();
 				Diagnostic {
 					code: "SEQUENCE_002".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"cannot alter sequence for column `{}` which does not have AUTO INCREMENT",
 						col_name
@@ -363,7 +363,7 @@ impl IntoDiagnostic for CoreError {
 				reason,
 			} => Diagnostic {
 				code: "SUB_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("{} subsystem initialization failed: {}", subsystem, reason),
 				column: None,
 				fragment: Fragment::None,
@@ -378,7 +378,7 @@ impl IntoDiagnostic for CoreError {
 				feature,
 			} => Diagnostic {
 				code: "SUB_002".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Required feature '{}' is not enabled", feature),
 				column: None,
 				fragment: Fragment::None,
@@ -394,7 +394,7 @@ impl IntoDiagnostic for CoreError {
 				reason,
 			} => Diagnostic {
 				code: "SUB_003".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Failed to bind to {}: {}", addr, reason),
 				column: None,
 				fragment: Fragment::None,
@@ -411,7 +411,7 @@ impl IntoDiagnostic for CoreError {
 				reason,
 			} => Diagnostic {
 				code: "SUB_004".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("{} subsystem shutdown failed: {}", subsystem, reason),
 				column: None,
 				fragment: Fragment::None,
@@ -426,7 +426,7 @@ impl IntoDiagnostic for CoreError {
 				reason,
 			} => Diagnostic {
 				code: "SUB_005".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Failed to get local address: {}", reason),
 				column: None,
 				fragment: Fragment::None,
@@ -441,7 +441,7 @@ impl IntoDiagnostic for CoreError {
 				reason,
 			} => Diagnostic {
 				code: "SUB_006".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Socket configuration failed: {}", reason),
 				column: None,
 				fragment: Fragment::None,

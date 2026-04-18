@@ -21,7 +21,7 @@ function render_flat(d: Diagnostic): string {
 
   if (d.fragment?.line != null && d.fragment.column != null) {
     const { text: fragment, line, column } = d.fragment;
-    const statement = d.statement ?? '';
+    const statement = d.rql ?? '';
 
     lines.push('LOCATION');
     lines.push(`  line ${line}, column ${column}`);
@@ -72,7 +72,7 @@ function render_nested(d: Diagnostic, depth: number): string {
 
   if (d.fragment?.line != null && d.fragment.column != null) {
     const { text: fragment, line, column } = d.fragment;
-    const statement = d.statement ?? '';
+    const statement = d.rql ?? '';
 
     const at_text = statement ? `"${fragment}"` : 'unknown';
     lines.push(`${indent}  at ${at_text} (line ${line}, column ${column})`);

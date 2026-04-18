@@ -79,7 +79,7 @@ fn compile_inline_list(list: AstList<'_>) -> Result<InlineDataNode> {
 			_ => {
 				return err!(Diagnostic {
 					code: "E0001".to_string(),
-					statement: None,
+					rql: None,
 					message: "Expected inline data row".to_string(),
 					column: None,
 					fragment: Fragment::None,

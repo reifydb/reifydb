@@ -25,10 +25,9 @@ export class WsExecutor implements Executor {
     this.client = client;
   }
 
-  async execute(statement: string): Promise<ExecutionResult> {
-    const trimmed = statement.trim();
+  async execute(rql: string): Promise<ExecutionResult> {
+    const trimmed = rql.trim();
 
-    // Remove trailing semicolon for execution
     const query = trimmed.endsWith(';')
       ? trimmed.slice(0, -1).trim()
       : trimmed;

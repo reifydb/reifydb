@@ -53,7 +53,7 @@ pub mod diagnostic {
 	pub fn storage_error(msg: impl Into<String>) -> Diagnostic {
 		Diagnostic {
 			code: "CDC_001".to_string(),
-			statement: None,
+			rql: None,
 			message: format!("CDC storage error: {}", msg.into()),
 			column: None,
 			fragment: Fragment::None,
@@ -69,7 +69,7 @@ pub mod diagnostic {
 	pub fn not_found(version: u64) -> Diagnostic {
 		Diagnostic {
 			code: "CDC_002".to_string(),
-			statement: None,
+			rql: None,
 			message: format!("CDC entry not found for version {}", version),
 			column: None,
 			fragment: Fragment::None,
@@ -86,7 +86,7 @@ pub mod diagnostic {
 	pub fn codec_error(msg: impl Into<String>) -> Diagnostic {
 		Diagnostic {
 			code: "CDC_003".to_string(),
-			statement: None,
+			rql: None,
 			message: format!("CDC codec error: {}", msg.into()),
 			column: None,
 			fragment: Fragment::None,

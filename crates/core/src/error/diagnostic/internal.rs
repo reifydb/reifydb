@@ -47,7 +47,7 @@ pub fn internal_with_context(
 
 	Diagnostic {
 		code: "INTERNAL_ERROR".to_string(),
-		statement: None,
+		rql: None,
 		message: detailed_message,
 		column: None,
 		fragment: Fragment::None,
@@ -77,7 +77,7 @@ pub fn shutdown(component: impl Into<String>) -> Diagnostic {
 
 	Diagnostic {
 		code: "SHUTDOWN".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("{} is shutting down", component),
 		column: None,
 		fragment: Fragment::None,

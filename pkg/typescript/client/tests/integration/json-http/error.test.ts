@@ -21,7 +21,7 @@ describe('Error', () => {
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
-                statement: "MAP {result: cast(129, int1)};",
+                rql: "MAP {result: cast(129, int1)};",
                 fragment: {
                     Statement: expect.objectContaining({
                         text: "129",
@@ -46,7 +46,7 @@ describe('Error', () => {
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
-                statement: "MAP {result: cast(129, int1)};",
+                rql: "MAP {result: cast(129, int1)};",
                 fragment: {
                     Statement: expect.objectContaining({
                         text: "129",
@@ -72,7 +72,7 @@ describe('Error', () => {
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
-                statement: "MAP {result: cast(129, int1)};",
+                rql: "MAP {result: cast(129, int1)};",
                 fragment: {
                     Statement: expect.objectContaining({
                         text: "129",

@@ -163,13 +163,13 @@ impl<'a> Vm<'a> {
 }
 
 /// Convert a `Diagnostic` into a single-row `Columns` with fields:
-/// `code`, `message`, `statement`, `label`, `help`.
+/// `code`, `message`, `rql`, `label`, `help`.
 fn diagnostic_to_columns(diag: &Diagnostic) -> Columns {
 	let code_col = Column::new("code", ColumnData::utf8([diag.code.as_str()]));
 	let message_col = Column::new("message", ColumnData::utf8([diag.message.as_str()]));
-	let statement_col = Column::new(
-		"statement",
-		match &diag.statement {
+	let rql_col = Column::new(
+		"rql",
+		match &diag.rql {
 			Some(s) => ColumnData::utf8([s.as_str()]),
 			None => ColumnData::none_typed(Type::Utf8, 1),
 		},
@@ -188,5 +188,5 @@ fn diagnostic_to_columns(diag: &Diagnostic) -> Columns {
 			None => ColumnData::none_typed(Type::Utf8, 1),
 		},
 	);
-	Columns::new(vec![code_col, message_col, statement_col, label_col, help_col])
+	Columns::new(vec![code_col, message_col, rql_col, label_col, help_col])
 }

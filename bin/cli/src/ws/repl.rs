@@ -193,11 +193,10 @@ fn handle_dot_command(
 	}
 }
 
-async fn execute_query(client: &mut WsClient, statement: &str, display_mode: DisplayMode) {
-	// Remove trailing semicolon for execution
-	let statement = statement.trim_end_matches(';').trim();
+async fn execute_query(client: &mut WsClient, rql: &str, display_mode: DisplayMode) {
+	let rql = rql.trim_end_matches(';').trim();
 
-	match client.query(statement, None).await {
+	match client.query(rql, None).await {
 		Ok(result) => {
 			print_query_result(&result, display_mode);
 		}

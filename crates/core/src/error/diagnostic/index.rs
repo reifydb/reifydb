@@ -12,7 +12,7 @@ pub fn primary_key_violation(fragment: Fragment, table_name: String, key_columns
 
 	Diagnostic {
 		code: "INDEX_001".to_string(),
-		statement: None,
+		rql: None,
 		message: format!(
 			"Primary key violation: duplicate key in table '{}' for columns {}",
 			table_name, columns_str
@@ -44,7 +44,7 @@ pub fn unique_index_violation(
 
 	Diagnostic {
 		code: "INDEX_002".to_string(),
-		statement: None,
+		rql: None,
 		message: format!(
 			"Unique index violation: duplicate key in index '{}' on table '{}' for columns {}",
 			index_name, table_name, columns_str

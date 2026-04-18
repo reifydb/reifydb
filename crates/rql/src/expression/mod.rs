@@ -1847,7 +1847,7 @@ impl ExpressionCompiler {
 					_ => {
 						err!(Diagnostic {
 							code: "EXPR_001".to_string(),
-							statement: None,
+							rql: None,
 							message: "Invalid alias expression".to_string(),
 							column: None,
 							fragment: Fragment::None,

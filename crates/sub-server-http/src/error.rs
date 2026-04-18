@@ -89,14 +89,13 @@ impl IntoResponse for AppError {
 		// Handle engine errors specially - they have full diagnostic info
 		if let AppError::Execute(ExecuteError::Engine {
 			diagnostic,
-			statement,
+			rql,
 		}) = self
 		{
 			debug!("Engine error: {}", diagnostic.message);
-			// Clone the diagnostic and attach the statement
 			let mut diag = (*diagnostic).clone();
-			if diag.statement.is_none() && !statement.is_empty() {
-				diag.with_statement(statement);
+			if diag.rql.is_none() && !rql.is_empty() {
+				diag.with_rql(rql);
 			}
 			let body = Json(DiagnosticResponse {
 				diagnostic: diag,

@@ -70,10 +70,10 @@ mod native {
 			} => Ok((frames, duration, metrics)),
 			ServerResponse::EngineError {
 				diagnostic,
-				statement,
+				rql,
 			} => Err(ExecuteError::Engine {
 				diagnostic: Arc::from(diagnostic),
-				statement,
+				rql,
 			}),
 		}?;
 
@@ -138,11 +138,11 @@ mod native {
 			} => (frames, duration, metrics),
 			ServerSubscribeResponse::EngineError {
 				diagnostic,
-				statement,
+				rql,
 			} => {
 				return Err(ExecuteError::Engine {
 					diagnostic: Arc::from(diagnostic),
-					statement,
+					rql,
 				});
 			}
 		};

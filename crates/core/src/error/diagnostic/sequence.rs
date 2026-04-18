@@ -10,7 +10,7 @@ use reifydb_type::{
 pub fn sequence_exhausted(value: Type) -> Diagnostic {
 	Diagnostic {
 		code: "SEQUENCE_001".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("sequence generator of type `{}` is exhausted", value),
 		fragment: Fragment::None,
 		label: Some("no more values can be generated".to_string()),
@@ -25,7 +25,7 @@ pub fn sequence_exhausted(value: Type) -> Diagnostic {
 pub fn can_not_alter_not_auto_increment(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "SEQUENCE_002".to_string(),
-		statement: None,
+		rql: None,
 		message: format!(
 			"cannot alter sequence for column `{}` which does not have AUTO INCREMENT",
 			fragment.text()

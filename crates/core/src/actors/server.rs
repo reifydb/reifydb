@@ -83,7 +83,7 @@ pub enum ServerResponse {
 	/// Engine returned an error.
 	EngineError {
 		diagnostic: Box<Diagnostic>,
-		statement: String,
+		rql: String,
 	},
 }
 
@@ -128,7 +128,7 @@ pub enum ServerSubscribeResponse {
 	/// Engine returned an error.
 	EngineError {
 		diagnostic: Box<Diagnostic>,
-		statement: String,
+		rql: String,
 	},
 }
 

@@ -57,7 +57,7 @@ impl ServerActor {
 		if let Some(err) = result.error {
 			reply.send(ServerResponse::EngineError {
 				diagnostic: Box::new(err.diagnostic()),
-				statement: rql,
+				rql,
 			});
 		} else {
 			reply.send(ServerResponse::Success {
@@ -113,7 +113,7 @@ impl Actor for ServerActor {
 				if let Some(err) = result.error {
 					reply.send(ServerSubscribeResponse::EngineError {
 						diagnostic: Box::new(err.diagnostic()),
-						statement: rql,
+						rql,
 					});
 				} else {
 					reply.send(ServerSubscribeResponse::Subscribed {

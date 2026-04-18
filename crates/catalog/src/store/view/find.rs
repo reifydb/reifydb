@@ -81,7 +81,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 		_ => {
 			return Err(Error(Box::new(Diagnostic {
 				code: "CA_026".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("unknown view kind: {}", kind_raw),
 				fragment: Fragment::None,
 				label: Some("invalid view kind value".to_string()),

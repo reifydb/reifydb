@@ -6,7 +6,7 @@ use reifydb_type::{error::Diagnostic, fragment::Fragment};
 pub fn column_not_found(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "QUERY_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "column not found".to_string(),
 		fragment,
 		label: Some("this column does not exist in the current context".to_string()),
@@ -21,7 +21,7 @@ pub fn column_not_found(fragment: Fragment) -> Diagnostic {
 pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "EXTEND_002".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Cannot extend with duplicate column name '{}'", column_name),
 		fragment: Fragment::None,
 		label: Some("column already exists in the current frame".to_string()),
@@ -40,7 +40,7 @@ pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
 pub fn unsupported_source_qualification(fragment: Fragment, name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "QUERY_002".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Source qualification '{}' is not supported in RQL expressions", name),
 		fragment,
 		label: Some("source qualification is only allowed for join aliases in ON clauses".to_string()),
@@ -62,7 +62,7 @@ pub fn system_column_read_only(fragment: Fragment) -> Diagnostic {
 	let name = fragment.text();
 	Diagnostic {
 		code: "QUERY_004".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("system column '{}' is read-only", name),
 		fragment,
 		label: Some("system columns are managed automatically and cannot be set".to_string()),
@@ -77,7 +77,7 @@ pub fn system_column_read_only(fragment: Fragment) -> Diagnostic {
 pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic {
 	Diagnostic {
 		code: "QUERY_003".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Join column alias error: {}", message),
 		fragment,
 		label: Some("invalid column qualification in using clause".to_string()),

@@ -14,8 +14,8 @@ export class WasmExecutor implements Executor {
     this.db = db;
   }
 
-  async execute(statement: string): Promise<ExecutionResult> {
-    const trimmed = statement.trim();
+  async execute(rql: string): Promise<ExecutionResult> {
+    const trimmed = rql.trim();
     const query = trimmed.endsWith(';') ? trimmed.slice(0, -1).trim() : trimmed;
 
     if (!query) {
@@ -39,7 +39,7 @@ export class WasmExecutor implements Executor {
         diagnostic = {
           code: String(e.code),
           message: String(e.message ?? ''),
-          statement: e.statement as string | undefined,
+          rql: e.rql as string | undefined,
           fragment: e.fragment as Diagnostic['fragment'],
           label: e.label as string | undefined,
           help: e.help as string | undefined,

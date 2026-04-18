@@ -55,7 +55,7 @@ pub mod diagnostic {
 	pub fn out_of_order_version(version: CommitVersion, last_applied: CommitVersion) -> Diagnostic {
 		Diagnostic {
 			code: "REPL_001".to_string(),
-			statement: None,
+			rql: None,
 			message: format!(
 				"out-of-order replication version: got {:?}, last applied was {:?}",
 				version, last_applied

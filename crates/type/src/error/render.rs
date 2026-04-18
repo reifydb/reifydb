@@ -46,7 +46,7 @@ impl DefaultRenderer {
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
-			let statement = diagnostic.statement.as_deref().unwrap_or("");
+			let statement = diagnostic.rql.as_deref().unwrap_or("");
 
 			let _ = writeln!(output, "LOCATION");
 			let _ = writeln!(output, "  line {}, column {}", line, col);
@@ -136,7 +136,7 @@ impl DefaultRenderer {
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
-			let statement = diagnostic.statement.as_deref().unwrap_or("");
+			let statement = diagnostic.rql.as_deref().unwrap_or("");
 
 			let _ = writeln!(
 				output,

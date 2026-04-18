@@ -42,7 +42,7 @@ impl IntoDiagnostic for TransactionError {
 		match self {
 			TransactionError::Conflict => Diagnostic {
 				code: "TXN_001".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction conflict detected - another transaction modified the same data".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -55,7 +55,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::RolledBack => Diagnostic {
 				code: "TXN_002".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction rolled back and cannot be committed".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -68,7 +68,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::TooLarge => Diagnostic {
 				code: "TXN_003".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction contains too many writes and exceeds size limits".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -81,7 +81,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::TooOld => Diagnostic {
 				code: "TXN_004".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction open too long - the conflict history for this read snapshot has been evicted".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -94,7 +94,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::AlreadyCommitted => Diagnostic {
 				code: "TXN_008".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction was already committed".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -107,7 +107,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::AlreadyRolledBack => Diagnostic {
 				code: "TXN_009".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction was already rolled back".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -120,7 +120,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::KeyOutOfScope { key } => Diagnostic {
 				code: "TXN_010".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Key '{}' is not in the transaction's declared key scope", key),
 				column: None,
 				fragment: Fragment::None,
@@ -136,7 +136,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::Poisoned { cause } => Diagnostic {
 				code: "TXN_011".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction was poisoned by a prior error".to_string(),
 				column: None,
 				fragment: Fragment::None,

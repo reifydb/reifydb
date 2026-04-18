@@ -145,7 +145,7 @@ impl StandardEngine {
 		let mut txn = match self.begin_admin(identity) {
 			Ok(t) => t,
 			Err(mut e) => {
-				e.with_statement(rql.to_string());
+				e.with_rql(rql.to_string());
 				return ExecutionResult {
 					frames: vec![],
 					error: Some(e),
@@ -163,11 +163,11 @@ impl StandardEngine {
 		if outcome.is_ok()
 			&& let Err(mut e) = txn.commit()
 		{
-			e.with_statement(rql.to_string());
+			e.with_rql(rql.to_string());
 			outcome.error = Some(e);
 		}
 		if let Some(ref mut e) = outcome.error {
-			e.with_statement(rql.to_string());
+			e.with_rql(rql.to_string());
 		}
 		outcome
 	}
@@ -184,7 +184,7 @@ impl StandardEngine {
 		let mut txn = match self.begin_command(identity) {
 			Ok(t) => t,
 			Err(mut e) => {
-				e.with_statement(rql.to_string());
+				e.with_rql(rql.to_string());
 				return ExecutionResult {
 					frames: vec![],
 					error: Some(e),
@@ -202,11 +202,11 @@ impl StandardEngine {
 		if outcome.is_ok()
 			&& let Err(mut e) = txn.commit()
 		{
-			e.with_statement(rql.to_string());
+			e.with_rql(rql.to_string());
 			outcome.error = Some(e);
 		}
 		if let Some(ref mut e) = outcome.error {
-			e.with_statement(rql.to_string());
+			e.with_rql(rql.to_string());
 		}
 		outcome
 	}
@@ -216,7 +216,7 @@ impl StandardEngine {
 		let mut txn = match self.begin_query(identity) {
 			Ok(t) => t,
 			Err(mut e) => {
-				e.with_statement(rql.to_string());
+				e.with_rql(rql.to_string());
 				return ExecutionResult {
 					frames: vec![],
 					error: Some(e),
@@ -232,7 +232,7 @@ impl StandardEngine {
 			},
 		);
 		if let Some(ref mut e) = outcome.error {
-			e.with_statement(rql.to_string());
+			e.with_rql(rql.to_string());
 		}
 		outcome
 	}
@@ -242,7 +242,7 @@ impl StandardEngine {
 		let mut txn = match self.begin_query(identity) {
 			Ok(t) => t,
 			Err(mut e) => {
-				e.with_statement(rql.to_string());
+				e.with_rql(rql.to_string());
 				return ExecutionResult {
 					frames: vec![],
 					error: Some(e),
@@ -258,7 +258,7 @@ impl StandardEngine {
 			},
 		);
 		if let Some(ref mut e) = outcome.error {
-			e.with_statement(rql.to_string());
+			e.with_rql(rql.to_string());
 		}
 		outcome
 	}

@@ -44,7 +44,7 @@ function normalize_fragment(raw: unknown): Diagnostic['fragment'] {
 function to_diagnostic(error: ReifyError): Diagnostic {
   return {
     code: error.code,
-    statement: error.statement,
+    rql: error.rql,
     message: error.message.replace(/^\[.*?\]\s*/, ''),
     fragment: normalize_fragment(error.fragment),
     label: error.label,
@@ -62,8 +62,8 @@ export class WsExecutor implements Executor {
     this.client = client;
   }
 
-  async execute(statement: string): Promise<ExecutionResult> {
-    const trimmed = statement.trim();
+  async execute(rql: string): Promise<ExecutionResult> {
+    const trimmed = rql.trim();
     const query = trimmed.endsWith(';') ? trimmed.slice(0, -1).trim() : trimmed;
 
     if (!query) {

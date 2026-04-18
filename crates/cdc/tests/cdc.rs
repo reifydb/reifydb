@@ -714,7 +714,7 @@ impl CdcConsume for TestConsumer {
 		if self.should_fail.load(Ordering::SeqCst) {
 			(reply)(Err(Error(Box::new(Diagnostic {
 				code: "TEST_ERROR".to_string(),
-				statement: None,
+				rql: None,
 				message: "Test failure".to_string(),
 				column: None,
 				fragment: Fragment::None,

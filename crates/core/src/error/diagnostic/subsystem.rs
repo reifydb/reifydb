@@ -9,7 +9,7 @@ use reifydb_type::{error::Diagnostic, fragment::Fragment};
 pub fn init_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_001".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("{} subsystem initialization failed: {}", subsystem, reason),
 		column: None,
 		fragment: Fragment::None,
@@ -25,7 +25,7 @@ pub fn init_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> D
 pub fn feature_disabled(feature: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_002".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Required feature '{}' is not enabled", feature),
 		column: None,
 		fragment: Fragment::None,
@@ -41,7 +41,7 @@ pub fn feature_disabled(feature: impl fmt::Display) -> Diagnostic {
 pub fn bind_failed(addr: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_003".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Failed to bind to {}: {}", addr, reason),
 		column: None,
 		fragment: Fragment::None,
@@ -57,7 +57,7 @@ pub fn bind_failed(addr: impl fmt::Display, reason: impl fmt::Display) -> Diagno
 pub fn shutdown_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_004".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("{} subsystem shutdown failed: {}", subsystem, reason),
 		column: None,
 		fragment: Fragment::None,
@@ -73,7 +73,7 @@ pub fn shutdown_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) 
 pub fn address_unavailable(reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_005".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Failed to get local address: {}", reason),
 		column: None,
 		fragment: Fragment::None,
@@ -89,7 +89,7 @@ pub fn address_unavailable(reason: impl fmt::Display) -> Diagnostic {
 pub fn socket_config_failed(reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_006".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Socket configuration failed: {}", reason),
 		column: None,
 		fragment: Fragment::None,

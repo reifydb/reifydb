@@ -87,7 +87,7 @@ impl<'bump> Compiler<'bump> {
 						_ => {
 							return err!(Diagnostic {
 								code: "E0001".to_string(),
-								statement: None,
+								rql: None,
 								message: "Expected encoded in static data".to_string(),
 								column: None,
 								fragment: Fragment::None,

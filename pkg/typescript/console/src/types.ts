@@ -15,7 +15,7 @@ export interface ExecutionResult {
 }
 
 export interface Executor {
-  execute(statement: string): Promise<ExecutionResult>;
+  execute(rql: string): Promise<ExecutionResult>;
 }
 
 export interface HistoryEntry {

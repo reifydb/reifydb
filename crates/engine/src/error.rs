@@ -57,7 +57,7 @@ impl IntoDiagnostic for CastError {
 				let label = Some(format!("cannot cast {} of type {} to {}", fragment.text(), from_type, to_type));
 				Diagnostic {
 					code: "CAST_001".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("unsupported cast from {} to {}", from_type, to_type),
 					fragment,
 					label,
@@ -71,7 +71,7 @@ impl IntoDiagnostic for CastError {
 			}
 			CastError::InvalidNumber { fragment, target, cause } => Diagnostic {
 				code: "CAST_002".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("failed to cast to {}", target),
 				fragment,
 				label: Some(format!("failed to cast to {}", target)),
@@ -83,7 +83,7 @@ impl IntoDiagnostic for CastError {
 			},
 			CastError::InvalidBoolean { fragment, cause } => Diagnostic {
 				code: "CAST_004".to_string(),
-				statement: None,
+				rql: None,
 				message: "failed to cast to bool".to_string(),
 				fragment,
 				label: Some("failed to cast to bool".to_string()),
@@ -95,7 +95,7 @@ impl IntoDiagnostic for CastError {
 			},
 			CastError::InvalidUuid { fragment, target, cause } => Diagnostic {
 				code: "CAST_005".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("failed to cast to {}", target),
 				fragment,
 				label: Some(format!("failed to cast to {}", target)),
@@ -107,7 +107,7 @@ impl IntoDiagnostic for CastError {
 			},
 			CastError::InvalidTemporal { fragment, target, cause } => Diagnostic {
 				code: "CAST_003".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("failed to cast to {}", target),
 				fragment,
 				label: Some(format!("failed to cast to {}", target)),
@@ -119,7 +119,7 @@ impl IntoDiagnostic for CastError {
 			},
 			CastError::InvalidBlobToUtf8 { fragment, cause } => Diagnostic {
 				code: "CAST_006".to_string(),
-				statement: None,
+				rql: None,
 				message: "failed to cast BLOB to UTF8".to_string(),
 				fragment,
 				label: Some("failed to cast BLOB to UTF8".to_string()),
@@ -210,7 +210,7 @@ impl IntoDiagnostic for EngineError {
 				column,
 			} => Diagnostic {
 				code: "BI_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("column `{}` not found in `{}`", column, table_name),
 				column: None,
 				fragment,
@@ -226,7 +226,7 @@ impl IntoDiagnostic for EngineError {
 				actual,
 			} => Diagnostic {
 				code: "BI_003".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("too many values: expected {} columns, got {}", expected, actual),
 				column: None,
 				fragment,
@@ -238,7 +238,7 @@ impl IntoDiagnostic for EngineError {
 			},
 			EngineError::MissingRowNumberColumn => Diagnostic {
 				code: "ENG_003".to_string(),
-				statement: None,
+				rql: None,
 				message: "Frame must have a __ROW__ID__ column for UPDATE operations".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -267,7 +267,7 @@ impl IntoDiagnostic for EngineError {
 					.or_else(|| Some("assertion failed".to_string()));
 				Diagnostic {
 					code: "ASSERT".to_string(),
-					statement: None,
+					rql: None,
 					message: base_msg,
 					fragment,
 					label,
@@ -283,7 +283,7 @@ impl IntoDiagnostic for EngineError {
 				column_type,
 			} => Diagnostic {
 				code: "CONSTRAINT_007".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"Cannot insert none into non-optional column of type {}. Declare the column as Option({}) to allow none values.",
 					column_type, column_type
@@ -304,7 +304,7 @@ impl IntoDiagnostic for EngineError {
 				fragment,
 			} => Diagnostic {
 				code: "FUNCTION_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Unknown function: {}", name),
 				column: None,
 				fragment,
@@ -319,7 +319,7 @@ impl IntoDiagnostic for EngineError {
 				fragment,
 			} => Diagnostic {
 				code: "CALLABLE_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Unknown callable: {}", name),
 				column: None,
 				fragment,
@@ -336,7 +336,7 @@ impl IntoDiagnostic for EngineError {
 				fragment,
 			} => Diagnostic {
 				code: "FUNCTION_009".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Generator function '{}' not found", name),
 				column: None,
 				fragment,
@@ -350,7 +350,7 @@ impl IntoDiagnostic for EngineError {
 				name,
 			} => Diagnostic {
 				code: "RUNTIME_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Variable '{}' is not defined", name),
 				column: None,
 				fragment: Fragment::None,
@@ -367,7 +367,7 @@ impl IntoDiagnostic for EngineError {
 				name,
 			} => Diagnostic {
 				code: "RUNTIME_003".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Cannot reassign immutable variable '{}'", name),
 				column: None,
 				fragment: Fragment::None,

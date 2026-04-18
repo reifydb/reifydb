@@ -338,7 +338,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(format!("duplicate {} definition", kind_str)),
@@ -478,7 +478,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(label_str),
@@ -495,7 +495,7 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 			} => Diagnostic {
 				code: "CA_048".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("migration `{}` has no rollback body", name),
 				fragment,
 				label: Some("no rollback body defined".to_string()),
@@ -520,7 +520,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: "CA_005".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"column `{}` already exists in {} `{}::{}`",
 						column, kind_str, namespace, name
@@ -544,7 +544,7 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 			} => Diagnostic {
 				code: "CA_008".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"column `{}` type `{}` does not match dictionary `{}` value type `{}`",
 					column, column_type, dictionary, dictionary_value_type
@@ -567,7 +567,7 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 			} => Diagnostic {
 				code: "CA_006".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("auto increment is not supported for type `{}`", ty),
 				fragment,
 				label: Some("invalid auto increment usage".to_string()),
@@ -586,7 +586,7 @@ impl IntoDiagnostic for CatalogError {
 				column,
 			} => Diagnostic {
 				code: "CA_008".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("policy `{:?}` already exists for column `{}`", policy, column),
 				fragment: Fragment::None,
 				label: Some("duplicate column policy".to_string()),
@@ -644,7 +644,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(label_str.to_string()),
@@ -708,7 +708,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(format!("attempted update on deleted {}", kind_str)),
@@ -764,7 +764,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(format!("duplicate {} deletion", kind_str)),
@@ -780,7 +780,7 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 			} => Diagnostic {
 				code: "CA_020".to_string(),
-				statement: None,
+				rql: None,
 				message: "primary key must contain at least one column".to_string(),
 				fragment,
 				label: Some("empty primary key definition".to_string()),
@@ -796,7 +796,7 @@ impl IntoDiagnostic for CatalogError {
 				column_id,
 			} => Diagnostic {
 				code: "CA_021".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("column with ID {} not found for primary key", column_id),
 				fragment,
 				label: Some("invalid column reference in primary key".to_string()),
@@ -815,7 +815,7 @@ impl IntoDiagnostic for CatalogError {
 				name,
 			} => Diagnostic {
 				code: "CA_010".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("subscription `{}` already exists", name),
 				fragment,
 				label: Some("duplicate subscription definition".to_string()),
@@ -833,7 +833,7 @@ impl IntoDiagnostic for CatalogError {
 				name,
 			} => Diagnostic {
 				code: "CA_011".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("subscription `{}` not found", name),
 				fragment,
 				label: Some("unknown subscription reference".to_string()),
@@ -861,7 +861,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: "CA_039".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"column `{}` not found in {} `{}`.`{}`",
 						column, kind_str, namespace, name
@@ -878,7 +878,7 @@ impl IntoDiagnostic for CatalogError {
 
 			CatalogError::ConfigStorageKeyNotFound(key) => Diagnostic {
 				code: "CA_050".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("unknown config key `{}`", key),
 				fragment: Fragment::None,
 				label: Some("unknown config key".to_string()),
@@ -891,7 +891,7 @@ impl IntoDiagnostic for CatalogError {
 
 			CatalogError::ConfigValueInvalid(key) => Diagnostic {
 				code: "CA_051".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("config value for key `{}` cannot be none", key),
 				fragment: Fragment::None,
 				label: Some("invalid config value".to_string()),
@@ -911,7 +911,7 @@ impl IntoDiagnostic for CatalogError {
 					expected.iter().map(|t| format!("`{:?}`", t)).collect::<Vec<_>>().join(", ");
 				Diagnostic {
 					code: "CA_052".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"config value for key `{}` must be of type {}, got `{}`",
 						key, expected_str, actual
@@ -996,7 +996,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(label.to_string()),
@@ -1014,7 +1014,7 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 			} => Diagnostic {
 				code: "CA_084".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"cannot drop {} procedure `{}`: native/FFI/WASM procedures are managed by the runtime registry, not DDL",
 					kind, name
@@ -1035,7 +1035,7 @@ impl IntoDiagnostic for CatalogError {
 				kind,
 			} => Diagnostic {
 				code: "CA_085".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"cannot register {} procedure as ephemeral: only Native/FFI/WASM variants are accepted",
 					kind
@@ -1081,7 +1081,7 @@ impl IntoDiagnostic for CatalogChangeError {
 				kind,
 			} => Diagnostic {
 				code: "CA_070".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("failed to decode {:?} key while applying replicated catalog change", kind),
 				fragment: Fragment::None,
 				label: Some("key decode failure during replication".to_string()),
@@ -1097,7 +1097,7 @@ impl IntoDiagnostic for CatalogChangeError {
 				raw,
 			} => Diagnostic {
 				code: "CA_071".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("unrecognized key kind (raw: {:?})", raw),
 				fragment: Fragment::None,
 				label: Some("unrecognized key kind during replication".to_string()),

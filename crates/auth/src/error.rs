@@ -66,7 +66,7 @@ impl IntoDiagnostic for AuthError {
 		match self {
 			AuthError::PasswordRequired => Diagnostic {
 				code: "AU_001".to_string(),
-				statement: None,
+				rql: None,
 				message: "password is required for password authentication".to_string(),
 				fragment: Fragment::None,
 				label: Some("missing password".to_string()),
@@ -79,7 +79,7 @@ impl IntoDiagnostic for AuthError {
 
 			AuthError::MissingHash => Diagnostic {
 				code: "AU_002".to_string(),
-				statement: None,
+				rql: None,
 				message: "stored authentication is missing hash".to_string(),
 				fragment: Fragment::None,
 				label: Some("missing hash".to_string()),
@@ -92,7 +92,7 @@ impl IntoDiagnostic for AuthError {
 
 			AuthError::MissingSalt => Diagnostic {
 				code: "AU_003".to_string(),
-				statement: None,
+				rql: None,
 				message: "stored authentication is missing salt".to_string(),
 				fragment: Fragment::None,
 				label: Some("missing salt".to_string()),
@@ -105,7 +105,7 @@ impl IntoDiagnostic for AuthError {
 
 			AuthError::MissingToken => Diagnostic {
 				code: "AU_004".to_string(),
-				statement: None,
+				rql: None,
 				message: "stored authentication is missing token".to_string(),
 				fragment: Fragment::None,
 				label: Some("missing token".to_string()),
@@ -120,7 +120,7 @@ impl IntoDiagnostic for AuthError {
 				reason,
 			} => Diagnostic {
 				code: "AU_006".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("failed to serialize authentication properties: {}", reason),
 				fragment: Fragment::None,
 				label: Some("serialization failed".to_string()),
@@ -135,7 +135,7 @@ impl IntoDiagnostic for AuthError {
 				method,
 			} => Diagnostic {
 				code: "AU_005".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("unknown authentication method: {}", method),
 				fragment: Fragment::None,
 				label: Some("unknown method".to_string()),
@@ -150,7 +150,7 @@ impl IntoDiagnostic for AuthError {
 				reason,
 			} => Diagnostic {
 				code: "AU_007".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("password hashing failed: {}", reason),
 				fragment: Fragment::None,
 				label: Some("hashing failed".to_string()),
@@ -165,7 +165,7 @@ impl IntoDiagnostic for AuthError {
 				reason,
 			} => Diagnostic {
 				code: "AU_008".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("stored hash is invalid or corrupted: {}", reason),
 				fragment: Fragment::None,
 				label: Some("invalid hash".to_string()),
@@ -180,7 +180,7 @@ impl IntoDiagnostic for AuthError {
 				reason,
 			} => Diagnostic {
 				code: "AU_009".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("password verification failed: {}", reason),
 				fragment: Fragment::None,
 				label: Some("verification failed".to_string()),
@@ -193,7 +193,7 @@ impl IntoDiagnostic for AuthError {
 
 			AuthError::MissingPublicKey => Diagnostic {
 				code: "AU_010".to_string(),
-				statement: None,
+				rql: None,
 				message: "public key is required for solana authentication".to_string(),
 				fragment: Fragment::None,
 				label: Some("missing public key".to_string()),
@@ -208,7 +208,7 @@ impl IntoDiagnostic for AuthError {
 				reason,
 			} => Diagnostic {
 				code: "AU_011".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("invalid public key: {}", reason),
 				fragment: Fragment::None,
 				label: Some("invalid public key".to_string()),
@@ -223,7 +223,7 @@ impl IntoDiagnostic for AuthError {
 				reason,
 			} => Diagnostic {
 				code: "AU_012".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("invalid signature: {}", reason),
 				fragment: Fragment::None,
 				label: Some("invalid signature".to_string()),

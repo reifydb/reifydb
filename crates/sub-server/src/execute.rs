@@ -23,8 +23,8 @@ pub enum ExecuteError {
 	Engine {
 		/// The full diagnostic with error code, source location, help text, etc.
 		diagnostic: Arc<Diagnostic>,
-		/// The statement that caused the error.
-		statement: String,
+		/// The RQL that caused the error.
+		rql: String,
 	},
 	/// Request was rejected by a request interceptor.
 	Rejected {
