@@ -53,7 +53,6 @@ impl CatalogStore {
 		binding::SHAPE.set_utf8(&mut row, binding::HTTP_PATH, http_path);
 		binding::SHAPE.set_utf8(&mut row, binding::RPC_NAME, rpc_name);
 		binding::SHAPE.set_utf8(&mut row, binding::FORMAT, to_create.format.as_str());
-		binding::SHAPE.set_u8(&mut row, binding::ENABLED, 1u8);
 
 		txn.set(&BindingKey::encoded(id), row)?;
 
@@ -69,7 +68,6 @@ impl CatalogStore {
 			procedure_id: to_create.procedure,
 			protocol: to_create.protocol,
 			format: to_create.format,
-			enabled: true,
 		})
 	}
 }

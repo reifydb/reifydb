@@ -6,12 +6,13 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
-	interface::catalog::id::SubscriptionId,
+	interface::catalog::{binding::BindingFormat, id::SubscriptionId},
 };
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel};
 use reifydb_sub_server::{
 	actor::ServerActor,
 	auth::extract_identity_from_ws_auth,
+	binding::dispatch_binding,
 	dispatch::dispatch,
 	execute::ExecuteError,
 	format::WireFormat,
@@ -38,7 +39,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Builder;
 
 use crate::{
-	protocol::{Request, RequestPayload},
+	protocol::{CallOperationRequest, Request, RequestPayload},
 	response::{Response, ResponseMeta, ServerPush},
 	subscription::{
 		handler::handle_subscribe,
@@ -485,6 +486,14 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 			.await
 		}
 
+		RequestPayload::CallOperation(co) => {
+			let identity: IdentityId = conn.identity.unwrap_or(IdentityId::anonymous());
+			match handle_call_operation(&request.id, identity, co, conn).await {
+				Ok(resp) => Some(resp),
+				Err(msg) => Some(WsResponse::Text(msg)),
+			}
+		}
+
 		RequestPayload::Subscribe(sub) => handle_subscribe(&request.id, sub, conn).await.map(WsResponse::Text),
 
 		RequestPayload::Logout => {
@@ -682,6 +691,92 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 /// Build an error response JSON string.
 pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
 	Response::internal_error(id, code, message).to_json()
+}
+
+/// Dispatch a WebSocket `CallOperation` request through the binding layer.
+/// Mirrors the HTTP and gRPC call_operation paths: resolves the binding via
+/// `list_bindings`, validates params, calls `dispatch_binding`, wraps per format.
+async fn handle_call_operation(
+	request_id: &str,
+	identity: IdentityId,
+	req: CallOperationRequest,
+	conn: &mut ConnectionContext<'_>,
+) -> Result<WsResponse, String> {
+	let binding =
+		conn.state.engine().materialized_catalog().find_ws_binding_by_name(&req.name).ok_or_else(|| {
+			build_error(request_id, "NOT_FOUND", &format!("no WS binding named `{}`", req.name))
+		})?;
+
+	let procedure =
+		conn.state.engine().materialized_catalog().find_procedure(binding.procedure_id).ok_or_else(|| {
+			build_error(request_id, "INTERNAL_ERROR", "binding references missing procedure")
+		})?;
+	let namespace =
+		conn.state.engine().materialized_catalog().find_namespace(binding.namespace).ok_or_else(|| {
+			build_error(request_id, "INTERNAL_ERROR", "binding references missing namespace")
+		})?;
+
+	let params = match req.params {
+		None => Params::None,
+		Some(wp) => wp.into_params().map_err(|e| build_error(request_id, "INVALID_PARAMS", &e))?,
+	};
+	match &params {
+		Params::None => {
+			if let Some(p) = procedure.params().first() {
+				return Err(build_error(
+					request_id,
+					"INVALID_PARAMS",
+					&format!("missing required parameter `{}`", p.name),
+				));
+			}
+		}
+		Params::Named(map) => {
+			for k in map.keys() {
+				if !procedure.params().iter().any(|p| &p.name == k) {
+					return Err(build_error(
+						request_id,
+						"INVALID_PARAMS",
+						&format!("unknown parameter `{}`", k),
+					));
+				}
+			}
+			for p in procedure.params() {
+				if !map.contains_key(&p.name) {
+					return Err(build_error(
+						request_id,
+						"INVALID_PARAMS",
+						&format!("missing required parameter `{}`", p.name),
+					));
+				}
+			}
+		}
+		Params::Positional(_) => {
+			return Err(build_error(request_id, "INVALID_PARAMS", "CallOperation requires named params"));
+		}
+	}
+
+	let metadata = build_ws_metadata(conn.auth_token);
+	let (frames, _duration) =
+		dispatch_binding(conn.state, namespace.name(), procedure.name(), params, identity, metadata)
+			.await
+			.map_err(|e| error_to_response(request_id, e))?;
+
+	match binding.format {
+		BindingFormat::Rbcf => match encode_frames_rbcf(&frames) {
+			Ok(rbcf) => {
+				Ok(WsResponse::Binary(encode_rbcf_envelope(BinaryKind::Response, request_id, &rbcf, None)))
+			}
+			Err(e) => Err(build_error(request_id, "ENCODE_ERROR", &format!("RBCF encode error: {}", e))),
+		},
+		BindingFormat::Json => {
+			let (content_type, body) = build_response_body(frames, WireFormat::Json, false);
+			Ok(WsResponse::Text(Response::call_operation(request_id, content_type, body).to_json()))
+		}
+		BindingFormat::Frames => {
+			let (content_type, body) = build_response_body(frames, WireFormat::Frames, false);
+			Ok(WsResponse::Text(Response::call_operation(request_id, content_type, body).to_json()))
+		}
+	}
 }
 
 /// Build response body with content_type based on format parameter.

@@ -61,7 +61,6 @@ pub(crate) fn decode_binding(row: &EncodedRow) -> Binding {
 	let procedure_id = ProcedureId::from_raw(binding::SHAPE.get_u64(row, binding::PROCEDURE_ID));
 	let protocol_str = binding::SHAPE.get_utf8(row, binding::PROTOCOL);
 	let format_str = binding::SHAPE.get_utf8(row, binding::FORMAT);
-	let enabled = binding::SHAPE.get_u8(row, binding::ENABLED) != 0;
 
 	let protocol = match protocol_str {
 		"http" => {
@@ -95,6 +94,5 @@ pub(crate) fn decode_binding(row: &EncodedRow) -> Binding {
 		procedure_id,
 		protocol,
 		format,
-		enabled,
 	}
 }

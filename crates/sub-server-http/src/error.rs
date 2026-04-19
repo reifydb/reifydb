@@ -54,6 +54,10 @@ pub enum AppError {
 	BadRequest(String),
 	/// Invalid parameter error.
 	InvalidParams(String),
+	/// Resource not found (404).
+	NotFound(String),
+	/// HTTP method not allowed for this resource (405).
+	MethodNotAllowed(String),
 	/// Internal server error.
 	Internal(String),
 }
@@ -77,6 +81,8 @@ impl fmt::Display for AppError {
 			AppError::Execute(e) => write!(f, "Execution error: {}", e),
 			AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
 			AppError::InvalidParams(msg) => write!(f, "Invalid params: {}", msg),
+			AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
+			AppError::MethodNotAllowed(msg) => write!(f, "Method not allowed: {}", msg),
 			AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
 		}
 	}
@@ -149,6 +155,14 @@ impl IntoResponse for AppError {
 			AppError::InvalidParams(msg) => {
 				let body = Json(ErrorResponse::new("INVALID_PARAMS", msg.clone()));
 				return (StatusCode::BAD_REQUEST, body).into_response();
+			}
+			AppError::NotFound(msg) => {
+				let body = Json(ErrorResponse::new("NOT_FOUND", msg.clone()));
+				return (StatusCode::NOT_FOUND, body).into_response();
+			}
+			AppError::MethodNotAllowed(msg) => {
+				let body = Json(ErrorResponse::new("METHOD_NOT_ALLOWED", msg.clone()));
+				return (StatusCode::METHOD_NOT_ALLOWED, body).into_response();
 			}
 			AppError::Internal(msg) => {
 				error!("Internal error: {}", msg);

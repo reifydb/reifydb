@@ -9,6 +9,7 @@ use reifydb_core::interface::{
 };
 
 pub mod authentications;
+pub mod bindings;
 pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;
@@ -57,6 +58,7 @@ pub mod views;
 pub mod virtual_table_columns;
 
 use authentications::authentications;
+use bindings::{grpc::bindings_grpc, http::bindings_http, ws::bindings_ws};
 use cdc_consumers::cdc_consumers;
 use column_properties::column_properties;
 use columns::columns;
@@ -373,6 +375,49 @@ pub mod ids {
 				pub const MODULE_ID: ColumnId = ColumnId(5);
 
 				pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, NATIVE_NAME, MODULE_ID];
+			}
+		}
+
+		pub mod bindings {
+			pub mod http {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const PROCEDURE_ID: ColumnId = ColumnId(3);
+				pub const NAME: ColumnId = ColumnId(4);
+				pub const METHOD: ColumnId = ColumnId(5);
+				pub const PATH: ColumnId = ColumnId(6);
+				pub const FORMAT: ColumnId = ColumnId(7);
+
+				pub const ALL: [ColumnId; 7] =
+					[ID, NAMESPACE_ID, PROCEDURE_ID, NAME, METHOD, PATH, FORMAT];
+			}
+
+			pub mod grpc {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const PROCEDURE_ID: ColumnId = ColumnId(3);
+				pub const NAME: ColumnId = ColumnId(4);
+				pub const RPC_NAME: ColumnId = ColumnId(5);
+				pub const FORMAT: ColumnId = ColumnId(6);
+
+				pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, PROCEDURE_ID, NAME, RPC_NAME, FORMAT];
+			}
+
+			pub mod ws {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const PROCEDURE_ID: ColumnId = ColumnId(3);
+				pub const NAME: ColumnId = ColumnId(4);
+				pub const RPC_NAME: ColumnId = ColumnId(5);
+				pub const FORMAT: ColumnId = ColumnId(6);
+
+				pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, PROCEDURE_ID, NAME, RPC_NAME, FORMAT];
 			}
 		}
 
@@ -833,6 +878,11 @@ pub mod ids {
 		pub const PROCEDURES_FFI: VTableId = VTableId(56);
 		pub const PROCEDURES_WASM: VTableId = VTableId(57);
 
+		// `system::bindings::*` virtual tables.
+		pub const BINDINGS_HTTP: VTableId = VTableId(58);
+		pub const BINDINGS_GRPC: VTableId = VTableId(59);
+		pub const BINDINGS_WS: VTableId = VTableId(60);
+
 		// `system::metrics::storage::*` virtual tables.
 		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
 		pub const METRICS_STORAGE_VIEW: VTableId = VTableId(1025);
@@ -855,7 +905,7 @@ pub mod ids {
 		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 67] = [
+		pub const ALL: [VTableId; 70] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -889,6 +939,9 @@ pub mod ids {
 			PROCEDURES_NATIVE,
 			PROCEDURES_FFI,
 			PROCEDURES_WASM,
+			BINDINGS_HTTP,
+			BINDINGS_GRPC,
+			BINDINGS_WS,
 			HANDLERS,
 			TAGS,
 			SERIES,
@@ -1199,6 +1252,21 @@ impl SystemCatalog {
 	/// Get the `system::procedures::wasm` virtual table definition.
 	pub fn get_system_procedures_wasm_table() -> Arc<VTable> {
 		procedures_wasm()
+	}
+
+	/// Get the `system::bindings::http` virtual table definition.
+	pub fn get_system_bindings_http_table() -> Arc<VTable> {
+		bindings_http()
+	}
+
+	/// Get the `system::bindings::grpc` virtual table definition.
+	pub fn get_system_bindings_grpc_table() -> Arc<VTable> {
+		bindings_grpc()
+	}
+
+	/// Get the `system::bindings::ws` virtual table definition.
+	pub fn get_system_bindings_ws_table() -> Arc<VTable> {
+		bindings_ws()
 	}
 
 	/// Get the handlers virtual table definition

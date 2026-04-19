@@ -15,7 +15,6 @@ pub(crate) mod binding {
 	pub(crate) const HTTP_PATH: usize = 6;
 	pub(crate) const RPC_NAME: usize = 7;
 	pub(crate) const FORMAT: usize = 8;
-	pub(crate) const ENABLED: usize = 9;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -28,7 +27,6 @@ pub(crate) mod binding {
 			RowShapeField::unconstrained("http_path", Type::Utf8),
 			RowShapeField::unconstrained("rpc_name", Type::Utf8),
 			RowShapeField::unconstrained("format", Type::Utf8),
-			RowShapeField::unconstrained("enabled", Type::Uint1),
 		])
 	});
 }

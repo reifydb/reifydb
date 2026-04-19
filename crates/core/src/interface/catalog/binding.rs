@@ -101,7 +101,6 @@ pub struct Binding {
 	pub procedure_id: ProcedureId,
 	pub protocol: BindingProtocol,
 	pub format: BindingFormat,
-	pub enabled: bool,
 }
 
 impl Binding {

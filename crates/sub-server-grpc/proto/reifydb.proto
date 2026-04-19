@@ -9,6 +9,7 @@ service ReifyDB {
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
   rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc CallOperation(OperationRequest) returns (OperationResponse);
 }
 
 // Wire format the server should use when emitting frames back to the client.
@@ -27,6 +28,11 @@ message CommandRequest  { string rql = 1; optional Params params = 2; Format for
 message CommandResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
 message QueryRequest  { string rql = 1; optional Params params = 2; Format format = 3; }
 message QueryResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+
+// Call a bound procedure via its gRPC binding name (globally unique across `system::bindings::grpc`).
+// `format` is accepted but ignored — the binding's declared format wins.
+message OperationRequest  { string name = 1; optional Params params = 2; Format format = 3; }
+message OperationResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
 
 message SubscribeRequest { string rql = 1; Format format = 2; }
 message UnsubscribeRequest { string subscription_id = 1; }

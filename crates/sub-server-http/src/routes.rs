@@ -7,13 +7,15 @@
 
 use axum::{
 	Router,
-	routing::{get, post},
+	routing::{any, get, post},
 };
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::{
-	handlers::{handle_admin, handle_authenticate, handle_command, handle_logout, handle_query, health},
+	handlers::{
+		handle_admin, handle_authenticate, handle_binding, handle_command, handle_logout, handle_query, health,
+	},
 	state::HttpServerState,
 };
 
@@ -61,6 +63,9 @@ pub fn router(state: HttpServerState) -> Router {
 		// Admin endpoint (auth required, DDL + DML + Query)
 		app = app.route("/v1/admin", post(handle_admin));
 	}
+
+	// Binding catch-all: dispatched per-request against the materialized catalog.
+	app = app.route("/api/{*path}", any(handle_binding));
 
 	app
 		// Apply middleware layers - order matters!

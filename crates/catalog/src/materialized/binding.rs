@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
-		binding::Binding,
+		binding::{Binding, BindingProtocol},
 		id::{BindingId, NamespaceId, ProcedureId},
 	},
 };
@@ -57,6 +57,36 @@ impl MaterializedCatalog {
 		}
 	}
 
+	/// Find the latest gRPC binding registered under `name`.
+	pub fn find_grpc_binding_by_name(&self, name: &str) -> Option<Binding> {
+		self.bindings_by_grpc_name.get(name).and_then(|entry| self.find_binding(*entry.value()))
+	}
+
+	/// Find the gRPC binding registered under `name` as of `version`.
+	pub fn find_grpc_binding_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Binding> {
+		self.bindings_by_grpc_name.get(name).and_then(|entry| self.find_binding_at(*entry.value(), version))
+	}
+
+	/// Find the latest WS binding registered under `name`.
+	pub fn find_ws_binding_by_name(&self, name: &str) -> Option<Binding> {
+		self.bindings_by_ws_name.get(name).and_then(|entry| self.find_binding(*entry.value()))
+	}
+
+	/// Find the WS binding registered under `name` as of `version`.
+	pub fn find_ws_binding_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Binding> {
+		self.bindings_by_ws_name.get(name).and_then(|entry| self.find_binding_at(*entry.value(), version))
+	}
+
+	/// List the latest version of all HTTP bindings.
+	pub fn list_http_bindings(&self) -> Vec<Binding> {
+		self.bindings_http.iter().filter_map(|entry| self.find_binding(*entry.key())).collect()
+	}
+
+	/// List all HTTP bindings as visible at the given commit version.
+	pub fn list_http_bindings_at(&self, version: CommitVersion) -> Vec<Binding> {
+		self.bindings_http.iter().filter_map(|entry| self.find_binding_at(*entry.key(), version)).collect()
+	}
+
 	pub fn set_binding(&self, id: BindingId, version: CommitVersion, binding: Option<Binding>) {
 		if let Some(entry) = self.bindings.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
@@ -72,6 +102,23 @@ impl MaterializedCatalog {
 				}
 			}
 			self.bindings_by_name.remove(&(pre.namespace, pre.name.clone()));
+			match &pre.protocol {
+				BindingProtocol::Grpc {
+					name,
+				} => {
+					self.bindings_by_grpc_name.remove(name);
+				}
+				BindingProtocol::Ws {
+					name,
+				} => {
+					self.bindings_by_ws_name.remove(name);
+				}
+				BindingProtocol::Http {
+					..
+				} => {
+					self.bindings_http.remove(&id);
+				}
+			}
 		}
 
 		let multi = self.bindings.get_or_insert_with(id, MultiVersionBinding::new);
@@ -88,6 +135,23 @@ impl MaterializedCatalog {
 			}
 
 			self.bindings_by_name.insert((new.namespace, new.name.clone()), id);
+			match &new.protocol {
+				BindingProtocol::Grpc {
+					name,
+				} => {
+					self.bindings_by_grpc_name.insert(name.clone(), id);
+				}
+				BindingProtocol::Ws {
+					name,
+				} => {
+					self.bindings_by_ws_name.insert(name.clone(), id);
+				}
+				BindingProtocol::Http {
+					..
+				} => {
+					self.bindings_http.insert(id, ());
+				}
+			}
 
 			multi.value().insert(version, new);
 		} else {

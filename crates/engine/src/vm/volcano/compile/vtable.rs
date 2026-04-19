@@ -8,6 +8,7 @@ use reifydb_catalog::{
 	vtable::{
 		VTableContext,
 		system::{
+			bindings::{grpc::SystemBindingsGrpc, http::SystemBindingsHttp, ws::SystemBindingsWs},
 			cdc_consumers::SystemCdcConsumers,
 			column_properties::SystemColumnProperties,
 			columns::SystemColumnsTable,
@@ -86,6 +87,8 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 		compile_metrics_cdc_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_PROCEDURES {
 		compile_procedures_vtable(&table.name, &context)
+	} else if namespace.id() == NamespaceId::SYSTEM_BINDINGS {
+		compile_bindings_vtable(&table.name)
 	} else {
 		panic!("Unknown virtual table type: {}.{}", namespace.name(), table.name)
 	};
@@ -214,5 +217,14 @@ fn compile_procedures_vtable(name: &str, context: &QueryContext) -> VTables {
 		"ffi" => VTables::ProceduresFfi(SystemProceduresFfi::new(catalog)),
 		"wasm" => VTables::ProceduresWasm(SystemProceduresWasm::new(catalog)),
 		_ => panic!("Unknown system::procedures virtual table: {}", name),
+	}
+}
+
+fn compile_bindings_vtable(name: &str) -> VTables {
+	match name {
+		"http" => VTables::BindingsHttp(SystemBindingsHttp::new()),
+		"grpc" => VTables::BindingsGrpc(SystemBindingsGrpc::new()),
+		"ws" => VTables::BindingsWs(SystemBindingsWs::new()),
+		_ => panic!("Unknown system::bindings virtual table: {}", name),
 	}
 }

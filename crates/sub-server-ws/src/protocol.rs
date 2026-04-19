@@ -38,6 +38,7 @@ pub enum RequestPayload {
 	Query(QueryRequest),
 	Subscribe(SubscribeRequest),
 	Unsubscribe(UnsubscribeRequest),
+	CallOperation(CallOperationRequest),
 	Logout,
 }
 
@@ -111,4 +112,15 @@ pub struct SubscribeRequest {
 pub struct UnsubscribeRequest {
 	/// The subscription ID returned from a Subscribe response.
 	pub subscription_id: String,
+}
+
+/// CallOperation request payload.
+///
+/// Invokes a bound procedure by its WS binding name.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CallOperationRequest {
+	/// Globally unique WS binding name.
+	pub name: String,
+	/// Named parameters to pass to the procedure.
+	pub params: Option<WireParams>,
 }

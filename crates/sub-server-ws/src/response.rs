@@ -30,6 +30,7 @@ pub enum ResponsePayload {
 	Admin(AdminResponse),
 	Command(CommandResponse),
 	Query(QueryResponse),
+	CallOperation(CallOperationResponse),
 	Subscribed(SubscribedResponse),
 	Unsubscribed(UnsubscribedResponse),
 	Logout(LogoutResponse),
@@ -87,6 +88,12 @@ pub struct QueryResponse {
 	pub body: JsonValue,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub meta: Option<ResponseMeta>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CallOperationResponse {
+	pub content_type: String,
+	pub body: JsonValue,
 }
 
 #[derive(Debug, Serialize)]
@@ -203,6 +210,16 @@ impl Response {
 				content_type: content_type.into(),
 				body,
 				meta,
+			}),
+		}
+	}
+
+	pub fn call_operation(id: impl Into<String>, content_type: impl Into<String>, body: JsonValue) -> Self {
+		Self {
+			id: id.into(),
+			payload: ResponsePayload::CallOperation(CallOperationResponse {
+				content_type: content_type.into(),
+				body,
 			}),
 		}
 	}

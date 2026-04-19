@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod authentications;
+pub mod bindings;
 pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;

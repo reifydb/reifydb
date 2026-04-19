@@ -89,6 +89,7 @@ pub fn resolve_unresolved_source(
 			| NamespaceId::SYSTEM_METRICS_STORAGE
 			| NamespaceId::SYSTEM_METRICS_CDC
 			| NamespaceId::SYSTEM_PROCEDURES
+			| NamespaceId::SYSTEM_BINDINGS
 	) {
 		let def = VTable {
 			id: VTableId(0), // Placeholder ID - compile.rs handles actual lookup

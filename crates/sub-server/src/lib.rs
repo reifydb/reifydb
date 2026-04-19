@@ -19,6 +19,7 @@
 
 pub mod actor;
 pub mod auth;
+pub mod binding;
 pub mod dispatch;
 pub mod execute;
 pub mod format;

@@ -5,13 +5,14 @@ use std::{sync::Arc, time::Duration};
 
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
-	interface::catalog::id::SubscriptionId,
+	interface::catalog::{binding::BindingFormat, id::SubscriptionId},
 	metric::ExecutionMetrics,
 };
 use reifydb_remote_proxy::{connect_remote, proxy_remote};
 use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
+	binding::dispatch_binding,
 	dispatch::dispatch,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
 	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
@@ -38,10 +39,10 @@ use crate::{
 	error::GrpcError,
 	generated::{
 		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, ChangeEvent, CommandRequest,
-		CommandResponse, FramesPayload, LogoutRequest, LogoutResponse, Params as ProtoParams, QueryRequest,
-		QueryResponse, SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest,
-		UnsubscribeResponse, admin_response, change_event, command_response, query_response,
-		reify_db_server::ReifyDb, subscription_event,
+		CommandResponse, FramesPayload, LogoutRequest, LogoutResponse, OperationRequest, OperationResponse,
+		Params as ProtoParams, QueryRequest, QueryResponse, SubscribeRequest, SubscribedEvent,
+		SubscriptionEvent, UnsubscribeRequest, UnsubscribeResponse, admin_response, change_event,
+		command_response, operation_response, query_response, reify_db_server::ReifyDb, subscription_event,
 	},
 	server_state::GrpcServerState,
 	subscription::{GrpcSubscriptionRegistry, WireFormat},
@@ -439,6 +440,92 @@ impl ReifyDb for ReifyDbService {
 			ServerLogoutResponse::InvalidToken => Err(Status::unauthenticated("Invalid or expired token")),
 			ServerLogoutResponse::Error(reason) => Err(Status::internal(reason)),
 		}
+	}
+
+	async fn call_operation(
+		&self,
+		request: Request<OperationRequest>,
+	) -> Result<Response<OperationResponse>, Status> {
+		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
+		let inner = request.into_inner();
+
+		// Resolve the binding by gRPC rpc name via the protocol-specific index.
+		let binding = self
+			.state
+			.engine()
+			.materialized_catalog()
+			.find_grpc_binding_by_name(&inner.name)
+			.ok_or_else(|| Status::not_found(format!("no gRPC binding named `{}`", inner.name)))?;
+
+		// Resolve procedure + namespace.
+		let procedure = self
+			.state
+			.engine()
+			.materialized_catalog()
+			.find_procedure(binding.procedure_id)
+			.ok_or_else(|| Status::internal("binding references missing procedure"))?;
+		let namespace = self
+			.state
+			.engine()
+			.materialized_catalog()
+			.find_namespace(binding.namespace)
+			.ok_or_else(|| Status::internal("binding references missing namespace"))?;
+
+		// Decode typed params from the wire and validate against the procedure's declared set
+		// (unknown keys, missing required) — without unpacking the Arc<HashMap>.
+		let params = Self::extract_params(inner.params)?;
+		match &params {
+			Params::None => {
+				if let Some(p) = procedure.params().first() {
+					return Err(Status::invalid_argument(format!(
+						"missing required parameter `{}`",
+						p.name
+					)));
+				}
+			}
+			Params::Named(map) => {
+				for k in map.keys() {
+					if !procedure.params().iter().any(|p| &p.name == k) {
+						return Err(Status::invalid_argument(format!(
+							"unknown parameter `{}`",
+							k
+						)));
+					}
+				}
+				for p in procedure.params() {
+					if !map.contains_key(&p.name) {
+						return Err(Status::invalid_argument(format!(
+							"missing required parameter `{}`",
+							p.name
+						)));
+					}
+				}
+			}
+			Params::Positional(_) => {
+				return Err(Status::invalid_argument("CallOperation requires named params"));
+			}
+		}
+
+		let (frames, _duration) =
+			dispatch_binding(&self.state, namespace.name(), procedure.name(), params, identity, metadata)
+				.await
+				.map_err(GrpcError::from)?;
+
+		// Encode per binding format. Rbcf → bytes; Frames → proto FramesPayload.
+		// Json isn't representable over this gRPC schema — fall back to FramesPayload.
+		let payload = match binding.format {
+			BindingFormat::Rbcf => operation_response::Payload::Rbcf(
+				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
+			),
+			_ => operation_response::Payload::Frames(FramesPayload {
+				frames: frames_to_proto(frames),
+			}),
+		};
+
+		Ok(Response::new(OperationResponse {
+			payload: Some(payload),
+		}))
 	}
 }
 

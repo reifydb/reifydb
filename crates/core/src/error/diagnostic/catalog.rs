@@ -671,3 +671,26 @@ pub fn test_not_found(fragment: Fragment, namespace: &str, test: &str) -> Diagno
 		operator_chain: None,
 	}
 }
+
+pub fn procedure_has_live_bindings(fragment: Fragment, namespace: &str, binding_names: &[String]) -> Diagnostic {
+	let list = binding_names.join(", ");
+	let procedure = fragment.text().to_string();
+	Diagnostic {
+		code: "CA_085".to_string(),
+		rql: None,
+		message: format!(
+			"cannot drop procedure `{}::{}`: {} live binding(s): {}",
+			namespace,
+			procedure,
+			binding_names.len(),
+			list
+		),
+		fragment,
+		label: Some("procedure has live bindings".to_string()),
+		help: Some("drop the bindings first using `DROP BINDING` before dropping the procedure".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
