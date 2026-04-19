@@ -23,9 +23,14 @@ pub(crate) fn create_subscription(
 	if let Some(ref as_clause) = plan.as_clause
 		&& let QueryPlan::RemoteScan(ref remote) = **as_clause
 	{
+		let token_value = match &remote.token {
+			Some(t) => Value::Utf8(t.clone()),
+			None => Value::none(),
+		};
 		return Ok(Columns::single_row([
 			("remote_address", Value::Utf8(remote.address.clone())),
 			("remote_rql", Value::Utf8(remote.remote_rql.clone())),
+			("remote_token", token_value),
 		]));
 	}
 

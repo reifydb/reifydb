@@ -315,12 +315,6 @@ impl ReifyDb for ReifyDbService {
 		request: Request<SubscribeRequest>,
 	) -> Result<Response<Self::SubscribeStream>, Status> {
 		let identity = self.extract_identity(&request)?;
-		let token = request
-			.metadata()
-			.get("authorization")
-			.and_then(|v| v.to_str().ok())
-			.and_then(|h| h.strip_prefix("Bearer "))
-			.map(|t| t.to_string());
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let format = WireFormat::from_proto_i32(inner.format);
@@ -333,7 +327,8 @@ impl ReifyDb for ReifyDbService {
 			CreateSubscriptionResult::Remote {
 				address,
 				rql,
-			} => self.subscribe_remote(address, &rql, token, format).await,
+				token: ns_token,
+			} => self.subscribe_remote(address, &rql, ns_token, format).await,
 		}
 	}
 

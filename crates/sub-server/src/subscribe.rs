@@ -55,6 +55,7 @@ pub enum CreateSubscriptionResult {
 	Remote {
 		address: String,
 		rql: String,
+		token: Option<String>,
 	},
 }
 
@@ -121,9 +122,21 @@ pub async fn create_subscription(
 			})
 			.ok_or(CreateSubscriptionError::ExtractionFailed)?;
 
+		let token = frame.columns.iter().find(|c| c.name == "remote_token").and_then(|col| {
+			if !col.data.is_empty() {
+				match col.data.get_value(0) {
+					Value::Utf8(s) => Some(s),
+					_ => None,
+				}
+			} else {
+				None
+			}
+		});
+
 		return Ok(CreateSubscriptionResult::Remote {
 			address,
 			rql,
+			token,
 		});
 	}
 

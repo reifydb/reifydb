@@ -69,8 +69,9 @@ pub(crate) async fn handle_subscribe(
 		Ok(Remote {
 			address,
 			rql,
+			token: ns_token,
 		}) => {
-			let remote_sub = match connect_remote(&address, &rql, conn.auth_token.as_deref()).await {
+			let remote_sub = match connect_remote(&address, &rql, ns_token.as_deref()).await {
 				Ok(s) => s,
 				Err(e) => {
 					return Some(Response::internal_error(
