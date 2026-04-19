@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::policy::PolicyTargetType,
+	interface::catalog::policy::{CallableOp, DataOp, PolicyTargetType, SessionOp},
 	value::column::{columns::Columns, data::ColumnData},
 };
 use reifydb_policy::{
@@ -45,14 +45,14 @@ impl<'a> PolicyEvaluator<'a> {
 		tx: &mut Transaction<'_>,
 		target_namespace: &str,
 		target_shape: &str,
-		operation: &str,
+		operation: DataOp,
 		row_columns: &Columns,
 		target_type: PolicyTargetType,
 	) -> Result<()> {
 		let target = PolicyTarget {
 			namespace: target_namespace,
 			shape: target_shape,
-			operation,
+			operation: operation.as_str(),
 			target_type,
 		};
 		enforce_write_policies(&self.services.catalog, tx, &target, row_columns, self)
@@ -61,10 +61,10 @@ impl<'a> PolicyEvaluator<'a> {
 	pub fn enforce_session_policy(
 		&self,
 		tx: &mut Transaction<'_>,
-		session_type: &str,
+		session_type: SessionOp,
 		default_deny: bool,
 	) -> Result<()> {
-		enforce_session_policy(&self.services.catalog, tx, session_type, default_deny, self)
+		enforce_session_policy(&self.services.catalog, tx, session_type.as_str(), default_deny, self)
 	}
 
 	pub fn enforce_identity_policy(
@@ -72,13 +72,13 @@ impl<'a> PolicyEvaluator<'a> {
 		tx: &mut Transaction<'_>,
 		target_namespace: &str,
 		target_shape: &str,
-		operation: &str,
+		operation: CallableOp,
 		target_type: PolicyTargetType,
 	) -> Result<()> {
 		let target = PolicyTarget {
 			namespace: target_namespace,
 			shape: target_shape,
-			operation,
+			operation: operation.as_str(),
 			target_type,
 		};
 		enforce_identity_policy(&self.services.catalog, tx, &target, self)

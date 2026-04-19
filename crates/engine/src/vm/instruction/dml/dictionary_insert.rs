@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, namespace_not_found},
-	interface::catalog::policy::PolicyTargetType,
+	interface::catalog::policy::{DataOp, PolicyTargetType},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertDictionaryNode;
@@ -76,7 +76,7 @@ pub(crate) fn insert_dictionary(
 			txn,
 			namespace_name,
 			dictionary_name,
-			"insert",
+			DataOp::Insert,
 			&columns,
 			PolicyTargetType::Dictionary,
 		)?;

@@ -10,7 +10,10 @@ use reifydb_core::{
 		engine,
 	},
 	interface::{
-		catalog::{id::IndexId, policy::PolicyTargetType},
+		catalog::{
+			id::IndexId,
+			policy::{DataOp, PolicyTargetType},
+		},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedShape, ResolvedTable},
 	},
 	internal_error,
@@ -106,7 +109,7 @@ pub(crate) fn update_table(
 				txn,
 				namespace.name(),
 				&table.name,
-				"update",
+				DataOp::Update,
 				&columns,
 				PolicyTargetType::Table,
 			)?;

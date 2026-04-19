@@ -12,7 +12,7 @@ pub mod evaluate;
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{
-	catalog::policy::{Policy, PolicyOperation, PolicyTargetType},
+	catalog::policy::{DataOp, Policy, PolicyOperation, PolicyTargetType},
 	resolved::ResolvedShape,
 };
 use reifydb_rql::{
@@ -23,14 +23,14 @@ use reifydb_rql::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, fragment::Fragment};
 
-/// Inject read policies into logical plans.
+/// Inject `from` policies into logical plans.
 ///
 /// - Root identity bypasses all policies (returns plans unchanged).
-/// - For non-root identities, finds Pipeline nodes with PrimitiveScan(Table), looks up enabled read policies for that
-///   table, compiles their body_source into logical plan steps, and inserts them after the scan.
-/// - If no policies match a table, inserts a `Filter(false)` for default-deny.
+/// - For non-root identities, finds Pipeline nodes with PrimitiveScan, looks up enabled policies for that shape with
+///   the `from` op, compiles their body_source into logical plan steps, and inserts them after the scan.
+/// - If no `from` policy matches a shape, inserts a `Filter(false)` for default-deny.
 /// - Multiple policies are chained sequentially (AND composition).
-pub fn inject_read_policies<'a>(
+pub fn inject_from_policies<'a>(
 	plans: BumpVec<'a, LogicalPlan<'a>>,
 	bump: &'a Bump,
 	catalog: &Catalog,
@@ -119,10 +119,10 @@ fn inject_pipeline<'a>(
 						continue;
 					}
 
-					// Get read operations for this policy
+					// Get `from` operations for this policy
 					let ops = catalog.list_policy_operations(tx, policy.id)?;
 					for op in &ops {
-						if op.operation != "read" {
+						if DataOp::parse(&op.operation) != Some(DataOp::From) {
 							continue;
 						}
 						if op.body_source.is_empty() {
@@ -142,7 +142,7 @@ fn inject_pipeline<'a>(
 					}
 				}
 
-				// Default-deny: no read policy found → filter out all rows
+				// Default-deny: no `from` policy found → filter out all rows
 				if !found_policy {
 					result.push(LogicalPlan::Filter(FilterNode {
 						condition: Expression::Constant(ConstantExpression::Bool {

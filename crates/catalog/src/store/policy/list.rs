@@ -88,12 +88,12 @@ mod tests {
 			target_shape: None,
 			operations: vec![
 				PolicyOpToCreate {
-					operation: "SELECT".to_string(),
-					body_source: "ALLOW".to_string(),
+					operation: "from".to_string(),
+					body_source: "filter { true }".to_string(),
 				},
 				PolicyOpToCreate {
-					operation: "INSERT".to_string(),
-					body_source: "DENY".to_string(),
+					operation: "insert".to_string(),
+					body_source: "require { false }".to_string(),
 				},
 			],
 		};

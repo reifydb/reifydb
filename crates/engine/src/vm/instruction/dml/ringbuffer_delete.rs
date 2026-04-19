@@ -10,7 +10,7 @@ use reifydb_core::{
 		engine,
 	},
 	interface::{
-		catalog::policy::PolicyTargetType,
+		catalog::policy::{DataOp, PolicyTargetType},
 		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
 	},
 	key::row::RowKey,
@@ -115,7 +115,7 @@ pub(crate) fn delete_ringbuffer(
 					txn,
 					namespace.name(),
 					&ringbuffer.name,
-					"delete",
+					DataOp::Delete,
 					&columns,
 					PolicyTargetType::RingBuffer,
 				)?;

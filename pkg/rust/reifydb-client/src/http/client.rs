@@ -28,7 +28,7 @@ struct HttpFrameResponse {
 impl HttpFrameResponse {
 	fn into_admin(self, meta: Option<ResponseMeta>) -> AdminResponse {
 		AdminResponse {
-			content_type: "application/vnd.reifydb.json".to_string(),
+			content_type: "application/vnd.reifydb.frames".to_string(),
 			body: json!({ "frames": self.frames }),
 			meta,
 		}
@@ -36,7 +36,7 @@ impl HttpFrameResponse {
 
 	fn into_command(self, meta: Option<ResponseMeta>) -> CommandResponse {
 		CommandResponse {
-			content_type: "application/vnd.reifydb.json".to_string(),
+			content_type: "application/vnd.reifydb.frames".to_string(),
 			body: json!({ "frames": self.frames }),
 			meta,
 		}
@@ -44,7 +44,7 @@ impl HttpFrameResponse {
 
 	fn into_query(self, meta: Option<ResponseMeta>) -> QueryResponse {
 		QueryResponse {
-			content_type: "application/vnd.reifydb.json".to_string(),
+			content_type: "application/vnd.reifydb.frames".to_string(),
 			body: json!({ "frames": self.frames }),
 			meta,
 		}

@@ -6,7 +6,7 @@ use std::{collections::HashMap, mem, sync::Arc};
 use reifydb_catalog::catalog::{Catalog, procedure::ResolvedProcedure};
 use reifydb_core::{
 	interface::catalog::{
-		policy::PolicyTargetType,
+		policy::{CallableOp, PolicyTargetType},
 		procedure::{Procedure, ProcedureParam},
 	},
 	internal_error,
@@ -471,7 +471,7 @@ impl<'a> Vm<'a> {
 			ctx.tx,
 			&pol_ns,
 			&pol_name,
-			"call",
+			CallableOp::Call,
 			PolicyTargetType::Procedure,
 		)?;
 

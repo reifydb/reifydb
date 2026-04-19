@@ -200,7 +200,7 @@ mod tests {
 	fn test_create_table_policy() {
 		let bump = Bump::new();
 		let src = r#"CREATE TABLE POLICY tenant_isolation ON app::projects {
-    read: { filter { org_id == $identity.org_id } }
+    from: { filter { org_id == $identity.org_id } }
 }"#;
 		let tokens = tokenize(&bump, src).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, src, tokens);
@@ -213,7 +213,7 @@ mod tests {
 		assert_eq!(policy.target_type, AstPolicyTargetType::Table);
 		assert_eq!(policy.name.unwrap().text(), "tenant_isolation");
 		assert_eq!(policy.operations.len(), 1);
-		assert_eq!(policy.operations[0].operation.text(), "read");
+		assert_eq!(policy.operations[0].operation.text(), "from");
 		assert_eq!(policy.operations[0].body_source, "filter { org_id == $identity.org_id }");
 	}
 
@@ -221,7 +221,7 @@ mod tests {
 	fn test_create_namespace_policy() {
 		let bump = Bump::new();
 		let src = r#"CREATE NAMESPACE POLICY finance_access ON finance {
-    read: { filter { true } }
+    from: { filter { true } }
 }"#;
 		let tokens = tokenize(&bump, src).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, src, tokens);

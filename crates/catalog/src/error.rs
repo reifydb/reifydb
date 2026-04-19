@@ -214,6 +214,14 @@ pub enum CatalogError {
 		expected: Vec<Type>,
 		actual: Type,
 	},
+
+	#[error("unknown operation `{operation}` for {target_type} policy")]
+	PolicyInvalidOperation {
+		target_type: &'static str,
+		operation: String,
+		valid: &'static [&'static str],
+		policy_name: Option<String>,
+	},
 }
 
 impl IntoDiagnostic for CatalogError {
@@ -1051,6 +1059,44 @@ impl IntoDiagnostic for CatalogError {
 				cause: None,
 				operator_chain: None,
 			},
+
+			CatalogError::PolicyInvalidOperation {
+				target_type,
+				operation,
+				valid,
+				policy_name,
+			} => {
+				let where_clause = match policy_name {
+					Some(name) => format!(" in policy `{}`", name),
+					None => String::new(),
+				};
+				let help = if valid.is_empty() {
+					format!(
+						"{} policies currently have no enforceable operations — remove this policy or add an enforcement call site for it",
+						target_type
+					)
+				} else {
+					format!("valid operations for {} policy: {}", target_type, valid.join(", "))
+				};
+				Diagnostic {
+					code: "CA_086".to_string(),
+					rql: None,
+					message: format!(
+						"unknown operation `{}` for {} policy{}",
+						operation, target_type, where_clause
+					),
+					fragment: Fragment::None,
+					label: Some("unknown policy operation".to_string()),
+					help: Some(help),
+					column: None,
+					notes: vec![
+						"operation names are matched by exact string equality at enforcement time; unknown keys are silently skipped and effectively dead code"
+							.to_string(),
+					],
+					cause: None,
+					operator_chain: None,
+				}
+			}
 		}
 	}
 }

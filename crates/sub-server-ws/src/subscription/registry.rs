@@ -8,7 +8,10 @@
 
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_sub_server::{format::WireFormat, response::resolve_response_json};
+use reifydb_sub_server::{
+	format::WireFormat,
+	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, resolve_response_json},
+};
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_type::value::{frame::frame::Frame, uuid::Uuid7};
 use reifydb_wire_format::{
@@ -281,7 +284,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 
 				PushMessage::ChangeJson {
 					subscription_id: *subscription_id,
-					content_type: "application/vnd.reifydb.json".to_string(),
+					content_type: CONTENT_TYPE_FRAMES.to_string(),
 					body,
 				}
 			}
@@ -297,7 +300,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 				let body = from_str(&resolved.body).unwrap_or(JsonValue::String(resolved.body));
 				PushMessage::ChangeJson {
 					subscription_id: *subscription_id,
-					content_type: "application/json".to_string(),
+					content_type: CONTENT_TYPE_JSON.to_string(),
 					body,
 				}
 			}
@@ -352,7 +355,7 @@ pub mod tests {
 				}]
 			}]
 		});
-		registry.broadcast("application/vnd.reifydb.json".to_string(), body.clone()).await;
+		registry.broadcast(CONTENT_TYPE_FRAMES.to_string(), body.clone()).await;
 
 		// Should receive message
 		let msg = rx.try_recv().unwrap();

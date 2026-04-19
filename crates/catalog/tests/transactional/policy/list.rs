@@ -13,11 +13,11 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE pol_list_a");
 	t.admin("CREATE TABLE pol_list_a::t { id: int4 }");
-	t.admin("CREATE TABLE POLICY pol_list_a_keep ON pol_list_a::t { read: { filter { true } } }");
+	t.admin("CREATE TABLE POLICY pol_list_a_keep ON pol_list_a::t { from: { filter { true } } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql(
-		"CREATE TABLE POLICY pol_list_a_new ON pol_list_a::t { read: { filter { true } } }",
+		"CREATE TABLE POLICY pol_list_a_new ON pol_list_a::t { from: { filter { true } } }",
 		Params::None,
 	);
 	txn.rql("DROP TABLE POLICY pol_list_a_keep", Params::None);
@@ -38,11 +38,11 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE pol_list_b");
 	t.admin("CREATE TABLE pol_list_b::t { id: int4 }");
-	t.admin("CREATE TABLE POLICY pol_list_b_keep ON pol_list_b::t { read: { filter { true } } }");
+	t.admin("CREATE TABLE POLICY pol_list_b_keep ON pol_list_b::t { from: { filter { true } } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql(
-		"CREATE TABLE POLICY pol_list_b_new ON pol_list_b::t { read: { filter { true } } }",
+		"CREATE TABLE POLICY pol_list_b_new ON pol_list_b::t { from: { filter { true } } }",
 		Params::None,
 	);
 	txn.rql("DROP TABLE POLICY pol_list_b_keep", Params::None);
@@ -69,11 +69,11 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE pol_list_c");
 	t.admin("CREATE TABLE pol_list_c::t { id: int4 }");
-	t.admin("CREATE TABLE POLICY pol_list_c_keep ON pol_list_c::t { read: { filter { true } } }");
+	t.admin("CREATE TABLE POLICY pol_list_c_keep ON pol_list_c::t { from: { filter { true } } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	txn.rql(
-		"CREATE TABLE POLICY pol_list_c_new ON pol_list_c::t { read: { filter { true } } }",
+		"CREATE TABLE POLICY pol_list_c_new ON pol_list_c::t { from: { filter { true } } }",
 		Params::None,
 	);
 	txn.rql("DROP TABLE POLICY pol_list_c_keep", Params::None);
@@ -100,11 +100,11 @@ fn concurrent_txn_sees_only_committed_state() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE pol_list_d");
 	t.admin("CREATE TABLE pol_list_d::t { id: int4 }");
-	t.admin("CREATE TABLE POLICY pol_list_d_keep ON pol_list_d::t { read: { filter { true } } }");
+	t.admin("CREATE TABLE POLICY pol_list_d_keep ON pol_list_d::t { from: { filter { true } } }");
 
 	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
 	txn1.rql(
-		"CREATE TABLE POLICY pol_list_d_new ON pol_list_d::t { read: { filter { true } } }",
+		"CREATE TABLE POLICY pol_list_d_new ON pol_list_d::t { from: { filter { true } } }",
 		Params::None,
 	);
 	txn1.rql("DROP TABLE POLICY pol_list_d_keep", Params::None);

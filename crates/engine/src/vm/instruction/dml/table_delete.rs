@@ -7,7 +7,10 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{
 	encoded::{key::EncodedKeyRange, row::EncodedRow},
 	interface::{
-		catalog::{id::IndexId, policy::PolicyTargetType},
+		catalog::{
+			id::IndexId,
+			policy::{DataOp, PolicyTargetType},
+		},
 		resolved::{ResolvedNamespace, ResolvedShape, ResolvedTable},
 	},
 	internal_error,
@@ -130,7 +133,7 @@ pub(crate) fn delete(
 				txn,
 				namespace.name(),
 				&table.name,
-				"delete",
+				DataOp::Delete,
 				&columns,
 				PolicyTargetType::Table,
 			)?;

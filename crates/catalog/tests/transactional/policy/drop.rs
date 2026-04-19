@@ -10,7 +10,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE pol_drop_a");
 	t.admin("CREATE TABLE pol_drop_a::t { id: int4 }");
-	t.admin("CREATE TABLE POLICY pol_drop_a_policy ON pol_drop_a::t { read: { filter { true } } }");
+	t.admin("CREATE TABLE POLICY pol_drop_a_policy ON pol_drop_a::t { from: { filter { true } } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("DROP TABLE POLICY pol_drop_a_policy", Params::None);
@@ -26,7 +26,7 @@ fn rolled_back_drop_leaves_policy_intact() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE pol_drop_b");
 	t.admin("CREATE TABLE pol_drop_b::t { id: int4 }");
-	t.admin("CREATE TABLE POLICY pol_drop_b_policy ON pol_drop_b::t { read: { filter { true } } }");
+	t.admin("CREATE TABLE POLICY pol_drop_b_policy ON pol_drop_b::t { from: { filter { true } } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("DROP TABLE POLICY pol_drop_b_policy", Params::None);
@@ -44,7 +44,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE pol_drop_c");
 	t.admin("CREATE TABLE pol_drop_c::t { id: int4 }");
-	t.admin("CREATE TABLE POLICY pol_drop_c_policy ON pol_drop_c::t { read: { filter { true } } }");
+	t.admin("CREATE TABLE POLICY pol_drop_c_policy ON pol_drop_c::t { from: { filter { true } } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("DROP TABLE POLICY pol_drop_c_policy", Params::None);
@@ -62,7 +62,7 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE pol_drop_d");
 	t.admin("CREATE TABLE pol_drop_d::t { id: int4 }");
-	t.admin("CREATE TABLE POLICY pol_drop_d_policy ON pol_drop_d::t { read: { filter { true } } }");
+	t.admin("CREATE TABLE POLICY pol_drop_d_policy ON pol_drop_d::t { from: { filter { true } } }");
 
 	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn1.rql("DROP TABLE POLICY pol_drop_d_policy", Params::None);

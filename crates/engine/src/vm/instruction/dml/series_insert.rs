@@ -9,7 +9,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
 		catalog::{
-			policy::PolicyTargetType,
+			policy::{DataOp, PolicyTargetType},
 			series::{SeriesKey, TimestampPrecision},
 			shape::ShapeId,
 		},
@@ -115,7 +115,7 @@ pub(crate) fn insert_series(
 			txn,
 			namespace_name,
 			series_name,
-			"insert",
+			DataOp::Insert,
 			&columns,
 			PolicyTargetType::Series,
 		)?;

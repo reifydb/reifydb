@@ -7,7 +7,10 @@ use reifydb_core::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
 	interface::{
-		catalog::{policy::PolicyTargetType, ringbuffer::RingBufferMetadata},
+		catalog::{
+			policy::{DataOp, PolicyTargetType},
+			ringbuffer::RingBufferMetadata,
+		},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
 	},
 	internal_error,
@@ -108,7 +111,7 @@ pub(crate) fn insert_ringbuffer(
 			txn,
 			namespace_name,
 			ringbuffer_name,
-			"insert",
+			DataOp::Insert,
 			&columns,
 			PolicyTargetType::RingBuffer,
 		)?;

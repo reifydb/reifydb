@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	execution::ExecutionResult,
 	interface::{
-		catalog::shape::ShapeId,
+		catalog::{policy::SessionOp, shape::ShapeId},
 		change::{Change, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
@@ -129,7 +129,7 @@ pub struct TestTransaction<'a> {
 	pub event_seq: &'a mut u64,
 	pub handler_seq: &'a mut u64,
 	pub savepoint: Option<Savepoint>,
-	pub session_type: String,
+	pub session_type: SessionOp,
 	pub session_default_deny: bool,
 }
 
@@ -140,7 +140,7 @@ impl<'a> TestTransaction<'a> {
 		invocations: &'a mut Vec<CapturedInvocation>,
 		event_seq: &'a mut u64,
 		handler_seq: &'a mut u64,
-		session_type: impl Into<String>,
+		session_type: SessionOp,
 		session_default_deny: bool,
 	) -> Self {
 		let baseline = inner.accumulator.len();
@@ -158,7 +158,7 @@ impl<'a> TestTransaction<'a> {
 			event_seq,
 			handler_seq,
 			savepoint: Some(savepoint),
-			session_type: session_type.into(),
+			session_type,
 			session_default_deny,
 		}
 	}
@@ -186,7 +186,7 @@ impl<'a> TestTransaction<'a> {
 			event_seq: &mut *self.event_seq,
 			handler_seq: &mut *self.handler_seq,
 			savepoint: None,
-			session_type: self.session_type.clone(),
+			session_type: self.session_type,
 			session_default_deny: self.session_default_deny,
 		}
 	}
@@ -490,7 +490,7 @@ impl<'a> Transaction<'a> {
 				event_seq: t.event_seq,
 				handler_seq: t.handler_seq,
 				savepoint: None,
-				session_type: t.session_type.clone(),
+				session_type: t.session_type,
 				session_default_deny: t.session_default_deny,
 			})),
 			Transaction::Replica(rep) => Transaction::Replica(rep),

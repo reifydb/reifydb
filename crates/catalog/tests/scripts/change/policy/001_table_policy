@@ -2,7 +2,7 @@
 
 admin 'CREATE NAMESPACE pol'
 admin 'CREATE TABLE pol::items { id: int4, status: utf8 }'
-admin 'CREATE TABLE POLICY pub ON pol::items { read: { filter { status == "public" } } }'
+admin 'CREATE TABLE POLICY pub ON pol::items { from: { filter { status == "public" } } }'
 replicate
 ---
 version: 2

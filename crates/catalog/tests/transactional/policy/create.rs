@@ -17,7 +17,7 @@ fn uncommitted_create_is_visible_within_txn() {
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql(
-		"CREATE TABLE POLICY pol_create_a_policy ON pol_create_a::t { read: { filter { true } } }",
+		"CREATE TABLE POLICY pol_create_a_policy ON pol_create_a::t { from: { filter { true } } }",
 		Params::None,
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
@@ -35,7 +35,7 @@ fn rolled_back_create_is_not_visible() {
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql(
-		"CREATE TABLE POLICY pol_create_b_policy ON pol_create_b::t { read: { filter { true } } }",
+		"CREATE TABLE POLICY pol_create_b_policy ON pol_create_b::t { from: { filter { true } } }",
 		Params::None,
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
@@ -55,7 +55,7 @@ fn committed_create_is_visible_in_new_txn() {
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql(
-		"CREATE TABLE POLICY pol_create_c_policy ON pol_create_c::t { read: { filter { true } } }",
+		"CREATE TABLE POLICY pol_create_c_policy ON pol_create_c::t { from: { filter { true } } }",
 		Params::None,
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
@@ -75,7 +75,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 
 	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn1.rql(
-		"CREATE TABLE POLICY pol_create_d_policy ON pol_create_d::t { read: { filter { true } } }",
+		"CREATE TABLE POLICY pol_create_d_policy ON pol_create_d::t { from: { filter { true } } }",
 		Params::None,
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);

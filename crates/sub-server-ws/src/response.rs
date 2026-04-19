@@ -13,13 +13,6 @@ use reifydb_type::{error::Diagnostic, fragment::Fragment};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string};
 
-/// Reifydb's columnar frames in JSON form — the default WebSocket/HTTP format.
-pub const CONTENT_TYPE_JSON: &str = "application/vnd.reifydb.json";
-/// Reifydb's binary columnar format (RBCF).
-pub const CONTENT_TYPE_RBCF: &str = "application/vnd.reifydb.rbcf";
-/// Reifydb's protobuf frame format (used on gRPC).
-pub const CONTENT_TYPE_PROTO: &str = "application/vnd.reifydb.proto";
-
 /// WebSocket response envelope (matches client's `Response`)
 #[derive(Debug, Serialize)]
 pub struct Response {

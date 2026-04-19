@@ -4,6 +4,7 @@
 use std::{collections::HashMap, mem, sync::Arc};
 
 use reifydb_core::{
+	interface::catalog::policy::SessionOp,
 	internal_error,
 	testing::{CapturedEvent, CapturedInvocation},
 	value::column::columns::Columns,
@@ -188,7 +189,7 @@ pub(crate) fn run_tests(
 					&mut invocations,
 					&mut event_seq,
 					&mut handler_seq,
-					"admin",
+					SessionOp::Admin,
 					true,
 				);
 				let (outcome, message) = run_single(
@@ -249,7 +250,7 @@ pub(crate) fn run_tests(
 						&mut invocations,
 						&mut event_seq,
 						&mut handler_seq,
-						"admin",
+						SessionOp::Admin,
 						true,
 					);
 					let (outcome, message) = run_single(

@@ -11,7 +11,7 @@ use reifydb_remote_proxy::{connect_remote, proxy_remote};
 use reifydb_sub_server::{
 	format::WireFormat,
 	interceptor::{Protocol, RequestMetadata},
-	response::resolve_response_json,
+	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, resolve_response_json},
 	subscribe::{CreateSubscriptionError, CreateSubscriptionResult::*, create_subscription},
 };
 use reifydb_type::value::identity::IdentityId;
@@ -23,7 +23,7 @@ use tracing::info;
 use crate::{
 	handler::{BinaryKind, ConnectionContext, encode_rbcf_envelope, error_to_response},
 	protocol::SubscribeRequest,
-	response::{CONTENT_TYPE_JSON, Response},
+	response::Response,
 	subscription::PushMessage,
 };
 
@@ -118,7 +118,7 @@ pub(crate) async fn handle_subscribe(
 						let ws_frames = convert_frames(&frames);
 						PushMessage::ChangeJson {
 							subscription_id,
-							content_type: CONTENT_TYPE_JSON.to_string(),
+							content_type: CONTENT_TYPE_FRAMES.to_string(),
 							body: json!({ "frames": ws_frames }),
 						}
 					}
@@ -130,7 +130,7 @@ pub(crate) async fn handle_subscribe(
 						};
 						PushMessage::ChangeJson {
 							subscription_id,
-							content_type: "application/json".to_string(),
+							content_type: CONTENT_TYPE_JSON.to_string(),
 							body,
 						}
 					}

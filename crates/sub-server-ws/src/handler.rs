@@ -16,7 +16,7 @@ use reifydb_sub_server::{
 	execute::ExecuteError,
 	format::WireFormat,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
-	response::{encode_frames_rbcf, resolve_response_json},
+	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, encode_frames_rbcf, resolve_response_json},
 	state::AppState,
 	subscribe::cleanup_subscription,
 };
@@ -39,7 +39,7 @@ use uuid::Builder;
 
 use crate::{
 	protocol::{Request, RequestPayload},
-	response::{CONTENT_TYPE_JSON, Response, ResponseMeta, ServerPush},
+	response::{Response, ResponseMeta, ServerPush},
 	subscription::{
 		handler::handle_subscribe,
 		registry::{PushMessage, SubscriptionRegistry},
@@ -691,14 +691,14 @@ fn build_response_body(frames: Vec<Frame>, format: WireFormat, unwrap: bool) -> 
 		WireFormat::Json => match resolve_response_json(frames, unwrap) {
 			Ok(resolved) => {
 				let body = from_str(&resolved.body).unwrap_or(JsonValue::String(resolved.body));
-				("application/json".to_string(), body)
+				(CONTENT_TYPE_JSON.to_string(), body)
 			}
-			Err(e) => ("application/json".to_string(), JsonValue::String(e)),
+			Err(e) => (CONTENT_TYPE_JSON.to_string(), JsonValue::String(e)),
 		},
 		WireFormat::Frames => {
 			let ws_frames = convert_frames(&frames);
 			let body = json!({ "frames": ws_frames });
-			(CONTENT_TYPE_JSON.to_string(), body)
+			(CONTENT_TYPE_FRAMES.to_string(), body)
 		}
 		WireFormat::Rbcf => unreachable!("Rbcf is handled before build_response_body"),
 	}

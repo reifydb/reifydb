@@ -10,7 +10,10 @@ use reifydb_core::{
 		index::primary_key_violation,
 	},
 	interface::{
-		catalog::{id::IndexId, policy::PolicyTargetType},
+		catalog::{
+			id::IndexId,
+			policy::{DataOp, PolicyTargetType},
+		},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedShape, ResolvedTable},
 	},
 	internal_error,
@@ -102,7 +105,7 @@ pub(crate) fn insert_table(
 			txn,
 			namespace_name,
 			table_name,
-			"insert",
+			DataOp::Insert,
 			&columns,
 			PolicyTargetType::Table,
 		)?;

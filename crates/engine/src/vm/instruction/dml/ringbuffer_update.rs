@@ -10,7 +10,7 @@ use reifydb_core::{
 		engine,
 	},
 	interface::{
-		catalog::policy::PolicyTargetType,
+		catalog::policy::{DataOp, PolicyTargetType},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
 	},
 	internal_error,
@@ -104,7 +104,7 @@ pub(crate) fn update_ringbuffer(
 				txn,
 				namespace.name(),
 				&ringbuffer.name,
-				"update",
+				DataOp::Update,
 				&columns,
 				PolicyTargetType::RingBuffer,
 			)?;

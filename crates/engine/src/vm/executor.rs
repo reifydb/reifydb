@@ -8,11 +8,12 @@ use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::Sys
 use reifydb_core::{
 	error::diagnostic::subscription,
 	execution::ExecutionResult,
+	interface::catalog::policy::SessionOp,
 	metric::{ExecutionMetrics, StatementMetric},
 	value::column::columns::Columns,
 };
 use reifydb_metric::storage::metric::MetricReader;
-use reifydb_policy::inject_read_policies;
+use reifydb_policy::inject_from_policies;
 use reifydb_rql::{
 	ast::parse_str,
 	compiler::{CompilationResult, Compiled, constrain_policy},
@@ -281,7 +282,7 @@ impl Executor {
 		};
 
 		let start_compile = self.0.runtime_context.clock.instant();
-		let compiled_list = match self.compiler.compile_with_policy(tx, rql, inject_read_policies) {
+		let compiled_list = match self.compiler.compile_with_policy(tx, rql, inject_from_policies) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("incremental compilation not supported in rql()")
@@ -358,7 +359,7 @@ impl Executor {
 
 		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Admin(&mut *txn),
-			"admin",
+			SessionOp::Admin,
 			true,
 		) {
 			return ExecutionResult {
@@ -369,7 +370,7 @@ impl Executor {
 		}
 
 		let start_compile = self.0.runtime_context.clock.instant();
-		match self.compiler.compile_with_policy(&mut Transaction::Admin(txn), cmd.rql, inject_read_policies) {
+		match self.compiler.compile_with_policy(&mut Transaction::Admin(txn), cmd.rql, inject_from_policies) {
 			Err(err) => {
 				#[cfg(not(reifydb_single_threaded))]
 				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, cmd.rql, cmd.params) {
@@ -409,7 +410,7 @@ impl Executor {
 			}
 			Ok(CompilationResult::Incremental(mut state)) => {
 				let policy = constrain_policy(|plans, bump, cat, tx| {
-					inject_read_policies(plans, bump, cat, tx)
+					inject_from_policies(plans, bump, cat, tx)
 				});
 				let mut result = vec![];
 				let mut output_results: Vec<Frame> = Vec::new();
@@ -491,11 +492,11 @@ impl Executor {
 			}
 		};
 
-		let session_type = txn.session_type.clone();
+		let session_type = txn.session_type;
 		let session_default_deny = txn.session_default_deny;
 		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Test(Box::new(txn.reborrow())),
-			&session_type,
+			session_type,
 			session_default_deny,
 		) {
 			return ExecutionResult {
@@ -509,7 +510,7 @@ impl Executor {
 		match self.compiler.compile_with_policy(
 			&mut Transaction::Test(Box::new(txn.reborrow())),
 			cmd.rql,
-			inject_read_policies,
+			inject_from_policies,
 		) {
 			Err(err) => {
 				#[cfg(not(reifydb_single_threaded))]
@@ -550,7 +551,7 @@ impl Executor {
 			}
 			Ok(CompilationResult::Incremental(mut state)) => {
 				let policy = constrain_policy(|plans, bump, cat, tx| {
-					inject_read_policies(plans, bump, cat, tx)
+					inject_from_policies(plans, bump, cat, tx)
 				});
 				let mut result = vec![];
 				let mut output_results: Vec<Frame> = Vec::new();
@@ -668,7 +669,7 @@ impl Executor {
 
 		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Query(&mut *txn),
-			"subscription",
+			SessionOp::Subscription,
 			true,
 		) {
 			return ExecutionResult {
@@ -682,7 +683,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Query(txn),
 			cmd.rql,
-			inject_read_policies,
+			inject_from_policies,
 		) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
@@ -734,7 +735,7 @@ impl Executor {
 
 		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Command(&mut *txn),
-			"command",
+			SessionOp::Command,
 			false,
 		) {
 			return ExecutionResult {
@@ -748,7 +749,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Command(txn),
 			cmd.rql,
-			inject_read_policies,
+			inject_from_policies,
 		) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
@@ -887,7 +888,7 @@ impl Executor {
 
 		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Query(&mut *txn),
-			"query",
+			SessionOp::Query,
 			false,
 		) {
 			return ExecutionResult {
@@ -901,7 +902,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Query(txn),
 			qry.rql,
-			inject_read_policies,
+			inject_from_policies,
 		) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {

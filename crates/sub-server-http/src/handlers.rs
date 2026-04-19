@@ -23,7 +23,7 @@ use reifydb_sub_server::{
 	dispatch::dispatch,
 	format::WireFormat,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
-	response::{encode_frames_rbcf, resolve_response_json},
+	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_RBCF, encode_frames_rbcf, resolve_response_json},
 	wire::WireParams,
 };
 use reifydb_type::{
@@ -32,10 +32,9 @@ use reifydb_type::{
 };
 use reifydb_wire_format::json::{to::convert_frames, types::ResponseFrame};
 use serde::{Deserialize, Serialize};
+use serde_json::to_string;
 
 use crate::{error::AppError, state::HttpServerState};
-
-const CONTENT_TYPE_RBCF: &str = "application/vnd.reifydb.rbcf";
 
 /// Request body for query and command endpoints.
 #[derive(Debug, Deserialize)]
@@ -316,10 +315,14 @@ async fn execute_and_respond(
 				.map_err(AppError::BadRequest)?;
 			(StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response()
 		}
-		WireFormat::Frames => Json(QueryResponse {
-			frames: convert_frames(&frames),
-		})
-		.into_response(),
+		WireFormat::Frames => {
+			let body = to_string(&QueryResponse {
+				frames: convert_frames(&frames),
+			})
+			.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?;
+			(StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_FRAMES.to_string())], body)
+				.into_response()
+		}
 	};
 	let duration = ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
 	response.headers_mut().insert("x-fingerprint", HeaderValue::from_str(&metrics.fingerprint.to_hex()).unwrap());
@@ -346,7 +349,7 @@ fn extract_identity(state: &HttpServerState, headers: &HeaderMap) -> Result<Iden
 
 #[cfg(test)]
 pub mod tests {
-	use serde_json::{from_str, to_string};
+	use serde_json::from_str;
 
 	use super::*;
 

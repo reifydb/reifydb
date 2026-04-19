@@ -8,7 +8,10 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
-		catalog::{policy::PolicyTargetType, shape::ShapeId},
+		catalog::{
+			policy::{DataOp, PolicyTargetType},
+			shape::ShapeId,
+		},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
@@ -94,7 +97,7 @@ pub(crate) fn update_series(
 			txn,
 			namespace_name,
 			series_name,
-			"update",
+			DataOp::Update,
 			&columns,
 			PolicyTargetType::Series,
 		)?;
