@@ -104,23 +104,28 @@ impl FlowEngine {
 				let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
 				self.add_source(flow.id, node.id, ShapeId::view(view.id()));
 
-				// For deferred views, also register the underlying primitive as a source.
-				// Deferred view sinks write to the underlying primitive's key space,
-				// so CDC from upstream deferred view commits uses the underlying ShapeId.
-				if view.kind() == ViewKind::Deferred {
-					self.add_source(flow.id, node.id, view.underlying_id());
-				}
+				// Both deferred and transactional view sinks write view-shape rows into
+				// the view's underlying backing shape, so CDC on that shape carries
+				// view-shape rows. Registering it as a source makes a SourceView in any
+				// consumer flow (subscription or downstream view) see view output
+				// identically regardless of the view kind.
+				self.add_source(flow.id, node.id, view.underlying_id());
 
-				// For transactional views, also register the underlying table/ringbuffer
-				// sources so the deferred coordinator routes changes correctly. A transactional
-				// view is computed on-the-fly; its changes are never published to CDC. By
-				// registering the view's upstream primitives, the deferred flow is triggered
-				// when the underlying data changes.
+				// Legacy transactional-view propagation path: a downstream DEFERRED
+				// flow that reads from a transactional view must also be woken up by
+				// the transactional view's UPSTREAM primitive CDC, because the
+				// deferred coordinator handles cascading transactional-view changes
+				// through pre-commit interceptors that bypass CDC. This branch
+				// registers those upstream primitives.
 				//
-				// However, skip this when the CURRENT flow also writes to a transactional
-				// view. In that case the pre-commit interceptor already propagates changes
-				// through `available_changes` and extra source registration would cause the
-				// downstream flow to receive raw table changes with a mismatched schema.
+				// Skip this when:
+				//  - the current flow is itself transactional (its pre-commit path already propagates
+				//    changes through `available_changes`), or
+				//  - the current flow is an ephemeral subscription (a `SinkSubscription` is its
+				//    terminal node). Subscription consumers rely on the `view.underlying_id()` CDC
+				//    registration above, exactly like they do for deferred views — per the principle
+				//    that subscription behavior is identical across view kinds. Registering upstream
+				//    primitives here would leak raw base-table rows to the subscriber.
 				if view.kind() == ViewKind::Transactional {
 					let current_flow_is_transactional = flow.get_node_ids().any(|nid| {
 						if let Some(n) = flow.get_node(&nid) {
@@ -153,7 +158,13 @@ impl FlowEngine {
 						}
 					});
 
-					if !current_flow_is_transactional {
+					let current_flow_is_subscription = flow.get_node_ids().any(|nid| {
+						flow.get_node(&nid)
+							.map(|n| matches!(n.ty, SinkSubscription { .. }))
+							.unwrap_or(false)
+					});
+
+					if !current_flow_is_transactional && !current_flow_is_subscription {
 						let mut additional_sources = Vec::new();
 						if let Some(view_flow) = self.catalog.find_flow_by_name(
 							&mut txn.reborrow(),
