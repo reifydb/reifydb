@@ -172,6 +172,7 @@ fn build_metrics(statements: Vec<StatementMetric>) -> ExecutionMetrics {
 	ExecutionMetrics {
 		fingerprint: fingerprint_request(&fps),
 		statements,
+		..Default::default()
 	}
 }
 

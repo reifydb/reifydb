@@ -10,13 +10,12 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
+use super::common_vtable_columns;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
 	vtable::{BaseVTable, Batch, VTableContext},
 };
-
-use super::common_vtable_columns;
 
 /// Virtual table that exposes gRPC bindings.
 pub struct SystemBindingsGrpc {

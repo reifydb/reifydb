@@ -5,17 +5,21 @@
 //!
 //! Synthesizes a `CALL ns::proc()` statement from a `Binding` + caller-supplied `Params`
 //! and routes it through the shared `dispatch::dispatch` pipeline. All three transport
-//! crates (HTTP, gRPC, WS) call this helper and wrap the returned `(Vec<Frame>, Duration)`
+//! crates (HTTP, gRPC, WS) call this helper and wrap the returned `(Vec<Frame>, ExecutionMetrics)`
 //! in their own response envelope.
 
-use std::{fmt::Write, time::Duration};
+#[cfg(not(reifydb_single_threaded))]
+use std::fmt::Write;
 
-use reifydb_core::actors::server::Operation;
+#[cfg(not(reifydb_single_threaded))]
+use reifydb_core::{actors::server::Operation, metric::ExecutionMetrics};
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_type::{
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId},
 };
 
+#[cfg(not(reifydb_single_threaded))]
 use crate::{
 	dispatch::dispatch,
 	execute::ExecuteError,
@@ -32,8 +36,10 @@ use crate::{
 ///   type-coercion failures) before calling here.
 /// - Building `RequestMetadata` from its transport-specific request.
 ///
-/// Returns the raw `(frames, wall_duration)` tuple from the engine; each transport
-/// wraps it into its own response format based on `binding.format`.
+/// Returns `(frames, metrics)` from the engine; each transport wraps it into its own
+/// response format based on `binding.format` and reads `metrics.total` / `metrics.fingerprint`
+/// for telemetry headers.
+#[cfg(not(reifydb_single_threaded))]
 pub async fn dispatch_binding(
 	state: &AppState,
 	namespace_path: &str,
@@ -41,7 +47,7 @@ pub async fn dispatch_binding(
 	params: Params,
 	identity: IdentityId,
 	metadata: RequestMetadata,
-) -> Result<(Vec<Frame>, Duration), ExecuteError> {
+) -> Result<(Vec<Frame>, ExecutionMetrics), ExecuteError> {
 	let mut call_text = String::with_capacity(8 + namespace_path.len() + procedure_name.len());
 	write!(&mut call_text, "CALL {}::{}()", namespace_path, procedure_name).unwrap();
 
@@ -53,6 +59,5 @@ pub async fn dispatch_binding(
 		metadata,
 	};
 
-	let (frames, duration, _metrics) = dispatch(state, ctx).await?;
-	Ok((frames, duration))
+	dispatch(state, ctx).await
 }

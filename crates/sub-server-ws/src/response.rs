@@ -70,30 +70,28 @@ pub struct ResponseMeta {
 pub struct AdminResponse {
 	pub content_type: String,
 	pub body: JsonValue,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub meta: Option<ResponseMeta>,
+	pub meta: ResponseMeta,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CommandResponse {
 	pub content_type: String,
 	pub body: JsonValue,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub meta: Option<ResponseMeta>,
+	pub meta: ResponseMeta,
 }
 
 #[derive(Debug, Serialize)]
 pub struct QueryResponse {
 	pub content_type: String,
 	pub body: JsonValue,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub meta: Option<ResponseMeta>,
+	pub meta: ResponseMeta,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CallOperationResponse {
 	pub content_type: String,
 	pub body: JsonValue,
+	pub meta: ResponseMeta,
 }
 
 #[derive(Debug, Serialize)]
@@ -170,7 +168,7 @@ impl Response {
 		id: impl Into<String>,
 		content_type: impl Into<String>,
 		body: JsonValue,
-		meta: Option<ResponseMeta>,
+		meta: ResponseMeta,
 	) -> Self {
 		Self {
 			id: id.into(),
@@ -186,7 +184,7 @@ impl Response {
 		id: impl Into<String>,
 		content_type: impl Into<String>,
 		body: JsonValue,
-		meta: Option<ResponseMeta>,
+		meta: ResponseMeta,
 	) -> Self {
 		Self {
 			id: id.into(),
@@ -202,7 +200,7 @@ impl Response {
 		id: impl Into<String>,
 		content_type: impl Into<String>,
 		body: JsonValue,
-		meta: Option<ResponseMeta>,
+		meta: ResponseMeta,
 	) -> Self {
 		Self {
 			id: id.into(),
@@ -214,12 +212,18 @@ impl Response {
 		}
 	}
 
-	pub fn call_operation(id: impl Into<String>, content_type: impl Into<String>, body: JsonValue) -> Self {
+	pub fn call_operation(
+		id: impl Into<String>,
+		content_type: impl Into<String>,
+		body: JsonValue,
+		meta: ResponseMeta,
+	) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::CallOperation(CallOperationResponse {
 				content_type: content_type.into(),
 				body,
+				meta,
 			}),
 		}
 	}

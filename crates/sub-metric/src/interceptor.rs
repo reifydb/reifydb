@@ -82,8 +82,8 @@ impl RequestInterceptor for RequestMetricsInterceptor {
 			let timestamp = DateTime::from_timestamp_millis(clock.now_millis()).unwrap();
 			event_bus.emit(RequestExecutedEvent::new(
 				request_record,
-				ctx.total,
-				ctx.compute,
+				ctx.metrics.total,
+				ctx.metrics.compute,
 				success,
 				timestamp,
 			));

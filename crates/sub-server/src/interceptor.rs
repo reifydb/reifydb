@@ -34,7 +34,7 @@
 //!         -> Pin<Box<dyn Future<Output = ()> + Send + '_>>
 //!     {
 //!         Box::pin(async move {
-//!             tracing::info!("query executed: {:?}", ctx.total);
+//!             tracing::info!("query executed: {:?}", ctx.metrics.total);
 //!         })
 //!     }
 //! }
@@ -48,10 +48,7 @@ use std::{collections::HashMap, future::Future, panic::AssertUnwindSafe, pin::Pi
 
 use futures_util::FutureExt;
 use reifydb_core::{actors::server::Operation, metric::ExecutionMetrics};
-use reifydb_type::{
-	params::Params,
-	value::{duration::Duration, identity::IdentityId},
-};
+use reifydb_type::{params::Params, value::identity::IdentityId};
 use tracing::error;
 
 use crate::execute::ExecuteError;
@@ -143,10 +140,6 @@ pub struct ResponseContext {
 	pub metadata: RequestMetadata,
 	/// Execution result: Ok(frame_count) or Err with the error message.
 	pub result: Result<usize, String>,
-	/// Wall-clock execution duration.
-	pub total: Duration,
-	/// Compute-only duration (excludes queue wait and scheduling overhead).
-	pub compute: Duration,
 }
 
 /// Async trait for request-level interceptors.

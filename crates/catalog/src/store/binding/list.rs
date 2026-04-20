@@ -7,9 +7,8 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result};
-
 use super::find::decode_binding;
+use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn list_bindings_all(rx: &mut Transaction<'_>) -> Result<Vec<Binding>> {

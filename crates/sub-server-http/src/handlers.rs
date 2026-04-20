@@ -19,6 +19,7 @@ use axum::{
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::binding::{Binding, BindingFormat, BindingProtocol, HttpMethod},
+	metric::ExecutionMetrics,
 };
 use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
@@ -32,7 +33,7 @@ use reifydb_sub_server::{
 };
 use reifydb_type::{
 	params::Params,
-	value::{Value, duration::Duration as ReifyDuration, frame::frame::Frame, identity::IdentityId, r#type::Type},
+	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
 };
 use reifydb_wire_format::json::{to::convert_frames, types::ResponseFrame};
 use serde::{Deserialize, Serialize};
@@ -306,7 +307,7 @@ async fn execute_and_respond(
 		metadata,
 	};
 
-	let (frames, wall_duration, metrics) = dispatch(state, ctx).await?;
+	let (frames, metrics) = dispatch(state, ctx).await?;
 
 	let mut response = match format_params.format {
 		WireFormat::Rbcf => match encode_frames_rbcf(&frames) {
@@ -328,9 +329,7 @@ async fn execute_and_respond(
 				.into_response()
 		}
 	};
-	let duration = ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
-	response.headers_mut().insert("x-fingerprint", HeaderValue::from_str(&metrics.fingerprint.to_hex()).unwrap());
-	response.headers_mut().insert("x-duration", HeaderValue::from_str(&duration.to_string()).unwrap());
+	insert_meta_headers(response.headers_mut(), &metrics);
 	Ok(response)
 }
 
@@ -455,12 +454,17 @@ pub async fn handle_binding(
 	let identity = extract_identity(&state, &headers)?;
 	let metadata = build_metadata(&headers);
 
-	let (frames, wall_duration) =
+	let (frames, metrics) =
 		dispatch_binding(&state, namespace.name(), procedure.name(), params, identity, metadata).await?;
 
 	let mut response = encode_binding_response(frames, binding.format)?;
-	response.headers_mut().insert("x-duration-ms", wall_duration.as_millis().to_string().parse().unwrap());
+	insert_meta_headers(response.headers_mut(), &metrics);
 	Ok(response)
+}
+
+fn insert_meta_headers(headers: &mut HeaderMap, metrics: &ExecutionMetrics) {
+	headers.insert("x-fingerprint", HeaderValue::from_str(&metrics.fingerprint.to_hex()).unwrap());
+	headers.insert("x-duration", HeaderValue::from_str(&metrics.total.to_string()).unwrap());
 }
 
 /// Match an HTTP binding path template against a concrete request path.

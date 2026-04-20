@@ -13,7 +13,7 @@ pub use native::{dispatch, dispatch_subscribe};
 
 #[cfg(not(reifydb_single_threaded))]
 mod native {
-	use std::{sync::Arc, time::Duration};
+	use std::sync::Arc;
 
 	use reifydb_core::{
 		actors::server::{ServerMessage, ServerResponse, ServerSubscribeResponse, build_server_message},
@@ -40,7 +40,7 @@ mod native {
 	pub async fn dispatch(
 		state: &AppState,
 		mut ctx: RequestContext,
-	) -> Result<(Vec<Frame>, Duration, ExecutionMetrics), ExecuteError> {
+	) -> Result<(Vec<Frame>, ExecutionMetrics), ExecuteError> {
 		// Pre-execute interceptors
 		if !state.request_interceptors().is_empty() {
 			state.request_interceptors().pre_execute(&mut ctx).await?;
@@ -62,7 +62,7 @@ mod native {
 			.map_err(|_| ExecuteError::Disconnected)?;
 
 		let wall_duration = start.elapsed();
-		let (frames, compute_duration, metrics) = match server_response {
+		let (frames, compute_duration, mut metrics) = match server_response {
 			ServerResponse::Success {
 				frames,
 				duration,
@@ -77,6 +77,10 @@ mod native {
 			}),
 		}?;
 
+		metrics.total = ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
+		metrics.compute =
+			ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64).unwrap_or_default();
+
 		// Post-execute interceptors
 		if !state.request_interceptors().is_empty() {
 			let response_ctx = ResponseContext {
@@ -87,15 +91,11 @@ mod native {
 				metadata: ctx.metadata,
 				metrics: metrics.clone(),
 				result: Ok(frames.len()),
-				total: ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64)
-					.unwrap_or_default(),
-				compute: ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64)
-					.unwrap_or_default(),
 			};
 			state.request_interceptors().post_execute(&response_ctx).await;
 		}
 
-		Ok((frames, wall_duration, metrics))
+		Ok((frames, metrics))
 	}
 
 	/// Dispatch a subscribe operation through the actor with interceptors.
@@ -105,7 +105,7 @@ mod native {
 	pub async fn dispatch_subscribe(
 		state: &AppState,
 		mut ctx: RequestContext,
-	) -> Result<(Vec<Frame>, Duration, ExecutionMetrics), ExecuteError> {
+	) -> Result<(Vec<Frame>, ExecutionMetrics), ExecuteError> {
 		// Pre-execute interceptors
 		if !state.request_interceptors().is_empty() {
 			state.request_interceptors().pre_execute(&mut ctx).await?;
@@ -130,7 +130,7 @@ mod native {
 
 		let wall_duration = start.elapsed();
 
-		let (frames, compute_duration, metrics) = match response {
+		let (frames, compute_duration, mut metrics) = match response {
 			ServerSubscribeResponse::Subscribed {
 				frames,
 				duration,
@@ -147,6 +147,10 @@ mod native {
 			}
 		};
 
+		metrics.total = ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
+		metrics.compute =
+			ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64).unwrap_or_default();
+
 		// Post-execute interceptors
 		if !state.request_interceptors().is_empty() {
 			let response_ctx = ResponseContext {
@@ -157,14 +161,10 @@ mod native {
 				metadata: ctx.metadata,
 				metrics: metrics.clone(),
 				result: Ok(frames.len()),
-				total: ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64)
-					.unwrap_or_default(),
-				compute: ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64)
-					.unwrap_or_default(),
 			};
 			state.request_interceptors().post_execute(&response_ctx).await;
 		}
 
-		Ok((frames, wall_duration, metrics))
+		Ok((frames, metrics))
 	}
 }
