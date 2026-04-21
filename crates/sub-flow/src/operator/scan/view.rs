@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::collections::HashMap;
+
 use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::{
-		catalog::{flow::FlowNodeId, view::View},
-		change::{Change, Diff},
+		catalog::{flow::FlowNodeId, shape::ShapeId, view::View},
+		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData},
@@ -18,6 +20,60 @@ use reifydb_type::{
 };
 
 use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
+
+/// Final state of a single row according to the in-transaction view overlay.
+///
+/// `Present(columns, idx)` — the row exists with data at `columns[idx]`.
+/// `Removed` — the row was removed in this transaction and should be absent
+/// from the pull result.
+enum OverlayRow<'a> {
+	Present(&'a Columns, usize),
+	Removed,
+}
+
+/// Build a per-row lookup of the overlay's effect on the given view.
+///
+/// Walks `overlay` in order, collapsing multiple diffs for the same row_number
+/// so the final entry reflects the latest state (later diffs override earlier
+/// ones, Insert/Update write a Present entry, Remove writes a Removed entry).
+fn build_view_overlay<'a>(overlay: &'a [Change], view_id: u64) -> HashMap<RowNumber, OverlayRow<'a>> {
+	let mut map: HashMap<RowNumber, OverlayRow<'a>> = HashMap::new();
+	for change in overlay {
+		let ChangeOrigin::Shape(ShapeId::View(id)) = change.origin else {
+			continue;
+		};
+		if id.0 != view_id {
+			continue;
+		}
+		for diff in &change.diffs {
+			match diff {
+				Diff::Insert {
+					post,
+				} => {
+					for (idx, rn) in post.row_numbers.iter().enumerate() {
+						map.insert(*rn, OverlayRow::Present(post, idx));
+					}
+				}
+				Diff::Update {
+					post,
+					..
+				} => {
+					for (idx, rn) in post.row_numbers.iter().enumerate() {
+						map.insert(*rn, OverlayRow::Present(post, idx));
+					}
+				}
+				Diff::Remove {
+					pre,
+				} => {
+					for rn in pre.row_numbers.iter() {
+						map.insert(*rn, OverlayRow::Removed);
+					}
+				}
+			}
+		}
+	}
+	map
+}
 
 pub struct PrimitiveViewOperator {
 	node: FlowNodeId,
@@ -86,6 +142,17 @@ impl Operator for PrimitiveViewOperator {
 		let shape: RowShape = self.view.columns().into();
 		let fields = shape.fields();
 
+		// Build the in-transaction overlay for this view (sibling views' outputs
+		// produced earlier in the same pre-commit). Empty for Deferred / Ephemeral
+		// transactions — those read everything from committed storage.
+		// Hold the Arc in a local so the overlay HashMap (which borrows from it)
+		// stays alive across the subsequent mutable borrow for `txn.get`.
+		let overlay_arc = txn.view_overlay();
+		let overlay = overlay_arc
+			.as_deref()
+			.map(|o| build_view_overlay(o.as_slice(), self.view.id().0))
+			.unwrap_or_default();
+
 		// Pre-allocate columns with capacity
 		let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
 		for field in fields.iter() {
@@ -99,6 +166,26 @@ impl Operator for PrimitiveViewOperator {
 		let mut updated_at = Vec::with_capacity(rows.len());
 
 		for row_num in rows {
+			// Overlay takes precedence over read_version storage: it reflects
+			// writes performed in this transaction by sibling views.
+			match overlay.get(row_num) {
+				Some(OverlayRow::Removed) => continue,
+				Some(OverlayRow::Present(src, idx)) => {
+					row_numbers.push(*row_num);
+					let src_created_at = src.created_at.get(*idx).copied().unwrap_or_default();
+					let src_updated_at = src.updated_at.get(*idx).copied().unwrap_or_default();
+					created_at.push(src_created_at);
+					updated_at.push(src_updated_at);
+					for (i, col) in src.iter().enumerate() {
+						if i < columns_vec.len() {
+							columns_vec[i].data.push_value(col.data().get_value(*idx));
+						}
+					}
+					continue;
+				}
+				None => {}
+			}
+
 			let key = RowKey::encoded(self.view.underlying_id(), *row_num);
 			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);

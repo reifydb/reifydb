@@ -140,9 +140,17 @@ impl LeftHashJoin {
 				// Add all rows to state first
 				add_to_state_entry_batch(txn, &mut ctx.state.right, key_hash, post, indices)?;
 
-				// If first right row(s), remove previously emitted unmatched left rows
-				if is_first && let Some(left_entry) = ctx.state.left.get(txn, key_hash)? {
-					let left_columns = ctx.operator.left_parent.pull(txn, &left_entry.rows)?;
+				// If first right row(s), remove previously emitted unmatched left rows.
+				// Pull via `pull_from_store` so we read the state's cached column
+				// snapshot — `parent.pull` fails for transactional cross-view joins
+				// because the parent view's rows aren't committed yet.
+				if is_first && ctx.state.left.get(txn, key_hash)?.is_some() {
+					let left_columns = pull_left_columns(
+						txn,
+						&ctx.state.left,
+						key_hash,
+						&ctx.operator.left_parent,
+					)?;
 					if !left_columns.is_empty() {
 						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
 						let unmatched = ctx.operator.unmatched_left_columns_batch(

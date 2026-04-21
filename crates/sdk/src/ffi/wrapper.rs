@@ -13,7 +13,7 @@ use std::{
 	backtrace::Backtrace,
 	cell::RefCell,
 	ffi::c_void,
-	io::Write,
+	io::{self, Write},
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 	slice,
@@ -130,7 +130,7 @@ fn print_ffi_fatal(
 	input_description: Option<&str>,
 	backtrace: Option<&Backtrace>,
 ) {
-	let mut err = std::io::stderr().lock();
+	let mut err = io::stderr().lock();
 	let _ = writeln!(err, "========== FFI FATAL ==========");
 	let _ = writeln!(err, "entry:    {}", entry);
 	let _ = writeln!(err, "operator: {}", operator);

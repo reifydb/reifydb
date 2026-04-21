@@ -119,6 +119,19 @@ pub(crate) fn execute_inline_flow_changes(
 	};
 
 	for level in execution_levels {
+		// Snapshot of all view-origin changes produced by previous levels (or the
+		// original `flow_changes` from the committing txn). Shared read-only with
+		// every flow txn in this level so pull paths on a view parent can overlay
+		// these on top of their `read_version` storage scan. See the regression at
+		// `testsuite/flow/tests/scripts/transactional/regression/004_left_join_between_views`.
+		let view_overlay: Arc<Vec<Change>> = Arc::new(
+			available_changes
+				.iter()
+				.filter(|c| matches!(c.origin, ChangeOrigin::Shape(ShapeId::View(_))))
+				.cloned()
+				.collect(),
+		);
+
 		let mut flow_txns: Vec<(FlowId, Vec<Change>, FlowTransaction)> = Vec::new();
 		for &flow_id in &level {
 			let relevant: Vec<Change> = available_changes
@@ -144,6 +157,7 @@ pub(crate) fn execute_inline_flow_changes(
 				catalog: catalog.clone(),
 				interceptors,
 				clock: engine.clock().clone(),
+				view_overlay: Arc::clone(&view_overlay),
 			});
 
 			flow_txns.push((flow_id, relevant, flow_txn));

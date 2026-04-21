@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, mem};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
@@ -99,6 +99,12 @@ pub struct TransactionalParams {
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub clock: Clock,
+	/// In-transaction view outputs accumulated by the pre-commit interceptor
+	/// from previous execution levels. Operators that read from a view parent
+	/// (e.g. `PrimitiveViewOperator::pull`) overlay these on top of their
+	/// `read_version` storage scan so sibling transactional views are visible
+	/// within the same pre-commit.
+	pub view_overlay: Arc<Vec<Change>>,
 }
 
 /// Shared fields between Deferred and Transactional variants.
@@ -127,6 +133,11 @@ pub enum FlowTransaction {
 		inner: FlowTransactionInner,
 		/// Read-only snapshot of the committing transaction's KV writes.
 		base_pending: Pending,
+		/// View outputs produced by sibling flows in earlier execution levels
+		/// of this pre-commit. Consulted by view-reading pull paths to overlay
+		/// in-transaction writes on top of the `read_version` snapshot. Empty
+		/// for the first level.
+		view_overlay: Arc<Vec<Change>>,
 	},
 
 	/// Ephemeral subscription flow processing.
@@ -253,6 +264,23 @@ impl FlowTransaction {
 				clock: params.clock,
 			},
 			base_pending: params.base_pending,
+			view_overlay: params.view_overlay,
+		}
+	}
+
+	/// Return a (cheap) clone of the in-transaction view overlay, if any.
+	/// Returns `None` for Deferred / Ephemeral transactions (which read
+	/// everything from committed storage). Operators reading from a view
+	/// parent overlay these changes on top of their storage reads so sibling
+	/// transactional view outputs produced earlier in the same pre-commit
+	/// are visible.
+	pub fn view_overlay(&self) -> Option<Arc<Vec<Change>>> {
+		match self {
+			Self::Transactional {
+				view_overlay,
+				..
+			} => Some(Arc::clone(view_overlay)),
+			_ => None,
 		}
 	}
 

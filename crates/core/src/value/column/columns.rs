@@ -471,6 +471,73 @@ impl Columns {
 		self.extract_by_indices(&[index])
 	}
 
+	/// Append rows from `source` at the given `indices` to `self`.
+	///
+	/// If `self` is empty (no columns), it is initialized to match the shape
+	/// of `source` and populated from the selected indices. Otherwise the
+	/// per-column data, row_numbers, created_at, and updated_at are extended
+	/// in place.
+	///
+	/// Panics if `self` and `source` have different column counts (only
+	/// checked when `self` is non-empty).
+	pub fn append_rows_by_indices(&mut self, source: &Columns, indices: &[usize]) {
+		if indices.is_empty() {
+			return;
+		}
+
+		if self.columns.is_empty() {
+			*self = source.extract_by_indices(indices);
+			return;
+		}
+
+		assert_eq!(
+			self.columns.len(),
+			source.columns.len(),
+			"append_rows: column count mismatch (self={}, source={})",
+			self.columns.len(),
+			source.columns.len(),
+		);
+
+		let self_cols = self.columns.make_mut();
+		for (i, src_col) in source.columns.iter().enumerate() {
+			for &idx in indices {
+				self_cols[i].data_mut().push_value(src_col.data().get_value(idx));
+			}
+		}
+
+		if !source.row_numbers.is_empty() {
+			let rns = self.row_numbers.make_mut();
+			for &idx in indices {
+				rns.push(source.row_numbers[idx]);
+			}
+		}
+		if !source.created_at.is_empty() {
+			let cr = self.created_at.make_mut();
+			for &idx in indices {
+				cr.push(source.created_at[idx]);
+			}
+		}
+		if !source.updated_at.is_empty() {
+			let up = self.updated_at.make_mut();
+			for &idx in indices {
+				up.push(source.updated_at[idx]);
+			}
+		}
+	}
+
+	/// Remove the row whose row_number equals `row_number`, if present.
+	/// Returns true if a row was removed.
+	pub fn remove_row(&mut self, row_number: RowNumber) -> bool {
+		let pos = self.row_numbers.iter().position(|&r| r == row_number);
+		let Some(idx) = pos else {
+			return false;
+		};
+
+		let kept_indices: Vec<usize> = (0..self.row_count()).filter(|&i| i != idx).collect();
+		*self = self.extract_by_indices(&kept_indices);
+		true
+	}
+
 	/// Project to a subset of columns by name, preserving the order of the provided names.
 	/// Columns not found in self are silently skipped.
 	pub fn project_by_names(&self, names: &[String]) -> Columns {
