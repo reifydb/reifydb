@@ -143,15 +143,17 @@ impl LeftHashJoin {
 				// If first right row(s), remove previously emitted unmatched left rows
 				if is_first && let Some(left_entry) = ctx.state.left.get(txn, key_hash)? {
 					let left_columns = ctx.operator.left_parent.pull(txn, &left_entry.rows)?;
-					let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
-					let unmatched = ctx.operator.unmatched_left_columns_batch(
-						txn,
-						&left_columns,
-						&left_indices,
-					)?;
-					result.push(Diff::Remove {
-						pre: unmatched,
-					});
+					if !left_columns.is_empty() {
+						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
+						let unmatched = ctx.operator.unmatched_left_columns_batch(
+							txn,
+							&left_columns,
+							&left_indices,
+						)?;
+						result.push(Diff::Remove {
+							pre: unmatched,
+						});
+					}
 				}
 
 				let emit_ctx = JoinEmitContext {
