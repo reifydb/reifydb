@@ -2,21 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	collections::VecDeque,
-	sync::atomic::{AtomicU64, Ordering},
+	collections::{HashMap, VecDeque},
+	sync::{
+		RwLock, RwLockReadGuard,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-
-/// Result of pushing data into a subscription buffer.
-#[derive(Debug, PartialEq)]
-pub enum PushResult {
-	/// Data was accepted into the buffer.
-	Accepted,
-	/// Subscription does not exist or has been unregistered.
-	NotFound,
-}
 
 struct SubscriptionBuffer {
 	queue: VecDeque<Columns>,
@@ -27,7 +21,8 @@ struct SubscriptionBuffer {
 
 /// Central store for all active subscription buffers.
 ///
-/// Thread-safe: accessed by sink operators (push), pollers/consumers (pop/drain),
+/// Thread-safe: accessed by the subscription CDC consumer (via `commit_staged`
+/// after each CDC pass), the poller (via `drain` during a `begin_poll` guard),
 /// and DDL (register/unregister) concurrently.
 ///
 /// Uses ring buffer semantics: when a buffer is full, the oldest entry is evicted
@@ -36,6 +31,9 @@ pub struct SubscriptionStore {
 	inner: DashMap<SubscriptionId, SubscriptionBuffer>,
 	next_id: AtomicU64,
 	default_capacity: usize,
+	/// Coordinates the boundary between per-CDC-batch commits and poller drain cycles.
+	/// Commits take write; poll cycles take read. Held briefly in both cases.
+	coord: RwLock<()>,
 }
 
 impl SubscriptionStore {
@@ -44,6 +42,7 @@ impl SubscriptionStore {
 			inner: DashMap::new(),
 			next_id: AtomicU64::new(1),
 			default_capacity,
+			coord: RwLock::new(()),
 		}
 	}
 
@@ -75,30 +74,6 @@ impl SubscriptionStore {
 		self.inner.remove(id).is_some()
 	}
 
-	/// Push a Columns batch into a subscription's buffer.
-	/// Called by the sink operator after flow processing.
-	///
-	/// Uses ring buffer semantics: if the buffer is at capacity, the oldest
-	/// entry is evicted before inserting the new data.
-	pub fn push(&self, id: &SubscriptionId, columns: Columns) -> PushResult {
-		match self.inner.get_mut(id) {
-			Some(mut buf) => {
-				if buf.queue.len() >= buf.capacity {
-					buf.queue.pop_front(); // evict oldest entry
-				}
-				buf.queue.push_back(columns);
-				PushResult::Accepted
-			}
-			None => PushResult::NotFound,
-		}
-	}
-
-	/// Pop a single batch from a subscription's buffer.
-	/// Returns None if the buffer is empty or subscription doesn't exist.
-	pub fn pop(&self, id: &SubscriptionId) -> Option<Columns> {
-		self.inner.get_mut(id).and_then(|mut buf| buf.queue.pop_front())
-	}
-
 	/// Drain up to `max_batches` from a subscription's buffer.
 	/// Non-blocking: returns immediately with whatever is available.
 	pub fn drain(&self, id: &SubscriptionId, max_batches: usize) -> Vec<Columns> {
@@ -116,9 +91,35 @@ impl SubscriptionStore {
 		self.inner.iter().map(|entry| *entry.key()).collect()
 	}
 
-	/// Check if a subscription exists.
-	pub fn is_active(&self, id: &SubscriptionId) -> bool {
-		self.inner.contains_key(id)
+	/// Atomically apply a batch of staged pushes. From the poller's point of view,
+	/// either all entries in `staged` become visible together, or none of them do.
+	///
+	/// Each subscription's staged diffs are appended in the given order, with
+	/// ring-buffer eviction if the buffer is at capacity. Entries for
+	/// subscriptions that no longer exist are silently dropped.
+	pub fn commit_staged(&self, staged: HashMap<SubscriptionId, Vec<Columns>>) {
+		if staged.is_empty() {
+			return;
+		}
+		let _write = self.coord.write().unwrap();
+		for (id, columns_vec) in staged {
+			let Some(mut buf) = self.inner.get_mut(&id) else {
+				continue;
+			};
+			for columns in columns_vec {
+				if buf.queue.len() >= buf.capacity {
+					buf.queue.pop_front();
+				}
+				buf.queue.push_back(columns);
+			}
+		}
+	}
+
+	/// Acquire a read guard for the duration of a poll cycle. While held,
+	/// `commit_staged` is blocked, so the poller sees a consistent snapshot
+	/// of what has been committed up to this point.
+	pub fn begin_poll(&self) -> RwLockReadGuard<'_, ()> {
+		self.coord.read().unwrap()
 	}
 }
 
@@ -136,26 +137,33 @@ mod tests {
 		}])
 	}
 
+	fn stage(id: SubscriptionId, values: &[u8]) -> HashMap<SubscriptionId, Vec<Columns>> {
+		let mut map = HashMap::new();
+		map.insert(id, values.iter().copied().map(test_columns).collect());
+		map
+	}
+
 	#[test]
-	fn test_register_and_push() {
+	fn test_register_and_commit() {
 		let store = SubscriptionStore::new(16);
 		let id = store.next_id();
 		store.register(id, vec!["test".to_string()]);
 
-		let result = store.push(&id, test_columns(1));
-		assert_eq!(result, PushResult::Accepted);
+		store.commit_staged(stage(id, &[1]));
 
-		let popped = store.pop(&id);
-		assert!(popped.is_some());
+		let drained = store.drain(&id, 10);
+		assert_eq!(drained.len(), 1);
 	}
 
 	#[test]
-	fn test_push_to_unregistered() {
+	fn test_commit_to_unregistered_is_dropped() {
 		let store = SubscriptionStore::new(16);
 		let id = SubscriptionId(999);
 
-		let result = store.push(&id, test_columns(1));
-		assert_eq!(result, PushResult::NotFound);
+		store.commit_staged(stage(id, &[1]));
+
+		let drained = store.drain(&id, 10);
+		assert!(drained.is_empty());
 	}
 
 	#[test]
@@ -164,50 +172,45 @@ mod tests {
 		let id = store.next_id();
 		store.register(id, vec!["test".to_string()]);
 
-		// Fill to capacity
-		assert_eq!(store.push(&id, test_columns(1)), PushResult::Accepted);
-		assert_eq!(store.push(&id, test_columns(2)), PushResult::Accepted);
+		// Three separate commits so each push evaluates buffer capacity
+		// against the already-committed tail — mirrors how the subscription
+		// CDC consumer drives the store one batch at a time.
+		store.commit_staged(stage(id, &[1]));
+		store.commit_staged(stage(id, &[2]));
+		store.commit_staged(stage(id, &[3]));
 
-		// Third push should evict value(1) and accept value(3)
-		assert_eq!(store.push(&id, test_columns(3)), PushResult::Accepted);
-
-		// Should have 2 items (oldest evicted)
 		let drained = store.drain(&id, 10);
 		assert_eq!(drained.len(), 2);
 		// The oldest value(1) has been evicted; remaining are value(2) and value(3)
 	}
 
 	#[test]
-	fn test_drain() {
+	fn test_drain_partial_then_full() {
 		let store = SubscriptionStore::new(16);
 		let id = store.next_id();
 		store.register(id, vec!["test".to_string()]);
 
-		store.push(&id, test_columns(1));
-		store.push(&id, test_columns(2));
-		store.push(&id, test_columns(3));
+		store.commit_staged(stage(id, &[1, 2, 3]));
 
 		let drained = store.drain(&id, 2);
 		assert_eq!(drained.len(), 2);
 
-		// One remaining
 		let remaining = store.drain(&id, 10);
 		assert_eq!(remaining.len(), 1);
 
-		// Empty
 		let empty = store.drain(&id, 10);
 		assert!(empty.is_empty());
 	}
 
 	#[test]
-	fn test_unregister() {
+	fn test_unregister_removes_from_active() {
 		let store = SubscriptionStore::new(16);
 		let id = store.next_id();
 		store.register(id, vec!["test".to_string()]);
 
-		assert!(store.is_active(&id));
+		assert!(store.active_subscriptions().contains(&id));
 		assert!(store.unregister(&id));
-		assert!(!store.is_active(&id));
+		assert!(!store.active_subscriptions().contains(&id));
 		assert!(!store.unregister(&id));
 	}
 

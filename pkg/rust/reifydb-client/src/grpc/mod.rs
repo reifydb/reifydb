@@ -4,4 +4,6 @@
 mod client;
 pub mod generated;
 
-pub use client::{GrpcClient, GrpcSubscription};
+pub use client::{
+	BatchFramesEnvelope, BatchGrpcSubscription, BatchMemberHandle, BatchStreamEvent, GrpcClient, GrpcSubscription,
+};

@@ -21,9 +21,10 @@ use tokio::{
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config, tungstenite::Message};
 
 use crate::{
-	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, LoginResult,
-	QueryRequest, QueryResult, Request, RequestPayload, Response, ResponseMeta, ResponsePayload, ServerPush,
-	SubscribeRequest, UnsubscribeRequest, WireFormat, params_to_wire,
+	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchClosedPayload,
+	BatchMemberClosedPayload, BatchMemberInfo, BatchSubscribeRequest, BatchUnsubscribeRequest, ChangePayload,
+	CommandRequest, CommandResult, LoginResult, QueryRequest, QueryResult, Request, RequestPayload, Response,
+	ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest, WireFormat, params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 	utils::generate_request_id,
 };
@@ -36,6 +37,17 @@ enum ClientResponse {
 
 type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<ClientResponse>>>>;
 
+/// A server-initiated push event delivered out of band from request/response.
+#[derive(Debug, Clone)]
+pub enum BatchPushEvent {
+	Change(BatchChangePayload),
+	MemberClosed(BatchMemberClosedPayload),
+	Closed(BatchClosedPayload),
+}
+
+/// Dispatcher for routing batch push messages to per-batch subscription handles.
+type BatchRouters = Arc<Mutex<HashMap<String, mpsc::Sender<BatchPushEvent>>>>;
+
 /// Async WebSocket client for ReifyDB
 pub struct WsClient {
 	request_tx: mpsc::Sender<(Request, oneshot::Sender<ClientResponse>)>,
@@ -43,6 +55,7 @@ pub struct WsClient {
 	is_authenticated: bool,
 	/// Channel for receiving server-initiated Change messages.
 	change_rx: mpsc::Receiver<ChangePayload>,
+	batch_routers: BatchRouters,
 	format: WireFormat,
 }
 
@@ -83,10 +96,23 @@ impl WsClient {
 		// Pending requests map
 		let pending: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
 
+		// Dispatcher for routing batch push messages to per-batch subscription handles
+		let batch_routers: BatchRouters = Arc::new(Mutex::new(HashMap::new()));
+
 		// Spawn the connection management task
 		let pending_clone = pending.clone();
+		let batch_routers_clone = batch_routers.clone();
 		spawn(async move {
-			Self::connection_loop(write, read, request_rx, shutdown_rx, pending_clone, change_tx).await;
+			Self::connection_loop(
+				write,
+				read,
+				request_rx,
+				shutdown_rx,
+				pending_clone,
+				change_tx,
+				batch_routers_clone,
+			)
+			.await;
 		});
 
 		Ok(Self {
@@ -94,6 +120,7 @@ impl WsClient {
 			shutdown_tx: Some(shutdown_tx),
 			is_authenticated: false,
 			change_rx,
+			batch_routers,
 			format,
 		})
 	}
@@ -106,6 +133,7 @@ impl WsClient {
 		mut shutdown_rx: mpsc::Receiver<()>,
 		pending: PendingRequests,
 		change_tx: mpsc::Sender<ChangePayload>,
+		batch_routers: BatchRouters,
 	) {
 		loop {
 			select! {
@@ -126,16 +154,59 @@ impl WsClient {
 									ServerPush::Change(change) => {
 										let _ = change_tx.send(change).await;
 									}
+									ServerPush::BatchChange(batch) => {
+										let sender = {
+											let routers = batch_routers.lock().await;
+											routers.get(&batch.batch_id).cloned()
+										};
+										if let Some(tx) = sender {
+											let _ = tx.send(BatchPushEvent::Change(batch)).await;
+										}
+									}
+									ServerPush::BatchMemberClosed(m) => {
+										let sender = {
+											let routers = batch_routers.lock().await;
+											routers.get(&m.batch_id).cloned()
+										};
+										if let Some(tx) = sender {
+											let _ = tx.send(BatchPushEvent::MemberClosed(m)).await;
+										}
+									}
+									ServerPush::BatchClosed(c) => {
+										let batch_id = c.batch_id.clone();
+										let sender = {
+											let mut routers = batch_routers.lock().await;
+											routers.remove(&batch_id)
+										};
+										if let Some(tx) = sender {
+											let _ = tx.send(BatchPushEvent::Closed(c)).await;
+										}
+									}
 								}
 							}
 						}
 						Ok(Message::Binary(data)) => {
-							// Binary envelope:
-							// [u8 kind][u32 LE id_len][id bytes][u32 LE meta_len][meta bytes][RBCF payload].
-							// kind 0x00 = one-shot response (id = request_id);
-							// kind 0x01 = subscription change (id = subscription_id).
-							if data.len() < 5 { continue; }
+							// Binary envelope layouts:
+							// kind=0x00: [u8 0x00][u32 id_len][id][u32 meta_len][meta][RBCF payload]  — one-shot response
+							// kind=0x01: [u8 0x01][u32 id_len][id][u32 meta_len][meta][RBCF payload]  — subscription change
+							// kind=0x02: [u8 0x02][u32 batch_id_len][batch_id][u32 num_entries]
+							//            then N * [u32 sub_id_len][sub_id][u32 rbcf_len][rbcf_bytes] — batch change
+							if data.is_empty() { continue; }
 							let kind = data[0];
+							if kind == 0x02 {
+								if let Some(payload) = parse_rbcf_batch_envelope(&data) {
+									let batch_id = payload.batch_id.clone();
+									let sender = {
+										let routers = batch_routers.lock().await;
+										routers.get(&batch_id).cloned()
+									};
+									if let Some(tx) = sender {
+										let _ = tx.send(BatchPushEvent::Change(payload)).await;
+									}
+								}
+								continue;
+							}
+							if data.len() < 5 { continue; }
 							let id_len = u32::from_le_bytes([data[1], data[2], data[3], data[4]]) as usize;
 							let meta_len_pos = 5 + id_len;
 							if data.len() < meta_len_pos + 4 { continue; }
@@ -447,6 +518,68 @@ impl WsClient {
 		}
 	}
 
+	/// Open a batch subscription over multiple RQL queries. Returns a handle that
+	/// receives coalesced per-tick envelopes.
+	pub async fn batch_subscribe(&self, queries: &[&str]) -> Result<WsBatchSubscription, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
+				queries: queries.iter().map(|q| q.to_string()).collect(),
+				format: self.wire_format(),
+			}),
+		};
+
+		let response = self.send_request_json(request).await?;
+		match response.payload {
+			ResponsePayload::BatchSubscribed(ack) => {
+				let (push_tx, push_rx) = mpsc::channel::<BatchPushEvent>(100);
+				{
+					let mut routers = self.batch_routers.lock().await;
+					routers.insert(ack.batch_id.clone(), push_tx);
+				}
+				Ok(WsBatchSubscription {
+					batch_id: ack.batch_id,
+					members: ack.members,
+					push_rx,
+				})
+			}
+			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
+			_ => Err(Error(Box::new(Diagnostic {
+				code: "UNEXPECTED_RESPONSE".to_string(),
+				message: "Unexpected response type for BatchSubscribe".to_string(),
+				..Default::default()
+			}))),
+		}
+	}
+
+	/// Unsubscribe a batch; cascade-removes all members server-side.
+	pub async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
+		{
+			let mut routers = self.batch_routers.lock().await;
+			routers.remove(batch_id);
+		}
+
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::BatchUnsubscribe(BatchUnsubscribeRequest {
+				batch_id: batch_id.to_string(),
+			}),
+		};
+
+		let response = self.send_request_json(request).await?;
+		match response.payload {
+			ResponsePayload::BatchUnsubscribed(_) => Ok(()),
+			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
+			_ => Err(Error(Box::new(Diagnostic {
+				code: "UNEXPECTED_RESPONSE".to_string(),
+				message: "Unexpected response type for BatchUnsubscribe".to_string(),
+				..Default::default()
+			}))),
+		}
+	}
+
 	/// Receive the next change notification, waiting if necessary.
 	pub async fn recv(&mut self) -> Option<ChangePayload> {
 		self.change_rx.recv().await
@@ -496,4 +629,79 @@ impl Drop for WsClient {
 			let _ = tx.try_send(());
 		}
 	}
+}
+
+/// Handle for a batch subscription over WebSocket. Each `recv()` yields one batch event.
+pub struct WsBatchSubscription {
+	batch_id: String,
+	members: Vec<BatchMemberInfo>,
+	push_rx: mpsc::Receiver<BatchPushEvent>,
+}
+
+impl WsBatchSubscription {
+	pub fn batch_id(&self) -> &str {
+		&self.batch_id
+	}
+
+	pub fn members(&self) -> &[BatchMemberInfo] {
+		&self.members
+	}
+
+	/// Receive the next batch push event; returns `None` after the batch closes.
+	pub async fn recv(&mut self) -> Option<BatchPushEvent> {
+		self.push_rx.recv().await
+	}
+}
+
+/// Parse an RBCF batch-change envelope (binary frame with kind=0x02).
+///
+/// Layout: `[u8 0x02][u32 batch_id_len][batch_id][u32 num_entries]` +
+/// N * `[u32 sub_id_len][sub_id][u32 rbcf_len][rbcf_bytes]`.
+fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
+	if data.len() < 5 || data[0] != 0x02 {
+		return None;
+	}
+	let batch_id_len = u32::from_le_bytes(data[1..5].try_into().ok()?) as usize;
+	let batch_id_end = 5 + batch_id_len;
+	if data.len() < batch_id_end + 4 {
+		return None;
+	}
+	let batch_id = String::from_utf8_lossy(&data[5..batch_id_end]).into_owned();
+	let num_entries = u32::from_le_bytes(data[batch_id_end..batch_id_end + 4].try_into().ok()?) as usize;
+	let mut pos = batch_id_end + 4;
+	let mut entries = Vec::with_capacity(num_entries);
+	for _ in 0..num_entries {
+		if data.len() < pos + 4 {
+			return None;
+		}
+		let sub_id_len = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
+		pos += 4;
+		if data.len() < pos + sub_id_len + 4 {
+			return None;
+		}
+		let sub_id = String::from_utf8_lossy(&data[pos..pos + sub_id_len]).into_owned();
+		pos += sub_id_len;
+		let rbcf_len = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
+		pos += 4;
+		if data.len() < pos + rbcf_len {
+			return None;
+		}
+		let rbcf_bytes = &data[pos..pos + rbcf_len];
+		pos += rbcf_len;
+		let (frames, decode_error) = match decode_frames(rbcf_bytes) {
+			Ok(f) => (Some(f), None),
+			Err(e) => (None, Some(e.to_string())),
+		};
+		entries.push(BatchChangeEntry {
+			subscription_id: sub_id,
+			content_type: "application/vnd.reifydb.rbcf".to_string(),
+			body: Value::Null,
+			frames,
+			decode_error,
+		});
+	}
+	Some(BatchChangePayload {
+		batch_id,
+		entries,
+	})
 }

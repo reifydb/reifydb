@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{
+	collections::HashMap,
+	mem,
+	sync::{Arc, Mutex},
+};
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_core::{
@@ -17,16 +21,59 @@ use reifydb_sub_flow::{
 };
 use reifydb_type::{Result, fragment::Fragment, value::row_number::RowNumber};
 
-use crate::store::{PushResult, SubscriptionStore};
+use crate::store::SubscriptionStore;
 
-/// Ephemeral subscription sink operator that pushes Columns directly to
-/// a SubscriptionStore buffer instead of writing encoded rows to persistent storage.
+/// Staged delivery buffer for subscription sinks.
+///
+/// During a single CDC-batch pass, every sink writes into an in-memory staging
+/// map instead of pushing to the `SubscriptionStore` directly. At the end of
+/// the pass, `commit_batch` drains the staging map and applies all pushes to
+/// the store atomically (from the poller's point of view). This prevents the
+/// poller from observing a partial batch — where, for example, one batch
+/// member's diff has been pushed but another's is still in flight.
+///
+/// Only one CDC pass runs at a time per subsystem (the `PollConsumer` is
+/// single-threaded), so contention on `staging` is nil; the `Mutex` exists to
+/// satisfy `Send + Sync` requirements from the sink operator path.
+pub struct DeliveryBuffer {
+	store: Arc<SubscriptionStore>,
+	staging: Mutex<HashMap<SubscriptionId, Vec<Columns>>>,
+}
+
+impl DeliveryBuffer {
+	pub fn new(store: Arc<SubscriptionStore>) -> Self {
+		Self {
+			store,
+			staging: Mutex::new(HashMap::new()),
+		}
+	}
+
+	/// Stage one diff payload for `subscription_id`. Called by the sink operator
+	/// during flow processing.
+	pub fn push(&self, subscription_id: SubscriptionId, columns: Columns) {
+		self.staging.lock().unwrap().entry(subscription_id).or_default().push(columns);
+	}
+
+	/// Commit all staged diffs to the store as a single atomic batch. Safe to
+	/// call with an empty staging map (no-op).
+	pub fn commit_batch(&self) {
+		let staged = {
+			let mut guard = self.staging.lock().unwrap();
+			mem::take(&mut *guard)
+		};
+		self.store.commit_staged(staged);
+	}
+}
+
+/// Ephemeral subscription sink operator. Stages output diffs in a
+/// `DeliveryBuffer` buffer; the surrounding CDC consumer is responsible for
+/// calling `commit_batch` once all flows have processed.
 pub struct EphemeralSinkSubscriptionOperator {
 	#[allow(dead_code)]
 	parent: Arc<Operators>,
 	node: FlowNodeId,
 	subscription_id: SubscriptionId,
-	store: Arc<SubscriptionStore>,
+	delivery: Arc<DeliveryBuffer>,
 }
 
 impl EphemeralSinkSubscriptionOperator {
@@ -34,13 +81,13 @@ impl EphemeralSinkSubscriptionOperator {
 		parent: Arc<Operators>,
 		node: FlowNodeId,
 		subscription_id: SubscriptionId,
-		store: Arc<SubscriptionStore>,
+		delivery: Arc<DeliveryBuffer>,
 	) -> Self {
 		Self {
 			parent,
 			node,
 			subscription_id,
-			store,
+			delivery,
 		}
 	}
 
@@ -85,12 +132,7 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 			};
 
 			let with_implicit = Self::add_implicit_columns(columns, op);
-			match self.store.push(&self.subscription_id, with_implicit) {
-				PushResult::Accepted => {}
-				PushResult::NotFound => {
-					// Subscription was unregistered before data arrived; this is benign.
-				}
-			}
+			self.delivery.push(self.subscription_id, with_implicit);
 		}
 
 		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))

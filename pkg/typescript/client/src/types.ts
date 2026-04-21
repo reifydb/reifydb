@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-import type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
+import type { Params, Frame, Column, ErrorResponse, ShapeNode } from "@reifydb/core";
 import { ReifyError } from "@reifydb/core";
 
 // Re-export types that are actually available in flow
@@ -124,6 +124,90 @@ export interface SubscriptionCallbacks<T = any> {
     on_insert?: (rows: T[]) => void;
     on_update?: (rows: T[]) => void;
     on_remove?: (rows: T[]) => void;
+}
+
+export interface BatchSubscribeRequest {
+    id: string;
+    type: "BatchSubscribe";
+    payload: {
+        queries: string[];
+        format?: "json" | "frames" | "rbcf";
+    };
+}
+
+export interface BatchMemberInfo {
+    index: number;
+    subscription_id: string;
+}
+
+export interface BatchSubscribedResponse {
+    id: string;
+    type: "BatchSubscribed";
+    payload: {
+        batch_id: string;
+        members: BatchMemberInfo[];
+    };
+}
+
+export interface BatchUnsubscribeRequest {
+    id: string;
+    type: "BatchUnsubscribe";
+    payload: {
+        batch_id: string;
+    };
+}
+
+export interface BatchUnsubscribedResponse {
+    id: string;
+    type: "BatchUnsubscribed";
+    payload: {
+        batch_id: string;
+    };
+}
+
+export interface BatchChangeMessage {
+    type: "BatchChange";
+    payload: {
+        batch_id: string;
+        entries: Array<{
+            subscription_id: string;
+            content_type: string;
+            body: any;
+        }>;
+    };
+}
+
+export interface BatchMemberClosedMessage {
+    type: "BatchMemberClosed";
+    payload: {
+        batch_id: string;
+        subscription_id: string;
+    };
+}
+
+export interface BatchClosedMessage {
+    type: "BatchClosed";
+    payload: {
+        batch_id: string;
+    };
+}
+
+export interface BatchSubscriptionMember<T = any> {
+    rql: string;
+    params?: any;
+    shape?: ShapeNode;
+    callbacks: SubscriptionCallbacks<T>;
+}
+
+export interface BatchSubscriptionCallbacks {
+    on_member_closed?: (subscription_id: string) => void;
+    on_closed?: () => void;
+    on_entry_error?: (subscription_id: string, error: Error) => void;
+}
+
+export interface BatchSubscription {
+    batch_id: string;
+    subscription_ids: string[];
 }
 
 export interface AuthRequest {

@@ -10,4 +10,5 @@
 //! This crate provides the delivery trait used by subscription consumers,
 //! decoupled from any specific transport protocol (WebSocket, HTTP, etc.).
 
+pub mod batch;
 pub mod delivery;

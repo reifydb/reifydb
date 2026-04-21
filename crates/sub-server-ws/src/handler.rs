@@ -21,6 +21,7 @@ use reifydb_sub_server::{
 	state::AppState,
 	subscribe::cleanup_subscription,
 };
+use reifydb_subscription::batch::BatchId;
 use reifydb_type::{
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
@@ -40,9 +41,9 @@ use uuid::Builder;
 
 use crate::{
 	protocol::{CallOperationRequest, Request, RequestPayload},
-	response::{Response, ResponseMeta, ServerPush},
+	response::{BatchChangeEntry, Response, ResponseMeta, ServerPush},
 	subscription::{
-		handler::handle_subscribe,
+		handler::{handle_batch_subscribe, handle_batch_unsubscribe, handle_subscribe},
 		registry::{PushMessage, SubscriptionRegistry},
 	},
 };
@@ -63,6 +64,7 @@ enum WsResponse {
 pub(crate) enum BinaryKind {
 	Response = 0x00,
 	Change = 0x01,
+	BatchChange = 0x02,
 }
 
 /// Build a binary envelope for RBCF-encoded frames:
@@ -134,6 +136,8 @@ pub async fn handle_connection(
 
 	// Track remote subscription proxy tasks (not registered in registry/poller)
 	let mut remote_tasks: HashMap<String, JoinHandle<()>> = HashMap::new();
+	// Track remote-proxy tasks belonging to batch subscriptions, keyed by batch id.
+	let mut batch_remote_tasks: HashMap<BatchId, Vec<JoinHandle<()>>> = HashMap::new();
 
 	loop {
 		select! {
@@ -169,6 +173,38 @@ pub async fn handle_connection(
 						let _ = sender.send(Message::Close(None)).await;
 						break;
 					}
+					PushMessage::BatchChangeJson { batch_id, entries } => {
+						let wire_entries = entries.into_iter().map(|e| BatchChangeEntry {
+							subscription_id: e.subscription_id.to_string(),
+							content_type: e.content_type,
+							body: e.body,
+						}).collect();
+						let msg = ServerPush::batch_change(batch_id.to_string(), wire_entries).to_json();
+						if sender.send(Message::Text(msg.into())).await.is_err() {
+							debug!("Failed to send batch push message to {:?}", peer);
+							break;
+						}
+					}
+					PushMessage::BatchChangeRbcf { envelope, .. } => {
+						if sender.send(Message::Binary(envelope.into())).await.is_err() {
+							debug!("Failed to send RBCF batch push to {:?}", peer);
+							break;
+						}
+					}
+					PushMessage::BatchMemberClosed { batch_id, subscription_id } => {
+						let msg = ServerPush::batch_member_closed(batch_id.to_string(), subscription_id.to_string()).to_json();
+						if sender.send(Message::Text(msg.into())).await.is_err() {
+							debug!("Failed to send BatchMemberClosed to {:?}", peer);
+							break;
+						}
+					}
+					PushMessage::BatchClosed { batch_id } => {
+						let msg = ServerPush::batch_closed(batch_id.to_string()).to_json();
+						if sender.send(Message::Text(msg.into())).await.is_err() {
+							debug!("Failed to send BatchClosed to {:?}", peer);
+							break;
+						}
+					}
 				}
 			}
 
@@ -187,6 +223,7 @@ pub async fn handle_connection(
 								registry: &registry,
 								push_tx: push_tx.clone(),
 								remote_tasks: &mut remote_tasks,
+								batch_remote_tasks: &mut batch_remote_tasks,
 								shutdown: shutdown.clone(),
 							},
 						).await;
@@ -241,6 +278,11 @@ pub async fn handle_connection(
 	for (_, handle) in remote_tasks {
 		handle.abort();
 	}
+	for (_, handles) in batch_remote_tasks {
+		for handle in handles {
+			handle.abort();
+		}
+	}
 
 	// Cleanup all subscriptions for this connection
 	let subscription_ids = registry.cleanup_connection(connection_id);
@@ -265,9 +307,10 @@ pub(crate) struct ConnectionContext<'a> {
 	pub identity: &'a mut Option<IdentityId>,
 	pub auth_token: &'a mut Option<String>,
 	pub connection_id: ConnectionId,
-	pub registry: &'a SubscriptionRegistry,
+	pub registry: &'a Arc<SubscriptionRegistry>,
 	pub push_tx: mpsc::UnboundedSender<PushMessage>,
 	pub remote_tasks: &'a mut HashMap<String, JoinHandle<()>>,
+	pub batch_remote_tasks: &'a mut HashMap<BatchId, Vec<JoinHandle<()>>>,
 	pub shutdown: watch::Receiver<bool>,
 }
 
@@ -495,6 +538,14 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 		}
 
 		RequestPayload::Subscribe(sub) => handle_subscribe(&request.id, sub, conn).await.map(WsResponse::Text),
+
+		RequestPayload::BatchSubscribe(req) => {
+			handle_batch_subscribe(&request.id, req, conn).await.map(WsResponse::Text)
+		}
+
+		RequestPayload::BatchUnsubscribe(req) => {
+			handle_batch_unsubscribe(&request.id, req, conn).await.map(WsResponse::Text)
+		}
 
 		RequestPayload::Logout => {
 			if let Some(token) = conn.auth_token.as_ref() {

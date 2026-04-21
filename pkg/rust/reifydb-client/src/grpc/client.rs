@@ -43,11 +43,13 @@ use uuid::Uuid;
 
 use super::generated::{
 	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
-	CommandRequest as ProtoCommandRequest, Format, Frame as ProtoFrame, LogoutRequest as ProtoLogoutRequest,
-	NamedParams, Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
-	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
-	UnsubscribeRequest as ProtoUnsubscribeRequest, admin_response, change_event, command_response,
-	params::Params as ProtoParamsOneof, query_response, reify_db_client::ReifyDbClient, subscription_event,
+	BatchSubscribeRequest as ProtoBatchSubscribeRequest, BatchSubscriptionEvent,
+	BatchUnsubscribeRequest as ProtoBatchUnsubscribeRequest, CommandRequest as ProtoCommandRequest, Format,
+	Frame as ProtoFrame, LogoutRequest as ProtoLogoutRequest, NamedParams, Params as ProtoParams, PositionalParams,
+	QueryRequest as ProtoQueryRequest, SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
+	UnsubscribeRequest as ProtoUnsubscribeRequest, admin_response, batch_subscription_event, change_event,
+	command_response, params::Params as ProtoParamsOneof, query_response, reify_db_client::ReifyDbClient,
+	subscription_event,
 };
 use crate::{AdminResult, CommandResult, LoginResult, QueryResult, ResponseMeta, WireFormat};
 
@@ -289,6 +291,69 @@ impl GrpcClient {
 		Ok(())
 	}
 
+	/// Open a batch subscription over N queries. The server coalesces per-tick deltas
+	/// into a single envelope keyed by member subscription id.
+	pub async fn batch_subscribe(&self, queries: &[&str]) -> Result<BatchGrpcSubscription, Error> {
+		let request = ProtoBatchSubscribeRequest {
+			rql: queries.iter().map(|q| q.to_string()).collect(),
+			format: self.wire_format(),
+		};
+
+		let mut client = self.inner.clone();
+		let mut req = Request::new(request);
+		self.attach_auth(&mut req);
+
+		let response = client.batch_subscribe(req).await.map_err(status_to_error)?;
+		let mut stream = response.into_inner();
+
+		// Consume the initial BatchSubscribedEvent to extract batch_id + members
+		let first = stream.message().await.map_err(status_to_error)?.ok_or_else(|| {
+			Error(Box::new(Diagnostic {
+				code: "GRPC_BATCH_SUBSCRIBE".to_string(),
+				message: "Stream closed before receiving batch subscribed event".to_string(),
+				..Default::default()
+			}))
+		})?;
+
+		let (batch_id, members) = match first.event {
+			Some(batch_subscription_event::Event::Subscribed(s)) => {
+				let members: Vec<BatchMemberHandle> = s
+					.members
+					.into_iter()
+					.map(|m| BatchMemberHandle {
+						index: m.index as usize,
+						subscription_id: m.subscription_id,
+					})
+					.collect();
+				(s.batch_id, members)
+			}
+			_ => {
+				return Err(Error(Box::new(Diagnostic {
+					code: "GRPC_BATCH_SUBSCRIBE".to_string(),
+					message: "Expected BatchSubscribedEvent as first message".to_string(),
+					..Default::default()
+				})));
+			}
+		};
+
+		Ok(BatchGrpcSubscription {
+			batch_id,
+			members,
+			stream,
+		})
+	}
+
+	pub async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
+		let request = ProtoBatchUnsubscribeRequest {
+			batch_id: batch_id.to_string(),
+		};
+		let mut client = self.inner.clone();
+		let mut req = Request::new(request);
+		self.attach_auth(&mut req);
+		client.batch_unsubscribe(req).await.map_err(status_to_error)?;
+		Ok(())
+	}
+
 	fn attach_auth<T>(&self, request: &mut Request<T>) {
 		if let Some(ref token) = self.token {
 			let bearer = format!("Bearer {}", token);
@@ -304,6 +369,113 @@ pub struct GrpcSubscription {
 	stream: Streaming<SubscriptionEvent>,
 	#[allow(dead_code)]
 	format: WireFormat,
+}
+
+/// Member information returned from a successful `batch_subscribe` — pairs the
+/// client's query index with the server-assigned subscription id.
+#[derive(Debug, Clone)]
+pub struct BatchMemberHandle {
+	pub index: usize,
+	pub subscription_id: String,
+}
+
+/// A batch subscription over gRPC. Receives coalesced per-tick envelopes from
+/// N underlying member subscriptions.
+pub struct BatchGrpcSubscription {
+	batch_id: String,
+	members: Vec<BatchMemberHandle>,
+	stream: Streaming<BatchSubscriptionEvent>,
+}
+
+/// One envelope delivered by a batch subscription: a map from member
+/// `subscription_id` → frames that arrived within that poller tick.
+#[derive(Debug, Clone)]
+pub struct BatchFramesEnvelope {
+	pub batch_id: String,
+	pub entries: HashMap<String, Vec<Frame>>,
+	pub entry_errors: HashMap<String, String>,
+}
+
+/// A non-data server-initiated notification on a batch stream: either a member
+/// closed (upstream ended, batch still alive) or the batch itself closed.
+#[derive(Debug, Clone)]
+pub enum BatchStreamEvent {
+	Change(BatchFramesEnvelope),
+	MemberClosed {
+		batch_id: String,
+		subscription_id: String,
+	},
+}
+
+impl BatchGrpcSubscription {
+	pub fn batch_id(&self) -> &str {
+		&self.batch_id
+	}
+
+	pub fn members(&self) -> &[BatchMemberHandle] {
+		&self.members
+	}
+
+	/// Receive the next envelope. Returns `None` when the server stream ends.
+	///
+	/// `BatchMemberClosed` notifications are surfaced so callers can track which
+	/// members have stopped producing.
+	pub async fn recv(&mut self) -> Option<BatchStreamEvent> {
+		loop {
+			let msg = self.stream.message().await.ok()??;
+			match msg.event {
+				Some(batch_subscription_event::Event::Change(change)) => {
+					let batch_id = change.batch_id;
+					let mut entries: HashMap<String, Vec<Frame>> = HashMap::new();
+					let mut entry_errors: HashMap<String, String> = HashMap::new();
+					for entry in change.entries {
+						let sub_id = entry.subscription_id;
+						match entry.change.and_then(|c| c.payload) {
+							Some(change_event::Payload::Rbcf(bytes)) => {
+								match decode_frames(&bytes) {
+									Ok(frames) => {
+										entries.insert(sub_id, frames);
+									}
+									Err(e) => {
+										entry_errors.insert(
+											sub_id.clone(),
+											e.to_string(),
+										);
+										entries.insert(sub_id, Vec::new());
+									}
+								}
+							}
+							Some(change_event::Payload::Frames(fp)) => {
+								entries.insert(
+									sub_id,
+									proto_frames_to_frames(fp.frames),
+								);
+							}
+							None => {
+								entries.insert(sub_id, Vec::new());
+							}
+						}
+					}
+					return Some(BatchStreamEvent::Change(BatchFramesEnvelope {
+						batch_id,
+						entries,
+						entry_errors,
+					}));
+				}
+				Some(batch_subscription_event::Event::MemberClosed(m)) => {
+					return Some(BatchStreamEvent::MemberClosed {
+						batch_id: m.batch_id,
+						subscription_id: m.subscription_id,
+					});
+				}
+				Some(batch_subscription_event::Event::Subscribed(_)) => {
+					// Already consumed during batch_subscribe; ignore any trailing ones.
+					continue;
+				}
+				None => continue,
+			}
+		}
+	}
 }
 
 impl GrpcSubscription {

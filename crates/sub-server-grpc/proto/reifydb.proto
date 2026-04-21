@@ -7,6 +7,8 @@ service ReifyDB {
   rpc Query(QueryRequest) returns (QueryResponse);
   rpc Subscribe(SubscribeRequest) returns (stream SubscriptionEvent);
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+  rpc BatchSubscribe(BatchSubscribeRequest) returns (stream BatchSubscriptionEvent);
+  rpc BatchUnsubscribe(BatchUnsubscribeRequest) returns (BatchUnsubscribeResponse);
   rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
   rpc CallOperation(OperationRequest) returns (OperationResponse);
@@ -45,6 +47,42 @@ message SubscriptionEvent {
 }
 message SubscribedEvent { string subscription_id = 1; }
 message ChangeEvent { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+
+// BatchSubscribe opens a single stream that delivers coalesced deltas from N RQL queries.
+// Each poller tick emits one BatchChangeEvent containing an entry per member that had data.
+message BatchSubscribeRequest {
+  repeated string rql = 1;
+  Format format = 2;
+}
+message BatchUnsubscribeRequest { string batch_id = 1; }
+message BatchUnsubscribeResponse { string batch_id = 1; }
+message BatchSubscriptionEvent {
+  oneof event {
+    BatchSubscribedEvent subscribed = 1;
+    BatchChangeEvent change = 2;
+    BatchMemberClosedEvent member_closed = 3;
+  }
+}
+message BatchSubscribedEvent {
+  string batch_id = 1;
+  repeated BatchMember members = 2;
+}
+message BatchMember {
+  uint32 index = 1;
+  string subscription_id = 2;
+}
+message BatchChangeEvent {
+  string batch_id = 1;
+  repeated BatchChangeEntry entries = 2;
+}
+message BatchChangeEntry {
+  string subscription_id = 1;
+  ChangeEvent change = 2;
+}
+message BatchMemberClosedEvent {
+  string batch_id = 1;
+  string subscription_id = 2;
+}
 
 message AuthenticateRequest {
   string method = 1;

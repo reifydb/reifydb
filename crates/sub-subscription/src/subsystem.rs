@@ -43,7 +43,11 @@ use reifydb_sub_flow::{builder::OperatorFactory, engine::FlowEngine, operator::O
 use reifydb_transaction::{interceptor::builder::InterceptorBuilder, transaction::Transaction};
 use reifydb_type::{Result, error::Error, fragment::Fragment, value::row_number::RowNumber};
 
-use crate::{consumer::SubscriptionCdcConsumer, sink::EphemeralSinkSubscriptionOperator, store::SubscriptionStore};
+use crate::{
+	consumer::SubscriptionCdcConsumer,
+	sink::{DeliveryBuffer, EphemeralSinkSubscriptionOperator},
+	store::SubscriptionStore,
+};
 
 /// Internal shared state for the subscription subsystem.
 ///
@@ -54,6 +58,8 @@ struct SubscriptionState {
 	flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
 	/// Mapping from subscription_id to flow_id for lifecycle management.
 	subscription_flows: RwLock<HashMap<SubscriptionId, FlowId>>,
+	/// Staged delivery buffer — sinks push here, CDC consumer commits per batch.
+	delivery: Arc<DeliveryBuffer>,
 }
 
 /// Service handle implementing the engine's SubscriptionService trait.
@@ -78,7 +84,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		let flow_id = flow_dag.id;
 		{
 			let mut engine = self.state.flow_engine.write().unwrap();
-			register_ephemeral_flow(&mut engine, txn, flow_dag, id, self.state.store.clone())?;
+			register_ephemeral_flow(&mut engine, txn, flow_dag, id, self.state.delivery.clone())?;
 		}
 
 		// 3. Track mapping
@@ -122,7 +128,7 @@ fn register_ephemeral_flow(
 	txn: &mut Transaction<'_>,
 	flow: FlowDag,
 	subscription_id: SubscriptionId,
-	store: Arc<SubscriptionStore>,
+	delivery: Arc<DeliveryBuffer>,
 ) -> Result<()> {
 	for node_id in flow.topological_order()? {
 		let node = flow.get_node(&node_id).unwrap();
@@ -140,7 +146,7 @@ fn register_ephemeral_flow(
 					parent,
 					node_id,
 					subscription_id,
-					store.clone(),
+					delivery.clone(),
 				);
 				engine.operators.insert(node_id, Arc::new(Operators::Custom(Box::new(op))));
 			}
@@ -186,15 +192,17 @@ impl SubscriptionSubsystem {
 		)));
 
 		let flow_states = Arc::new(DashMap::new());
+		let delivery = Arc::new(DeliveryBuffer::new(store.clone()));
 
 		let state = Arc::new(SubscriptionState {
 			store,
 			flow_engine: flow_engine.clone(),
 			flow_states: flow_states.clone(),
 			subscription_flows: RwLock::new(HashMap::new()),
+			delivery: delivery.clone(),
 		});
 
-		let cdc_consumer = SubscriptionCdcConsumer::new(flow_engine, multi, catalog, flow_states);
+		let cdc_consumer = SubscriptionCdcConsumer::new(flow_engine, multi, catalog, flow_states, delivery);
 
 		let config = PollConsumerConfig::new(
 			CdcConsumerId::new("__SUBSCRIPTION_CONSUMER"),

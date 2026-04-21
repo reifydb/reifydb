@@ -30,7 +30,17 @@ import type {
     UnsubscribeRequest,
     UnsubscribedResponse,
     ChangeMessage,
-    SubscriptionCallbacks
+    SubscriptionCallbacks,
+    BatchSubscribeRequest,
+    BatchSubscribedResponse,
+    BatchUnsubscribeRequest,
+    BatchUnsubscribedResponse,
+    BatchChangeMessage,
+    BatchMemberClosedMessage,
+    BatchClosedMessage,
+    BatchSubscriptionMember,
+    BatchSubscriptionCallbacks,
+    BatchSubscription
 } from "./types";
 import {
     ReifyError
@@ -42,6 +52,7 @@ import {CONTENT_TYPE_RBCF} from "./content-types";
 const enum BinaryKind {
     Response = 0x00,
     Change = 0x01,
+    BatchChange = 0x02,
 }
 
 interface BinaryEnvelope {
@@ -49,6 +60,11 @@ interface BinaryEnvelope {
     id: string;
     meta?: ResponseMeta;
     rbcf: Uint8Array;
+}
+
+interface BatchBinaryEnvelope {
+    batch_id: string;
+    entries: Array<{ subscription_id: string; rbcf: Uint8Array }>;
 }
 
 // Wire format: `[u8 kind][u32 LE id_len][id UTF-8 bytes][u32 LE meta_len][meta UTF-8 JSON bytes][RBCF payload]`.
@@ -80,6 +96,46 @@ function decode_envelope(bytes: Uint8Array): BinaryEnvelope | null {
     return {kind, id, meta, rbcf};
 }
 
+// Batch wire format (kind = 0x02):
+// `[u8 kind][u32 LE batch_id_len][batch_id][u32 LE num_entries]` then N entries of
+// `[u32 LE sub_id_len][sub_id][u32 LE rbcf_len][rbcf_bytes]`.
+// Must stay in sync with `encode_rbcf_batch_envelope` in
+// `crates/sub-server-ws/src/subscription/registry.rs`.
+function decode_batch_envelope(bytes: Uint8Array): BatchBinaryEnvelope | null {
+    if (bytes.length < 9) return null;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const decoder = new TextDecoder("utf-8");
+
+    const batch_id_len = view.getUint32(1, true);
+    let offset = 5;
+    if (bytes.length < offset + batch_id_len + 4) return null;
+    const batch_id = decoder.decode(bytes.subarray(offset, offset + batch_id_len));
+    offset += batch_id_len;
+
+    const num_entries = view.getUint32(offset, true);
+    offset += 4;
+
+    const entries: Array<{ subscription_id: string; rbcf: Uint8Array }> = [];
+    for (let i = 0; i < num_entries; i++) {
+        if (bytes.length < offset + 4) return null;
+        const sub_id_len = view.getUint32(offset, true);
+        offset += 4;
+        if (bytes.length < offset + sub_id_len + 4) return null;
+        const subscription_id = decoder.decode(bytes.subarray(offset, offset + sub_id_len));
+        offset += sub_id_len;
+
+        const rbcf_len = view.getUint32(offset, true);
+        offset += 4;
+        if (bytes.length < offset + rbcf_len) return null;
+        const rbcf_bytes = bytes.subarray(offset, offset + rbcf_len);
+        offset += rbcf_len;
+
+        entries.push({subscription_id, rbcf: rbcf_bytes});
+    }
+
+    return {batch_id, entries};
+}
+
 export interface WsClientOptions {
     url: string;
     timeout_ms?: number;
@@ -105,7 +161,14 @@ interface SubscriptionState<T = any> {
     callbacks: SubscriptionCallbacks<T>;
 }
 
-type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse | LogoutResponse;
+interface BatchState {
+    batch_id: string;
+    members: BatchSubscriptionMember[];
+    members_by_sub_id: Map<string, SubscriptionState>;
+    batch_callbacks?: BatchSubscriptionCallbacks;
+}
+
+type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse | BatchSubscribedResponse | BatchUnsubscribedResponse | LogoutResponse;
 
 async function create_web_socket(url: string): Promise<WebSocket> {
     let socket: WebSocket;
@@ -141,6 +204,8 @@ export class WsClient {
     private should_reconnect: boolean = true;
     private is_reconnecting: boolean = false;
     private subscriptions = new Map<string, SubscriptionState>();
+    private batches = new Map<string, BatchState>();
+    private sub_to_batch = new Map<string, string>();
 
     private constructor(socket: WebSocket, options: WsClientOptions) {
         this.options = options;
@@ -380,6 +445,108 @@ export class WsClient {
 
             this.socket.send(JSON.stringify(request));
         });
+    }
+
+    async batch_subscribe(
+        members: BatchSubscriptionMember[],
+        batch_callbacks?: BatchSubscriptionCallbacks
+    ): Promise<BatchSubscription> {
+        if (members.length === 0) {
+            throw new Error("batch_subscribe requires at least one member");
+        }
+
+        const id = `batch-sub-${this.next_id++}`;
+        const sub_format = this.options.format === "rbcf" ? "rbcf" : "frames";
+        const request: BatchSubscribeRequest = {
+            id,
+            type: "BatchSubscribe",
+            payload: {
+                queries: members.map(m => m.rql),
+                format: sub_format as any
+            }
+        };
+
+        return new Promise((resolve, reject) => {
+            this.pending.set(id, {
+                type: "BatchSubscribe",
+                handler: (response) => {
+                    if (response.type === "Err") {
+                        reject(new ReifyError(response));
+                        return;
+                    }
+                    if (response.type !== "BatchSubscribed") {
+                        reject(new Error("Unexpected response type"));
+                        return;
+                    }
+
+                    const {batch_id, members: member_infos} = response.payload;
+                    const members_by_sub_id = new Map<string, SubscriptionState>();
+                    const subscription_ids: string[] = new Array(members.length);
+
+                    for (const info of member_infos) {
+                        const member = members[info.index];
+                        if (!member) continue;
+                        subscription_ids[info.index] = info.subscription_id;
+                        members_by_sub_id.set(info.subscription_id, {
+                            subscription_id: info.subscription_id,
+                            rql: member.rql,
+                            params: member.params,
+                            shape: member.shape,
+                            callbacks: member.callbacks
+                        });
+                        this.sub_to_batch.set(info.subscription_id, batch_id);
+                    }
+
+                    this.batches.set(batch_id, {
+                        batch_id,
+                        members,
+                        members_by_sub_id,
+                        batch_callbacks
+                    });
+
+                    resolve({batch_id, subscription_ids});
+                }
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
+    }
+
+    async batch_unsubscribe(batch_id: string): Promise<void> {
+        const id = `batch-unsub-${this.next_id++}`;
+
+        const request: BatchUnsubscribeRequest = {
+            id,
+            type: "BatchUnsubscribe",
+            payload: {batch_id}
+        };
+
+        return new Promise((resolve, reject) => {
+            this.pending.set(id, {
+                type: "BatchUnsubscribe",
+                handler: (response) => {
+                    if (response.type === "Err") {
+                        reject(new ReifyError(response));
+                    } else if (response.type === "BatchUnsubscribed") {
+                        this.cleanup_batch(batch_id);
+                        resolve();
+                    } else {
+                        reject(new Error("Unexpected response type"));
+                    }
+                }
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
+    }
+
+    private cleanup_batch(batch_id: string): void {
+        const batch = this.batches.get(batch_id);
+        if (!batch) return;
+        for (const sub_id of batch.members_by_sub_id.keys()) {
+            this.sub_to_batch.delete(sub_id);
+        }
+        this.batches.delete(batch_id);
     }
 
     async send(req: AdminRequest | CommandRequest | QueryRequest): Promise<any> {
@@ -692,6 +859,8 @@ export class WsClient {
     disconnect() {
         this.should_reconnect = false;
         this.subscriptions.clear();
+        this.batches.clear();
+        this.sub_to_batch.clear();
         this.socket.close();
     }
 
@@ -773,9 +942,12 @@ export class WsClient {
 
     private async resubscribe_all(): Promise<void> {
         const subscriptions_to_reestablish = Array.from(this.subscriptions.values());
+        const batches_to_reestablish = Array.from(this.batches.values());
 
-        // Clear current subscriptions map (will be repopulated)
+        // Clear state (will be repopulated by re-subscribe calls)
         this.subscriptions.clear();
+        this.batches.clear();
+        this.sub_to_batch.clear();
 
         for (const state of subscriptions_to_reestablish) {
             try {
@@ -786,11 +958,27 @@ export class WsClient {
                 console.error(`Failed to resubscribe to ${state.rql}:`, err);
             }
         }
+
+        for (const batch of batches_to_reestablish) {
+            try {
+                await this.batch_subscribe(batch.members, batch.batch_callbacks);
+            } catch (err) {
+                console.error(`Failed to re-establish batch subscription:`, err);
+            }
+        }
+    }
+
+    private find_subscription_state(subscription_id: string): SubscriptionState | undefined {
+        const single = this.subscriptions.get(subscription_id);
+        if (single) return single;
+        const batch_id = this.sub_to_batch.get(subscription_id);
+        if (!batch_id) return undefined;
+        return this.batches.get(batch_id)?.members_by_sub_id.get(subscription_id);
     }
 
     private handle_change_message(msg: ChangeMessage): void {
         const {subscription_id, body} = msg.payload;
-        const state = this.subscriptions.get(subscription_id);
+        const state = this.find_subscription_state(subscription_id);
 
         if (!state) {
             console.error('No state for subscription_id:', subscription_id);
@@ -872,6 +1060,37 @@ export class WsClient {
         return rows;
     }
 
+    private handle_batch_change(msg: BatchChangeMessage): void {
+        const {entries} = msg.payload;
+        for (const entry of entries) {
+            this.handle_change_message({
+                type: "Change",
+                payload: {
+                    subscription_id: entry.subscription_id,
+                    content_type: entry.content_type,
+                    body: entry.body
+                }
+            });
+        }
+    }
+
+    private handle_batch_member_closed(msg: BatchMemberClosedMessage): void {
+        const {batch_id, subscription_id} = msg.payload;
+        const batch = this.batches.get(batch_id);
+        if (!batch) return;
+        batch.members_by_sub_id.delete(subscription_id);
+        this.sub_to_batch.delete(subscription_id);
+        batch.batch_callbacks?.on_member_closed?.(subscription_id);
+    }
+
+    private handle_batch_closed(msg: BatchClosedMessage): void {
+        const {batch_id} = msg.payload;
+        const batch = this.batches.get(batch_id);
+        if (!batch) return;
+        this.cleanup_batch(batch_id);
+        batch.batch_callbacks?.on_closed?.();
+    }
+
     private setup_socket_handlers() {
         this.socket.onmessage = (event) => {
             const data = event.data;
@@ -898,8 +1117,19 @@ export class WsClient {
 
             // Handle server-initiated messages (no id)
             if (!msg.id) {
-                if (msg.type === "Change") {
-                    this.handle_change_message(msg);
+                switch (msg.type) {
+                    case "Change":
+                        this.handle_change_message(msg);
+                        return;
+                    case "BatchChange":
+                        this.handle_batch_change(msg);
+                        return;
+                    case "BatchMemberClosed":
+                        this.handle_batch_member_closed(msg);
+                        return;
+                    case "BatchClosed":
+                        this.handle_batch_closed(msg);
+                        return;
                 }
                 return;
             }
@@ -944,6 +1174,11 @@ export class WsClient {
     }
 
     private handle_binary_message(bytes: Uint8Array) {
+        if (bytes.length > 0 && bytes[0] === BinaryKind.BatchChange) {
+            this.handle_binary_batch_message(bytes);
+            return;
+        }
+
         const envelope = decode_envelope(bytes);
         if (!envelope) return;
         const {kind, id, rbcf: rbcf_bytes} = envelope;
@@ -993,6 +1228,36 @@ export class WsClient {
                 type: "Change",
                 payload: {
                     subscription_id: id,
+                    content_type: CONTENT_TYPE_RBCF,
+                    body: { frames },
+                }
+            });
+        }
+    }
+
+    private handle_binary_batch_message(bytes: Uint8Array) {
+        const envelope = decode_batch_envelope(bytes);
+        if (!envelope) return;
+
+        const batch = this.batches.get(envelope.batch_id);
+
+        for (const entry of envelope.entries) {
+            let frames: any[];
+            try {
+                frames = rbcf.decode(entry.rbcf);
+            } catch (e) {
+                const err = e instanceof Error ? e : new Error(String(e));
+                if (batch?.batch_callbacks?.on_entry_error) {
+                    batch.batch_callbacks.on_entry_error(entry.subscription_id, err);
+                } else {
+                    console.error(`Failed to decode RBCF batch entry for ${entry.subscription_id}: ${err.message}`);
+                }
+                continue;
+            }
+            this.handle_change_message({
+                type: "Change",
+                payload: {
+                    subscription_id: entry.subscription_id,
                     content_type: CONTENT_TYPE_RBCF,
                     body: { frames },
                 }

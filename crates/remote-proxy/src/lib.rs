@@ -100,3 +100,35 @@ pub async fn proxy_remote<T, F>(
 		}
 	}
 }
+
+/// Proxy frames from a remote subscription into a caller-supplied sink closure.
+///
+/// Each received `Vec<Frame>` is passed to `sink`. The sink returns `true` to
+/// continue, `false` to stop the proxy (e.g. downstream batch was torn down).
+/// Exits when:
+/// - The remote stream ends
+/// - `sink` returns `false`
+/// - A shutdown signal is received
+pub async fn proxy_remote_to_sink<F>(
+	mut remote_sub: RemoteSubscription,
+	mut shutdown: watch::Receiver<bool>,
+	mut sink: F,
+) where
+	F: FnMut(Vec<Frame>) -> bool + Send + 'static,
+{
+	loop {
+		select! {
+			frames = remote_sub.inner.recv() => {
+				match frames {
+					Some(frames) => {
+						if !sink(frames) {
+							break;
+						}
+					}
+					None => break,
+				}
+			}
+			_ = shutdown.changed() => break,
+		}
+	}
+}

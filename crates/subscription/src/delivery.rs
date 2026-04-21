@@ -22,4 +22,10 @@ pub trait SubscriptionDelivery: Send + Sync {
 
 	/// Get the list of currently active subscription IDs.
 	fn active_subscriptions(&self) -> Vec<SubscriptionId>;
+
+	/// Flush any delivery aggregation state. Called once per poller tick
+	/// after all `try_deliver` calls in that tick. Default impl is a no-op;
+	/// batch-aware implementations (see batch subscriptions) override this
+	/// to emit coalesced per-tick envelopes.
+	fn flush(&self) {}
 }

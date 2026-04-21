@@ -29,6 +29,8 @@ pub struct Request {
 /// - `"Query"` - Read query (SELECT)
 /// - `"Subscribe"` - Subscribe to real-time changes
 /// - `"Unsubscribe"` - Unsubscribe from a subscription
+/// - `"BatchSubscribe"` - Subscribe to N queries in a single batch
+/// - `"BatchUnsubscribe"` - Unsubscribe a batch (cascades to all members)
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum RequestPayload {
@@ -38,6 +40,8 @@ pub enum RequestPayload {
 	Query(QueryRequest),
 	Subscribe(SubscribeRequest),
 	Unsubscribe(UnsubscribeRequest),
+	BatchSubscribe(BatchSubscribeRequest),
+	BatchUnsubscribe(BatchUnsubscribeRequest),
 	CallOperation(CallOperationRequest),
 	Logout,
 }
@@ -112,6 +116,28 @@ pub struct SubscribeRequest {
 pub struct UnsubscribeRequest {
 	/// The subscription ID returned from a Subscribe response.
 	pub subscription_id: String,
+}
+
+/// Batch-subscribe request payload.
+///
+/// Subscribes to multiple RQL queries as a single batch. The server coalesces
+/// deltas from all members that arrive within one poller tick into one push.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchSubscribeRequest {
+	/// RQL queries to subscribe to. Each becomes a member subscription.
+	pub queries: Vec<String>,
+	/// Wire format for pushed changes. Applies to every member. Defaults to `Frames`.
+	#[serde(default)]
+	pub format: WireFormat,
+}
+
+/// Batch-unsubscribe request payload.
+///
+/// Cascade-cancels every member of the batch.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchUnsubscribeRequest {
+	/// Batch ID returned from a BatchSubscribe response.
+	pub batch_id: String,
 }
 
 /// CallOperation request payload.

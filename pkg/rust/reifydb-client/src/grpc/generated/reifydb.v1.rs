@@ -121,6 +121,75 @@ pub mod change_event {
         Rbcf(::prost::alloc::vec::Vec<u8>),
     }
 }
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BatchSubscribeRequest {
+    #[prost(string, repeated, tag = "1")]
+    pub rql: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(enumeration = "Format", tag = "2")]
+    pub format: i32,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BatchUnsubscribeRequest {
+    #[prost(string, tag = "1")]
+    pub batch_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BatchUnsubscribeResponse {
+    #[prost(string, tag = "1")]
+    pub batch_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BatchSubscriptionEvent {
+    #[prost(oneof = "batch_subscription_event::Event", tags = "1, 2, 3")]
+    pub event: ::core::option::Option<batch_subscription_event::Event>,
+}
+/// Nested message and enum types in `BatchSubscriptionEvent`.
+pub mod batch_subscription_event {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Event {
+        #[prost(message, tag = "1")]
+        Subscribed(super::BatchSubscribedEvent),
+        #[prost(message, tag = "2")]
+        Change(super::BatchChangeEvent),
+        #[prost(message, tag = "3")]
+        MemberClosed(super::BatchMemberClosedEvent),
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BatchSubscribedEvent {
+    #[prost(string, tag = "1")]
+    pub batch_id: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "2")]
+    pub members: ::prost::alloc::vec::Vec<BatchMember>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BatchMember {
+    #[prost(uint32, tag = "1")]
+    pub index: u32,
+    #[prost(string, tag = "2")]
+    pub subscription_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BatchChangeEvent {
+    #[prost(string, tag = "1")]
+    pub batch_id: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "2")]
+    pub entries: ::prost::alloc::vec::Vec<BatchChangeEntry>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BatchChangeEntry {
+    #[prost(string, tag = "1")]
+    pub subscription_id: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub change: ::core::option::Option<ChangeEvent>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BatchMemberClosedEvent {
+    #[prost(string, tag = "1")]
+    pub batch_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub subscription_id: ::prost::alloc::string::String,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum Format {
@@ -431,6 +500,54 @@ pub mod reify_db_client {
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Unsubscribe"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn batch_subscribe(
+            &mut self,
+            request: impl tonic::IntoRequest<super::BatchSubscribeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<tonic::codec::Streaming<super::BatchSubscriptionEvent>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/reifydb.v1.ReifyDB/BatchSubscribe",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "BatchSubscribe"));
+            self.inner.server_streaming(req, path, codec).await
+        }
+        pub async fn batch_unsubscribe(
+            &mut self,
+            request: impl tonic::IntoRequest<super::BatchUnsubscribeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::BatchUnsubscribeResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/reifydb.v1.ReifyDB/BatchUnsubscribe",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "BatchUnsubscribe"));
             self.inner.unary(req, path, codec).await
         }
         pub async fn authenticate(

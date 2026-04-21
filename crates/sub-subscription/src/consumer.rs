@@ -21,16 +21,23 @@ use reifydb_sub_flow::{engine::FlowEngine, transaction::FlowTransaction};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_type::Result;
 
+use crate::sink::DeliveryBuffer;
+
 /// CDC consumer for ephemeral subscription flows.
 ///
-/// Processes CDC events through registered subscription flows, routing
-/// operator state to in-memory HashMaps and sink output to SubscriptionStore.
+/// Processes CDC events through registered subscription flows. Sinks stage
+/// their output in `delivery`; after all flows for a CDC batch have been
+/// processed, the consumer commits the staged batch to the subscription store
+/// atomically. This is what guarantees that the subscription poller observes
+/// every batch member's diff together rather than seeing a partial batch.
 pub struct SubscriptionCdcConsumer {
 	flow_engine: Arc<RwLock<FlowEngine>>,
 	multi: MultiTransaction,
 	catalog: Catalog,
 	/// Per-flow ephemeral operator state, persisted across CDC batches.
 	flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
+	/// Staging buffer shared with every subscription sink.
+	delivery: Arc<DeliveryBuffer>,
 }
 
 impl SubscriptionCdcConsumer {
@@ -39,12 +46,14 @@ impl SubscriptionCdcConsumer {
 		multi: MultiTransaction,
 		catalog: Catalog,
 		flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
+		delivery: Arc<DeliveryBuffer>,
 	) -> Self {
 		Self {
 			flow_engine,
 			multi,
 			catalog,
 			flow_states,
+			delivery,
 		}
 	}
 }
@@ -114,6 +123,16 @@ impl CdcConsume for SubscriptionCdcConsumer {
 				}
 			}
 		}
+
+		// Drop the read guard before committing: commit takes the coord write
+		// lock on the store, and holding the flow_engine read lock here is
+		// unnecessary for the commit itself.
+		drop(flow_engine);
+
+		// Atomically publish every diff staged by sinks during this CDC
+		// batch. Without this, the poller can observe some members' diffs
+		// while others are still being produced.
+		self.delivery.commit_batch();
 
 		reply(Ok(()));
 	}

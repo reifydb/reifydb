@@ -35,7 +35,9 @@ use std::sync::Arc;
 #[cfg(all(feature = "dst", reifydb_single_threaded))]
 pub use dst::DstClient;
 #[cfg(feature = "grpc")]
-pub use grpc::{GrpcClient, GrpcSubscription};
+pub use grpc::{
+	BatchFramesEnvelope, BatchGrpcSubscription, BatchMemberHandle, BatchStreamEvent, GrpcClient, GrpcSubscription,
+};
 #[cfg(feature = "http")]
 pub use http::HttpClient;
 // Re-export derive macro
@@ -65,7 +67,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "http", feature = "ws"))]
 use serde_json::Value as JsonValue;
 #[cfg(feature = "ws")]
-pub use ws::WsClient;
+pub use ws::{BatchPushEvent, WsBatchSubscription, WsClient};
 
 /// Server-reported metadata about a single executed request.
 #[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
@@ -202,6 +204,8 @@ pub enum RequestPayload {
 	Query(QueryRequest),
 	Subscribe(SubscribeRequest),
 	Unsubscribe(UnsubscribeRequest),
+	BatchSubscribe(BatchSubscribeRequest),
+	BatchUnsubscribe(BatchUnsubscribeRequest),
 	Logout,
 }
 
@@ -259,6 +263,20 @@ pub struct UnsubscribeRequest {
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
+pub struct BatchSubscribeRequest {
+	pub queries: Vec<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<String>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchUnsubscribeRequest {
+	pub batch_id: String,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
 	pub id: String,
 	#[serde(flatten)]
@@ -276,6 +294,8 @@ pub enum ResponsePayload {
 	Query(QueryResponse),
 	Subscribed(SubscribedResponse),
 	Unsubscribed(UnsubscribedResponse),
+	BatchSubscribed(BatchSubscribedResponse),
+	BatchUnsubscribed(BatchUnsubscribedResponse),
 	Logout(LogoutResponsePayload),
 }
 
@@ -340,6 +360,26 @@ pub struct UnsubscribedResponse {
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
+pub struct BatchSubscribedResponse {
+	pub batch_id: String,
+	pub members: Vec<BatchMemberInfo>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchMemberInfo {
+	pub index: usize,
+	pub subscription_id: String,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchUnsubscribedResponse {
+	pub batch_id: String,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LogoutResponsePayload {
 	pub status: String,
 }
@@ -350,6 +390,9 @@ pub struct LogoutResponsePayload {
 #[serde(tag = "type", content = "payload")]
 pub enum ServerPush {
 	Change(ChangePayload),
+	BatchChange(BatchChangePayload),
+	BatchMemberClosed(BatchMemberClosedPayload),
+	BatchClosed(BatchClosedPayload),
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -365,4 +408,36 @@ pub struct ChangePayload {
 	pub body: JsonValue,
 	#[serde(skip, default)]
 	pub frames: Option<Vec<Frame>>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchChangePayload {
+	pub batch_id: String,
+	pub entries: Vec<BatchChangeEntry>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchChangeEntry {
+	pub subscription_id: String,
+	pub content_type: String,
+	pub body: JsonValue,
+	#[serde(skip, default)]
+	pub frames: Option<Vec<Frame>>,
+	#[serde(skip, default)]
+	pub decode_error: Option<String>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchMemberClosedPayload {
+	pub batch_id: String,
+	pub subscription_id: String,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchClosedPayload {
+	pub batch_id: String,
 }
