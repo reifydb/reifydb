@@ -23,11 +23,7 @@ use reifydb_subscription::{
 	delivery::{DeliveryResult, SubscriptionDelivery},
 };
 use reifydb_type::value::{frame::frame::Frame, uuid::Uuid7};
-use reifydb_wire_format::{
-	encode::encode_frames,
-	json::types::{ResponseColumn, ResponseFrame},
-	options::EncodeOptions,
-};
+use reifydb_wire_format::{encode::encode_frames, json::to::convert_frames, options::EncodeOptions};
 use serde_json::{Value as JsonValue, from_str, json};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
@@ -103,11 +99,11 @@ struct BatchState {
 	format: WireFormat,
 	/// Members (fixed at batch creation time).
 	member_ids: Vec<SubscriptionId>,
-	/// Per-member accumulation of `Columns` produced within the current poller tick.
-	/// Local members append here via `try_deliver`; remote members append via
-	/// `push_batch_frames` (after Frame→Columns conversion).
+	/// Per-member accumulation of `Frame` produced within the current poller tick.
+	/// Local members convert Columns→Frame via `try_deliver`; remote members append via
+	/// `push_batch_frames` (already Frame).
 	/// Drained on each `flush()`.
-	pending: DashMap<SubscriptionId, Vec<Columns>>,
+	pending: DashMap<SubscriptionId, Vec<Frame>>,
 }
 
 /// Registry tracking subscriptions across all WebSocket connections.
@@ -269,7 +265,7 @@ impl SubscriptionRegistry {
 	/// Push pre-materialised `Frame`s into a batch member's pending envelope.
 	///
 	/// Used by remote-subscription proxy tasks: the remote node delivers `Vec<Frame>`
-	/// which this method converts to `Columns` and appends. Returns `false` when
+	/// which this method appends directly. Returns `false` when
 	/// the batch is no longer registered (e.g. client disconnected).
 	pub fn push_batch_frames(
 		&self,
@@ -282,7 +278,7 @@ impl SubscriptionRegistry {
 		};
 		let mut entry = batch.pending.entry(subscription_id).or_default();
 		for frame in frames {
-			entry.push(Columns::from(frame));
+			entry.push(frame);
 		}
 		true
 	}
@@ -428,7 +424,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 		// The actual push happens in `flush()` at the end of the poller tick.
 		if let Some(batch_id) = self.batch_for(subscription_id) {
 			if let Some(batch) = self.batches.get(&batch_id) {
-				batch.pending.entry(*subscription_id).or_default().push(columns);
+				batch.pending.entry(*subscription_id).or_default().push(Frame::from(columns));
 				return DeliveryResult::Delivered;
 			}
 			// batch dropped since lookup — fall through to Disconnected
@@ -464,7 +460,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 			let batch_id = *entry.key();
 			let batch = entry.value();
 
-			let taken: Vec<(SubscriptionId, Vec<Columns>)> = batch
+			let taken: Vec<(SubscriptionId, Vec<Frame>)> = batch
 				.pending
 				.iter_mut()
 				.filter_map(|mut e| {
@@ -483,8 +479,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 			let msg = match batch.format {
 				WireFormat::Rbcf => {
 					let mut entries: Vec<(String, Vec<u8>)> = Vec::with_capacity(taken.len());
-					for (sub_id, chunks) in taken {
-						let frames: Vec<Frame> = chunks.into_iter().map(Frame::from).collect();
+					for (sub_id, frames) in taken {
 						let rbcf_bytes = match encode_frames(&frames, &EncodeOptions::fast()) {
 							Ok(b) => b,
 							Err(e) => {
@@ -509,8 +504,8 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 				WireFormat::Frames => {
 					let entries = taken
 						.into_iter()
-						.map(|(sub_id, chunks)| {
-							let body = columns_chunks_to_frames_body(chunks);
+						.map(|(sub_id, frames)| {
+							let body = json!({ "frames": convert_frames(&frames) });
 							BatchChangeEntryPush {
 								subscription_id: sub_id,
 								content_type: CONTENT_TYPE_FRAMES.to_string(),
@@ -526,9 +521,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 				WireFormat::Json => {
 					let entries = taken
 						.into_iter()
-						.filter_map(|(sub_id, chunks)| {
-							let frames: Vec<Frame> =
-								chunks.into_iter().map(Frame::from).collect();
+						.filter_map(|(sub_id, frames)| {
 							let resolved = match resolve_response_json(frames, false) {
 								Ok(r) => r,
 								Err(e) => {
@@ -597,7 +590,7 @@ fn encode_change(subscription_id: SubscriptionId, columns: Columns, format: Wire
 			})
 		}
 		WireFormat::Frames => {
-			let body = columns_chunks_to_frames_body(vec![columns]);
+			let body = json!({ "frames": convert_frames(&[Frame::from(columns)]) });
 			Some(PushMessage::ChangeJson {
 				subscription_id,
 				content_type: CONTENT_TYPE_FRAMES.to_string(),
@@ -621,45 +614,6 @@ fn encode_change(subscription_id: SubscriptionId, columns: Columns, format: Wire
 			})
 		}
 	}
-}
-
-/// Convert a list of `Columns` chunks (from one or more deliveries in a single tick)
-/// into a JSON `{ "frames": [...] }` body for `WireFormat::Frames`.
-fn columns_chunks_to_frames_body(chunks: Vec<Columns>) -> JsonValue {
-	let response_frames: Vec<ResponseFrame> = chunks
-		.into_iter()
-		.map(|columns| {
-			let row_numbers: Vec<u64> = columns.row_numbers.iter().map(|r| r.0).collect();
-			let created_at: Vec<String> = columns.created_at.iter().map(|dt| dt.to_string()).collect();
-			let updated_at: Vec<String> = columns.updated_at.iter().map(|dt| dt.to_string()).collect();
-			let row_count = columns.row_count();
-
-			let response_columns: Vec<ResponseColumn> = columns
-				.columns
-				.iter()
-				.map(|col| {
-					let data: Vec<String> = (0..row_count)
-						.map(|idx| col.data().get_value(idx).to_string())
-						.collect();
-
-					ResponseColumn {
-						name: col.name.to_string(),
-						r#type: col.data().get_type(),
-						payload: data,
-					}
-				})
-				.collect();
-
-			ResponseFrame {
-				row_numbers,
-				created_at,
-				updated_at,
-				columns: response_columns,
-			}
-		})
-		.collect();
-
-	json!({ "frames": response_frames })
 }
 
 /// Build an RBCF batch envelope with kind `BatchChange`:

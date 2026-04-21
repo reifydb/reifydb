@@ -37,6 +37,7 @@ pub use dst::DstClient;
 #[cfg(feature = "grpc")]
 pub use grpc::{
 	BatchFramesEnvelope, BatchGrpcSubscription, BatchMemberHandle, BatchStreamEvent, GrpcClient, GrpcSubscription,
+	RawChangePayload,
 };
 #[cfg(feature = "http")]
 pub use http::HttpClient;

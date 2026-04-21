@@ -11,8 +11,7 @@
 
 use std::fmt;
 
-use reifydb_client::{GrpcClient, GrpcSubscription, WireFormat};
-use reifydb_type::value::frame::frame::Frame;
+use reifydb_client::{GrpcClient, GrpcSubscription, RawChangePayload, WireFormat};
 use tokio::{
 	select,
 	sync::{mpsc, watch},
@@ -52,8 +51,9 @@ pub async fn connect_remote(
 	address: &str,
 	rql: &str,
 	token: Option<&str>,
+	wire_format: WireFormat,
 ) -> Result<RemoteSubscription, RemoteSubscriptionError> {
-	let mut client = GrpcClient::connect(address, WireFormat::Proto)
+	let mut client = GrpcClient::connect(address, wire_format)
 		.await
 		.map_err(|e| RemoteSubscriptionError::Connect(e.to_string()))?;
 	if let Some(t) = token {
@@ -67,9 +67,9 @@ pub async fn connect_remote(
 	})
 }
 
-/// Proxy frames from a remote subscription to a local channel.
+/// Proxy raw payloads from a remote subscription to a local channel.
 ///
-/// Receives frames from the remote subscription and converts them using the
+/// Receives raw payloads from the remote subscription and converts them using the
 /// provided closure before sending through the local channel. Exits when:
 /// - The remote stream ends
 /// - The local channel closes (receiver dropped)
@@ -81,14 +81,14 @@ pub async fn proxy_remote<T, F>(
 	convert: F,
 ) where
 	T: Send + 'static,
-	F: Fn(Vec<Frame>) -> T,
+	F: Fn(RawChangePayload) -> T,
 {
 	loop {
 		select! {
-			frames = remote_sub.inner.recv() => {
-				match frames {
-					Some(frames) => {
-						if sender.send(convert(frames)).is_err() {
+			payload = remote_sub.inner.recv_raw() => {
+				match payload {
+					Some(payload) => {
+						if sender.send(convert(payload)).is_err() {
 							break;
 						}
 					}
@@ -101,9 +101,9 @@ pub async fn proxy_remote<T, F>(
 	}
 }
 
-/// Proxy frames from a remote subscription into a caller-supplied sink closure.
+/// Proxy raw payloads from a remote subscription into a caller-supplied sink closure.
 ///
-/// Each received `Vec<Frame>` is passed to `sink`. The sink returns `true` to
+/// Each received `RawChangePayload` is passed to `sink`. The sink returns `true` to
 /// continue, `false` to stop the proxy (e.g. downstream batch was torn down).
 /// Exits when:
 /// - The remote stream ends
@@ -114,14 +114,14 @@ pub async fn proxy_remote_to_sink<F>(
 	mut shutdown: watch::Receiver<bool>,
 	mut sink: F,
 ) where
-	F: FnMut(Vec<Frame>) -> bool + Send + 'static,
+	F: FnMut(RawChangePayload) -> bool + Send + 'static,
 {
 	loop {
 		select! {
-			frames = remote_sub.inner.recv() => {
-				match frames {
-					Some(frames) => {
-						if !sink(frames) {
+			payload = remote_sub.inner.recv_raw() => {
+				match payload {
+					Some(payload) => {
+						if !sink(payload) {
 							break;
 						}
 					}

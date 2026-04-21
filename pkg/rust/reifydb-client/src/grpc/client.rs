@@ -45,11 +45,11 @@ use super::generated::{
 	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
 	BatchSubscribeRequest as ProtoBatchSubscribeRequest, BatchSubscriptionEvent,
 	BatchUnsubscribeRequest as ProtoBatchUnsubscribeRequest, CommandRequest as ProtoCommandRequest, Format,
-	Frame as ProtoFrame, LogoutRequest as ProtoLogoutRequest, NamedParams, Params as ProtoParams, PositionalParams,
-	QueryRequest as ProtoQueryRequest, SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
-	UnsubscribeRequest as ProtoUnsubscribeRequest, admin_response, batch_subscription_event, change_event,
-	command_response, params::Params as ProtoParamsOneof, query_response, reify_db_client::ReifyDbClient,
-	subscription_event,
+	Frame as ProtoFrame, FramesPayload, LogoutRequest as ProtoLogoutRequest, NamedParams, Params as ProtoParams,
+	PositionalParams, QueryRequest as ProtoQueryRequest, SubscribeRequest as ProtoSubscribeRequest,
+	SubscriptionEvent, TypedValue, UnsubscribeRequest as ProtoUnsubscribeRequest, admin_response,
+	batch_subscription_event, change_event, command_response, params::Params as ProtoParamsOneof, query_response,
+	reify_db_client::ReifyDbClient, subscription_event,
 };
 use crate::{AdminResult, CommandResult, LoginResult, QueryResult, ResponseMeta, WireFormat};
 
@@ -60,6 +60,22 @@ fn extract_meta(metadata: &MetadataMap) -> Option<ResponseMeta> {
 		fingerprint: fingerprint.to_string(),
 		duration: duration.to_string(),
 	})
+}
+
+pub enum RawChangePayload {
+	Rbcf(Vec<u8>),
+	Proto(FramesPayload),
+	Empty,
+}
+
+impl RawChangePayload {
+	pub fn into_frames(self) -> Vec<Frame> {
+		match self {
+			Self::Rbcf(bytes) => decode_frames(&bytes).unwrap_or_default(),
+			Self::Proto(fp) => proto_frames_to_frames(fp.frames),
+			Self::Empty => Vec::new(),
+		}
+	}
 }
 
 #[derive(Clone)]
@@ -484,23 +500,24 @@ impl GrpcSubscription {
 	}
 
 	pub async fn recv(&mut self) -> Option<Vec<Frame>> {
+		self.recv_raw().await.map(|p| p.into_frames())
+	}
+
+	pub async fn recv_raw(&mut self) -> Option<RawChangePayload> {
 		loop {
 			let msg = self.stream.message().await.ok()??;
 			match msg.event {
 				Some(subscription_event::Event::Change(change)) => {
-					let frames = match change.payload {
+					let payload = match change.payload {
 						Some(change_event::Payload::Rbcf(bytes)) => {
-							decode_frames(&bytes).unwrap_or_default()
+							RawChangePayload::Rbcf(bytes)
 						}
-						Some(change_event::Payload::Frames(fp)) => {
-							proto_frames_to_frames(fp.frames)
-						}
-						None => Vec::new(),
+						Some(change_event::Payload::Frames(fp)) => RawChangePayload::Proto(fp),
+						None => RawChangePayload::Empty,
 					};
-					return Some(frames);
+					return Some(payload);
 				}
 				Some(subscription_event::Event::Subscribed(_)) => {
-					// Unexpected but skip
 					continue;
 				}
 				None => continue,

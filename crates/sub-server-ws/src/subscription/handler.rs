@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_remote_proxy::{RemoteSubscription, connect_remote, proxy_remote, proxy_remote_to_sink};
 use reifydb_sub_server::{
@@ -77,7 +78,11 @@ pub(crate) async fn handle_subscribe(
 			rql,
 			token: ns_token,
 		}) => {
-			let remote_sub = match connect_remote(&address, &rql, ns_token.as_deref()).await {
+			let client_fmt = match format {
+				WireFormat::Rbcf => ClientWireFormat::Rbcf,
+				WireFormat::Json | WireFormat::Frames => ClientWireFormat::Rbcf,
+			};
+			let remote_sub = match connect_remote(&address, &rql, ns_token.as_deref(), client_fmt).await {
 				Ok(s) => s,
 				Err(e) => {
 					return Some(Response::internal_error(
@@ -106,22 +111,38 @@ pub(crate) async fn handle_subscribe(
 			let push_tx_close = push_tx.clone();
 			let shutdown = conn.shutdown.clone();
 			let handle = spawn(async move {
-				proxy_remote(remote_sub, push_tx, shutdown, move |frames| match format {
-					WireFormat::Rbcf => {
-						let rbcf_bytes = encode_frames(&frames, &EncodeOptions::fast())
-							.unwrap_or_default();
-						let envelope = encode_rbcf_envelope(
-							BinaryKind::Change,
-							&subscription_id.to_string(),
-							&rbcf_bytes,
-							None,
-						);
-						PushMessage::ChangeRbcf {
-							subscription_id,
-							envelope,
+				proxy_remote(remote_sub, push_tx, shutdown, move |payload| match format {
+					WireFormat::Rbcf => match payload {
+						RawChangePayload::Rbcf(bytes) => {
+							let envelope = encode_rbcf_envelope(
+								BinaryKind::Change,
+								&subscription_id.to_string(),
+								&bytes,
+								None,
+							);
+							PushMessage::ChangeRbcf {
+								subscription_id,
+								envelope,
+							}
 						}
-					}
+						payload => {
+							let frames = payload.into_frames();
+							let rbcf_bytes = encode_frames(&frames, &EncodeOptions::fast())
+								.unwrap_or_default();
+							let envelope = encode_rbcf_envelope(
+								BinaryKind::Change,
+								&subscription_id.to_string(),
+								&rbcf_bytes,
+								None,
+							);
+							PushMessage::ChangeRbcf {
+								subscription_id,
+								envelope,
+							}
+						}
+					},
 					WireFormat::Frames => {
+						let frames = payload.into_frames();
 						let ws_frames = convert_frames(&frames);
 						PushMessage::ChangeJson {
 							subscription_id,
@@ -130,6 +151,7 @@ pub(crate) async fn handle_subscribe(
 						}
 					}
 					WireFormat::Json => {
+						let frames = payload.into_frames();
 						let body = match resolve_response_json(frames, false) {
 							Ok(r) => from_str::<JsonValue>(&r.body)
 								.unwrap_or(JsonValue::String(r.body)),
@@ -246,7 +268,18 @@ pub(crate) async fn handle_batch_subscribe(
 				rql,
 				token: ns_token,
 			}) => {
-				let remote_sub = match connect_remote(&address, &rql, ns_token.as_deref()).await {
+				let client_format = match format {
+					WireFormat::Rbcf => ClientWireFormat::Rbcf,
+					WireFormat::Json | WireFormat::Frames => ClientWireFormat::Rbcf,
+				};
+				let remote_sub = match connect_remote(
+					&address,
+					&rql,
+					ns_token.as_deref(),
+					client_format,
+				)
+				.await
+				{
 					Ok(s) => s,
 					Err(e) => {
 						rollback_batch_members(conn, &resolved).await;
@@ -370,7 +403,8 @@ async fn run_batch_remote_proxy(
 	shutdown: WatchReceiver<bool>,
 ) {
 	let registry_push = Arc::clone(&registry);
-	proxy_remote_to_sink(remote_sub, shutdown, move |frames| {
+	proxy_remote_to_sink(remote_sub, shutdown, move |payload| {
+		let frames = payload.into_frames();
 		registry_push.push_batch_frames(batch_id, subscription_id, frames)
 	})
 	.await;

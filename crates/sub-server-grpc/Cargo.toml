@@ -22,6 +22,7 @@ reifydb-wire-format = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
 reifydb-remote-proxy = { workspace = true }
+reifydb-client = { workspace = true }
 
 dashmap = { workspace = true }
 

@@ -53,7 +53,7 @@ struct BatchState {
 	format: WireFormat,
 	member_ids: Vec<SubscriptionId>,
 	/// Per-member accumulation within the current poller tick. Drained on flush().
-	pending: DashMap<SubscriptionId, Vec<Columns>>,
+	pending: DashMap<SubscriptionId, Vec<Frame>>,
 }
 
 pub struct GrpcSubscriptionRegistry {
@@ -179,7 +179,7 @@ impl GrpcSubscriptionRegistry {
 		};
 		let mut entry = batch.pending.entry(subscription_id).or_default();
 		for frame in frames {
-			entry.push(Columns::from(frame));
+			entry.push(frame);
 		}
 		true
 	}
@@ -204,7 +204,7 @@ impl SubscriptionDelivery for GrpcSubscriptionRegistry {
 		// Batched members: buffer into the batch's pending envelope. Flush emits the coalesced push.
 		if let Some(batch_id) = self.batch_for(subscription_id) {
 			if let Some(batch) = self.batches.get(&batch_id) {
-				batch.pending.entry(*subscription_id).or_default().push(columns);
+				batch.pending.entry(*subscription_id).or_default().push(Frame::from(columns));
 				return DeliveryResult::Delivered;
 			}
 			return DeliveryResult::Disconnected;
@@ -247,7 +247,7 @@ impl SubscriptionDelivery for GrpcSubscriptionRegistry {
 			let batch_id = *entry.key();
 			let batch = entry.value();
 
-			let taken: Vec<(SubscriptionId, Vec<Columns>)> = batch
+			let taken: Vec<(SubscriptionId, Vec<Frame>)> = batch
 				.pending
 				.iter_mut()
 				.filter_map(|mut e| {
@@ -265,8 +265,7 @@ impl SubscriptionDelivery for GrpcSubscriptionRegistry {
 
 			let entries: Vec<BatchChangeEntry> = taken
 				.into_iter()
-				.map(|(sub_id, chunks)| {
-					let frames: Vec<Frame> = chunks.into_iter().map(Frame::from).collect();
+				.map(|(sub_id, frames)| {
 					let payload = encode_change_payload(frames, batch.format);
 					BatchChangeEntry {
 						subscription_id: sub_id.to_string(),

@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::{binding::BindingFormat, id::SubscriptionId},
@@ -178,7 +179,11 @@ impl ReifyDbService {
 		token: Option<String>,
 		format: WireFormat,
 	) -> Result<Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
-		let remote_sub = connect_remote(&address, rql, token.as_deref())
+		let client_format = match format {
+			WireFormat::Rbcf => ClientWireFormat::Rbcf,
+			WireFormat::Proto => ClientWireFormat::Proto,
+		};
+		let remote_sub = connect_remote(&address, rql, token.as_deref(), client_format)
 			.await
 			.map_err(|e| Status::unavailable(e.to_string()))?;
 
@@ -194,15 +199,21 @@ impl ReifyDbService {
 
 		// Spawn proxy: remote stream → local channel
 		let shutdown_rx = self.shutdown_rx.clone();
-		spawn(proxy_remote(remote_sub, tx, shutdown_rx, move |frames| {
-			let payload = match format {
-				WireFormat::Rbcf => {
-					let rbcf = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
-					change_event::Payload::Rbcf(rbcf)
+		spawn(proxy_remote(remote_sub, tx, shutdown_rx, move |payload| {
+			let payload = match (format, payload) {
+				(WireFormat::Rbcf, RawChangePayload::Rbcf(bytes)) => change_event::Payload::Rbcf(bytes),
+				(_, payload) => {
+					let frames = payload.into_frames();
+					match format {
+						WireFormat::Rbcf => change_event::Payload::Rbcf(
+							encode_frames(&frames, &EncodeOptions::fast())
+								.unwrap_or_default(),
+						),
+						WireFormat::Proto => change_event::Payload::Frames(FramesPayload {
+							frames: frames_to_proto(frames),
+						}),
+					}
 				}
-				WireFormat::Proto => change_event::Payload::Frames(FramesPayload {
-					frames: frames_to_proto(frames),
-				}),
 			};
 			Ok(SubscriptionEvent {
 				event: Some(subscription_event::Event::Change(ChangeEvent {
@@ -400,28 +411,42 @@ impl ReifyDb for ReifyDbService {
 					address,
 					rql: upstream_rql,
 					token: ns_token,
-				}) => match connect_remote(&address, &upstream_rql, ns_token.as_deref()).await {
-					Ok(remote_sub) => {
-						let remote_id = remote_sub.subscription_id().to_string();
-						match remote_id.parse::<u64>() {
-							Ok(n) => resolved.push(GrpcResolvedMember::Remote {
-								index,
-								subscription_id: SubscriptionId(n),
-								remote_sub: Box::new(remote_sub),
-							}),
-							Err(_) => {
-								rollback_grpc_batch(&self.state, &resolved).await;
-								return Err(Status::internal(
-									"Invalid remote subscription ID format",
-								));
+				}) => {
+					let client_format = match format {
+						WireFormat::Rbcf => ClientWireFormat::Rbcf,
+						WireFormat::Proto => ClientWireFormat::Proto,
+					};
+					match connect_remote(
+						&address,
+						&upstream_rql,
+						ns_token.as_deref(),
+						client_format,
+					)
+					.await
+					{
+						Ok(remote_sub) => {
+							let remote_id = remote_sub.subscription_id().to_string();
+							match remote_id.parse::<u64>() {
+								Ok(n) => resolved.push(GrpcResolvedMember::Remote {
+									index,
+									subscription_id: SubscriptionId(n),
+									remote_sub: Box::new(remote_sub),
+								}),
+								Err(_) => {
+									rollback_grpc_batch(&self.state, &resolved)
+										.await;
+									return Err(Status::internal(
+										"Invalid remote subscription ID format",
+									));
+								}
 							}
 						}
+						Err(e) => {
+							rollback_grpc_batch(&self.state, &resolved).await;
+							return Err(Status::unavailable(e.to_string()));
+						}
 					}
-					Err(e) => {
-						rollback_grpc_batch(&self.state, &resolved).await;
-						return Err(Status::unavailable(e.to_string()));
-					}
-				},
+				}
 				Err(e) => {
 					rollback_grpc_batch(&self.state, &resolved).await;
 					return Err(Status::from(GrpcError::from(e)));
@@ -485,7 +510,8 @@ impl ReifyDb for ReifyDbService {
 				let shutdown = self.shutdown_rx.clone();
 				let handle = spawn(async move {
 					let registry_push = registry.clone();
-					proxy_remote_to_sink(*remote_sub, shutdown, move |frames| {
+					proxy_remote_to_sink(*remote_sub, shutdown, move |payload| {
+						let frames = payload.into_frames();
 						registry_push.push_batch_frames(batch_id, subscription_id, frames)
 					})
 					.await;
