@@ -14,6 +14,12 @@ pub enum FFIError {
 	/// Configuration error
 	Configuration(String),
 
+	/// Required configuration key is missing
+	MissingConfiguration {
+		operator: &'static str,
+		key: &'static str,
+	},
+
 	/// State operation error
 	StateError(String),
 
@@ -40,6 +46,9 @@ impl fmt::Display for FFIError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			FFIError::Configuration(msg) => write!(f, "Configuration error: {}", msg),
+			FFIError::MissingConfiguration { operator, key } => {
+				write!(f, "{operator} requires '{key}' configuration")
+			}
 			FFIError::StateError(msg) => write!(f, "State error: {}", msg),
 			FFIError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
 			FFIError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
