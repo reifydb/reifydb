@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod canonical;
+pub mod compressed;
 
 use std::{
 	collections::HashMap,
@@ -77,15 +78,29 @@ impl EncodingRegistry {
 		self.encodings.is_empty()
 	}
 
-	// All built-in encodings registered. Phase 3 wires the four canonical ones;
-	// Phase 6 extends this with the nine compressed encodings.
+	// All built-in encodings: four canonical + nine compressed stubs. The
+	// compressed stubs register so the dispatch model and IPC surface are
+	// locked; their kernels fill in per follow-up PR.
 	pub fn builtins() -> Self {
 		use canonical::CanonicalEncoding;
+		use compressed::{
+			AllNoneEncoding, BitPackEncoding, ConstantEncoding, DeltaEncoding, DeltaRleEncoding,
+			DictEncoding, ForEncoding, RleEncoding, SparseEncoding,
+		};
 		let mut r = Self::empty();
 		r.register(Arc::new(CanonicalEncoding::BOOL));
 		r.register(Arc::new(CanonicalEncoding::FIXED));
 		r.register(Arc::new(CanonicalEncoding::VARLEN));
 		r.register(Arc::new(CanonicalEncoding::BIGNUM));
+		r.register(Arc::new(ConstantEncoding));
+		r.register(Arc::new(AllNoneEncoding));
+		r.register(Arc::new(DictEncoding));
+		r.register(Arc::new(RleEncoding));
+		r.register(Arc::new(DeltaEncoding));
+		r.register(Arc::new(DeltaRleEncoding));
+		r.register(Arc::new(ForEncoding));
+		r.register(Arc::new(BitPackEncoding));
+		r.register(Arc::new(SparseEncoding));
 		r
 	}
 }

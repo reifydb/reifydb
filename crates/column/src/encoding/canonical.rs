@@ -90,12 +90,26 @@ mod tests {
 	}
 
 	#[test]
-	fn registry_builtins_registers_four_canonical_encodings() {
+	fn registry_builtins_registers_all_canonical_and_compressed_encodings() {
 		let r = crate::encoding::EncodingRegistry::builtins();
-		assert_eq!(r.len(), 4);
-		assert!(r.get(EncodingId::CANONICAL_BOOL).is_some());
-		assert!(r.get(EncodingId::CANONICAL_FIXED).is_some());
-		assert!(r.get(EncodingId::CANONICAL_VARLEN).is_some());
-		assert!(r.get(EncodingId::CANONICAL_BIGNUM).is_some());
+		// 4 canonical + 9 compressed stubs = 13
+		assert_eq!(r.len(), 13);
+		for id in [
+			EncodingId::CANONICAL_BOOL,
+			EncodingId::CANONICAL_FIXED,
+			EncodingId::CANONICAL_VARLEN,
+			EncodingId::CANONICAL_BIGNUM,
+			EncodingId::CONSTANT,
+			EncodingId::ALL_NONE,
+			EncodingId::DICT,
+			EncodingId::RLE,
+			EncodingId::DELTA,
+			EncodingId::DELTA_RLE,
+			EncodingId::FOR,
+			EncodingId::BITPACK,
+			EncodingId::SPARSE,
+		] {
+			assert!(r.get(id).is_some(), "missing encoding {id:?}");
+		}
 	}
 }
