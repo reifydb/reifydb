@@ -2665,6 +2665,7 @@ dependencies = [
  "dashmap",
  "reifydb-core",
  "reifydb-type",
+ "serde",
  "tracing",
 ]
 

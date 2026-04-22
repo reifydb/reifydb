@@ -11,4 +11,5 @@ description = "Columnar storage engine for ReifyDB."
 reifydb-core = { workspace = true }
 reifydb-type = { workspace = true }
 dashmap = { workspace = true }
+serde = { workspace = true }
 tracing = { workspace = true }
