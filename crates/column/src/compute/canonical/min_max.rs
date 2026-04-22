@@ -4,12 +4,9 @@
 use reifydb_type::{Result, error::Error, value::Value};
 use serde::de::Error as _;
 
-use crate::{
-	array::{
-		canonical::{CanonicalArray, CanonicalStorage},
-		fixed::FixedStorage,
-	},
-	nones::NoneBitmap,
+use crate::array::{
+	canonical::{CanonicalArray, CanonicalStorage},
+	fixed::FixedStorage,
 };
 
 pub fn min_max(array: &CanonicalArray) -> Result<(Value, Value)> {
@@ -69,9 +66,6 @@ pub fn min_max(array: &CanonicalArray) -> Result<(Value, Value)> {
 		}
 	}
 }
-
-#[allow(dead_code)]
-fn _nones(_: &NoneBitmap) {}
 
 #[cfg(test)]
 mod tests {

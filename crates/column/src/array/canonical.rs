@@ -243,7 +243,7 @@ impl ArrayData for CanonicalArray {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::{Value, r#type::Type};
+	use reifydb_type::value::r#type::Type;
 
 	use super::*;
 
@@ -317,8 +317,4 @@ mod tests {
 		let ca = CanonicalArray::from_column_data(&cd).unwrap();
 		assert_eq!(ca.encoding(), EncodingId::CANONICAL_FIXED);
 	}
-
-	// Silence unused import in tests
-	#[allow(dead_code)]
-	fn _value(_: Value) {}
 }

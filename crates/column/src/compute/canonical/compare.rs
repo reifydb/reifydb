@@ -11,7 +11,6 @@ use crate::{
 		fixed::FixedStorage,
 	},
 	compute::CompareOp,
-	nones::NoneBitmap,
 };
 
 // Produce a boolean canonical array where each row is `true` iff
@@ -128,12 +127,6 @@ fn apply_cmp_order(op: CompareOp, order: std::cmp::Ordering) -> bool {
 		CompareOp::GtEq => matches!(order, Greater | Equal),
 	}
 }
-
-// Placeholder so the module stays bound when unused by internal callers; also
-// suppresses "unused imports" warnings. Re-export of `NoneBitmap` so the
-// propagation rule is discoverable from this file's surface.
-#[allow(dead_code)]
-fn _none_propagation(_: &NoneBitmap) {}
 
 #[cfg(test)]
 mod tests {

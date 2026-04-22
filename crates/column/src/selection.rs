@@ -3,7 +3,7 @@
 
 use crate::mask::RowMask;
 
-// Result of evaluating a predicate against a `Table`.
+// Result of evaluating a predicate against a `ColumnBlock`.
 //
 // `None_` uses a trailing underscore so pattern matches don't shadow
 // `Option::None`.
