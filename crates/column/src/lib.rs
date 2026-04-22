@@ -2,6 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod array;
+pub mod compress;
+pub mod compute;
 pub mod encoding;
 pub mod mask;
 pub mod nones;

@@ -11,12 +11,7 @@ use std::{any::Any, sync::Arc};
 
 use reifydb_type::{Result, value::r#type::Type};
 
-use crate::{
-	array::canonical::CanonicalArray,
-	encoding::EncodingId,
-	nones::NoneBitmap,
-	stats::StatsSet,
-};
+use crate::{array::canonical::CanonicalArray, encoding::EncodingId, nones::NoneBitmap, stats::StatsSet};
 
 pub trait ArrayData: Send + Sync + 'static {
 	fn ty(&self) -> Type;
