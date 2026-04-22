@@ -3,7 +3,10 @@
 
 pub mod canonical;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::HashMap,
+	sync::{Arc, OnceLock},
+};
 
 use reifydb_type::Result;
 
@@ -85,4 +88,13 @@ impl EncodingRegistry {
 		r.register(Arc::new(CanonicalEncoding::BIGNUM));
 		r
 	}
+}
+
+// Process-global registry. Built once on first access; subsequent calls
+// return the same reference, which compute dispatch and predicate evaluation
+// consult to route through encoding-specific specializations.
+static GLOBAL: OnceLock<EncodingRegistry> = OnceLock::new();
+
+pub fn global() -> &'static EncodingRegistry {
+	GLOBAL.get_or_init(EncodingRegistry::builtins)
 }

@@ -172,7 +172,7 @@ pub fn parse_rql(command: &Command) -> String {
 }
 
 /// Parse positional parameters from command arguments
-/// First argument is the SQL, rest are positional parameters
+/// First argument is the RQL, rest are positional parameters
 #[allow(dead_code)]
 pub fn parse_positional_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
@@ -181,14 +181,14 @@ pub fn parse_positional_params(command: &Command) -> (String, Params) {
 		return (String::new(), Params::Positional(Arc::new(vec![])));
 	}
 
-	let sql = args[0].to_string();
+	let rql = args[0].to_string();
 	let params: Vec<_> = args[1..].iter().map(|s| parse_param_value(s)).collect();
 
-	(sql, Params::Positional(Arc::new(params)))
+	(rql, Params::Positional(Arc::new(params)))
 }
 
 /// Parse named parameters from command arguments
-/// First argument is the SQL, rest are name=value pairs
+/// First argument is the RQL, rest are name=value pairs
 #[allow(dead_code)]
 pub fn parse_named_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
@@ -197,7 +197,7 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 		return (String::new(), Params::Named(Arc::new(HashMap::new())));
 	}
 
-	let sql = args[0].to_string();
+	let rql = args[0].to_string();
 	let mut params = HashMap::new();
 
 	for arg in &args[1..] {
@@ -206,7 +206,7 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 		}
 	}
 
-	(sql, Params::Named(Arc::new(params)))
+	(rql, Params::Named(Arc::new(params)))
 }
 
 /// Parse a parameter value from string
