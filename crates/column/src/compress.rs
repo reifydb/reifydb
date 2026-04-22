@@ -29,12 +29,6 @@ impl Default for CompressConfig {
 	}
 }
 
-// v1 compressor: iterates registered candidate encodings, tries each in turn,
-// and falls back to wrapping the canonical input unchanged. All compressed
-// encodings currently return `Ok(None)` from `try_compress` ("doesn't apply"),
-// so every call ends in canonical wrap. The loop is intentionally real so that
-// when compressed kernels land, they flow in without changing this control
-// path — the milestone's "surface is load-bearing" invariant.
 pub struct Compressor {
 	candidates: Vec<Arc<dyn Encoding>>,
 	cfg: CompressConfig,
@@ -85,7 +79,6 @@ impl Compressor {
 	}
 }
 
-// Module-level convenience — wraps the global registry and default config.
 pub fn compress(input: &CanonicalArray) -> Result<Array> {
 	Compressor::new(CompressConfig::default()).compress(input)
 }

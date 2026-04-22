@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-// Nine compressed-encoding surface types. Each is a zero-size marker whose
-// `try_compress` returns `Ok(None)` in v1 ("this encoding doesn't apply") so
-// the compressor falls back to canonical. `canonicalize` is `todo!()` because
-// v1 never produces these encodings — filling it in is a follow-up PR per
-// encoding. Registering them in `EncodingRegistry::builtins()` freezes the
-// surface so downstream dispatch and IPC don't need changes when kernels land.
-
 use reifydb_type::Result;
 
 use crate::{

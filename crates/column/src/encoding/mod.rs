@@ -78,9 +78,6 @@ impl EncodingRegistry {
 		self.encodings.is_empty()
 	}
 
-	// All built-in encodings: four canonical + nine compressed stubs. The
-	// compressed stubs register so the dispatch model and IPC surface are
-	// locked; their kernels fill in per follow-up PR.
 	pub fn builtins() -> Self {
 		use canonical::CanonicalEncoding;
 		use compressed::{
