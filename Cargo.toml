@@ -9,6 +9,7 @@ members = [
     "crates/routine",
     "crates/catalog",
     "crates/cdc",
+    "crates/column",
     "crates/core",
     "crates/engine",
     "crates/extension",
@@ -30,6 +31,7 @@ members = [
     "crates/wire-format",
     # Subsystem crates
     "crates/sub-api",
+    "crates/sub-column",
     "crates/sub-metric",
     "crates/sub-server-admin",
     "crates/sub-flow",
@@ -71,6 +73,7 @@ default-members = [
     "crates/routine",
     "crates/catalog",
     "crates/cdc",
+    "crates/column",
     "crates/core",
     "crates/engine",
     "crates/extension",
@@ -92,6 +95,7 @@ default-members = [
     "crates/wire-format",
     # Subsystem crates
     "crates/sub-api",
+    "crates/sub-column",
     "crates/sub-metric",
     "crates/sub-server-admin",
     "crates/sub-flow",
@@ -173,6 +177,7 @@ reifydb-auth = { version = "0.4.12", path = "crates/auth" }
 reifydb-routine = { version = "0.4.12", path = "crates/routine" }
 reifydb-catalog = { version = "0.4.12", path = "crates/catalog" }
 reifydb-cdc = { version = "0.4.12", path = "crates/cdc" }
+reifydb-column = { version = "0.4.12", path = "crates/column" }
 reifydb-core = { version = "0.4.12", path = "crates/core" }
 reifydb-engine = { version = "0.4.12", path = "crates/engine" }
 reifydb-extension = { version = "0.4.12", path = "crates/extension" }
@@ -195,6 +200,7 @@ reifydb-macro-impl = { version = "0.4.12", path = "crates/macro-impl" }
 
 # Subsystems
 reifydb-sub-api = { version = "0.4.12", path = "crates/sub-api" }
+reifydb-sub-column = { version = "0.4.12", path = "crates/sub-column" }
 reifydb-sub-metric = { version = "0.4.12", path = "crates/sub-metric" }
 reifydb-sub-server-admin = { version = "0.4.12", path = "crates/sub-server-admin" }
 reifydb-sub-flow = { version = "0.4.12", path = "crates/sub-flow" }

@@ -1,0 +1,14 @@
+[package]
+name = "reifydb-column"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Columnar storage engine for ReifyDB."
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-type = { workspace = true }
+dashmap = { workspace = true }
+tracing = { workspace = true }

@@ -2659,6 +2659,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-column"
+version = "0.4.12"
+dependencies = [
+ "dashmap",
+ "reifydb-core",
+ "reifydb-type",
+ "tracing",
+]
+
+[[package]]
 name = "reifydb-core"
 version = "0.4.12"
 dependencies = [
@@ -2926,6 +2936,22 @@ dependencies = [
  "reifydb-engine",
  "reifydb-transaction",
  "reifydb-type",
+]
+
+[[package]]
+name = "reifydb-sub-column"
+version = "0.4.12"
+dependencies = [
+ "reifydb",
+ "reifydb-catalog",
+ "reifydb-column",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-runtime",
+ "reifydb-sub-api",
+ "reifydb-transaction",
+ "reifydb-type",
+ "tracing",
 ]
 
 [[package]]

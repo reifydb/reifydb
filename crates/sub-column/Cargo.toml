@@ -1,0 +1,22 @@
+[package]
+name = "reifydb-sub-column"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Storage materialization subsystem for ReifyDB."
+
+[dependencies]
+reifydb-catalog = { workspace = true }
+reifydb-column = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+reifydb = { workspace = true }
