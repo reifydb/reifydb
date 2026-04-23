@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Result, error::Error};
-use serde::de::Error as _;
+use reifydb_type::Result;
 
 use crate::{
 	array::{
@@ -12,6 +11,7 @@ use crate::{
 		fixed::{FixedArray, FixedStorage},
 		varlen::VarLenArray,
 	},
+	error::ColumnError,
 	nones::NoneBitmap,
 };
 
@@ -59,7 +59,7 @@ fn take_nones(nones: &NoneBitmap, idx: &[usize]) -> NoneBitmap {
 
 fn extract_indices(indices: &CanonicalArray) -> Result<Vec<usize>> {
 	let CanonicalStorage::Fixed(f) = &indices.storage else {
-		return Err(Error::custom("take: indices must be a fixed-width integer array"));
+		return Err(ColumnError::TakeIndicesNotFixed.into());
 	};
 	Ok(match &f.storage {
 		FixedStorage::U8(v) => v.iter().map(|&i| i as usize).collect(),
@@ -68,7 +68,7 @@ fn extract_indices(indices: &CanonicalArray) -> Result<Vec<usize>> {
 		FixedStorage::U64(v) => v.iter().map(|&i| i as usize).collect(),
 		FixedStorage::I32(v) => v.iter().map(|&i| i as usize).collect(),
 		FixedStorage::I64(v) => v.iter().map(|&i| i as usize).collect(),
-		_ => return Err(Error::custom("take: indices must be U8/U16/U32/U64 or I32/I64")),
+		_ => return Err(ColumnError::TakeIndicesWrongWidth.into()),
 	})
 }
 

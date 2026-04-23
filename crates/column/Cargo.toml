@@ -13,4 +13,5 @@ reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
 dashmap = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }

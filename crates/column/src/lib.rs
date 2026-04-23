@@ -8,6 +8,7 @@ pub mod column_block;
 pub mod compress;
 pub mod compute;
 pub mod encoding;
+pub mod error;
 pub mod mask;
 pub mod nones;
 pub mod predicate;

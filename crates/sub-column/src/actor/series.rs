@@ -39,15 +39,16 @@ use reifydb_runtime::actor::{
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 use reifydb_type::{
 	Result,
-	error::Error,
 	fragment::Fragment,
 	params::Params,
 	value::{datetime::DateTime, identity::IdentityId, r#type::Type},
 };
-use serde::de::Error as SerdeError;
 use tracing::{debug, warn};
 
-use crate::actor::{SeriesMessage, batches::column_block_from_batches};
+use crate::{
+	actor::{SeriesMessage, batches::column_block_from_batches},
+	error::SubColumnError,
+};
 
 pub struct SeriesBucketState {
 	pub materialized_at_sequence: u64,
@@ -267,11 +268,11 @@ fn scan_output_schema(series: &Series) -> Vec<(String, Type)> {
 	schema
 }
 
-fn missing_namespace(series: &Series) -> Error {
-	<Error as SerdeError>::custom(format!(
-		"series materialization: namespace {:?} missing for series {:?}",
-		series.namespace, series.id
-	))
+fn missing_namespace(series: &Series) -> SubColumnError {
+	SubColumnError::NamespaceMissing {
+		namespace: series.namespace,
+		series: series.id,
+	}
 }
 
 impl Actor for SeriesMaterializationActor {

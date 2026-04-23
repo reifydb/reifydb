@@ -5,10 +5,8 @@ use std::cmp::{Ordering, Ordering::*};
 
 use reifydb_type::{
 	Result,
-	error::Error,
 	value::{Value, r#type::Type},
 };
-use serde::de::Error as _;
 
 use crate::{
 	array::{
@@ -17,6 +15,7 @@ use crate::{
 		fixed::FixedStorage,
 	},
 	compute::CompareOp,
+	error::ColumnError,
 };
 
 // Produce a boolean canonical array where each row is `true` iff
@@ -32,7 +31,13 @@ pub fn compare(array: &CanonicalArray, rhs: &Value, op: CompareOp) -> Result<Can
 		CanonicalStorage::Bool(b) => {
 			let r = match rhs {
 				Value::Boolean(v) => *v,
-				_ => return Err(Error::custom("compare: bool column requires Boolean rhs")),
+				_ => {
+					return Err(ColumnError::CompareRhsTypeMismatch {
+						storage: "Bool",
+						expected: "Boolean",
+					}
+					.into());
+				}
 			};
 			for i in 0..len {
 				out.set(i, apply_cmp_order(op, cmp_bool(b.get(i), r)));
@@ -41,14 +46,20 @@ pub fn compare(array: &CanonicalArray, rhs: &Value, op: CompareOp) -> Result<Can
 		CanonicalStorage::VarLen(v) => {
 			let r = match rhs {
 				Value::Utf8(s) => s.as_bytes(),
-				_ => return Err(Error::custom("compare: varlen column requires Utf8 rhs")),
+				_ => {
+					return Err(ColumnError::CompareRhsTypeMismatch {
+						storage: "VarLen",
+						expected: "Utf8",
+					}
+					.into());
+				}
 			};
 			for i in 0..len {
 				out.set(i, apply_cmp_order(op, v.bytes_at(i).cmp(r)));
 			}
 		}
 		CanonicalStorage::BigNum(_) => {
-			return Err(Error::custom("compare: BigNum comparison not yet implemented"));
+			return Err(ColumnError::CompareBigNumUnsupported.into());
 		}
 	}
 
@@ -75,11 +86,11 @@ fn compare_fixed(storage: &FixedStorage, rhs: &Value, op: CompareOp, out: &mut B
 			let r = match rhs {
 				Value::$ext(v) => *v as $ty,
 				_ => {
-					return Err(Error::custom(concat!(
-						"compare: ",
-						stringify!($variant),
-						" column requires matching rhs"
-					)));
+					return Err(ColumnError::CompareRhsTypeMismatch {
+						storage: stringify!($variant),
+						expected: stringify!($ext),
+					}
+					.into());
 				}
 			};
 			for (i, &lhs) in $v.iter().enumerate() {
@@ -101,14 +112,26 @@ fn compare_fixed(storage: &FixedStorage, rhs: &Value, op: CompareOp, out: &mut B
 		FixedStorage::F32(v) => {
 			let r = match rhs {
 				Value::Float4(v) => v.value(),
-				_ => return Err(Error::custom("compare: F32 column requires Float4 rhs")),
+				_ => {
+					return Err(ColumnError::CompareRhsTypeMismatch {
+						storage: "F32",
+						expected: "Float4",
+					}
+					.into());
+				}
 			};
 			branch!(F32, v, r);
 		}
 		FixedStorage::F64(v) => {
 			let r = match rhs {
 				Value::Float8(v) => v.value(),
-				_ => return Err(Error::custom("compare: F64 column requires Float8 rhs")),
+				_ => {
+					return Err(ColumnError::CompareRhsTypeMismatch {
+						storage: "F64",
+						expected: "Float8",
+					}
+					.into());
+				}
 			};
 			branch!(F64, v, r);
 		}

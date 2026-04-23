@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Result, error::Error, value::Value};
-use serde::de::Error as _;
+use reifydb_type::{Result, value::Value};
 
-use crate::array::{
-	canonical::{CanonicalArray, CanonicalStorage},
-	fixed::FixedStorage,
+use crate::{
+	array::{
+		canonical::{CanonicalArray, CanonicalStorage},
+		fixed::FixedStorage,
+	},
+	error::ColumnError,
 };
 
 // Sum of all non-None rows. Overflow semantics follow Rust's wrapping behavior
@@ -14,7 +16,10 @@ use crate::array::{
 // width integer and float columns; BigNum/VarLen/Bool return an error.
 pub fn sum(array: &CanonicalArray) -> Result<Value> {
 	let CanonicalStorage::Fixed(f) = &array.storage else {
-		return Err(Error::custom("sum: only FixedArray supported in v1"));
+		return Err(ColumnError::FixedArrayRequired {
+			operation: "sum",
+		}
+		.into());
 	};
 
 	let skip = |row: usize| -> bool { array.nones.as_ref().map(|n| n.is_none(row)).unwrap_or(false) };

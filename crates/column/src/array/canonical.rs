@@ -6,12 +6,10 @@ use std::{any::Any, ops::Deref, sync::Arc};
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
 	Result,
-	error::Error,
 	storage::{Cow, DataBitVec, Storage},
 	util::bitvec::BitVec,
 	value::{Value, blob::Blob, r#type::Type},
 };
-use serde::de::Error as _;
 
 use crate::{
 	array::{
@@ -22,6 +20,7 @@ use crate::{
 		varlen::VarLenArray,
 	},
 	encoding::EncodingId,
+	error::ColumnError,
 	nones::NoneBitmap,
 	stats::StatsSet,
 };
@@ -161,7 +160,7 @@ impl CanonicalArray {
 				Type::Decimal,
 				collect_bignums(container.len(), |i| container.get_value(i)),
 			)),
-			other => Err(unsupported_for_now(other)),
+			other => Err(unsupported_for_now(other).into()),
 		}
 	}
 
@@ -203,10 +202,8 @@ impl CanonicalArray {
 					let strings: Vec<String> = (0..v.len())
 						.map(|i| std::str::from_utf8(v.bytes_at(i)).map(str::to_string))
 						.collect::<std::result::Result<_, _>>()
-						.map_err(|e| {
-							Error::custom(format!(
-								"CanonicalArray::to_column_data: invalid UTF-8: {e}"
-							))
+						.map_err(|e| ColumnError::ToColumnDataInvalidUtf8 {
+							reason: e.to_string(),
 						})?;
 					ColumnData::utf8(strings)
 				}
@@ -216,9 +213,10 @@ impl CanonicalArray {
 					ColumnData::blob(blobs)
 				}
 				ref other => {
-					return Err(Error::custom(format!(
-						"CanonicalArray::to_column_data: unexpected VarLen type {other:?}"
-					)));
+					return Err(ColumnError::ToColumnDataUnexpectedVarLen {
+						ty: other.clone(),
+					}
+					.into());
 				}
 			},
 			CanonicalStorage::BigNum(b) => match self.ty {
@@ -235,9 +233,10 @@ impl CanonicalArray {
 					other => unreachable!("BigNum ty=Decimal mismatched variant: {other:?}"),
 				})),
 				ref other => {
-					return Err(Error::custom(format!(
-						"CanonicalArray::to_column_data: unexpected BigNum type {other:?}"
-					)));
+					return Err(ColumnError::ToColumnDataUnexpectedBigNum {
+						ty: other.clone(),
+					}
+					.into());
 				}
 			},
 		};
@@ -267,7 +266,7 @@ fn collect_bignums(len: usize, mut get: impl FnMut(usize) -> Value) -> Vec<BigNu
 	out
 }
 
-fn unsupported_for_now(cd: &ColumnData) -> Error {
+fn unsupported_for_now(cd: &ColumnData) -> ColumnError {
 	let variant = match cd {
 		ColumnData::Date(_) => "Date",
 		ColumnData::DateTime(_) => "DateTime",
@@ -280,7 +279,9 @@ fn unsupported_for_now(cd: &ColumnData) -> Error {
 		ColumnData::DictionaryId(_) => "DictionaryId",
 		_ => "Unknown",
 	};
-	Error::custom(format!("CanonicalArray::from_column_data: {variant} not yet supported"))
+	ColumnError::FromColumnDataUnsupported {
+		variant,
+	}
 }
 
 static UNIT_METADATA: () = ();

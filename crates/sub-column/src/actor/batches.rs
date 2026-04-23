@@ -7,8 +7,9 @@ use reifydb_column::{
 	array::canonical::CanonicalArray, chunked::ChunkedArray, column_block::ColumnBlock, compress::Compressor,
 };
 use reifydb_core::value::column::{columns::Columns, data::ColumnData};
-use reifydb_type::{Result, error::Error, value::r#type::Type};
-use serde::de::Error as _;
+use reifydb_type::{Result, value::r#type::Type};
+
+use crate::error::SubColumnError;
 
 // Concatenate a sequence of scan-emitted `Columns` batches into a single-chunk
 // `ColumnBlock` aligned to `schema`. Layout: for each `(name, ty)` in schema,
@@ -31,7 +32,9 @@ pub fn column_block_from_batches(
 		let mut combined: Option<ColumnData> = None;
 		for batch in &batches {
 			let column = batch.iter().find(|c| c.name().text() == name.as_str()).ok_or_else(|| {
-				Error::custom(format!("column_block_from_batches: scan output missing column '{name}'"))
+				SubColumnError::MissingColumnInBatch {
+					column: name.clone(),
+				}
 			})?;
 			let data = column.data.clone();
 			match combined.as_mut() {
@@ -39,8 +42,8 @@ pub fn column_block_from_batches(
 				Some(acc) => acc.extend(data)?,
 			}
 		}
-		let data = combined.ok_or_else(|| {
-			Error::custom(format!("column_block_from_batches: no batches to materialize column '{name}'"))
+		let data = combined.ok_or_else(|| SubColumnError::NoBatchesForMaterialization {
+			column: name.clone(),
 		})?;
 		let canonical = CanonicalArray::from_column_data(&data)?;
 		let nullable = canonical.nullable;

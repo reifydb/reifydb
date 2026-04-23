@@ -6,13 +6,11 @@ use std::sync::Arc;
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::{
 	Result,
-	error::Error,
 	fragment::Fragment,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
-use serde::de::Error as _;
 
-use crate::snapshot::Snapshot;
+use crate::{error::ColumnError, snapshot::Snapshot};
 
 pub struct SnapshotReader {
 	snapshot: Arc<Snapshot>,
@@ -52,10 +50,11 @@ impl SnapshotReader {
 		for (i, (name, _ty, _nullable)) in self.snapshot.block.schema.iter().enumerate() {
 			let chunked = &self.snapshot.block.columns[i];
 			if chunked.chunks.len() != 1 {
-				return Err(Error::custom(format!(
-					"SnapshotReader: column `{name}` has {} chunks; v1 expects single-chunk",
-					chunked.chunks.len()
-				)));
+				return Err(ColumnError::MultiChunkUnsupported {
+					operation: "SnapshotReader",
+					chunk_count: chunked.chunks.len(),
+				}
+				.into());
 			}
 			let canonical = chunked.chunks[0].to_canonical()?;
 			let sliced = canonical.slice(self.offset, end)?;

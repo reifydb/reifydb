@@ -1,21 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Result, error::Error, value::Value};
-use serde::de::Error as _;
+use reifydb_type::{Result, value::Value};
 
-use crate::array::{
-	canonical::{CanonicalArray, CanonicalStorage},
-	fixed::FixedStorage,
+use crate::{
+	array::{
+		canonical::{CanonicalArray, CanonicalStorage},
+		fixed::FixedStorage,
+	},
+	error::ColumnError,
 };
 
 pub fn min_max(array: &CanonicalArray) -> Result<(Value, Value)> {
 	if array.is_empty() {
-		return Err(Error::custom("min_max: empty array has no min/max"));
+		return Err(ColumnError::MinMaxEmpty.into());
 	}
 
 	let CanonicalStorage::Fixed(f) = &array.storage else {
-		return Err(Error::custom("min_max: only FixedArray supported in v1"));
+		return Err(ColumnError::FixedArrayRequired {
+			operation: "min_max",
+		}
+		.into());
 	};
 
 	let skip = |row: usize| -> bool { array.nones.as_ref().map(|n| n.is_none(row)).unwrap_or(false) };
@@ -45,7 +50,7 @@ pub fn min_max(array: &CanonicalArray) -> Result<(Value, Value)> {
 			}
 			match (min, max) {
 				(Some(min), Some(max)) => Ok((Value::$variant(min), Value::$variant(max))),
-				_ => Err(Error::custom("min_max: all rows are None")),
+				_ => Err(ColumnError::MinMaxAllNone.into()),
 			}
 		}};
 	}
@@ -61,9 +66,7 @@ pub fn min_max(array: &CanonicalArray) -> Result<(Value, Value)> {
 		FixedStorage::U32(v) => reduce_int!(v, Uint4),
 		FixedStorage::U64(v) => reduce_int!(v, Uint8),
 		FixedStorage::U128(v) => reduce_int!(v, Uint16),
-		FixedStorage::F32(_) | FixedStorage::F64(_) => {
-			Err(Error::custom("min_max: float min/max not yet implemented (NaN handling)"))
-		}
+		FixedStorage::F32(_) | FixedStorage::F64(_) => Err(ColumnError::MinMaxFloatUnsupported.into()),
 	}
 }
 

@@ -2668,6 +2668,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-type",
  "serde",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
@@ -2955,6 +2956,7 @@ dependencies = [
  "reifydb-transaction",
  "reifydb-type",
  "serde",
+ "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
 ]

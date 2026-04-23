@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Result, error::Error, value::Value};
-use serde::de::Error as _;
+use reifydb_type::{Result, value::Value};
 
 use crate::{
 	array::{Array, canonical::CanonicalStorage},
 	chunked::ChunkedArray,
 	column_block::ColumnBlock,
 	compute::{self, CompareOp},
+	error::ColumnError,
 	mask::RowMask,
 	selection::Selection,
 };
@@ -50,7 +50,11 @@ pub enum Predicate {
 pub fn evaluate(block: &ColumnBlock, predicate: &Predicate) -> Result<Selection> {
 	for ch in &block.columns {
 		if ch.chunk_count() > 1 {
-			return Err(Error::custom("predicate::evaluate: multi-chunk blocks not yet supported in v1"));
+			return Err(ColumnError::MultiChunkUnsupported {
+				operation: "predicate::evaluate",
+				chunk_count: ch.chunk_count(),
+			}
+			.into());
 		}
 	}
 	let len = block.len();
@@ -117,13 +121,22 @@ fn is_none_mask(ch: &ChunkedArray) -> RowMask {
 }
 
 fn column<'a>(block: &'a ColumnBlock, col: &ColRef) -> Result<&'a ChunkedArray> {
-	block.column_by_name(&col.0)
-		.map(|(_, ch)| ch)
-		.ok_or_else(|| Error::custom(format!("predicate::evaluate: column '{}' not in schema", col.0)))
+	block.column_by_name(&col.0).map(|(_, ch)| ch).ok_or_else(|| {
+		ColumnError::ColumnNotInSchema {
+			operation: "predicate::evaluate",
+			name: col.0.clone(),
+		}
+		.into()
+	})
 }
 
 fn single_chunk(ch: &ChunkedArray) -> Result<&Array> {
-	ch.chunks.first().ok_or_else(|| Error::custom("predicate::evaluate: empty chunked array"))
+	ch.chunks.first().ok_or_else(|| {
+		ColumnError::EmptyChunkedArray {
+			operation: "predicate::evaluate",
+		}
+		.into()
+	})
 }
 
 // Convert a bool canonical `Array` to a `RowMask`. None-valued rows count as
@@ -132,7 +145,7 @@ fn single_chunk(ch: &ChunkedArray) -> Result<&Array> {
 fn bool_array_to_mask(array: &Array) -> Result<RowMask> {
 	let canon = array.to_canonical()?;
 	let CanonicalStorage::Bool(b) = &canon.storage else {
-		return Err(Error::custom("predicate::evaluate: compare did not return a bool array"));
+		return Err(ColumnError::PredicateCompareNotBool.into());
 	};
 	let len = b.len();
 	let mut mask = RowMask::none_set(len);

@@ -2,5 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod actor;
+pub mod error;
 pub mod factory;
 pub mod subsystem;

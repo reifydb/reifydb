@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Result, error::Error, value::Value};
-use serde::de::Error as _;
+use reifydb_type::{Result, value::Value};
 
 use crate::{
 	array::{
@@ -10,6 +9,7 @@ use crate::{
 		fixed::FixedStorage,
 	},
 	compute::SearchResult,
+	error::ColumnError,
 };
 
 // Binary search over a sorted canonical array. Returns `Found(index)` if the
@@ -19,7 +19,10 @@ use crate::{
 // (matching the RQL convention of sorting None first).
 pub fn search_sorted(array: &CanonicalArray, needle: &Value) -> Result<SearchResult> {
 	let CanonicalStorage::Fixed(f) = &array.storage else {
-		return Err(Error::custom("search_sorted: only FixedArray supported in v1"));
+		return Err(ColumnError::FixedArrayRequired {
+			operation: "search_sorted",
+		}
+		.into());
 	};
 
 	let result = match (&f.storage, needle) {
@@ -31,7 +34,7 @@ pub fn search_sorted(array: &CanonicalArray, needle: &Value) -> Result<SearchRes
 		(FixedStorage::I16(v), Value::Int2(n)) => v.binary_search(n),
 		(FixedStorage::U8(v), Value::Uint1(n)) => v.binary_search(n),
 		(FixedStorage::U16(v), Value::Uint2(n)) => v.binary_search(n),
-		_ => return Err(Error::custom("search_sorted: storage/needle type mismatch or unsupported")),
+		_ => return Err(ColumnError::SearchSortedTypeMismatch.into()),
 	};
 
 	Ok(match result {
