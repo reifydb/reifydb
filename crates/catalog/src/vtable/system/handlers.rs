@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{procedure::Procedure, vtable::VTable},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -78,11 +78,11 @@ impl BaseVTable for SystemHandlers {
 		}
 
 		let len = ids.len();
-		let mut id_col = ColumnData::uint8_with_capacity(len);
-		let mut ns_col = ColumnData::uint8_with_capacity(len);
-		let mut name_col = ColumnData::utf8_with_capacity(len);
-		let mut sumtype_col = ColumnData::uint8_with_capacity(len);
-		let mut tag_col = ColumnData::uint1_with_capacity(len);
+		let mut id_col = ColumnBuffer::uint8_with_capacity(len);
+		let mut ns_col = ColumnBuffer::uint8_with_capacity(len);
+		let mut name_col = ColumnBuffer::utf8_with_capacity(len);
+		let mut sumtype_col = ColumnBuffer::uint8_with_capacity(len);
+		let mut tag_col = ColumnBuffer::uint1_with_capacity(len);
 
 		for id in &ids {
 			id_col.push(*id);
@@ -101,26 +101,11 @@ impl BaseVTable for SystemHandlers {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: id_col,
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: ns_col,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: name_col,
-			},
-			Column {
-				name: Fragment::internal("on_sumtype_id"),
-				data: sumtype_col,
-			},
-			Column {
-				name: Fragment::internal("on_variant_tag"),
-				data: tag_col,
-			},
+			ColumnWithName::new(Fragment::internal("id"), id_col),
+			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col),
+			ColumnWithName::new(Fragment::internal("name"), name_col),
+			ColumnWithName::new(Fragment::internal("on_sumtype_id"), sumtype_col),
+			ColumnWithName::new(Fragment::internal("on_variant_tag"), tag_col),
 		];
 
 		self.exhausted = true;

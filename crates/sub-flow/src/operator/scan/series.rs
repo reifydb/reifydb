@@ -6,7 +6,7 @@ use reifydb_core::{
 		catalog::{flow::FlowNodeId, series::Series},
 		change::Change,
 	},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_type::{
 	Result,
@@ -56,16 +56,16 @@ impl PrimitiveSeriesOperator {
 		let mut columns = Vec::with_capacity(1 + self.series.columns.len());
 
 		// Timestamp column
-		columns.push(Column {
+		columns.push(ColumnWithName {
 			name: Fragment::internal("timestamp"),
-			data: ColumnData::with_capacity(Type::Int8, 0),
+			data: ColumnBuffer::with_capacity(Type::Int8, 0),
 		});
 
 		// Data columns
 		for col in &self.series.columns {
-			columns.push(Column {
+			columns.push(ColumnWithName {
 				name: Fragment::internal(&col.name),
-				data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+				data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
 			});
 		}
 

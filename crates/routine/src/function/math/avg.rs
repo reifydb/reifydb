@@ -6,9 +6,9 @@ use std::mem;
 use indexmap::IndexMap;
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::{
-	Column,
+	ColumnWithName,
+	buffer::ColumnBuffer,
 	columns::Columns,
-	data::ColumnData,
 	view::group_by::{GroupByView, GroupKey},
 };
 use reifydb_type::{
@@ -72,7 +72,7 @@ impl Function for Avg {
 		for (col_idx, col) in args.iter().enumerate() {
 			let (data, _bitvec) = col.data().unwrap_option();
 			match data {
-				ColumnData::Int1(container) => {
+				ColumnBuffer::Int1(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -80,7 +80,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Int2(container) => {
+				ColumnBuffer::Int2(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -88,7 +88,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Int4(container) => {
+				ColumnBuffer::Int4(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -96,7 +96,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Int8(container) => {
+				ColumnBuffer::Int8(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -104,7 +104,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Int16(container) => {
+				ColumnBuffer::Int16(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -112,7 +112,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Uint1(container) => {
+				ColumnBuffer::Uint1(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -120,7 +120,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Uint2(container) => {
+				ColumnBuffer::Uint2(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -128,7 +128,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Uint4(container) => {
+				ColumnBuffer::Uint4(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -136,7 +136,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Uint8(container) => {
+				ColumnBuffer::Uint8(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -144,7 +144,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Uint16(container) => {
+				ColumnBuffer::Uint16(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -152,7 +152,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Float4(container) => {
+				ColumnBuffer::Float4(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
@@ -160,7 +160,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Float8(container) => {
+				ColumnBuffer::Float8(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {
 							sum[i] += *value;
@@ -168,7 +168,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Int {
+				ColumnBuffer::Int {
 					container,
 					..
 				} => {
@@ -179,7 +179,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Uint {
+				ColumnBuffer::Uint {
 					container,
 					..
 				} => {
@@ -190,7 +190,7 @@ impl Function for Avg {
 						}
 					}
 				}
-				ColumnData::Decimal {
+				ColumnBuffer::Decimal {
 					container,
 					..
 				} => {
@@ -225,7 +225,10 @@ impl Function for Avg {
 			}
 		}
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), ColumnData::float8_with_bitvec(data, valids))]))
+		Ok(Columns::new(vec![ColumnWithName::new(
+			ctx.fragment.clone(),
+			ColumnBuffer::float8_with_bitvec(data, valids),
+		)]))
 	}
 
 	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
@@ -277,55 +280,55 @@ impl Accumulator for AvgAccumulator {
 		let (data, _bitvec) = column.data().unwrap_option();
 
 		match data {
-			ColumnData::Int1(container) => {
+			ColumnBuffer::Int1(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Int2(container) => {
+			ColumnBuffer::Int2(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Int4(container) => {
+			ColumnBuffer::Int4(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Int8(container) => {
+			ColumnBuffer::Int8(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Int16(container) => {
+			ColumnBuffer::Int16(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Uint1(container) => {
+			ColumnBuffer::Uint1(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Uint2(container) => {
+			ColumnBuffer::Uint2(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Uint4(container) => {
+			ColumnBuffer::Uint4(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Uint8(container) => {
+			ColumnBuffer::Uint8(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Uint16(container) => {
+			ColumnBuffer::Uint16(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Float4(container) => {
+			ColumnBuffer::Float4(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Float8(container) => {
+			ColumnBuffer::Float8(container) => {
 				avg_arm!(self, column, groups, container);
 				Ok(())
 			}
-			ColumnData::Int {
+			ColumnBuffer::Int {
 				container,
 				..
 			} => {
@@ -353,7 +356,7 @@ impl Accumulator for AvgAccumulator {
 				}
 				Ok(())
 			}
-			ColumnData::Uint {
+			ColumnBuffer::Uint {
 				container,
 				..
 			} => {
@@ -381,7 +384,7 @@ impl Accumulator for AvgAccumulator {
 				}
 				Ok(())
 			}
-			ColumnData::Decimal {
+			ColumnBuffer::Decimal {
 				container,
 				..
 			} => {
@@ -418,9 +421,9 @@ impl Accumulator for AvgAccumulator {
 		}
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnData), FunctionError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError> {
 		let mut keys = Vec::with_capacity(self.sums.len());
-		let mut data = ColumnData::float8_with_capacity(self.sums.len());
+		let mut data = ColumnBuffer::float8_with_capacity(self.sums.len());
 
 		for (key, sum) in mem::take(&mut self.sums) {
 			let count = self.counts.swap_remove(&key).unwrap_or(0);

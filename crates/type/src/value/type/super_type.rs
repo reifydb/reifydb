@@ -8,7 +8,7 @@ impl Type {
 	/// reducing via `Type::promote`.
 	///
 	/// Returns `Type::Any` for an empty input (matches the fallback that
-	/// `ColumnData::with_capacity` uses when no type is known).
+	/// `ColumnBuffer::with_capacity` uses when no type is known).
 	pub fn super_type_of<I>(iter: I) -> Type
 	where
 		I: IntoIterator<Item = Type>,

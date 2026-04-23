@@ -3,12 +3,13 @@
 
 use std::sync::Arc;
 
+use reifydb_core::value::column::{
+	array::{Column, canonical::Canonical},
+	encoding::EncodingId,
+};
 use reifydb_type::Result;
 
-use crate::{
-	array::{Array, canonical::CanonicalArray},
-	encoding::{self, Encoding, EncodingId},
-};
+use crate::encoding::{self, Encoding};
 
 #[derive(Clone, Debug)]
 pub struct CompressConfig {
@@ -69,30 +70,30 @@ impl Compressor {
 		}
 	}
 
-	pub fn compress(&self, input: &CanonicalArray) -> Result<Array> {
+	pub fn compress(&self, input: &Canonical) -> Result<Column> {
 		for candidate in &self.candidates {
 			if let Some(compressed) = candidate.try_compress(input, &self.cfg)? {
 				return Ok(compressed);
 			}
 		}
-		Ok(Array::from_canonical(input.clone()))
+		Ok(Column::from_canonical(input.clone()))
 	}
 }
 
-pub fn compress(input: &CanonicalArray) -> Result<Array> {
+pub fn compress(input: &Canonical) -> Result<Column> {
 	Compressor::new(CompressConfig::default()).compress(input)
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::data::ColumnData;
+	use reifydb_core::value::column::buffer::ColumnBuffer;
 
 	use super::*;
 
 	#[test]
 	fn compress_falls_back_to_canonical_when_no_stub_applies() {
-		let cd = ColumnData::int4([1i32, 2, 3, 4]);
-		let canon = CanonicalArray::from_column_data(&cd).unwrap();
+		let cd = ColumnBuffer::int4([1i32, 2, 3, 4]);
+		let canon = Canonical::from_column_buffer(&cd).unwrap();
 		let out = compress(&canon).unwrap();
 		assert_eq!(out.encoding(), EncodingId::CANONICAL_FIXED);
 		assert_eq!(out.len(), 4);
@@ -100,8 +101,8 @@ mod tests {
 
 	#[test]
 	fn compress_utf8_falls_back_to_canonical_varlen() {
-		let cd = ColumnData::utf8(["alpha", "bravo"]);
-		let canon = CanonicalArray::from_column_data(&cd).unwrap();
+		let cd = ColumnBuffer::utf8(["alpha", "bravo"]);
+		let canon = Canonical::from_column_buffer(&cd).unwrap();
 		let out = compress(&canon).unwrap();
 		assert_eq!(out.encoding(), EncodingId::CANONICAL_VARLEN);
 		assert_eq!(out.len(), 2);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -50,6 +50,6 @@ impl Function for IsRoot {
 		let row_count = ctx.row_count.max(1);
 		let data: Vec<bool> = vec![is_root; row_count];
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), ColumnData::bool(data))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::bool(data))]))
 	}
 }

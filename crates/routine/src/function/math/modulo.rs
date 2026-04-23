@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use num_traits::ToPrimitive;
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::{Type, input_types::InputTypes};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -25,29 +25,29 @@ impl Modulo {
 	}
 }
 
-fn numeric_to_f64(data: &ColumnData, i: usize) -> Option<f64> {
+fn numeric_to_f64(data: &ColumnBuffer, i: usize) -> Option<f64> {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Int4(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Int8(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Int16(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Uint8(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Uint16(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Float4(c) => c.get(i).map(|&v| v as f64),
-		ColumnData::Float8(c) => c.get(i).copied(),
-		ColumnData::Int {
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Float4(c) => c.get(i).map(|&v| v as f64),
+		ColumnBuffer::Float8(c) => c.get(i).copied(),
+		ColumnBuffer::Int {
 			container,
 			..
 		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)),
-		ColumnData::Uint {
+		ColumnBuffer::Uint {
 			container,
 			..
 		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)),
-		ColumnData::Decimal {
+		ColumnBuffer::Decimal {
 			container,
 			..
 		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)),
@@ -121,7 +121,7 @@ impl Function for Modulo {
 			}
 		}
 
-		let result_data = ColumnData::float8_with_bitvec(result, res_bitvec);
+		let result_data = ColumnBuffer::float8_with_bitvec(result, res_bitvec);
 		let combined_bitvec = match (a_bitvec, b_bitvec) {
 			(Some(a), Some(b)) => Some(a.and(b)),
 			(Some(a), None) => Some(a.clone()),
@@ -130,7 +130,7 @@ impl Function for Modulo {
 		};
 
 		let final_data = if let Some(bv) = combined_bitvec {
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv,
 			}
@@ -138,6 +138,6 @@ impl Function for Modulo {
 			result_data
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{fragment::Fragment, value::Value};
 
 pub fn create_env_columns() -> Columns {
@@ -14,15 +14,9 @@ pub fn create_env_columns() -> Columns {
 	keys.push("answer");
 	values.push(Box::new(Value::uint1(42)));
 
-	let name_column = Column {
-		name: Fragment::internal("key".to_string()),
-		data: ColumnData::utf8(keys),
-	};
+	let name_column = ColumnWithName::new(Fragment::internal("key".to_string()), ColumnBuffer::utf8(keys));
 
-	let value_column = Column {
-		name: Fragment::internal("value".to_string()),
-		data: ColumnData::any(values),
-	};
+	let value_column = ColumnWithName::new(Fragment::internal("value".to_string()), ColumnBuffer::any(values));
 
 	Columns::new(vec![name_column, value_column])
 }

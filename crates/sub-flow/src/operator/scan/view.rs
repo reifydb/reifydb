@@ -10,7 +10,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_type::{
 	Result,
@@ -154,11 +154,11 @@ impl Operator for PrimitiveViewOperator {
 			.unwrap_or_default();
 
 		// Pre-allocate columns with capacity
-		let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
+		let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
 		for field in fields.iter() {
-			columns_vec.push(Column {
+			columns_vec.push(ColumnWithName {
 				name: Fragment::internal(&field.name),
-				data: ColumnData::with_capacity(field.constraint.get_type(), rows.len()),
+				data: ColumnBuffer::with_capacity(field.constraint.get_type(), rows.len()),
 			});
 		}
 		let mut row_numbers = Vec::with_capacity(rows.len());

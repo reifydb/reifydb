@@ -9,13 +9,13 @@ use reifydb_type::{
 	},
 };
 
-use crate::value::column::{data::ColumnData, push::Push};
+use crate::value::column::{buffer::ColumnBuffer, push::Push};
 
-impl Push<Uuid4> for ColumnData {
+impl Push<Uuid4> for ColumnBuffer {
 	fn push(&mut self, value: Uuid4) {
 		match self {
-			ColumnData::Uuid4(container) => container.push(value),
-			ColumnData::Option {
+			ColumnBuffer::Uuid4(container) => container.push(value),
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
@@ -23,20 +23,17 @@ impl Push<Uuid4> for ColumnData {
 				DataBitVec::push(bitvec, true);
 			}
 			other => {
-				panic!(
-					"called `push::<Uuid4>()` on incompatible EngineColumnData::{:?}",
-					other.get_type()
-				);
+				panic!("called `push::<Uuid4>()` on incompatible ColumnBuffer::{:?}", other.get_type());
 			}
 		}
 	}
 }
 
-impl Push<Uuid7> for ColumnData {
+impl Push<Uuid7> for ColumnBuffer {
 	fn push(&mut self, value: Uuid7) {
 		match self {
-			ColumnData::Uuid7(container) => container.push(value),
-			ColumnData::Option {
+			ColumnBuffer::Uuid7(container) => container.push(value),
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
@@ -44,20 +41,17 @@ impl Push<Uuid7> for ColumnData {
 				DataBitVec::push(bitvec, true);
 			}
 			other => {
-				panic!(
-					"called `push::<Uuid7>()` on incompatible EngineColumnData::{:?}",
-					other.get_type()
-				);
+				panic!("called `push::<Uuid7>()` on incompatible ColumnBuffer::{:?}", other.get_type());
 			}
 		}
 	}
 }
 
-impl Push<IdentityId> for ColumnData {
+impl Push<IdentityId> for ColumnBuffer {
 	fn push(&mut self, value: IdentityId) {
 		match self {
-			ColumnData::IdentityId(container) => container.push(value),
-			ColumnData::Option {
+			ColumnBuffer::IdentityId(container) => container.push(value),
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
@@ -66,7 +60,7 @@ impl Push<IdentityId> for ColumnData {
 			}
 			other => {
 				panic!(
-					"called `push::<IdentityId>()` on incompatible EngineColumnData::{:?}",
+					"called `push::<IdentityId>()` on incompatible ColumnBuffer::{:?}",
 					other.get_type()
 				);
 			}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -55,11 +55,11 @@ impl Function for TextEndsWith {
 
 		match (str_data, suffix_data) {
 			(
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: str_container,
 					..
 				},
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: suffix_container,
 					..
 				},
@@ -79,7 +79,7 @@ impl Function for TextEndsWith {
 					}
 				}
 
-				let result_col_data = ColumnData::bool_with_bitvec(result_data, result_bitvec);
+				let result_col_data = ColumnBuffer::bool_with_bitvec(result_data, result_bitvec);
 
 				let combined_bv = match (str_bv, suffix_bv) {
 					(Some(b), Some(e)) => Some(b.and(e)),
@@ -89,16 +89,16 @@ impl Function for TextEndsWith {
 				};
 
 				let final_data = match combined_bv {
-					Some(bv) => ColumnData::Option {
+					Some(bv) => ColumnBuffer::Option {
 						inner: Box::new(result_col_data),
 						bitvec: bv,
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			(
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					..
 				},
 				other,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_type::{
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
@@ -20,8 +20,8 @@ use reifydb_type::{
 
 use crate::{Result, error::CastError};
 
-pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
-	if let ColumnData::Utf8 {
+pub fn to_temporal(data: &ColumnBuffer, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+	if let ColumnBuffer::Utf8 {
 		container,
 		..
 	} = data
@@ -55,8 +55,8 @@ pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 macro_rules! impl_to_temporal {
 	($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
 		#[inline]
-		fn $fn_name(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
-			let mut out = ColumnData::with_capacity($target_type, container.len());
+		fn $fn_name(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+			let mut out = ColumnBuffer::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = &container[idx];

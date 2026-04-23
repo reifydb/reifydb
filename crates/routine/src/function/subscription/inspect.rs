@@ -6,7 +6,7 @@ use reifydb_core::{
 	error::diagnostic::internal::internal,
 	interface::catalog::id::SubscriptionId,
 	key::{Key, subscription_row::SubscriptionRowKey},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer},
 };
 use reifydb_type::{error::Error, fragment::Fragment, value::datetime::DateTime};
 
@@ -31,10 +31,10 @@ impl GeneratorFunction for InspectSubscription {
 
 		let id_column = params.get(0).unwrap();
 		let subscription_id_value = match id_column.data() {
-			ColumnData::Uint8(container) => {
+			ColumnBuffer::Uint8(container) => {
 				container.get(0).copied().expect("subscription_id parameter is empty")
 			}
-			ColumnData::Utf8 {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
@@ -58,7 +58,7 @@ impl GeneratorFunction for InspectSubscription {
 		let all_columns = subscription.all_columns();
 		let mut column_data_builders: Vec<_> = all_columns
 			.iter()
-			.map(|col| (col.name.clone(), ColumnData::with_capacity(col.ty.clone(), 0)))
+			.map(|col| (col.name.clone(), ColumnBuffer::with_capacity(col.ty.clone(), 0)))
 			.collect();
 
 		let mut row_numbers = Vec::new();
@@ -90,9 +90,9 @@ impl GeneratorFunction for InspectSubscription {
 			}
 		}
 
-		let columns: Vec<Column> = column_data_builders
+		let columns: Vec<ColumnWithName> = column_data_builders
 			.into_iter()
-			.map(|(name, data)| Column {
+			.map(|(name, data)| ColumnWithName {
 				name: Fragment::internal(&name),
 				data,
 			})

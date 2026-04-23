@@ -5,9 +5,9 @@ use std::mem;
 
 use indexmap::IndexMap;
 use reifydb_core::value::column::{
-	Column,
+	ColumnWithName,
+	buffer::ColumnBuffer,
 	columns::Columns,
-	data::ColumnData,
 	view::group_by::{GroupByView, GroupKey},
 };
 use reifydb_type::value::{
@@ -69,7 +69,7 @@ impl Function for Count {
 			}
 		}
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), ColumnData::int8(counts))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::int8(counts))]))
 	}
 
 	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
@@ -94,7 +94,7 @@ impl Accumulator for CountAccumulator {
 		let column = &args[0];
 
 		// Check if this is count(*) by examining if we have a dummy column
-		let is_count_star = column.name.text() == "dummy" && matches!(column.data(), ColumnData::Int4(_));
+		let is_count_star = column.name.text() == "dummy" && matches!(column.data(), ColumnBuffer::Int4(_));
 
 		if is_count_star {
 			for (group, indices) in groups.iter() {
@@ -110,9 +110,9 @@ impl Accumulator for CountAccumulator {
 		Ok(())
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnData), FunctionError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError> {
 		let mut keys = Vec::with_capacity(self.counts.len());
-		let mut data = ColumnData::int8_with_capacity(self.counts.len());
+		let mut data = ColumnBuffer::int8_with_capacity(self.counts.len());
 
 		for (key, count) in mem::take(&mut self.counts) {
 			keys.push(key);

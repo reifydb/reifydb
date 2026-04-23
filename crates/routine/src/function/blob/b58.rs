@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	fragment::Fragment,
 	value::{blob::Blob, r#type::Type},
@@ -54,7 +54,7 @@ impl Function for BlobB58 {
 		let row_count = data.len();
 
 		match data {
-			ColumnData::Utf8 {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
@@ -73,15 +73,15 @@ impl Function for BlobB58 {
 					}
 				}
 
-				let result_col_data = ColumnData::blob_with_bitvec(result_data, result_bitvec);
+				let result_col_data = ColumnBuffer::blob_with_bitvec(result_data, result_bitvec);
 				let final_data = match bitvec {
-					Some(bv) => ColumnData::Option {
+					Some(bv) => ColumnBuffer::Option {
 						inner: Box::new(result_col_data),
 						bitvec: bv.clone(),
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			other => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),

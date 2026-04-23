@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedShape},
 	value::{
 		batch::lazy::LazyBatch,
-		column::{columns::Columns, data::ColumnData, headers::ColumnHeaders},
+		column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 	},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
@@ -151,7 +151,7 @@ impl Transform for FilterNode {
 			let result = compiled_expr.execute(&exec_ctx)?;
 
 			let filter_mask = match result.data() {
-				ColumnData::Bool(container) => {
+				ColumnBuffer::Bool(container) => {
 					let mut mask = BitVec::repeat(row_count, false);
 					for i in 0..row_count {
 						if i < container.len() {
@@ -162,11 +162,11 @@ impl Transform for FilterNode {
 					}
 					mask
 				}
-				ColumnData::Option {
+				ColumnBuffer::Option {
 					inner,
 					bitvec,
 				} => match inner.as_ref() {
-					ColumnData::Bool(container) => {
+					ColumnBuffer::Bool(container) => {
 						let mut mask = BitVec::repeat(row_count, false);
 						for i in 0..row_count {
 							let defined = i < bitvec.len() && bitvec.get(i);
@@ -220,7 +220,7 @@ impl FilterNode {
 			let result = compiled_expr.execute(&exec_ctx)?;
 
 			match result.data() {
-				ColumnData::Bool(container) => {
+				ColumnBuffer::Bool(container) => {
 					for i in 0..row_count {
 						if mask.get(i) {
 							let valid = container.is_defined(i);
@@ -229,11 +229,11 @@ impl FilterNode {
 						}
 					}
 				}
-				ColumnData::Option {
+				ColumnBuffer::Option {
 					inner,
 					bitvec,
 				} => match inner.as_ref() {
-					ColumnData::Bool(container) => {
+					ColumnBuffer::Bool(container) => {
 						for i in 0..row_count {
 							if mask.get(i) {
 								let defined = i < bitvec.len() && bitvec.get(i);

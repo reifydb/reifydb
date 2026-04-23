@@ -3,12 +3,12 @@
 
 use reifydb_type::storage::DataBitVec;
 
-use crate::value::column::{ColumnData, data::with_container};
+use crate::value::column::{ColumnBuffer, buffer::with_container};
 
-impl ColumnData {
+impl ColumnBuffer {
 	pub fn reorder(&mut self, indices: &[usize]) {
 		match self {
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
@@ -36,7 +36,7 @@ pub mod tests {
 	};
 	use reifydb_type::value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type};
 
-	use crate::value::column::ColumnData;
+	use crate::value::column::ColumnBuffer;
 
 	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 		let mock = MockClock::from_millis(1000);
@@ -47,7 +47,7 @@ pub mod tests {
 
 	#[test]
 	fn test_reorder_bool() {
-		let mut col = ColumnData::bool([true, false, true]);
+		let mut col = ColumnBuffer::bool([true, false, true]);
 		col.reorder(&[2, 0, 1]);
 
 		assert_eq!(col.len(), 3);
@@ -58,7 +58,7 @@ pub mod tests {
 
 	#[test]
 	fn test_reorder_float4() {
-		let mut col = ColumnData::float4([1.0, 2.0, 3.0]);
+		let mut col = ColumnBuffer::float4([1.0, 2.0, 3.0]);
 		col.reorder(&[2, 0, 1]);
 
 		assert_eq!(col.len(), 3);
@@ -79,7 +79,7 @@ pub mod tests {
 
 	#[test]
 	fn test_reorder_int4() {
-		let mut col = ColumnData::int4([1, 2, 3]);
+		let mut col = ColumnBuffer::int4([1, 2, 3]);
 		col.reorder(&[2, 0, 1]);
 
 		assert_eq!(col.len(), 3);
@@ -90,7 +90,7 @@ pub mod tests {
 
 	#[test]
 	fn test_reorder_string() {
-		let mut col = ColumnData::utf8(["a".to_string(), "b".to_string(), "c".to_string()]);
+		let mut col = ColumnBuffer::utf8(["a".to_string(), "b".to_string(), "c".to_string()]);
 		col.reorder(&[2, 0, 1]);
 
 		assert_eq!(col.len(), 3);
@@ -101,7 +101,7 @@ pub mod tests {
 
 	#[test]
 	fn test_reorder_none() {
-		let mut col = ColumnData::none_typed(Type::Boolean, 3);
+		let mut col = ColumnBuffer::none_typed(Type::Boolean, 3);
 		col.reorder(&[2, 0, 1]);
 		assert_eq!(col.len(), 3);
 
@@ -118,7 +118,7 @@ pub mod tests {
 		mock.advance_millis(1);
 		let id3 = IdentityId::generate(&clock, &rng);
 
-		let mut col = ColumnData::identity_id([id1, id2, id3]);
+		let mut col = ColumnBuffer::identity_id([id1, id2, id3]);
 		col.reorder(&[2, 0, 1]);
 
 		assert_eq!(col.len(), 3);
@@ -133,7 +133,7 @@ pub mod tests {
 		let e2 = DictionaryEntryId::U4(20);
 		let e3 = DictionaryEntryId::U4(30);
 
-		let mut col = ColumnData::dictionary_id([e1, e2, e3]);
+		let mut col = ColumnBuffer::dictionary_id([e1, e2, e3]);
 		col.reorder(&[2, 0, 1]);
 
 		assert_eq!(col.len(), 3);

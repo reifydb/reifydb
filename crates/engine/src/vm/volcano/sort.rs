@@ -9,7 +9,7 @@ use reifydb_core::{
 		SortDirection::{Asc, Desc},
 		SortKey,
 	},
-	value::column::{columns::Columns, data::ColumnData, headers::ColumnHeaders},
+	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
@@ -101,17 +101,17 @@ impl Transform for SortNode {
 
 				if stripped == ROW_NUMBER_COLUMN_NAME && !columns.row_numbers.is_empty() {
 					let data: Vec<u64> = columns.row_numbers.iter().map(|r| r.value()).collect();
-					return Ok::<_, Error>((ColumnData::uint8(data), key.direction.clone()));
+					return Ok::<_, Error>((ColumnBuffer::uint8(data), key.direction.clone()));
 				}
 				if stripped == CREATED_AT_COLUMN_NAME && !columns.created_at.is_empty() {
 					return Ok((
-						ColumnData::datetime(columns.created_at.to_vec()),
+						ColumnBuffer::datetime(columns.created_at.to_vec()),
 						key.direction.clone(),
 					));
 				}
 				if stripped == UPDATED_AT_COLUMN_NAME && !columns.updated_at.is_empty() {
 					return Ok((
-						ColumnData::datetime(columns.updated_at.to_vec()),
+						ColumnBuffer::datetime(columns.updated_at.to_vec()),
 						key.direction.clone(),
 					));
 				}

@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	internal,
-	value::column::{Column, columns::Columns},
+	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_rql::instruction::{CompiledClosure, CompiledFunction, ScopeType};
 use reifydb_type::{error, fragment::Fragment, value::Value};
@@ -126,7 +126,7 @@ impl Variable {
 	}
 
 	/// Extract the single Column from any Columns-backed variant, consuming self.
-	pub fn into_column(self) -> Result<Column> {
+	pub fn into_column(self) -> Result<ColumnWithName> {
 		let cols = match self {
 			Variable::Columns {
 				columns: c,
@@ -396,7 +396,7 @@ impl Default for SymbolTable {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::value::column::{Column, data::ColumnData};
+	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 	use reifydb_type::value::{Value, r#type::Type};
 
 	use super::*;
@@ -404,17 +404,17 @@ pub mod tests {
 	// Helper function to create test columns
 	fn create_test_columns(values: Vec<Value>) -> Columns {
 		if values.is_empty() {
-			let column_data = ColumnData::none_typed(Type::Boolean, 0);
-			let column = Column::new("test_col", column_data);
+			let column_data = ColumnBuffer::none_typed(Type::Boolean, 0);
+			let column = ColumnWithName::new("test_col", column_data);
 			return Columns::new(vec![column]);
 		}
 
-		let mut column_data = ColumnData::none_typed(Type::Boolean, 0);
+		let mut column_data = ColumnBuffer::none_typed(Type::Boolean, 0);
 		for value in values {
 			column_data.push_value(value);
 		}
 
-		let column = Column::new("test_col", column_data);
+		let column = ColumnWithName::new("test_col", column_data);
 		Columns::new(vec![column])
 	}
 

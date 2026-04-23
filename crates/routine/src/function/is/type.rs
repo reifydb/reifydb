@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{Value, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -55,7 +55,7 @@ impl Function for IsType {
 		let row_count = value_column.data().len();
 
 		// Extract target Type from second arg
-		// - ColumnData::Any containing Value::Type -> use that type
+		// - ColumnBuffer::Any containing Value::Type -> use that type
 		// - Value::None -> check for Option type
 		let target_type = match type_column.data().get_value(0) {
 			Value::Any(boxed) => match boxed.as_ref() {
@@ -94,6 +94,6 @@ impl Function for IsType {
 			})
 			.collect();
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), ColumnData::bool(data))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::bool(data))]))
 	}
 }

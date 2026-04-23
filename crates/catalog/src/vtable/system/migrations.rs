@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{migration::MigrationAction, vtable::VTable},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -51,10 +51,10 @@ impl BaseVTable for SystemMigrations {
 		let defs = CatalogStore::list_migrations(txn)?;
 		let events = CatalogStore::list_migration_events(txn)?;
 
-		let mut names = ColumnData::utf8_with_capacity(defs.len());
-		let mut actions = ColumnData::utf8_with_capacity(defs.len());
-		let mut bodies = ColumnData::utf8_with_capacity(defs.len());
-		let mut rollback_bodies = ColumnData::utf8_with_capacity(defs.len());
+		let mut names = ColumnBuffer::utf8_with_capacity(defs.len());
+		let mut actions = ColumnBuffer::utf8_with_capacity(defs.len());
+		let mut bodies = ColumnBuffer::utf8_with_capacity(defs.len());
+		let mut rollback_bodies = ColumnBuffer::utf8_with_capacity(defs.len());
 
 		for def in &defs {
 			let latest = events.iter().find(|e| e.migration_id == def.id);
@@ -74,22 +74,10 @@ impl BaseVTable for SystemMigrations {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
-			Column {
-				name: Fragment::internal("action"),
-				data: actions,
-			},
-			Column {
-				name: Fragment::internal("body"),
-				data: bodies,
-			},
-			Column {
-				name: Fragment::internal("rollback_body"),
-				data: rollback_bodies,
-			},
+			ColumnWithName::new(Fragment::internal("name"), names),
+			ColumnWithName::new(Fragment::internal("action"), actions),
+			ColumnWithName::new(Fragment::internal("body"), bodies),
+			ColumnWithName::new(Fragment::internal("rollback_body"), rollback_bodies),
 		];
 
 		self.exhausted = true;

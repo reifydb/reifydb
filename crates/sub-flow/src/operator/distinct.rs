@@ -12,7 +12,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	internal,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::{
 	expression::{
@@ -102,12 +102,9 @@ impl SerializedRow {
 		let mut columns_vec = Vec::with_capacity(layout.names.len());
 		for (i, (name, typ)) in layout.names.iter().zip(layout.types.iter()).enumerate() {
 			let value = values.get(i).cloned().unwrap_or(Value::none());
-			let mut col_data = ColumnData::with_capacity(typ.clone(), 1);
+			let mut col_data = ColumnBuffer::with_capacity(typ.clone(), 1);
 			col_data.push_value(value);
-			columns_vec.push(Column {
-				name: Fragment::internal(name),
-				data: col_data,
-			});
+			columns_vec.push(ColumnWithName::new(Fragment::internal(name), col_data));
 		}
 
 		Columns {

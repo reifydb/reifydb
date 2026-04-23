@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Result, value::Value};
-
-use crate::{
-	array::{Array, canonical::CanonicalArray},
-	compress::CompressConfig,
-	encoding::{Encoding, EncodingId},
+use reifydb_core::value::column::{
+	array::{Column, canonical::Canonical},
+	encoding::EncodingId,
 	stats::{Stat, StatsSet},
 };
+use reifydb_type::{Result, value::Value};
+
+use crate::{compress::CompressConfig, encoding::Encoding};
 
 // Canonical encoding for one storage family - identity round-trip plus the
 // cheap stats that can be derived without decoding (currently `NoneCount`).
@@ -39,16 +39,16 @@ impl Encoding for CanonicalEncoding {
 		self.id
 	}
 
-	fn try_compress(&self, input: &CanonicalArray, _cfg: &CompressConfig) -> Result<Option<Array>> {
-		Ok(Some(Array::from_canonical(input.clone())))
+	fn try_compress(&self, input: &Canonical, _cfg: &CompressConfig) -> Result<Option<Column>> {
+		Ok(Some(Column::from_canonical(input.clone())))
 	}
 
-	fn canonicalize(&self, array: &Array) -> Result<CanonicalArray> {
+	fn canonicalize(&self, array: &Column) -> Result<Canonical> {
 		let arc = array.to_canonical()?;
 		Ok((*arc).clone())
 	}
 
-	fn derive_stats(&self, array: &Array) -> StatsSet {
+	fn derive_stats(&self, array: &Column) -> StatsSet {
 		let mut s = StatsSet::new();
 		if let Some(nones) = array.nones() {
 			s.set(Stat::NoneCount, Value::Uint8(nones.none_count() as u64));
@@ -59,15 +59,15 @@ impl Encoding for CanonicalEncoding {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::data::ColumnData;
+	use reifydb_core::value::column::buffer::ColumnBuffer;
 
 	use super::*;
 	use crate::encoding::EncodingRegistry;
 
 	#[test]
 	fn canonical_fixed_round_trips_via_try_compress_then_canonicalize() {
-		let cd = ColumnData::int4([1i32, 2, 3, 4]);
-		let canon = CanonicalArray::from_column_data(&cd).unwrap();
+		let cd = ColumnBuffer::int4([1i32, 2, 3, 4]);
+		let canon = Canonical::from_column_buffer(&cd).unwrap();
 		let compressed = CanonicalEncoding::FIXED
 			.try_compress(&canon, &CompressConfig::default())
 			.unwrap()
@@ -79,13 +79,13 @@ mod tests {
 
 	#[test]
 	fn derive_stats_includes_none_count_when_nullable() {
-		let mut cd = ColumnData::int4_with_capacity(4);
+		let mut cd = ColumnBuffer::int4_with_capacity(4);
 		cd.push::<i32>(10);
 		cd.push_none();
 		cd.push::<i32>(30);
 		cd.push_none();
-		let canon = CanonicalArray::from_column_data(&cd).unwrap();
-		let array = Array::from_canonical(canon);
+		let canon = Canonical::from_column_buffer(&cd).unwrap();
+		let array = Column::from_canonical(canon);
 		let stats = CanonicalEncoding::FIXED.derive_stats(&array);
 		assert_eq!(stats.get(Stat::NoneCount), Some(&Value::Uint8(2)));
 	}

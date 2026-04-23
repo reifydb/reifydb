@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::catalog::{subscription::SubscriptionInspectorRef, vtable::VTable},
 	util::ioc::IocContainer,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -58,8 +58,8 @@ impl BaseVTable for SystemSubscriptions {
 			Err(_) => vec![],
 		};
 
-		let mut id_col = ColumnData::uint8_with_capacity(subscriptions.len());
-		let mut column_count_col = ColumnData::uint8_with_capacity(subscriptions.len());
+		let mut id_col = ColumnBuffer::uint8_with_capacity(subscriptions.len());
+		let mut column_count_col = ColumnBuffer::uint8_with_capacity(subscriptions.len());
 
 		for (id, count) in subscriptions {
 			id_col.push(id.0);
@@ -67,14 +67,8 @@ impl BaseVTable for SystemSubscriptions {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: id_col,
-			},
-			Column {
-				name: Fragment::internal("column_count"),
-				data: column_count_col,
-			},
+			ColumnWithName::new(Fragment::internal("id"), id_col),
+			ColumnWithName::new(Fragment::internal("column_count"), column_count_col),
 		];
 
 		self.exhausted = true;

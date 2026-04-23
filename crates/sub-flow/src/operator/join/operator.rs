@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 	internal,
 	util::encoding::keycode::serializer::KeySerializer,
-	value::column::{Column, columns::Columns},
+	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{
 	expression::{
@@ -177,9 +177,9 @@ impl JoinOperator {
 		let mut expr_columns = Vec::with_capacity(compiled_exprs.len());
 		for compiled_expr in compiled_exprs.iter() {
 			let col = if let Some(col_name) = compiled_expr.access_column_name() {
-				columns.column(col_name)
-					.cloned()
-					.unwrap_or_else(|| Column::undefined_typed(col_name, Type::Boolean, row_count))
+				columns.column(col_name).cloned().unwrap_or_else(|| {
+					ColumnWithName::undefined_typed(col_name, Type::Boolean, row_count)
+				})
 			} else {
 				compiled_expr.execute(&exec_ctx)?
 			};
@@ -729,14 +729,11 @@ impl Operator for JoinOperator {
 			let right_names = builder.right_column_names();
 
 			// Add left columns as-is
-			let mut all_columns: Vec<Column> = left_shape.columns.into_iter().collect();
+			let mut all_columns: Vec<ColumnWithName> = left_shape.columns.into_iter().collect();
 
 			// Add right columns with pre-computed aliased names
 			for (col, aliased_name) in right_shape.columns.into_iter().zip(right_names.iter()) {
-				all_columns.push(Column {
-					name: Fragment::internal(aliased_name),
-					data: col.data,
-				});
+				all_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col.data));
 			}
 
 			Ok(Columns {

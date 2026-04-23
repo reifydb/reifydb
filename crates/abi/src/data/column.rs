@@ -3,7 +3,7 @@
 
 use super::buffer::BufferFFI;
 
-/// Type code for column data variant (maps to ColumnData enum)
+/// Type code for column data variant (maps to ColumnBuffer enum)
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColumnTypeCode {

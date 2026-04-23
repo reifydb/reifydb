@@ -3,18 +3,18 @@
 
 use reifydb_type::{Result, storage::DataBitVec, util::bitvec::BitVec};
 
-use crate::value::column::{Column, ColumnData, data::with_container};
+use crate::value::column::{ColumnBuffer, ColumnWithName, buffer::with_container};
 
-impl Column {
+impl ColumnWithName {
 	pub fn filter(&mut self, mask: &BitVec) -> Result<()> {
 		self.data_mut().filter(mask)
 	}
 }
 
-impl ColumnData {
+impl ColumnBuffer {
 	pub fn filter(&mut self, mask: &BitVec) -> Result<()> {
 		match self {
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
@@ -44,7 +44,7 @@ pub mod tests {
 		value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type},
 	};
 
-	use crate::value::column::ColumnData;
+	use crate::value::column::ColumnBuffer;
 
 	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 		let mock = MockClock::from_millis(1000);
@@ -55,7 +55,7 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_bool() {
-		let mut col = ColumnData::bool([true, false, true, false]);
+		let mut col = ColumnBuffer::bool([true, false, true, false]);
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 
 		col.filter(&mask).unwrap();
@@ -67,7 +67,7 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_int4() {
-		let mut col = ColumnData::int4([1, 2, 3, 4, 5]);
+		let mut col = ColumnBuffer::int4([1, 2, 3, 4, 5]);
 		let mask = BitVec::from_slice(&[true, false, true, false, true]);
 
 		col.filter(&mask).unwrap();
@@ -80,7 +80,7 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_float4() {
-		let mut col = ColumnData::float4([1.0, 2.0, 3.0, 4.0]);
+		let mut col = ColumnBuffer::float4([1.0, 2.0, 3.0, 4.0]);
 		let mask = BitVec::from_slice(&[false, true, false, true]);
 
 		col.filter(&mask).unwrap();
@@ -98,7 +98,7 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_string() {
-		let mut col = ColumnData::utf8(["a", "b", "c", "d"]);
+		let mut col = ColumnBuffer::utf8(["a", "b", "c", "d"]);
 		let mask = BitVec::from_slice(&[true, false, false, true]);
 
 		col.filter(&mask).unwrap();
@@ -110,7 +110,7 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_none() {
-		let mut col = ColumnData::none_typed(Type::Boolean, 5);
+		let mut col = ColumnBuffer::none_typed(Type::Boolean, 5);
 		let mask = BitVec::from_slice(&[true, false, true, false, false]);
 
 		col.filter(&mask).unwrap();
@@ -122,7 +122,7 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_empty_mask() {
-		let mut col = ColumnData::int4([1, 2, 3]);
+		let mut col = ColumnBuffer::int4([1, 2, 3]);
 		let mask = BitVec::from_slice(&[false, false, false]);
 
 		col.filter(&mask).unwrap();
@@ -132,7 +132,7 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_all_true_mask() {
-		let mut col = ColumnData::int4([1, 2, 3]);
+		let mut col = ColumnBuffer::int4([1, 2, 3]);
 		let mask = BitVec::from_slice(&[true, true, true]);
 
 		col.filter(&mask).unwrap();
@@ -154,7 +154,7 @@ pub mod tests {
 		mock.advance_millis(1);
 		let id4 = IdentityId::generate(&clock, &rng);
 
-		let mut col = ColumnData::identity_id([id1, id2, id3, id4]);
+		let mut col = ColumnBuffer::identity_id([id1, id2, id3, id4]);
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 
 		col.filter(&mask).unwrap();
@@ -171,7 +171,7 @@ pub mod tests {
 		let e3 = DictionaryEntryId::U4(30);
 		let e4 = DictionaryEntryId::U4(40);
 
-		let mut col = ColumnData::dictionary_id([e1, e2, e3, e4]);
+		let mut col = ColumnBuffer::dictionary_id([e1, e2, e3, e4]);
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 
 		col.filter(&mask).unwrap();
@@ -186,7 +186,7 @@ pub mod tests {
 		let e1 = DictionaryEntryId::U4(10);
 		let e2 = DictionaryEntryId::U4(20);
 
-		let mut col = ColumnData::dictionary_id_with_bitvec(
+		let mut col = ColumnBuffer::dictionary_id_with_bitvec(
 			[e1, DictionaryEntryId::default(), e2, DictionaryEntryId::default()],
 			BitVec::from_slice(&[true, false, true, false]),
 		);

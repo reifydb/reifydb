@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -60,7 +60,7 @@ impl Procedure for IdentityInject {
 			}
 		};
 
-		let col = Column::new("identity_id", ColumnData::identity_id(vec![identity_id]));
+		let col = ColumnWithName::new("identity_id", ColumnBuffer::identity_id(vec![identity_id]));
 		Ok(Columns::new(vec![col]))
 	}
 }

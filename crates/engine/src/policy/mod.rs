@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::policy::{CallableOp, DataOp, PolicyTargetType, SessionOp},
-	value::column::{columns::Columns, data::ColumnData},
+	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_policy::{
 	enforce::{PolicyTarget, enforce_identity_policy, enforce_session_policy, enforce_write_policies},
@@ -117,14 +117,14 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 		let result = compiled.execute(&eval_ctx)?;
 
 		let denied = match result.data() {
-			ColumnData::Bool(container) => {
+			ColumnBuffer::Bool(container) => {
 				(0..row_count).any(|i| !container.is_defined(i) || !container.data().get(i))
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => match inner.as_ref() {
-				ColumnData::Bool(container) => (0..row_count).any(|i| {
+				ColumnBuffer::Bool(container) => (0..row_count).any(|i| {
 					let defined = i < bitvec.len() && bitvec.get(i);
 					let valid = defined && container.is_defined(i);
 					!(valid && container.data().get(i))

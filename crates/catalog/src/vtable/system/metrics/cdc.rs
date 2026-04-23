@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_metric::{
 	MetricId,
@@ -126,12 +126,12 @@ impl SystemMetricsCdc {
 
 fn build_columns(rows: Vec<CdcRow>) -> Columns {
 	let capacity = rows.len();
-	let mut ids = ColumnData::uint8_with_capacity(capacity);
-	let mut namespace_ids = ColumnData::uint8_with_capacity(capacity);
-	let mut key_bytes = ColumnData::uint8_with_capacity(capacity);
-	let mut value_bytes = ColumnData::uint8_with_capacity(capacity);
-	let mut total_bytes = ColumnData::uint8_with_capacity(capacity);
-	let mut counts = ColumnData::uint8_with_capacity(capacity);
+	let mut ids = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut namespace_ids = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut key_bytes = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut value_bytes = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut total_bytes = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut counts = ColumnBuffer::uint8_with_capacity(capacity);
 
 	for row in rows {
 		ids.push(row.0);
@@ -143,29 +143,11 @@ fn build_columns(rows: Vec<CdcRow>) -> Columns {
 	}
 
 	Columns::new(vec![
-		Column {
-			name: Fragment::internal("id"),
-			data: ids,
-		},
-		Column {
-			name: Fragment::internal("namespace_id"),
-			data: namespace_ids,
-		},
-		Column {
-			name: Fragment::internal("key_bytes"),
-			data: key_bytes,
-		},
-		Column {
-			name: Fragment::internal("value_bytes"),
-			data: value_bytes,
-		},
-		Column {
-			name: Fragment::internal("total_bytes"),
-			data: total_bytes,
-		},
-		Column {
-			name: Fragment::internal("count"),
-			data: counts,
-		},
+		ColumnWithName::new(Fragment::internal("id"), ids),
+		ColumnWithName::new(Fragment::internal("namespace_id"), namespace_ids),
+		ColumnWithName::new(Fragment::internal("key_bytes"), key_bytes),
+		ColumnWithName::new(Fragment::internal("value_bytes"), value_bytes),
+		ColumnWithName::new(Fragment::internal("total_bytes"), total_bytes),
+		ColumnWithName::new(Fragment::internal("count"), counts),
 	])
 }

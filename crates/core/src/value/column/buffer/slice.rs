@@ -5,13 +5,13 @@ use reifydb_type::value::{
 	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, int::Int, time::Time, uint::Uint,
 };
 
-use crate::value::column::ColumnData;
+use crate::value::column::ColumnBuffer;
 
 pub trait AsSlice<T> {
 	fn as_slice(&self) -> &[T];
 }
 
-impl ColumnData {
+impl ColumnBuffer {
 	pub fn as_slice<T>(&self) -> &[T]
 	where
 		Self: AsSlice<T>,
@@ -20,14 +20,14 @@ impl ColumnData {
 	}
 }
 
-impl AsSlice<bool> for ColumnData {
+impl AsSlice<bool> for ColumnBuffer {
 	fn as_slice(&self) -> &[bool] {
 		match self {
-			ColumnData::Bool(_) => {
+			ColumnBuffer::Bool(_) => {
 				panic!("as_slice() is not supported for BitVec. Use to_vec() instead.")
 			}
 			other => {
-				panic!("called `as_slice::<bool>()` on ColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<bool>()` on ColumnBuffer::{:?}", other.get_type())
 			}
 		}
 	}
@@ -35,17 +35,17 @@ impl AsSlice<bool> for ColumnData {
 
 macro_rules! impl_as_slice {
 	($t:ty, $variant:ident) => {
-		impl AsSlice<$t> for ColumnData {
+		impl AsSlice<$t> for ColumnBuffer {
 			fn as_slice(&self) -> &[$t] {
 				match self {
-					ColumnData::$variant(container) => container.data().as_slice(),
-					ColumnData::Option {
+					ColumnBuffer::$variant(container) => container.data().as_slice(),
+					ColumnBuffer::Option {
 						inner,
 						..
 					} => inner.as_slice(),
 					other => {
 						panic!(
-							"called `as_slice::<{}>()` on ColumnData::{:?}",
+							"called `as_slice::<{}>()` on ColumnBuffer::{:?}",
 							stringify!($t),
 							other.get_type()
 						)
@@ -55,20 +55,20 @@ macro_rules! impl_as_slice {
 		}
 	};
 	($t:ty, $variant:ident { container }) => {
-		impl AsSlice<$t> for ColumnData {
+		impl AsSlice<$t> for ColumnBuffer {
 			fn as_slice(&self) -> &[$t] {
 				match self {
-					ColumnData::$variant {
+					ColumnBuffer::$variant {
 						container,
 						..
 					} => container.data().as_slice(),
-					ColumnData::Option {
+					ColumnBuffer::Option {
 						inner,
 						..
 					} => inner.as_slice(),
 					other => {
 						panic!(
-							"called `as_slice::<{}>()` on ColumnData::{:?}",
+							"called `as_slice::<{}>()` on ColumnBuffer::{:?}",
 							stringify!($t),
 							other.get_type()
 						)
@@ -120,16 +120,16 @@ impl_as_slice!(
 	}
 );
 
-impl AsSlice<Box<Value>> for ColumnData {
+impl AsSlice<Box<Value>> for ColumnBuffer {
 	fn as_slice(&self) -> &[Box<Value>] {
 		match self {
-			ColumnData::Any(container) => container.data().as_slice(),
-			ColumnData::Option {
+			ColumnBuffer::Any(container) => container.data().as_slice(),
+			ColumnBuffer::Option {
 				inner,
 				..
 			} => inner.as_slice(),
 			other => {
-				panic!("called `as_slice::<Box<Value>>()` on ColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<Box<Value>>()` on ColumnBuffer::{:?}", other.get_type())
 			}
 		}
 	}

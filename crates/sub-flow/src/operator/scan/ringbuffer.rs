@@ -8,7 +8,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	key::row::RowKey,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_type::{
 	Result,
@@ -86,11 +86,11 @@ impl Operator for PrimitiveRingBufferOperator {
 		let shape: RowShape = (&self.ringbuffer.columns).into();
 		let fields = shape.fields();
 
-		let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
+		let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
 		for field in fields.iter() {
-			columns_vec.push(Column {
+			columns_vec.push(ColumnWithName {
 				name: Fragment::internal(&field.name),
-				data: ColumnData::with_capacity(field.constraint.get_type(), rows.len()),
+				data: ColumnBuffer::with_capacity(field.constraint.get_type(), rows.len()),
 			});
 		}
 		let mut row_numbers = Vec::with_capacity(rows.len());
@@ -125,13 +125,13 @@ impl Operator for PrimitiveRingBufferOperator {
 
 impl PrimitiveRingBufferOperator {
 	fn empty_columns(&self) -> Columns {
-		let columns: Vec<Column> = self
+		let columns: Vec<ColumnWithName> = self
 			.ringbuffer
 			.columns
 			.iter()
-			.map(|col| Column {
+			.map(|col| ColumnWithName {
 				name: Fragment::internal(&col.name),
-				data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+				data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
 			})
 			.collect();
 		Columns {

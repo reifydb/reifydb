@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, view::group_by::GroupByView};
+use reifydb_core::value::column::{
+	ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupByView,
+};
 use reifydb_routine::function::{FunctionCapability, FunctionContext, error::FunctionError, registry::Functions};
 use reifydb_rql::expression::CallExpression;
 use reifydb_type::{
@@ -17,7 +19,7 @@ pub(crate) fn call_builtin(
 	call: &CallExpression,
 	arguments: Columns,
 	functions: &Functions,
-) -> Result<Column> {
+) -> Result<ColumnWithName> {
 	let function_name = call.func.0.text();
 	let fn_fragment = call.func.0.clone();
 
@@ -47,9 +49,9 @@ pub(crate) fn call_builtin(
 		})?;
 
 		let column = if call.args.is_empty() {
-			Column {
+			ColumnWithName {
 				name: Fragment::internal("dummy"),
-				data: ColumnData::with_capacity(Type::Int4, ctx.row_count),
+				data: ColumnBuffer::with_capacity(Type::Int4, ctx.row_count),
 			}
 		} else {
 			arguments[0].clone()
@@ -65,10 +67,7 @@ pub(crate) fn call_builtin(
 
 		let (_keys, result_data) = accumulator.finalize().map_err(|e| e.with_context(fn_fragment))?;
 
-		return Ok(Column {
-			name: call.full_fragment_owned(),
-			data: result_data,
-		});
+		return Ok(ColumnWithName::new(call.full_fragment_owned(), result_data));
 	}
 
 	let result_columns = function.call(&fn_ctx, &arguments).map_err(|e| e.with_context(fn_fragment))?;
@@ -79,8 +78,5 @@ pub(crate) fn call_builtin(
 		reason: "Function returned no columns".to_string(),
 	})?;
 
-	Ok(Column {
-		name: call.full_fragment_owned(),
-		data: result_column.data,
-	})
+	Ok(ColumnWithName::new(call.full_fragment_owned(), result_column.data))
 }

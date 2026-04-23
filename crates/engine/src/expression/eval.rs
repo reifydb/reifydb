@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::Column;
+use reifydb_core::value::column::ColumnWithName;
 use reifydb_rql::expression::Expression;
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 	},
 };
 
-pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<Column> {
+pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<ColumnWithName> {
 	let compile_ctx = CompileContext {
 		functions: ctx.functions,
 		symbols: ctx.symbols,
@@ -24,7 +24,7 @@ pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<Column> {
 	// Ensures that result column data type matches the expected target column type
 	if let Some(ty) = ctx.target.as_ref().map(|c| c.column_type()) {
 		let data = cast_column_data(ctx, column.data(), ty, &expr.lazy_fragment())?;
-		Ok(Column {
+		Ok(ColumnWithName {
 			name: column.name,
 			data,
 		})

@@ -17,7 +17,7 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
 	key::{EncodableKey, series_row::SeriesRowKey},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::nodes::InsertSeriesNode;
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
@@ -216,14 +216,14 @@ pub(crate) fn insert_series(
 			{
 				let row_number = RowNumber::from(sequence);
 				let mut cols = Vec::with_capacity(1 + data_columns.len());
-				cols.push(Column {
-					name: Fragment::internal(key_column_name),
-					data: series.key_column_data(vec![key_value]),
-				});
+				cols.push(ColumnWithName::new(
+					Fragment::internal(key_column_name),
+					series.key_column_data(vec![key_value]),
+				));
 				for (i, col_def) in data_columns.iter().enumerate() {
-					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
+					let mut data = ColumnBuffer::with_capacity(col_def.constraint.get_type(), 1);
 					data.push_value(data_values[i].clone());
-					cols.push(Column {
+					cols.push(ColumnWithName {
 						name: Fragment::internal(&col_def.name),
 						data,
 					});

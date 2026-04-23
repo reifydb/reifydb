@@ -3,33 +3,31 @@
 
 use std::sync::Arc;
 
-use reifydb_column::{
-	array::canonical::CanonicalArray, chunked::ChunkedArray, column_block::ColumnBlock, compress::Compressor,
-};
-use reifydb_core::value::column::{columns::Columns, data::ColumnData};
+use reifydb_column::{column_block::ColumnBlock, column_chunks::ColumnChunks, compress::Compressor};
+use reifydb_core::value::column::{array::canonical::Canonical, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{Result, value::r#type::Type};
 
 use crate::error::SubColumnError;
 
 // Concatenate a sequence of scan-emitted `Columns` batches into a single-chunk
 // `ColumnBlock` aligned to `schema`. Layout: for each `(name, ty)` in schema,
-// collect the column's `ColumnData` from every batch, extend into one combined
-// `ColumnData`, then `CanonicalArray::from_column_data → Compressor::compress →
-// ChunkedArray::single`. Output columns appear in the order given by `schema`,
+// collect the column's `ColumnBuffer` from every batch, extend into one combined
+// `ColumnBuffer`, then `Canonical::from_column_buffer → Compressor::compress →
+// ColumnChunks::single`. Output columns appear in the order given by `schema`,
 // not the scan's emission order.
 //
 // `schema` uses `(String, Type)` because nullability is derived from the
-// resulting `CanonicalArray.nullable` (which in turn reflects whether the
-// underlying `ColumnData` was wrapped as `Option { inner, bitvec }`).
+// resulting `Canonical.nullable` (which in turn reflects whether the
+// underlying `ColumnBuffer` was wrapped as `Option { inner, bitvec }`).
 pub fn column_block_from_batches(
 	schema: Vec<(String, Type)>,
 	batches: Vec<Columns>,
 	compressor: &Compressor,
 ) -> Result<ColumnBlock> {
-	let mut chunked: Vec<ChunkedArray> = Vec::with_capacity(schema.len());
+	let mut chunked: Vec<ColumnChunks> = Vec::with_capacity(schema.len());
 
 	for (name, ty) in &schema {
-		let mut combined: Option<ColumnData> = None;
+		let mut combined: Option<ColumnBuffer> = None;
 		for batch in &batches {
 			let column = batch.iter().find(|c| c.name().text() == name.as_str()).ok_or_else(|| {
 				SubColumnError::MissingColumnInBatch {
@@ -45,10 +43,10 @@ pub fn column_block_from_batches(
 		let data = combined.ok_or_else(|| SubColumnError::NoBatchesForMaterialization {
 			column: name.clone(),
 		})?;
-		let canonical = CanonicalArray::from_column_data(&data)?;
+		let canonical = Canonical::from_column_buffer(&data)?;
 		let nullable = canonical.nullable;
 		let array = compressor.compress(&canonical)?;
-		chunked.push(ChunkedArray::single(ty.clone(), nullable, array));
+		chunked.push(ColumnChunks::single(ty.clone(), nullable, array));
 	}
 
 	let schema_arc = Arc::new(

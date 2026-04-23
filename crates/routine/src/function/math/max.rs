@@ -5,9 +5,9 @@ use std::mem;
 
 use indexmap::IndexMap;
 use reifydb_core::value::column::{
-	Column,
+	ColumnWithName,
+	buffer::ColumnBuffer,
 	columns::Columns,
-	data::ColumnData,
 	view::group_by::{GroupByView, GroupKey},
 };
 use reifydb_type::{
@@ -80,7 +80,7 @@ impl Function for Max {
 
 		let row_count = args.row_count();
 		let input_type = args[0].get_type();
-		let mut data = ColumnData::with_capacity(input_type, row_count);
+		let mut data = ColumnBuffer::with_capacity(input_type, row_count);
 
 		for i in 0..row_count {
 			let mut row_max: Option<Value> = None;
@@ -97,7 +97,7 @@ impl Function for Max {
 			data.push_value(row_max.unwrap_or(Value::none()));
 		}
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
 	}
 
 	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
@@ -153,47 +153,47 @@ impl Accumulator for MaxAccumulator {
 		}
 
 		match data {
-			ColumnData::Int1(container) => {
+			ColumnBuffer::Int1(container) => {
 				max_arm!(self, column, groups, container, Value::Int1);
 				Ok(())
 			}
-			ColumnData::Int2(container) => {
+			ColumnBuffer::Int2(container) => {
 				max_arm!(self, column, groups, container, Value::Int2);
 				Ok(())
 			}
-			ColumnData::Int4(container) => {
+			ColumnBuffer::Int4(container) => {
 				max_arm!(self, column, groups, container, Value::Int4);
 				Ok(())
 			}
-			ColumnData::Int8(container) => {
+			ColumnBuffer::Int8(container) => {
 				max_arm!(self, column, groups, container, Value::Int8);
 				Ok(())
 			}
-			ColumnData::Int16(container) => {
+			ColumnBuffer::Int16(container) => {
 				max_arm!(self, column, groups, container, Value::Int16);
 				Ok(())
 			}
-			ColumnData::Uint1(container) => {
+			ColumnBuffer::Uint1(container) => {
 				max_arm!(self, column, groups, container, Value::Uint1);
 				Ok(())
 			}
-			ColumnData::Uint2(container) => {
+			ColumnBuffer::Uint2(container) => {
 				max_arm!(self, column, groups, container, Value::Uint2);
 				Ok(())
 			}
-			ColumnData::Uint4(container) => {
+			ColumnBuffer::Uint4(container) => {
 				max_arm!(self, column, groups, container, Value::Uint4);
 				Ok(())
 			}
-			ColumnData::Uint8(container) => {
+			ColumnBuffer::Uint8(container) => {
 				max_arm!(self, column, groups, container, Value::Uint8);
 				Ok(())
 			}
-			ColumnData::Uint16(container) => {
+			ColumnBuffer::Uint16(container) => {
 				max_arm!(self, column, groups, container, Value::Uint16);
 				Ok(())
 			}
-			ColumnData::Float4(container) => {
+			ColumnBuffer::Float4(container) => {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<f32> = None;
 					for &i in indices {
@@ -214,7 +214,7 @@ impl Accumulator for MaxAccumulator {
 				}
 				Ok(())
 			}
-			ColumnData::Float8(container) => {
+			ColumnBuffer::Float8(container) => {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<f64> = None;
 					for &i in indices {
@@ -235,7 +235,7 @@ impl Accumulator for MaxAccumulator {
 				}
 				Ok(())
 			}
-			ColumnData::Int {
+			ColumnBuffer::Int {
 				container,
 				..
 			} => {
@@ -260,7 +260,7 @@ impl Accumulator for MaxAccumulator {
 				}
 				Ok(())
 			}
-			ColumnData::Uint {
+			ColumnBuffer::Uint {
 				container,
 				..
 			} => {
@@ -285,7 +285,7 @@ impl Accumulator for MaxAccumulator {
 				}
 				Ok(())
 			}
-			ColumnData::Decimal {
+			ColumnBuffer::Decimal {
 				container,
 				..
 			} => {
@@ -319,10 +319,10 @@ impl Accumulator for MaxAccumulator {
 		}
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnData), FunctionError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError> {
 		let ty = self.input_type.take().unwrap_or(Type::Float8);
 		let mut keys = Vec::with_capacity(self.maxs.len());
-		let mut data = ColumnData::with_capacity(ty, self.maxs.len());
+		let mut data = ColumnBuffer::with_capacity(ty, self.maxs.len());
 
 		for (key, max) in mem::take(&mut self.maxs) {
 			keys.push(key);

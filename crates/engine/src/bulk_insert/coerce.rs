@@ -5,7 +5,7 @@
 
 use reifydb_core::{
 	interface::catalog::column::Column,
-	value::column::{columns::Columns, data::ColumnData},
+	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_routine::function::registry::Functions;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
@@ -19,10 +19,10 @@ use crate::{
 
 /// Coerce each column's data to the target type in batch.
 pub(super) fn coerce_columns(
-	column_data: &[ColumnData],
+	column_data: &[ColumnBuffer],
 	columns: &[Column],
 	num_rows: usize,
-) -> Result<Vec<ColumnData>> {
+) -> Result<Vec<ColumnBuffer>> {
 	let runtime_ctx = RuntimeContext::with_clock(Clock::Real);
 	let ctx = EvalContext {
 		params: &Params::None,
@@ -38,7 +38,7 @@ pub(super) fn coerce_columns(
 		take: None,
 	};
 
-	let mut coerced_columns: Vec<ColumnData> = Vec::with_capacity(columns.len());
+	let mut coerced_columns: Vec<ColumnBuffer> = Vec::with_capacity(columns.len());
 
 	for (col_idx, col) in columns.iter().enumerate() {
 		let target = col.constraint.get_type();

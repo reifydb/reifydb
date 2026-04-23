@@ -598,7 +598,7 @@ mod tests {
 			assert_eq!(container.get(0), Some(true));
 			assert_eq!(container.get(1), Some(false));
 			// push_default on a bare container pushes false;
-			// nullability is tracked by the Option wrapper at the ColumnData level.
+			// nullability is tracked by the Option wrapper at the ColumnBuffer level.
 			assert_eq!(container.get(2), Some(false));
 		}
 

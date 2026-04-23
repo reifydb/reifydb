@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type as ValueType};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -57,11 +57,11 @@ impl Function for Type {
 
 		let result_data: Vec<String> = vec![type_name; row_count];
 
-		let final_data = ColumnData::Utf8 {
+		let final_data = ColumnBuffer::Utf8 {
 			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -50,10 +50,10 @@ impl BaseVTable for SystemFlowNodes {
 
 		let nodes = CatalogStore::list_flow_nodes_all(txn)?;
 
-		let mut ids = ColumnData::uint8_with_capacity(nodes.len());
-		let mut flow_ids = ColumnData::uint8_with_capacity(nodes.len());
-		let mut node_types = ColumnData::uint1_with_capacity(nodes.len());
-		let mut data_column = ColumnData::blob_with_capacity(nodes.len());
+		let mut ids = ColumnBuffer::uint8_with_capacity(nodes.len());
+		let mut flow_ids = ColumnBuffer::uint8_with_capacity(nodes.len());
+		let mut node_types = ColumnBuffer::uint1_with_capacity(nodes.len());
+		let mut data_column = ColumnBuffer::blob_with_capacity(nodes.len());
 
 		for node in nodes {
 			ids.push(node.id.0);
@@ -63,22 +63,10 @@ impl BaseVTable for SystemFlowNodes {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("flow_id"),
-				data: flow_ids,
-			},
-			Column {
-				name: Fragment::internal("node_type"),
-				data: node_types,
-			},
-			Column {
-				name: Fragment::internal("data"),
-				data: data_column,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids),
+			ColumnWithName::new(Fragment::internal("node_type"), node_types),
+			ColumnWithName::new(Fragment::internal("data"), data_column),
 		];
 
 		self.exhausted = true;

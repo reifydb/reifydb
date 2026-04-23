@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{sumtype::SumTypeKind, vtable::VTable},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -53,13 +53,13 @@ impl BaseVTable for SystemTagVariants {
 			.filter(|st| st.kind == SumTypeKind::Tag)
 			.collect();
 
-		let mut ids = ColumnData::uint8_with_capacity(0);
-		let mut variant_tags = ColumnData::uint1_with_capacity(0);
-		let mut variant_names = ColumnData::utf8_with_capacity(0);
-		let mut field_counts = ColumnData::uint1_with_capacity(0);
-		let mut field_indices = ColumnData::uint1_with_capacity(0);
-		let mut field_names = ColumnData::utf8_with_capacity(0);
-		let mut field_types = ColumnData::uint1_with_capacity(0);
+		let mut ids = ColumnBuffer::uint8_with_capacity(0);
+		let mut variant_tags = ColumnBuffer::uint1_with_capacity(0);
+		let mut variant_names = ColumnBuffer::utf8_with_capacity(0);
+		let mut field_counts = ColumnBuffer::uint1_with_capacity(0);
+		let mut field_indices = ColumnBuffer::uint1_with_capacity(0);
+		let mut field_names = ColumnBuffer::utf8_with_capacity(0);
+		let mut field_types = ColumnBuffer::uint1_with_capacity(0);
 
 		for st in &sumtypes {
 			for variant in &st.variants {
@@ -87,34 +87,13 @@ impl BaseVTable for SystemTagVariants {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("variant_tag"),
-				data: variant_tags,
-			},
-			Column {
-				name: Fragment::internal("variant_name"),
-				data: variant_names,
-			},
-			Column {
-				name: Fragment::internal("field_count"),
-				data: field_counts,
-			},
-			Column {
-				name: Fragment::internal("field_index"),
-				data: field_indices,
-			},
-			Column {
-				name: Fragment::internal("field_name"),
-				data: field_names,
-			},
-			Column {
-				name: Fragment::internal("field_type"),
-				data: field_types,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("variant_tag"), variant_tags),
+			ColumnWithName::new(Fragment::internal("variant_name"), variant_names),
+			ColumnWithName::new(Fragment::internal("field_count"), field_counts),
+			ColumnWithName::new(Fragment::internal("field_index"), field_indices),
+			ColumnWithName::new(Fragment::internal("field_name"), field_names),
+			ColumnWithName::new(Fragment::internal("field_type"), field_types),
 		];
 
 		self.exhausted = true;

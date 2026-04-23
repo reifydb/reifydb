@@ -6,7 +6,7 @@ use reifydb_core::{
 	common::{JoinType, WindowKind},
 	internal,
 	sort::SortKey,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
 use reifydb_type::{error::Error, value::r#type::Type};
@@ -243,9 +243,9 @@ impl Function for FlowNodeToJson {
 
 	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
 		if args.is_empty() {
-			return Ok(Columns::new(vec![Column::new(
+			return Ok(Columns::new(vec![ColumnWithName::new(
 				ctx.fragment.clone(),
-				ColumnData::utf8(Vec::<String>::new()),
+				ColumnBuffer::utf8(Vec::<String>::new()),
 			)]));
 		}
 
@@ -262,7 +262,7 @@ impl Function for FlowNodeToJson {
 		let row_count = data.len();
 
 		match data {
-			ColumnData::Blob {
+			ColumnBuffer::Blob {
 				container,
 				..
 			} => {
@@ -320,15 +320,15 @@ impl Function for FlowNodeToJson {
 					}
 				}
 
-				let result_col_data = ColumnData::utf8(result_data);
+				let result_col_data = ColumnBuffer::utf8(result_data);
 				let final_data = match bitvec {
-					Some(bv) => ColumnData::Option {
+					Some(bv) => ColumnBuffer::Option {
 						inner: Box::new(result_col_data),
 						bitvec: bv.clone(),
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			_ => Err(FunctionError::ExecutionFailed {
 				function: ctx.fragment.clone(),

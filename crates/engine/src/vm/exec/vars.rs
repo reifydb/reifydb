@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	internal_error,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_type::{
 	error::{RuntimeErrorKind, TypeError},
@@ -26,11 +26,11 @@ impl<'a> Vm<'a> {
 				if self.batch_size > 1 {
 					// Broadcast scalar to batch_size rows
 					let value = c.scalar_value();
-					let mut data = ColumnData::with_capacity(value.get_type(), self.batch_size);
+					let mut data = ColumnBuffer::with_capacity(value.get_type(), self.batch_size);
 					for _ in 0..self.batch_size {
 						data.push_value(value.clone());
 					}
-					let col = Column::new(Fragment::internal(name), data);
+					let col = ColumnWithName::new(Fragment::internal(name), data);
 					self.stack.push(Variable::columns(Columns::new(vec![col])));
 				} else {
 					self.stack.push(Variable::columns(c.clone()));

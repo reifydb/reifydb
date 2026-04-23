@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use crate::mask::RowMask;
+use reifydb_core::value::column::mask::RowMask;
 
 // Result of evaluating a predicate against a `ColumnBlock`.
 //

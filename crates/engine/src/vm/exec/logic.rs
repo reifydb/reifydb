@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_rql::expression::PrefixOperator;
 use reifydb_type::{
 	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
@@ -73,7 +73,7 @@ impl<'a> Vm<'a> {
 		let list_items = all;
 
 		let frag = Fragment::internal("vm_in_list");
-		let mut accumulator: Option<Column> = None;
+		let mut accumulator: Option<ColumnWithName> = None;
 		for item in &list_items {
 			let eq = compare_columns::<Equal>(&probe, item, frag.clone(), |frag, lt, rt| {
 				TypeError::BinaryOperatorNotApplicable {
@@ -101,8 +101,8 @@ impl<'a> Vm<'a> {
 			None => {
 				// Empty list: IN is always false, NOT IN always true (broadcast to probe length).
 				let len = probe.data.len().max(1);
-				let data = ColumnData::bool(vec![negated; len]);
-				Column::new(frag.clone(), data)
+				let data = ColumnBuffer::bool(vec![negated; len]);
+				ColumnWithName::new(frag.clone(), data)
 			}
 		};
 		self.stack.push(Variable::columns(Columns::new(vec![result])));
@@ -114,7 +114,7 @@ impl<'a> Vm<'a> {
 		let frag = Fragment::internal("vm_cast");
 		let ctx = self.eval_ctx();
 		let data = cast_column_data(&ctx, col.data(), target.clone(), frag.clone())?;
-		self.stack.push(Variable::columns(Columns::new(vec![Column::new(col.name().clone(), data)])));
+		self.stack.push(Variable::columns(Columns::new(vec![ColumnWithName::new(col.name().clone(), data)])));
 		Ok(())
 	}
 }

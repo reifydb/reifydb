@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	util::ioc::IocContainer,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -61,11 +61,11 @@ impl BaseVTable for SystemConfigs {
 			}
 		}
 
-		let mut keys = ColumnData::utf8_with_capacity(configs.len());
-		let mut values = ColumnData::utf8_with_capacity(configs.len());
-		let mut default_values = ColumnData::utf8_with_capacity(configs.len());
-		let mut descriptions = ColumnData::utf8_with_capacity(configs.len());
-		let mut requires_restarts = ColumnData::bool_with_capacity(configs.len());
+		let mut keys = ColumnBuffer::utf8_with_capacity(configs.len());
+		let mut values = ColumnBuffer::utf8_with_capacity(configs.len());
+		let mut default_values = ColumnBuffer::utf8_with_capacity(configs.len());
+		let mut descriptions = ColumnBuffer::utf8_with_capacity(configs.len());
+		let mut requires_restarts = ColumnBuffer::bool_with_capacity(configs.len());
 
 		for cfg in &configs {
 			let key_str = cfg.key.to_string();
@@ -77,26 +77,11 @@ impl BaseVTable for SystemConfigs {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("key"),
-				data: keys,
-			},
-			Column {
-				name: Fragment::internal("value"),
-				data: values,
-			},
-			Column {
-				name: Fragment::internal("default_value"),
-				data: default_values,
-			},
-			Column {
-				name: Fragment::internal("description"),
-				data: descriptions,
-			},
-			Column {
-				name: Fragment::internal("requires_restart"),
-				data: requires_restarts,
-			},
+			ColumnWithName::new(Fragment::internal("key"), keys),
+			ColumnWithName::new(Fragment::internal("value"), values),
+			ColumnWithName::new(Fragment::internal("default_value"), default_values),
+			ColumnWithName::new(Fragment::internal("description"), descriptions),
+			ColumnWithName::new(Fragment::internal("requires_restart"), requires_restarts),
 		];
 
 		self.exhausted = true;

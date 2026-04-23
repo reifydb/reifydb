@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -50,8 +50,8 @@ impl BaseVTable for SystemRoles {
 
 		let roles = CatalogStore::list_all_roles(txn)?;
 
-		let mut ids = ColumnData::uint8_with_capacity(roles.len());
-		let mut names = ColumnData::utf8_with_capacity(roles.len());
+		let mut ids = ColumnBuffer::uint8_with_capacity(roles.len());
+		let mut names = ColumnBuffer::utf8_with_capacity(roles.len());
 
 		for r in roles {
 			ids.push(r.id);
@@ -59,14 +59,8 @@ impl BaseVTable for SystemRoles {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("name"), names),
 		];
 
 		self.exhausted = true;

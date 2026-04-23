@@ -37,7 +37,7 @@ use reifydb_type::{
 const POLL_TIMEOUT: Duration = Duration::from_secs(2);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 /// Slack window after sending a Tick within which we trust the actor has settled.
-/// Used only by negative assertions ("nothing was evicted") — positive assertions
+/// Used only by negative assertions ("nothing was evicted") - positive assertions
 /// use the bounded-poll helpers instead.
 const NEGATIVE_SETTLE: Duration = Duration::from_millis(150);
 
@@ -76,7 +76,7 @@ impl TtlFixture {
 		}
 	}
 
-	/// Send a Tick message — this is what the periodic timer would normally trigger.
+	/// Send a Tick message - this is what the periodic timer would normally trigger.
 	fn tick(&self) {
 		self.handle.actor_ref().send(CdcProduceMessage::Tick).expect("send Tick");
 	}
@@ -210,9 +210,9 @@ fn ttl_boundary_entry_at_cutoff_is_kept() {
 	// so an entry whose timestamp equals the cutoff is retained.
 	let f = TtlFixture::new(20_000_000_000); // now = 20 s
 	set_ttl_secs(&f.catalog, 10); // cutoff = 10 s
-	write_cdc(&f.storage, 1, 9_999_999_999); // 1 ns before cutoff — drop
-	write_cdc(&f.storage, 2, 10_000_000_000); // exactly at cutoff — keep
-	write_cdc(&f.storage, 3, 10_000_000_001); // 1 ns after cutoff — keep
+	write_cdc(&f.storage, 1, 9_999_999_999); // 1 ns before cutoff - drop
+	write_cdc(&f.storage, 2, 10_000_000_000); // exactly at cutoff - keep
+	write_cdc(&f.storage, 3, 10_000_000_001); // 1 ns after cutoff - keep
 
 	f.tick();
 
@@ -274,7 +274,7 @@ fn ttl_emits_evicted_event_with_correct_cutoff() {
 	set_ttl_secs(&f.catalog, 10); // cutoff = 10 s
 	write_cdc(&f.storage, 1, 5_000_000_000); // drop
 	write_cdc(&f.storage, 2, 9_000_000_000); // drop
-	write_cdc(&f.storage, 3, 11_000_000_000); // keep — first kept => cutoff_version
+	write_cdc(&f.storage, 3, 11_000_000_000); // keep - first kept => cutoff_version
 	write_cdc(&f.storage, 4, 15_000_000_000); // keep
 
 	let recorder = Arc::new(EvictionRecorder::default());
@@ -310,7 +310,7 @@ fn ttl_does_not_emit_event_when_nothing_is_evicted() {
 
 #[test]
 fn ttl_setting_zero_duration_is_rejected_by_catalog() {
-	// Sanity check that the validate hook is wired in — the catalog rejects zero TTLs at
+	// Sanity check that the validate hook is wired in - the catalog rejects zero TTLs at
 	// the set_config boundary, so a misconfigured operator never reaches the producer.
 	let catalog = MaterializedCatalog::new();
 	let zero = Value::Duration(TypeDuration::from_seconds(0).unwrap());

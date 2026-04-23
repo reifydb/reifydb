@@ -9,7 +9,7 @@ use std::{
 
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedShape},
-	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 use reifydb_transaction::transaction::Transaction;
@@ -348,7 +348,7 @@ impl QueryNode for InlineDataNode {
 impl InlineDataNode {
 	/// Determines the optimal (narrowest) integer type that can hold all
 	/// values
-	fn find_optimal_integer_type(column: &ColumnData) -> Type {
+	fn find_optimal_integer_type(column: &ColumnBuffer) -> Type {
 		let mut min_val = i128::MAX;
 		let mut max_val = i128::MIN;
 		let mut has_values = false;
@@ -470,9 +470,9 @@ impl InlineDataNode {
 
 			// Create the wide column and add all values
 			let mut column_data = if wide_type.is_none() {
-				ColumnData::none_typed(Type::Boolean, all_values.len())
+				ColumnBuffer::none_typed(Type::Boolean, all_values.len())
 			} else {
-				let mut data = ColumnData::with_capacity(wide_type.clone().unwrap(), 0);
+				let mut data = ColumnBuffer::with_capacity(wide_type.clone().unwrap(), 0);
 
 				// Add each value, casting to the wide
 				// type if needed
@@ -483,7 +483,7 @@ impl InlineDataNode {
 						data.push_value(value.clone());
 					} else {
 						// Cast to the wide type
-						let temp_data = ColumnData::from(value.clone());
+						let temp_data = ColumnBuffer::from(value.clone());
 						let eval_ctx = session.with_eval_empty();
 
 						match cast_column_data(
@@ -528,10 +528,10 @@ impl InlineDataNode {
 			// Could add similar optimization for Float8 -> Float4
 			// if needed
 
-			columns.push(Column {
-				name: column_fragment.unwrap_or_else(|| Fragment::internal(column_name)),
-				data: column_data,
-			});
+			columns.push(ColumnWithName::new(
+				column_fragment.unwrap_or_else(|| Fragment::internal(column_name)),
+				column_data,
+			));
 		}
 
 		let columns = Columns::new(columns);
@@ -566,9 +566,9 @@ impl InlineDataNode {
 			let table_column = source.columns().iter().find(|col| col.name == column_name.text());
 
 			let mut column_data = if let Some(tc) = table_column {
-				ColumnData::none_typed(tc.constraint.get_type(), 0)
+				ColumnBuffer::none_typed(tc.constraint.get_type(), 0)
 			} else {
-				ColumnData::with_capacity(Type::Int16, 0)
+				ColumnBuffer::with_capacity(Type::Int16, 0)
 			};
 			let mut column_fragment: Option<Fragment> = None;
 
@@ -618,7 +618,7 @@ impl InlineDataNode {
 							} => column_data.push_none(),
 							Value::Int16(_) => column_data.push_value(value),
 							_ => {
-								let temp = ColumnData::from(value.clone());
+								let temp = ColumnBuffer::from(value.clone());
 								match cast_column_data(
 									&eval_ctx,
 									&temp,
@@ -656,12 +656,12 @@ impl InlineDataNode {
 				}
 			}
 
-			columns.push(Column {
-				name: column_fragment
+			columns.push(ColumnWithName::new(
+				column_fragment
 					.map(|f| f.with_text(column_name.text()))
 					.unwrap_or_else(|| column_name.clone()),
-				data: column_data,
-			});
+				column_data,
+			));
 		}
 
 		let columns = Columns::new(columns);

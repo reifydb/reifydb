@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, duration::Duration, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -24,33 +24,35 @@ impl DurationWeeks {
 	}
 }
 
-fn extract_i64(data: &ColumnData, i: usize) -> Option<i64> {
+fn extract_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int4(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int8(c) => c.get(i).copied(),
-		ColumnData::Int16(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint8(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint16(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int8(c) => c.get(i).copied(),
+		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as i64),
 		_ => None,
 	}
 }
 
-fn is_integer_type(data: &ColumnData) -> bool {
+fn is_integer_type(data: &ColumnBuffer) -> bool {
 	matches!(
 		data,
-		ColumnData::Int1(_)
-			| ColumnData::Int2(_) | ColumnData::Int4(_)
-			| ColumnData::Int8(_) | ColumnData::Int16(_)
-			| ColumnData::Uint1(_)
-			| ColumnData::Uint2(_)
-			| ColumnData::Uint4(_)
-			| ColumnData::Uint8(_)
-			| ColumnData::Uint16(_)
+		ColumnBuffer::Int1(_)
+			| ColumnBuffer::Int2(_)
+			| ColumnBuffer::Int4(_)
+			| ColumnBuffer::Int8(_)
+			| ColumnBuffer::Int16(_)
+			| ColumnBuffer::Uint1(_)
+			| ColumnBuffer::Uint2(_)
+			| ColumnBuffer::Uint4(_)
+			| ColumnBuffer::Uint8(_)
+			| ColumnBuffer::Uint16(_)
 	)
 }
 
@@ -110,13 +112,13 @@ impl Function for DurationWeeks {
 			}
 		}
 
-		let mut result_data = ColumnData::Duration(container);
+		let mut result_data = ColumnBuffer::Duration(container);
 		if let Some(bv) = bitvec {
-			result_data = ColumnData::Option {
+			result_data = ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			};
 		}
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
 }

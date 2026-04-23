@@ -20,7 +20,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::{
 	expression::{cast::cast_column_data, context::EvalContext},
@@ -94,12 +94,9 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 				target_type.clone(),
 				Fragment::internal(&target_col.name),
 			)?;
-			result_columns.push(Column {
-				name: Fragment::internal(&target_col.name),
-				data: casted,
-			});
+			result_columns.push(ColumnWithName::new(Fragment::internal(&target_col.name), casted));
 		} else {
-			result_columns.push(Column::undefined_typed(
+			result_columns.push(ColumnWithName::undefined_typed(
 				Fragment::internal(&target_col.name),
 				target_type,
 				row_count,
@@ -171,7 +168,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 		columns.iter()
 			.enumerate()
 			.filter_map(|(pos, col)| {
-				if let ColumnData::DictionaryId(container) = col.data() {
+				if let ColumnBuffer::DictionaryId(container) = col.data() {
 					let dict_id = container.dictionary_id()?;
 					let dictionary = catalog.materialized.find_dictionary(dict_id)?;
 					Some((pos, dictionary))
@@ -185,7 +182,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 	for (col_pos, dictionary) in &dict_columns {
 		let col = &columns[*col_pos];
 		let row_count = col.data().len();
-		let mut new_data = ColumnData::with_capacity(dictionary.value_type.clone(), row_count);
+		let mut new_data = ColumnBuffer::with_capacity(dictionary.value_type.clone(), row_count);
 
 		for row_idx in 0..row_count {
 			let id_value = col.data().get_value(row_idx);
@@ -206,10 +203,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 			}
 		}
 
-		columns.columns.make_mut()[*col_pos] = Column {
-			name: columns[*col_pos].name().clone(),
-			data: new_data,
-		};
+		columns.columns.make_mut()[*col_pos] = ColumnWithName::new(columns[*col_pos].name().clone(), new_data);
 	}
 
 	Ok(())

@@ -7,92 +7,92 @@ use reifydb_type::{Result, storage::DataBitVec, util::bitvec::BitVec};
 
 use crate::{
 	return_internal_error,
-	value::column::{ColumnData, data::with_container},
+	value::column::{ColumnBuffer, buffer::with_container},
 };
 
-impl ColumnData {
-	pub fn extend(&mut self, other: ColumnData) -> Result<()> {
+impl ColumnBuffer {
+	pub fn extend(&mut self, other: ColumnBuffer) -> Result<()> {
 		match (&mut *self, other) {
 			// Same type extensions
-			(ColumnData::Bool(l), ColumnData::Bool(r)) => l.extend(&r)?,
-			(ColumnData::Float4(l), ColumnData::Float4(r)) => l.extend(&r)?,
-			(ColumnData::Float8(l), ColumnData::Float8(r)) => l.extend(&r)?,
-			(ColumnData::Int1(l), ColumnData::Int1(r)) => l.extend(&r)?,
-			(ColumnData::Int2(l), ColumnData::Int2(r)) => l.extend(&r)?,
-			(ColumnData::Int4(l), ColumnData::Int4(r)) => l.extend(&r)?,
-			(ColumnData::Int8(l), ColumnData::Int8(r)) => l.extend(&r)?,
-			(ColumnData::Int16(l), ColumnData::Int16(r)) => l.extend(&r)?,
-			(ColumnData::Uint1(l), ColumnData::Uint1(r)) => l.extend(&r)?,
-			(ColumnData::Uint2(l), ColumnData::Uint2(r)) => l.extend(&r)?,
-			(ColumnData::Uint4(l), ColumnData::Uint4(r)) => l.extend(&r)?,
-			(ColumnData::Uint8(l), ColumnData::Uint8(r)) => l.extend(&r)?,
-			(ColumnData::Uint16(l), ColumnData::Uint16(r)) => l.extend(&r)?,
+			(ColumnBuffer::Bool(l), ColumnBuffer::Bool(r)) => l.extend(&r)?,
+			(ColumnBuffer::Float4(l), ColumnBuffer::Float4(r)) => l.extend(&r)?,
+			(ColumnBuffer::Float8(l), ColumnBuffer::Float8(r)) => l.extend(&r)?,
+			(ColumnBuffer::Int1(l), ColumnBuffer::Int1(r)) => l.extend(&r)?,
+			(ColumnBuffer::Int2(l), ColumnBuffer::Int2(r)) => l.extend(&r)?,
+			(ColumnBuffer::Int4(l), ColumnBuffer::Int4(r)) => l.extend(&r)?,
+			(ColumnBuffer::Int8(l), ColumnBuffer::Int8(r)) => l.extend(&r)?,
+			(ColumnBuffer::Int16(l), ColumnBuffer::Int16(r)) => l.extend(&r)?,
+			(ColumnBuffer::Uint1(l), ColumnBuffer::Uint1(r)) => l.extend(&r)?,
+			(ColumnBuffer::Uint2(l), ColumnBuffer::Uint2(r)) => l.extend(&r)?,
+			(ColumnBuffer::Uint4(l), ColumnBuffer::Uint4(r)) => l.extend(&r)?,
+			(ColumnBuffer::Uint8(l), ColumnBuffer::Uint8(r)) => l.extend(&r)?,
+			(ColumnBuffer::Uint16(l), ColumnBuffer::Uint16(r)) => l.extend(&r)?,
 			(
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: l,
 					..
 				},
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: r,
 					..
 				},
 			) => l.extend(&r)?,
-			(ColumnData::Date(l), ColumnData::Date(r)) => l.extend(&r)?,
-			(ColumnData::DateTime(l), ColumnData::DateTime(r)) => l.extend(&r)?,
-			(ColumnData::Time(l), ColumnData::Time(r)) => l.extend(&r)?,
-			(ColumnData::Duration(l), ColumnData::Duration(r)) => l.extend(&r)?,
-			(ColumnData::IdentityId(l), ColumnData::IdentityId(r)) => l.extend(&r)?,
-			(ColumnData::Uuid4(l), ColumnData::Uuid4(r)) => l.extend(&r)?,
-			(ColumnData::Uuid7(l), ColumnData::Uuid7(r)) => l.extend(&r)?,
+			(ColumnBuffer::Date(l), ColumnBuffer::Date(r)) => l.extend(&r)?,
+			(ColumnBuffer::DateTime(l), ColumnBuffer::DateTime(r)) => l.extend(&r)?,
+			(ColumnBuffer::Time(l), ColumnBuffer::Time(r)) => l.extend(&r)?,
+			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => l.extend(&r)?,
+			(ColumnBuffer::IdentityId(l), ColumnBuffer::IdentityId(r)) => l.extend(&r)?,
+			(ColumnBuffer::Uuid4(l), ColumnBuffer::Uuid4(r)) => l.extend(&r)?,
+			(ColumnBuffer::Uuid7(l), ColumnBuffer::Uuid7(r)) => l.extend(&r)?,
 			(
-				ColumnData::Blob {
+				ColumnBuffer::Blob {
 					container: l,
 					..
 				},
-				ColumnData::Blob {
-					container: r,
-					..
-				},
-			) => l.extend(&r)?,
-			(
-				ColumnData::Int {
-					container: l,
-					..
-				},
-				ColumnData::Int {
+				ColumnBuffer::Blob {
 					container: r,
 					..
 				},
 			) => l.extend(&r)?,
 			(
-				ColumnData::Uint {
+				ColumnBuffer::Int {
 					container: l,
 					..
 				},
-				ColumnData::Uint {
+				ColumnBuffer::Int {
 					container: r,
 					..
 				},
 			) => l.extend(&r)?,
 			(
-				ColumnData::Decimal {
+				ColumnBuffer::Uint {
 					container: l,
 					..
 				},
-				ColumnData::Decimal {
+				ColumnBuffer::Uint {
 					container: r,
 					..
 				},
 			) => l.extend(&r)?,
-			(ColumnData::DictionaryId(l), ColumnData::DictionaryId(r)) => l.extend(&r)?,
+			(
+				ColumnBuffer::Decimal {
+					container: l,
+					..
+				},
+				ColumnBuffer::Decimal {
+					container: r,
+					..
+				},
+			) => l.extend(&r)?,
+			(ColumnBuffer::DictionaryId(l), ColumnBuffer::DictionaryId(r)) => l.extend(&r)?,
 
 			// Option + Option: extend inner + bitvec
 			(
-				ColumnData::Option {
+				ColumnBuffer::Option {
 					inner: l_inner,
 					bitvec: l_bitvec,
 				},
-				ColumnData::Option {
+				ColumnBuffer::Option {
 					inner: r_inner,
 					bitvec: r_bitvec,
 				},
@@ -114,7 +114,7 @@ impl ColumnData {
 					let l_len = l_inner.len();
 					let r_type = r_inner.get_type();
 					let (mut new_inner, _) =
-						ColumnData::none_typed(r_type, l_len).into_unwrap_option();
+						ColumnBuffer::none_typed(r_type, l_len).into_unwrap_option();
 					new_inner.extend(*r_inner)?;
 					**l_inner = new_inner;
 				} else {
@@ -126,7 +126,7 @@ impl ColumnData {
 
 			// Option + bare: extend inner with bare data, extend bitvec with all-true
 			(
-				ColumnData::Option {
+				ColumnBuffer::Option {
 					inner,
 					bitvec,
 				},
@@ -138,7 +138,7 @@ impl ColumnData {
 					let l_len = inner.len();
 					let r_type = other.get_type();
 					let (mut new_inner, _) =
-						ColumnData::none_typed(r_type, l_len).into_unwrap_option();
+						ColumnBuffer::none_typed(r_type, l_len).into_unwrap_option();
 					new_inner.extend(other)?;
 					**inner = new_inner;
 				} else {
@@ -152,7 +152,7 @@ impl ColumnData {
 			// bare + Option: promote bare to Option, then extend
 			(
 				_,
-				ColumnData::Option {
+				ColumnBuffer::Option {
 					inner: r_inner,
 					bitvec: r_bitvec,
 				},
@@ -161,7 +161,7 @@ impl ColumnData {
 				let r_len = r_inner.len();
 				let mut l_bitvec = BitVec::repeat(l_len, true);
 				DataBitVec::extend_from(&mut l_bitvec, &r_bitvec);
-				let inner = mem::replace(self, ColumnData::bool(vec![]));
+				let inner = mem::replace(self, ColumnBuffer::bool(vec![]));
 				let mut boxed_inner = Box::new(inner);
 
 				if boxed_inner.get_type() != r_inner.get_type()
@@ -177,7 +177,7 @@ impl ColumnData {
 					boxed_inner.extend(*r_inner)?;
 				}
 
-				*self = ColumnData::Option {
+				*self = ColumnBuffer::Option {
 					inner: boxed_inner,
 					bitvec: l_bitvec,
 				};

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use num_traits::ToPrimitive;
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	fragment::Fragment,
 	value::{
@@ -34,7 +34,7 @@ impl Power {
 	}
 }
 
-fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> ColumnData {
+fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -> ColumnBuffer {
 	match target {
 		Type::Int1 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -48,7 +48,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::int1_with_bitvec(result, bitvec)
+			ColumnBuffer::int1_with_bitvec(result, bitvec)
 		}
 		Type::Int2 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -62,7 +62,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::int2_with_bitvec(result, bitvec)
+			ColumnBuffer::int2_with_bitvec(result, bitvec)
 		}
 		Type::Int4 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -76,7 +76,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::int4_with_bitvec(result, bitvec)
+			ColumnBuffer::int4_with_bitvec(result, bitvec)
 		}
 		Type::Int8 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -90,7 +90,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::int8_with_bitvec(result, bitvec)
+			ColumnBuffer::int8_with_bitvec(result, bitvec)
 		}
 		Type::Int16 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -104,7 +104,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::int16_with_bitvec(result, bitvec)
+			ColumnBuffer::int16_with_bitvec(result, bitvec)
 		}
 		Type::Uint1 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -118,7 +118,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::uint1_with_bitvec(result, bitvec)
+			ColumnBuffer::uint1_with_bitvec(result, bitvec)
 		}
 		Type::Uint2 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -132,7 +132,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::uint2_with_bitvec(result, bitvec)
+			ColumnBuffer::uint2_with_bitvec(result, bitvec)
 		}
 		Type::Uint4 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -146,7 +146,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::uint4_with_bitvec(result, bitvec)
+			ColumnBuffer::uint4_with_bitvec(result, bitvec)
 		}
 		Type::Uint8 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -160,7 +160,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::uint8_with_bitvec(result, bitvec)
+			ColumnBuffer::uint8_with_bitvec(result, bitvec)
 		}
 		Type::Uint16 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -174,7 +174,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::uint16_with_bitvec(result, bitvec)
+			ColumnBuffer::uint16_with_bitvec(result, bitvec)
 		}
 		Type::Float4 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -188,7 +188,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::float4_with_bitvec(result, bitvec)
+			ColumnBuffer::float4_with_bitvec(result, bitvec)
 		}
 		Type::Float8 => {
 			let mut result = Vec::with_capacity(row_count);
@@ -202,7 +202,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::float8_with_bitvec(result, bitvec)
+			ColumnBuffer::float8_with_bitvec(result, bitvec)
 		}
 		Type::Int => {
 			let mut result = Vec::with_capacity(row_count);
@@ -216,7 +216,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::int_with_bitvec(result, bitvec)
+			ColumnBuffer::int_with_bitvec(result, bitvec)
 		}
 		Type::Uint => {
 			let mut result = Vec::with_capacity(row_count);
@@ -230,7 +230,7 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::uint_with_bitvec(result, bitvec)
+			ColumnBuffer::uint_with_bitvec(result, bitvec)
 		}
 		Type::Decimal => {
 			let mut result = Vec::with_capacity(row_count);
@@ -244,137 +244,137 @@ fn convert_column_to_type(data: &ColumnData, target: Type, row_count: usize) -> 
 					bitvec.push(false);
 				}
 			}
-			ColumnData::decimal_with_bitvec(result, bitvec)
+			ColumnBuffer::decimal_with_bitvec(result, bitvec)
 		}
 		_ => data.clone(),
 	}
 }
 
-fn get_as_i8(data: &ColumnData, i: usize) -> i8 {
+fn get_as_i8(data: &ColumnBuffer, i: usize) -> i8 {
 	match data {
-		ColumnData::Int1(c) => c.get(i).copied().unwrap_or(0),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i8).unwrap_or(0),
+		ColumnBuffer::Int1(c) => c.get(i).copied().unwrap_or(0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i8).unwrap_or(0),
 		_ => 0,
 	}
 }
 
-fn get_as_u8(data: &ColumnData, i: usize) -> u8 {
+fn get_as_u8(data: &ColumnBuffer, i: usize) -> u8 {
 	match data {
-		ColumnData::Uint1(c) => c.get(i).copied().unwrap_or(0),
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as u8).unwrap_or(0),
+		ColumnBuffer::Uint1(c) => c.get(i).copied().unwrap_or(0),
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as u8).unwrap_or(0),
 		_ => 0,
 	}
 }
 
-fn get_as_i16(data: &ColumnData, i: usize) -> i16 {
+fn get_as_i16(data: &ColumnBuffer, i: usize) -> i16 {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as i16).unwrap_or(0),
-		ColumnData::Int2(c) => c.get(i).copied().unwrap_or(0),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i16).unwrap_or(0),
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i16).unwrap_or(0),
+		ColumnBuffer::Int2(c) => c.get(i).copied().unwrap_or(0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i16).unwrap_or(0),
 		_ => 0,
 	}
 }
 
-fn get_as_i32(data: &ColumnData, i: usize) -> i32 {
+fn get_as_i32(data: &ColumnBuffer, i: usize) -> i32 {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
-		ColumnData::Int4(c) => c.get(i).copied().unwrap_or(0),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
+		ColumnBuffer::Int4(c) => c.get(i).copied().unwrap_or(0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
 		_ => 0,
 	}
 }
 
-fn get_as_i64(data: &ColumnData, i: usize) -> i64 {
+fn get_as_i64(data: &ColumnBuffer, i: usize) -> i64 {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		ColumnData::Int4(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		ColumnData::Int8(c) => c.get(i).copied().unwrap_or(0),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnBuffer::Int8(c) => c.get(i).copied().unwrap_or(0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
 		_ => 0,
 	}
 }
 
-fn get_as_i128(data: &ColumnData, i: usize) -> i128 {
+fn get_as_i128(data: &ColumnBuffer, i: usize) -> i128 {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnData::Int4(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnData::Int8(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnData::Int16(c) => c.get(i).copied().unwrap_or(0),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnData::Uint8(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnBuffer::Int16(c) => c.get(i).copied().unwrap_or(0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
+		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
 		_ => 0,
 	}
 }
 
-fn get_as_u16(data: &ColumnData, i: usize) -> u16 {
+fn get_as_u16(data: &ColumnBuffer, i: usize) -> u16 {
 	match data {
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as u16).unwrap_or(0),
-		ColumnData::Uint2(c) => c.get(i).copied().unwrap_or(0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as u16).unwrap_or(0),
+		ColumnBuffer::Uint2(c) => c.get(i).copied().unwrap_or(0),
 		_ => 0,
 	}
 }
 
-fn get_as_u32(data: &ColumnData, i: usize) -> u32 {
+fn get_as_u32(data: &ColumnBuffer, i: usize) -> u32 {
 	match data {
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as u32).unwrap_or(0),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as u32).unwrap_or(0),
-		ColumnData::Uint4(c) => c.get(i).copied().unwrap_or(0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as u32).unwrap_or(0),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as u32).unwrap_or(0),
+		ColumnBuffer::Uint4(c) => c.get(i).copied().unwrap_or(0),
 		_ => 0,
 	}
 }
 
-fn get_as_u64(data: &ColumnData, i: usize) -> u64 {
+fn get_as_u64(data: &ColumnBuffer, i: usize) -> u64 {
 	match data {
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
-		ColumnData::Uint8(c) => c.get(i).copied().unwrap_or(0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
+		ColumnBuffer::Uint8(c) => c.get(i).copied().unwrap_or(0),
 		_ => 0,
 	}
 }
 
-fn get_as_u128(data: &ColumnData, i: usize) -> u128 {
+fn get_as_u128(data: &ColumnBuffer, i: usize) -> u128 {
 	match data {
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
-		ColumnData::Uint8(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
-		ColumnData::Uint16(c) => c.get(i).copied().unwrap_or(0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
+		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
+		ColumnBuffer::Uint16(c) => c.get(i).copied().unwrap_or(0),
 		_ => 0,
 	}
 }
 
-fn get_as_f32(data: &ColumnData, i: usize) -> f32 {
+fn get_as_f32(data: &ColumnBuffer, i: usize) -> f32 {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Int4(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Int8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Int16(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Uint8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Uint16(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Float4(c) => c.get(i).copied().unwrap_or(0.0),
-		ColumnData::Float8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnData::Int {
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Float4(c) => c.get(i).copied().unwrap_or(0.0),
+		ColumnBuffer::Float8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
+		ColumnBuffer::Int {
 			container,
 			..
 		} => container.get(i).map(|v| v.0.to_f32().unwrap_or(0.0)).unwrap_or(0.0),
-		ColumnData::Uint {
+		ColumnBuffer::Uint {
 			container,
 			..
 		} => container.get(i).map(|v| v.0.to_f32().unwrap_or(0.0)).unwrap_or(0.0),
-		ColumnData::Decimal {
+		ColumnBuffer::Decimal {
 			container,
 			..
 		} => container.get(i).map(|v| v.0.to_f32().unwrap_or(0.0)).unwrap_or(0.0),
@@ -382,29 +382,29 @@ fn get_as_f32(data: &ColumnData, i: usize) -> f32 {
 	}
 }
 
-fn get_as_f64(data: &ColumnData, i: usize) -> f64 {
+fn get_as_f64(data: &ColumnBuffer, i: usize) -> f64 {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Int4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Int8(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Int16(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Uint8(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Uint16(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Float4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnData::Float8(c) => c.get(i).copied().unwrap_or(0.0),
-		ColumnData::Int {
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Float4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
+		ColumnBuffer::Float8(c) => c.get(i).copied().unwrap_or(0.0),
+		ColumnBuffer::Int {
 			container,
 			..
 		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)).unwrap_or(0.0),
-		ColumnData::Uint {
+		ColumnBuffer::Uint {
 			container,
 			..
 		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)).unwrap_or(0.0),
-		ColumnData::Decimal {
+		ColumnBuffer::Decimal {
 			container,
 			..
 		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)).unwrap_or(0.0),
@@ -479,7 +479,7 @@ impl Function for Power {
 		let row_count = base_data.len();
 
 		let result_data = match (base_data, exp_data) {
-			(ColumnData::Int1(base), ColumnData::Int1(exp)) => {
+			(ColumnBuffer::Int1(base), ColumnBuffer::Int1(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -498,9 +498,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::int4_with_bitvec(result, res_bitvec)
+				ColumnBuffer::int4_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Int2(base), ColumnData::Int2(exp)) => {
+			(ColumnBuffer::Int2(base), ColumnBuffer::Int2(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -519,9 +519,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::int4_with_bitvec(result, res_bitvec)
+				ColumnBuffer::int4_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Int4(base), ColumnData::Int4(exp)) => {
+			(ColumnBuffer::Int4(base), ColumnBuffer::Int4(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -540,9 +540,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::int4_with_bitvec(result, res_bitvec)
+				ColumnBuffer::int4_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Int8(base), ColumnData::Int8(exp)) => {
+			(ColumnBuffer::Int8(base), ColumnBuffer::Int8(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -561,9 +561,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::int8_with_bitvec(result, res_bitvec)
+				ColumnBuffer::int8_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Int16(base), ColumnData::Int16(exp)) => {
+			(ColumnBuffer::Int16(base), ColumnBuffer::Int16(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -582,9 +582,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::int16_with_bitvec(result, res_bitvec)
+				ColumnBuffer::int16_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Float4(base), ColumnData::Float4(exp)) => {
+			(ColumnBuffer::Float4(base), ColumnBuffer::Float4(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -599,9 +599,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::float4_with_bitvec(result, res_bitvec)
+				ColumnBuffer::float4_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Float8(base), ColumnData::Float8(exp)) => {
+			(ColumnBuffer::Float8(base), ColumnBuffer::Float8(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -616,9 +616,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::float8_with_bitvec(result, res_bitvec)
+				ColumnBuffer::float8_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Uint1(base), ColumnData::Uint1(exp)) => {
+			(ColumnBuffer::Uint1(base), ColumnBuffer::Uint1(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -633,9 +633,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::uint4_with_bitvec(result, res_bitvec)
+				ColumnBuffer::uint4_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Uint2(base), ColumnData::Uint2(exp)) => {
+			(ColumnBuffer::Uint2(base), ColumnBuffer::Uint2(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -650,9 +650,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::uint4_with_bitvec(result, res_bitvec)
+				ColumnBuffer::uint4_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Uint4(base), ColumnData::Uint4(exp)) => {
+			(ColumnBuffer::Uint4(base), ColumnBuffer::Uint4(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -667,9 +667,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::uint4_with_bitvec(result, res_bitvec)
+				ColumnBuffer::uint4_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Uint8(base), ColumnData::Uint8(exp)) => {
+			(ColumnBuffer::Uint8(base), ColumnBuffer::Uint8(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -684,9 +684,9 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::uint8_with_bitvec(result, res_bitvec)
+				ColumnBuffer::uint8_with_bitvec(result, res_bitvec)
 			}
-			(ColumnData::Uint16(base), ColumnData::Uint16(exp)) => {
+			(ColumnBuffer::Uint16(base), ColumnBuffer::Uint16(exp)) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -701,14 +701,14 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::uint16_with_bitvec(result, res_bitvec)
+				ColumnBuffer::uint16_with_bitvec(result, res_bitvec)
 			}
 			(
-				ColumnData::Int {
+				ColumnBuffer::Int {
 					container: base,
 					max_bytes,
 				},
-				ColumnData::Int {
+				ColumnBuffer::Int {
 					container: exp,
 					..
 				},
@@ -729,17 +729,17 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::Int {
+				ColumnBuffer::Int {
 					container: NumberContainer::new(result),
 					max_bytes: *max_bytes,
 				}
 			}
 			(
-				ColumnData::Uint {
+				ColumnBuffer::Uint {
 					container: base,
 					max_bytes,
 				},
-				ColumnData::Uint {
+				ColumnBuffer::Uint {
 					container: exp,
 					..
 				},
@@ -760,18 +760,18 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::Uint {
+				ColumnBuffer::Uint {
 					container: NumberContainer::new(result),
 					max_bytes: *max_bytes,
 				}
 			}
 			(
-				ColumnData::Decimal {
+				ColumnBuffer::Decimal {
 					container: base,
 					precision,
 					scale,
 				},
-				ColumnData::Decimal {
+				ColumnBuffer::Decimal {
 					container: exp,
 					..
 				},
@@ -792,7 +792,7 @@ impl Function for Power {
 						}
 					}
 				}
-				ColumnData::Decimal {
+				ColumnBuffer::Decimal {
 					container: NumberContainer::new(result),
 					precision: *precision,
 					scale: *scale,
@@ -816,8 +816,8 @@ impl Function for Power {
 				let promoted_base = convert_column_to_type(base_data, promoted_type.clone(), row_count);
 				let promoted_exp = convert_column_to_type(exp_data, promoted_type, row_count);
 
-				let base_col = Column::new(Fragment::internal("base"), promoted_base);
-				let exp_col = Column::new(Fragment::internal("exp"), promoted_exp);
+				let base_col = ColumnWithName::new(Fragment::internal("base"), promoted_base);
+				let exp_col = ColumnWithName::new(Fragment::internal("exp"), promoted_exp);
 				let promoted_columns = Columns::new(vec![base_col, exp_col]);
 
 				return self.call(ctx, &promoted_columns);
@@ -832,7 +832,7 @@ impl Function for Power {
 		};
 
 		let final_data = if let Some(bv) = combined_bitvec {
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv,
 			}
@@ -840,6 +840,6 @@ impl Function for Power {
 			result_data
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

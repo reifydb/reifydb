@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -49,16 +49,16 @@ impl BaseVTable for SystemShapeFields {
 
 		let total_fields: usize = shapes.iter().map(|s| s.field_count()).sum();
 
-		let mut fingerprints = ColumnData::uint8_with_capacity(total_fields);
-		let mut field_indices = ColumnData::uint2_with_capacity(total_fields);
-		let mut names = ColumnData::utf8_with_capacity(total_fields);
-		let mut types = ColumnData::uint1_with_capacity(total_fields);
-		let mut constraint_types = ColumnData::uint1_with_capacity(total_fields);
-		let mut constraint_p1s = ColumnData::uint4_with_capacity(total_fields);
-		let mut constraint_p2s = ColumnData::uint4_with_capacity(total_fields);
-		let mut offsets = ColumnData::uint4_with_capacity(total_fields);
-		let mut sizes = ColumnData::uint4_with_capacity(total_fields);
-		let mut aligns = ColumnData::uint1_with_capacity(total_fields);
+		let mut fingerprints = ColumnBuffer::uint8_with_capacity(total_fields);
+		let mut field_indices = ColumnBuffer::uint2_with_capacity(total_fields);
+		let mut names = ColumnBuffer::utf8_with_capacity(total_fields);
+		let mut types = ColumnBuffer::uint1_with_capacity(total_fields);
+		let mut constraint_types = ColumnBuffer::uint1_with_capacity(total_fields);
+		let mut constraint_p1s = ColumnBuffer::uint4_with_capacity(total_fields);
+		let mut constraint_p2s = ColumnBuffer::uint4_with_capacity(total_fields);
+		let mut offsets = ColumnBuffer::uint4_with_capacity(total_fields);
+		let mut sizes = ColumnBuffer::uint4_with_capacity(total_fields);
+		let mut aligns = ColumnBuffer::uint1_with_capacity(total_fields);
 
 		for shape in shapes {
 			let fingerprint = *shape.fingerprint();
@@ -80,46 +80,16 @@ impl BaseVTable for SystemShapeFields {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("fingerprint"),
-				data: fingerprints,
-			},
-			Column {
-				name: Fragment::internal("field_index"),
-				data: field_indices,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
-			Column {
-				name: Fragment::internal("type"),
-				data: types,
-			},
-			Column {
-				name: Fragment::internal("constraint_type"),
-				data: constraint_types,
-			},
-			Column {
-				name: Fragment::internal("constraint_p1"),
-				data: constraint_p1s,
-			},
-			Column {
-				name: Fragment::internal("constraint_p2"),
-				data: constraint_p2s,
-			},
-			Column {
-				name: Fragment::internal("offset"),
-				data: offsets,
-			},
-			Column {
-				name: Fragment::internal("size"),
-				data: sizes,
-			},
-			Column {
-				name: Fragment::internal("align"),
-				data: aligns,
-			},
+			ColumnWithName::new(Fragment::internal("fingerprint"), fingerprints),
+			ColumnWithName::new(Fragment::internal("field_index"), field_indices),
+			ColumnWithName::new(Fragment::internal("name"), names),
+			ColumnWithName::new(Fragment::internal("type"), types),
+			ColumnWithName::new(Fragment::internal("constraint_type"), constraint_types),
+			ColumnWithName::new(Fragment::internal("constraint_p1"), constraint_p1s),
+			ColumnWithName::new(Fragment::internal("constraint_p2"), constraint_p2s),
+			ColumnWithName::new(Fragment::internal("offset"), offsets),
+			ColumnWithName::new(Fragment::internal("size"), sizes),
+			ColumnWithName::new(Fragment::internal("align"), aligns),
 		];
 
 		self.exhausted = true;

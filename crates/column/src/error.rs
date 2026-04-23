@@ -15,7 +15,7 @@ pub enum ColumnError {
 		chunk_count: usize,
 	},
 
-	#[error("{operation}: empty chunked array")]
+	#[error("{operation}: empty column_chunks array")]
 	EmptyChunkedArray {
 		operation: &'static str,
 	},
@@ -37,22 +37,22 @@ pub enum ColumnError {
 	#[error("take: indices must be U8/U16/U32/U64 or I32/I64")]
 	TakeIndicesWrongWidth,
 
-	#[error("CanonicalArray::from_column_data: {variant} not yet supported")]
+	#[error("Canonical::from_column_buffer: {variant} not yet supported")]
 	FromColumnDataUnsupported {
 		variant: &'static str,
 	},
 
-	#[error("CanonicalArray::to_column_data: unexpected VarLen type {ty}")]
+	#[error("Canonical::to_column_buffer: unexpected VarLen type {ty}")]
 	ToColumnDataUnexpectedVarLen {
 		ty: Type,
 	},
 
-	#[error("CanonicalArray::to_column_data: unexpected BigNum type {ty}")]
+	#[error("Canonical::to_column_buffer: unexpected BigNum type {ty}")]
 	ToColumnDataUnexpectedBigNum {
 		ty: Type,
 	},
 
-	#[error("CanonicalArray::to_column_data: invalid UTF-8: {reason}")]
+	#[error("Canonical::to_column_buffer: invalid UTF-8: {reason}")]
 	ToColumnDataInvalidUtf8 {
 		reason: String,
 	},
@@ -114,7 +114,7 @@ impl IntoDiagnostic for ColumnError {
 			} => Diagnostic {
 				code: "COL_002".to_string(),
 				rql: None,
-				message: format!("{operation}: empty chunked array"),
+				message: format!("{operation}: empty column_chunks array"),
 				column: None,
 				fragment: Fragment::None,
 				label: None,
@@ -186,7 +186,7 @@ impl IntoDiagnostic for ColumnError {
 			} => Diagnostic {
 				code: "COL_007".to_string(),
 				rql: None,
-				message: format!("CanonicalArray::from_column_data: {variant} not yet supported"),
+				message: format!("Canonical::from_column_buffer: {variant} not yet supported"),
 				column: None,
 				fragment: Fragment::None,
 				label: Some(format!("{variant} column")),
@@ -201,7 +201,7 @@ impl IntoDiagnostic for ColumnError {
 			} => Diagnostic {
 				code: "COL_008".to_string(),
 				rql: None,
-				message: format!("CanonicalArray::to_column_data: unexpected VarLen type {ty}"),
+				message: format!("Canonical::to_column_buffer: unexpected VarLen type {ty}"),
 				column: None,
 				fragment: Fragment::None,
 				label: None,
@@ -216,7 +216,7 @@ impl IntoDiagnostic for ColumnError {
 			} => Diagnostic {
 				code: "COL_009".to_string(),
 				rql: None,
-				message: format!("CanonicalArray::to_column_data: unexpected BigNum type {ty}"),
+				message: format!("Canonical::to_column_buffer: unexpected BigNum type {ty}"),
 				column: None,
 				fragment: Fragment::None,
 				label: None,
@@ -231,7 +231,7 @@ impl IntoDiagnostic for ColumnError {
 			} => Diagnostic {
 				code: "COL_010".to_string(),
 				rql: None,
-				message: format!("CanonicalArray::to_column_data: invalid UTF-8: {reason}"),
+				message: format!("Canonical::to_column_buffer: invalid UTF-8: {reason}"),
 				column: None,
 				fragment: Fragment::None,
 				label: None,

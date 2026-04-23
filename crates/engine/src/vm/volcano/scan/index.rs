@@ -129,7 +129,7 @@ impl QueryNode for IndexScanNode {
 		// 	let row_number_column = Column::( {
 		// 		source: Fragment::internal(&self.table.name),
 		// 		name: Fragment::internal(ROW_NUMBER_COLUMN_NAME),
-		// 		data: ColumnData::row_number(row_numbers),
+		// 		data: ColumnBuffer::row_number(row_numbers),
 		// 	});
 		// 	columns.0.push(row_number_column);
 		// }

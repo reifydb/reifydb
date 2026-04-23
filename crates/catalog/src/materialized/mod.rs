@@ -531,7 +531,7 @@ mod config_validation_tests {
 
 	#[test]
 	fn test_set_cdc_ttl_to_typed_null_is_accepted() {
-		// Operators can "unset" the TTL by writing Value::None — restoring forever-retention.
+		// Operators can "unset" the TTL by writing Value::None - restoring forever-retention.
 		let catalog = MaterializedCatalog::new();
 		catalog.set_config(
 			ConfigKey::CdcTtlDuration,

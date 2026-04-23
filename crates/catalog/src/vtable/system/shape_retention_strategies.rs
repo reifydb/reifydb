@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::catalog::{shape::ShapeId, vtable::VTable},
 	retention::{CleanupMode, RetentionStrategy},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
@@ -51,11 +51,11 @@ impl BaseVTable for SystemShapeRetentionStrategies {
 
 		let strategies = CatalogStore::list_shape_retention_strategies(txn)?;
 
-		let mut ids = ColumnData::uint8_with_capacity(strategies.len());
-		let mut shape_types = ColumnData::utf8_with_capacity(strategies.len());
-		let mut strategy_types = ColumnData::utf8_with_capacity(strategies.len());
-		let mut cleanup_modes = ColumnData::utf8_with_capacity(strategies.len());
-		let mut values = ColumnData::uint8_with_capacity(strategies.len());
+		let mut ids = ColumnBuffer::uint8_with_capacity(strategies.len());
+		let mut shape_types = ColumnBuffer::utf8_with_capacity(strategies.len());
+		let mut strategy_types = ColumnBuffer::utf8_with_capacity(strategies.len());
+		let mut cleanup_modes = ColumnBuffer::utf8_with_capacity(strategies.len());
+		let mut values = ColumnBuffer::uint8_with_capacity(strategies.len());
 
 		for entry in strategies {
 			let (shape_id, shape_type) = match entry.shape {
@@ -92,26 +92,11 @@ impl BaseVTable for SystemShapeRetentionStrategies {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("shape_id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("shape_type"),
-				data: shape_types,
-			},
-			Column {
-				name: Fragment::internal("strategy_type"),
-				data: strategy_types,
-			},
-			Column {
-				name: Fragment::internal("cleanup_mode"),
-				data: cleanup_modes,
-			},
-			Column {
-				name: Fragment::internal("value"),
-				data: values,
-			},
+			ColumnWithName::new(Fragment::internal("shape_id"), ids),
+			ColumnWithName::new(Fragment::internal("shape_type"), shape_types),
+			ColumnWithName::new(Fragment::internal("strategy_type"), strategy_types),
+			ColumnWithName::new(Fragment::internal("cleanup_mode"), cleanup_modes),
+			ColumnWithName::new(Fragment::internal("value"), values),
 		];
 
 		self.exhausted = true;

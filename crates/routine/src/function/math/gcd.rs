@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -24,17 +24,17 @@ impl Gcd {
 	}
 }
 
-fn numeric_to_i64(data: &ColumnData, i: usize) -> Option<i64> {
+fn numeric_to_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int4(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int8(c) => c.get(i).copied(),
-		ColumnData::Int16(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint8(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int8(c) => c.get(i).copied(),
+		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i64),
 		_ => None,
 	}
 }
@@ -122,7 +122,7 @@ impl Function for Gcd {
 			}
 		}
 
-		let result_data = ColumnData::int8_with_bitvec(result, res_bitvec);
+		let result_data = ColumnBuffer::int8_with_bitvec(result, res_bitvec);
 		let combined_bitvec = match (a_bitvec, b_bitvec) {
 			(Some(a), Some(b)) => Some(a.and(b)),
 			(Some(a), None) => Some(a.clone()),
@@ -131,7 +131,7 @@ impl Function for Gcd {
 		};
 
 		let final_data = if let Some(bv) = combined_bitvec {
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv,
 			}
@@ -139,6 +139,6 @@ impl Function for Gcd {
 			result_data
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

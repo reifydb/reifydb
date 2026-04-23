@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -76,8 +76,8 @@ impl BaseVTable for SystemFlowNodeTypes {
 			return Ok(None);
 		}
 
-		let mut ids = ColumnData::uint1_with_capacity(FLOW_NODE_TYPE_NAMES.len());
-		let mut names = ColumnData::utf8_with_capacity(FLOW_NODE_TYPE_NAMES.len());
+		let mut ids = ColumnBuffer::uint1_with_capacity(FLOW_NODE_TYPE_NAMES.len());
+		let mut names = ColumnBuffer::utf8_with_capacity(FLOW_NODE_TYPE_NAMES.len());
 
 		for (i, name) in FLOW_NODE_TYPE_NAMES.iter().enumerate() {
 			ids.push(i as u8);
@@ -85,14 +85,8 @@ impl BaseVTable for SystemFlowNodeTypes {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("name"), names),
 		];
 
 		self.exhausted = true;

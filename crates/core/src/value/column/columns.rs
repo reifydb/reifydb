@@ -23,7 +23,7 @@ use crate::{
 		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
 	},
 	row::Row,
-	value::column::{Column, ColumnData, headers::ColumnHeaders},
+	value::column::{ColumnBuffer, ColumnWithName, headers::ColumnHeaders},
 };
 
 #[derive(Debug, Clone)]
@@ -31,11 +31,11 @@ pub struct Columns {
 	pub row_numbers: CowVec<RowNumber>,
 	pub created_at: CowVec<DateTime>,
 	pub updated_at: CowVec<DateTime>,
-	pub columns: CowVec<Column>,
+	pub columns: CowVec<ColumnWithName>,
 }
 
 impl Deref for Columns {
-	type Target = [Column];
+	type Target = [ColumnWithName];
 
 	fn deref(&self) -> &Self::Target {
 		self.columns.deref()
@@ -43,7 +43,7 @@ impl Deref for Columns {
 }
 
 impl Index<usize> for Columns {
-	type Output = Column;
+	type Output = ColumnWithName;
 
 	fn index(&self, index: usize) -> &Self::Output {
 		self.columns.index(index)
@@ -63,40 +63,40 @@ impl Columns {
 		let data = match value {
 			Value::None {
 				..
-			} => ColumnData::none_typed(Type::Boolean, 1),
-			Value::Boolean(v) => ColumnData::bool([v]),
-			Value::Float4(v) => ColumnData::float4([v.into()]),
-			Value::Float8(v) => ColumnData::float8([v.into()]),
-			Value::Int1(v) => ColumnData::int1([v]),
-			Value::Int2(v) => ColumnData::int2([v]),
-			Value::Int4(v) => ColumnData::int4([v]),
-			Value::Int8(v) => ColumnData::int8([v]),
-			Value::Int16(v) => ColumnData::int16([v]),
-			Value::Utf8(v) => ColumnData::utf8([v]),
-			Value::Uint1(v) => ColumnData::uint1([v]),
-			Value::Uint2(v) => ColumnData::uint2([v]),
-			Value::Uint4(v) => ColumnData::uint4([v]),
-			Value::Uint8(v) => ColumnData::uint8([v]),
-			Value::Uint16(v) => ColumnData::uint16([v]),
-			Value::Date(v) => ColumnData::date([v]),
-			Value::DateTime(v) => ColumnData::datetime([v]),
-			Value::Time(v) => ColumnData::time([v]),
-			Value::Duration(v) => ColumnData::duration([v]),
-			Value::IdentityId(v) => ColumnData::identity_id([v]),
-			Value::Uuid4(v) => ColumnData::uuid4([v]),
-			Value::Uuid7(v) => ColumnData::uuid7([v]),
-			Value::Blob(v) => ColumnData::blob([v]),
-			Value::Int(v) => ColumnData::int(vec![v]),
-			Value::Uint(v) => ColumnData::uint(vec![v]),
-			Value::Decimal(v) => ColumnData::decimal(vec![v]),
-			Value::DictionaryId(v) => ColumnData::dictionary_id(vec![v]),
-			Value::Any(v) => ColumnData::any(vec![v]),
-			Value::Type(v) => ColumnData::any(vec![Box::new(Value::Type(v))]),
-			Value::List(v) => ColumnData::any(vec![Box::new(Value::List(v))]),
-			Value::Record(v) => ColumnData::any(vec![Box::new(Value::Record(v))]),
-			Value::Tuple(v) => ColumnData::any(vec![Box::new(Value::Tuple(v))]),
+			} => ColumnBuffer::none_typed(Type::Boolean, 1),
+			Value::Boolean(v) => ColumnBuffer::bool([v]),
+			Value::Float4(v) => ColumnBuffer::float4([v.into()]),
+			Value::Float8(v) => ColumnBuffer::float8([v.into()]),
+			Value::Int1(v) => ColumnBuffer::int1([v]),
+			Value::Int2(v) => ColumnBuffer::int2([v]),
+			Value::Int4(v) => ColumnBuffer::int4([v]),
+			Value::Int8(v) => ColumnBuffer::int8([v]),
+			Value::Int16(v) => ColumnBuffer::int16([v]),
+			Value::Utf8(v) => ColumnBuffer::utf8([v]),
+			Value::Uint1(v) => ColumnBuffer::uint1([v]),
+			Value::Uint2(v) => ColumnBuffer::uint2([v]),
+			Value::Uint4(v) => ColumnBuffer::uint4([v]),
+			Value::Uint8(v) => ColumnBuffer::uint8([v]),
+			Value::Uint16(v) => ColumnBuffer::uint16([v]),
+			Value::Date(v) => ColumnBuffer::date([v]),
+			Value::DateTime(v) => ColumnBuffer::datetime([v]),
+			Value::Time(v) => ColumnBuffer::time([v]),
+			Value::Duration(v) => ColumnBuffer::duration([v]),
+			Value::IdentityId(v) => ColumnBuffer::identity_id([v]),
+			Value::Uuid4(v) => ColumnBuffer::uuid4([v]),
+			Value::Uuid7(v) => ColumnBuffer::uuid7([v]),
+			Value::Blob(v) => ColumnBuffer::blob([v]),
+			Value::Int(v) => ColumnBuffer::int(vec![v]),
+			Value::Uint(v) => ColumnBuffer::uint(vec![v]),
+			Value::Decimal(v) => ColumnBuffer::decimal(vec![v]),
+			Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
+			Value::Any(v) => ColumnBuffer::any(vec![v]),
+			Value::Type(v) => ColumnBuffer::any(vec![Box::new(Value::Type(v))]),
+			Value::List(v) => ColumnBuffer::any(vec![Box::new(Value::List(v))]),
+			Value::Record(v) => ColumnBuffer::any(vec![Box::new(Value::Record(v))]),
+			Value::Tuple(v) => ColumnBuffer::any(vec![Box::new(Value::Tuple(v))]),
 		};
-		let column = Column {
+		let column = ColumnWithName {
 			name: Fragment::internal("value"),
 			data,
 		};
@@ -121,7 +121,7 @@ impl Columns {
 		self.columns[0].data().get_value(0)
 	}
 
-	pub fn new(columns: Vec<Column>) -> Self {
+	pub fn new(columns: Vec<ColumnWithName>) -> Self {
 		let n = columns.first().map_or(0, |c| c.data().len());
 		assert!(columns.iter().all(|c| c.data().len() == n));
 
@@ -134,7 +134,7 @@ impl Columns {
 	}
 
 	pub fn with_system_columns(
-		columns: Vec<Column>,
+		columns: Vec<ColumnWithName>,
 		row_numbers: Vec<RowNumber>,
 		created_at: Vec<DateTime>,
 		updated_at: Vec<DateTime>,
@@ -161,41 +161,41 @@ impl Columns {
 			let data = match value {
 				Value::None {
 					..
-				} => ColumnData::none_typed(Type::Boolean, 1),
-				Value::Boolean(v) => ColumnData::bool([v]),
-				Value::Float4(v) => ColumnData::float4([v.into()]),
-				Value::Float8(v) => ColumnData::float8([v.into()]),
-				Value::Int1(v) => ColumnData::int1([v]),
-				Value::Int2(v) => ColumnData::int2([v]),
-				Value::Int4(v) => ColumnData::int4([v]),
-				Value::Int8(v) => ColumnData::int8([v]),
-				Value::Int16(v) => ColumnData::int16([v]),
-				Value::Utf8(v) => ColumnData::utf8([v.clone()]),
-				Value::Uint1(v) => ColumnData::uint1([v]),
-				Value::Uint2(v) => ColumnData::uint2([v]),
-				Value::Uint4(v) => ColumnData::uint4([v]),
-				Value::Uint8(v) => ColumnData::uint8([v]),
-				Value::Uint16(v) => ColumnData::uint16([v]),
-				Value::Date(v) => ColumnData::date([v]),
-				Value::DateTime(v) => ColumnData::datetime([v]),
-				Value::Time(v) => ColumnData::time([v]),
-				Value::Duration(v) => ColumnData::duration([v]),
-				Value::IdentityId(v) => ColumnData::identity_id([v]),
-				Value::Uuid4(v) => ColumnData::uuid4([v]),
-				Value::Uuid7(v) => ColumnData::uuid7([v]),
-				Value::Blob(v) => ColumnData::blob([v.clone()]),
-				Value::Int(v) => ColumnData::int(vec![v]),
-				Value::Uint(v) => ColumnData::uint(vec![v]),
-				Value::Decimal(v) => ColumnData::decimal(vec![v]),
-				Value::DictionaryId(v) => ColumnData::dictionary_id(vec![v]),
-				Value::Type(t) => ColumnData::any(vec![Box::new(Value::Type(t))]),
-				Value::Any(v) => ColumnData::any(vec![v]),
-				Value::List(v) => ColumnData::any(vec![Box::new(Value::List(v))]),
-				Value::Record(v) => ColumnData::any(vec![Box::new(Value::Record(v))]),
-				Value::Tuple(v) => ColumnData::any(vec![Box::new(Value::Tuple(v))]),
+				} => ColumnBuffer::none_typed(Type::Boolean, 1),
+				Value::Boolean(v) => ColumnBuffer::bool([v]),
+				Value::Float4(v) => ColumnBuffer::float4([v.into()]),
+				Value::Float8(v) => ColumnBuffer::float8([v.into()]),
+				Value::Int1(v) => ColumnBuffer::int1([v]),
+				Value::Int2(v) => ColumnBuffer::int2([v]),
+				Value::Int4(v) => ColumnBuffer::int4([v]),
+				Value::Int8(v) => ColumnBuffer::int8([v]),
+				Value::Int16(v) => ColumnBuffer::int16([v]),
+				Value::Utf8(v) => ColumnBuffer::utf8([v.clone()]),
+				Value::Uint1(v) => ColumnBuffer::uint1([v]),
+				Value::Uint2(v) => ColumnBuffer::uint2([v]),
+				Value::Uint4(v) => ColumnBuffer::uint4([v]),
+				Value::Uint8(v) => ColumnBuffer::uint8([v]),
+				Value::Uint16(v) => ColumnBuffer::uint16([v]),
+				Value::Date(v) => ColumnBuffer::date([v]),
+				Value::DateTime(v) => ColumnBuffer::datetime([v]),
+				Value::Time(v) => ColumnBuffer::time([v]),
+				Value::Duration(v) => ColumnBuffer::duration([v]),
+				Value::IdentityId(v) => ColumnBuffer::identity_id([v]),
+				Value::Uuid4(v) => ColumnBuffer::uuid4([v]),
+				Value::Uuid7(v) => ColumnBuffer::uuid7([v]),
+				Value::Blob(v) => ColumnBuffer::blob([v.clone()]),
+				Value::Int(v) => ColumnBuffer::int(vec![v]),
+				Value::Uint(v) => ColumnBuffer::uint(vec![v]),
+				Value::Decimal(v) => ColumnBuffer::decimal(vec![v]),
+				Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
+				Value::Type(t) => ColumnBuffer::any(vec![Box::new(Value::Type(t))]),
+				Value::Any(v) => ColumnBuffer::any(vec![v]),
+				Value::List(v) => ColumnBuffer::any(vec![Box::new(Value::List(v))]),
+				Value::Record(v) => ColumnBuffer::any(vec![Box::new(Value::Record(v))]),
+				Value::Tuple(v) => ColumnBuffer::any(vec![Box::new(Value::Tuple(v))]),
 			};
 
-			let column = Column {
+			let column = ColumnWithName {
 				name: Fragment::internal(name.to_string()),
 				data,
 			};
@@ -216,9 +216,9 @@ impl Columns {
 		for (i, name) in headers.columns.iter().enumerate() {
 			if i < self.len() {
 				let column = &mut self[i];
-				let data = mem::replace(column.data_mut(), ColumnData::none_typed(Type::Boolean, 0));
+				let data = mem::replace(column.data_mut(), ColumnBuffer::none_typed(Type::Boolean, 0));
 
-				*column = Column {
+				*column = ColumnWithName {
 					name: name.clone(),
 					data,
 				};
@@ -255,7 +255,7 @@ impl Columns {
 		self.iter().map(|c| c.data().get_value(i)).collect()
 	}
 
-	pub fn column(&self, name: &str) -> Option<&Column> {
+	pub fn column(&self, name: &str) -> Option<&ColumnWithName> {
 		self.iter().find(|col| col.name().text() == name)
 	}
 
@@ -277,16 +277,16 @@ impl Columns {
 }
 
 impl IntoIterator for Columns {
-	type Item = Column;
-	type IntoIter = std::vec::IntoIter<Column>;
+	type Item = ColumnWithName;
+	type IntoIter = std::vec::IntoIter<ColumnWithName>;
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.columns.into_iter()
 	}
 }
 
-impl Column {
-	pub fn extend(&mut self, other: Column) -> Result<()> {
+impl ColumnWithName {
+	pub fn extend(&mut self, other: ColumnWithName) -> Result<()> {
 		self.data_mut().extend(other.data().clone())
 	}
 }
@@ -295,11 +295,11 @@ impl Columns {
 	pub fn from_rows(names: &[&str], result_rows: &[Vec<Value>]) -> Self {
 		let column_count = names.len();
 
-		let mut columns: Vec<Column> = names
+		let mut columns: Vec<ColumnWithName> = names
 			.iter()
-			.map(|name| Column {
+			.map(|name| ColumnWithName {
 				name: Fragment::internal(name.to_string()),
-				data: ColumnData::none_typed(Type::Boolean, 0),
+				data: ColumnBuffer::none_typed(Type::Boolean, 0),
 			})
 			.collect();
 
@@ -320,11 +320,11 @@ impl Columns {
 	) -> Self {
 		let column_count = names.len();
 
-		let mut columns: Vec<Column> = names
+		let mut columns: Vec<ColumnWithName> = names
 			.iter()
-			.map(|name| Column {
+			.map(|name| ColumnWithName {
 				name: Fragment::internal(name.to_string()),
-				data: ColumnData::none_typed(Type::Boolean, 0),
+				data: ColumnBuffer::none_typed(Type::Boolean, 0),
 			})
 			.collect();
 
@@ -357,12 +357,12 @@ impl Columns {
 
 	/// Create empty Columns (0 rows) with shape from a Table
 	pub fn from_table(table: &Table) -> Self {
-		let columns: Vec<Column> = table
+		let columns: Vec<ColumnWithName> = table
 			.columns
 			.iter()
-			.map(|col| Column {
+			.map(|col| ColumnWithName {
 				name: Fragment::internal(&col.name),
-				data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+				data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
 			})
 			.collect();
 
@@ -376,12 +376,12 @@ impl Columns {
 
 	/// Create empty Columns (0 rows) with shape from a View
 	pub fn from_view(view: &View) -> Self {
-		let columns: Vec<Column> = view
+		let columns: Vec<ColumnWithName> = view
 			.columns()
 			.iter()
-			.map(|col| Column {
+			.map(|col| ColumnWithName {
 				name: Fragment::internal(&col.name),
-				data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+				data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
 			})
 			.collect();
 
@@ -396,14 +396,14 @@ impl Columns {
 	pub fn from_ringbuffer(ringbuffer: &ResolvedRingBuffer) -> Self {
 		let _source = ringbuffer.clone();
 
-		let columns: Vec<Column> = ringbuffer
+		let columns: Vec<ColumnWithName> = ringbuffer
 			.columns()
 			.iter()
 			.map(|col| {
 				let column_ident = Fragment::internal(&col.name);
-				Column {
+				ColumnWithName {
 					name: column_ident,
-					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+					data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
 				}
 			})
 			.collect();
@@ -428,15 +428,15 @@ impl Columns {
 			return Columns::empty();
 		}
 
-		let new_columns: Vec<Column> = self
+		let new_columns: Vec<ColumnWithName> = self
 			.columns
 			.iter()
 			.map(|col| {
-				let mut new_data = ColumnData::with_capacity(col.data().get_type(), indices.len());
+				let mut new_data = ColumnBuffer::with_capacity(col.data().get_type(), indices.len());
 				for &idx in indices {
 					new_data.push_value(col.data().get_value(idx));
 				}
-				Column {
+				ColumnWithName {
 					name: col.name.clone(),
 					data: new_data,
 				}
@@ -541,7 +541,7 @@ impl Columns {
 	/// Project to a subset of columns by name, preserving the order of the provided names.
 	/// Columns not found in self are silently skipped.
 	pub fn project_by_names(&self, names: &[String]) -> Columns {
-		let new_columns: Vec<Column> = names
+		let new_columns: Vec<ColumnWithName> = names
 			.iter()
 			.filter_map(|name| self.columns.iter().find(|c| c.name().text() == name.as_str()).cloned())
 			.collect();
@@ -588,14 +588,14 @@ impl Columns {
 			};
 
 			let mut data = if column_type.is_option() {
-				ColumnData::none_typed(column_type.clone(), 0)
+				ColumnBuffer::none_typed(column_type.clone(), 0)
 			} else {
-				ColumnData::with_capacity(column_type.clone(), 1)
+				ColumnBuffer::with_capacity(column_type.clone(), 1)
 			};
 			data.push_value(value);
 
 			if column_type == Type::DictionaryId
-				&& let ColumnData::DictionaryId(container) = &mut data
+				&& let ColumnBuffer::DictionaryId(container) = &mut data
 				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
 			{
 				container.set_dictionary_id(*dict_id);
@@ -603,7 +603,7 @@ impl Columns {
 
 			let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
 
-			columns.push(Column {
+			columns.push(ColumnWithName {
 				name: Fragment::internal(name),
 				data,
 			});

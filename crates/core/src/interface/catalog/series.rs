@@ -10,7 +10,7 @@ use crate::{
 		id::{NamespaceId, SeriesId},
 		key::PrimaryKey,
 	},
-	value::column::data::ColumnData,
+	value::column::buffer::ColumnBuffer,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -165,18 +165,18 @@ impl Series {
 		}
 	}
 
-	/// Build a ColumnData from u64 key values using the proper key column type.
-	pub fn key_column_data(&self, keys: Vec<u64>) -> ColumnData {
+	/// Build a ColumnBuffer from u64 key values using the proper key column type.
+	pub fn key_column_data(&self, keys: Vec<u64>) -> ColumnBuffer {
 		let key_type = self.key_column_type();
 		match &key_type {
 			Some(ty) => {
-				let mut data = ColumnData::with_capacity(ty.clone(), keys.len());
+				let mut data = ColumnBuffer::with_capacity(ty.clone(), keys.len());
 				for k in keys {
 					data.push_value(self.key_from_u64(k));
 				}
 				data
 			}
-			None => ColumnData::uint8(keys),
+			None => ColumnBuffer::uint8(keys),
 		}
 	}
 

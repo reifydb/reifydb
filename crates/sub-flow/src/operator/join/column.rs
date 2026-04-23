@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
@@ -83,22 +83,16 @@ impl JoinedColumnsBuilder {
 
 		// Add left columns - single value from left_idx
 		for left_col in left.columns.iter() {
-			let mut col_data = ColumnData::with_capacity(left_col.data().get_type(), 1);
+			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), 1);
 			col_data.push_value(left_col.data().get_value(left_idx));
-			result_columns.push(Column {
-				name: left_col.name.clone(),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
 		}
 
 		// Add right columns - single value from right_idx
 		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), 1);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), 1);
 			col_data.push_value(right_col.data().get_value(right_idx));
-			result_columns.push(Column {
-				name: Fragment::internal(aliased_name),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
 		Columns {
@@ -127,26 +121,20 @@ impl JoinedColumnsBuilder {
 		// Add left columns - duplicate the left row value for each right row
 		for left_col in left.columns.iter() {
 			let left_value = left_col.data().get_value(left_idx);
-			let mut col_data = ColumnData::with_capacity(left_col.data().get_type(), right_count);
+			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), right_count);
 			for _ in 0..right_count {
 				col_data.push_value(left_value.clone());
 			}
-			result_columns.push(Column {
-				name: left_col.name.clone(),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
 		}
 
 		// Add right columns - copy all values from right
 		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), right_count);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), right_count);
 			for row_idx in 0..right_count {
 				col_data.push_value(right_col.data().get_value(row_idx));
 			}
-			result_columns.push(Column {
-				name: Fragment::internal(aliased_name),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
 		Columns {
@@ -174,27 +162,21 @@ impl JoinedColumnsBuilder {
 
 		// Add left columns - copy all values from left
 		for left_col in left.columns.iter() {
-			let mut col_data = ColumnData::with_capacity(left_col.data().get_type(), left_count);
+			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), left_count);
 			for row_idx in 0..left_count {
 				col_data.push_value(left_col.data().get_value(row_idx));
 			}
-			result_columns.push(Column {
-				name: left_col.name.clone(),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
 		}
 
 		// Add right columns - duplicate the right row value for each left row
 		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
 			let right_value = right_col.data().get_value(right_idx);
-			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), left_count);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), left_count);
 			for _ in 0..left_count {
 				col_data.push_value(right_value.clone());
 			}
-			result_columns.push(Column {
-				name: Fragment::internal(aliased_name),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
 		Columns {
@@ -225,31 +207,25 @@ impl JoinedColumnsBuilder {
 
 		// Add left columns - for each left index, duplicate value for all right rows
 		for left_col in left.columns.iter() {
-			let mut col_data = ColumnData::with_capacity(left_col.data().get_type(), result_count);
+			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), result_count);
 			for &left_idx in left_indices {
 				let left_value = left_col.data().get_value(left_idx);
 				for _ in 0..right_count {
 					col_data.push_value(left_value.clone());
 				}
 			}
-			result_columns.push(Column {
-				name: left_col.name.clone(),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
 		}
 
 		// Add right columns - repeat right rows at specified indices for each left row
 		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), result_count);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), result_count);
 			for _ in 0..left_count {
 				for &right_idx in right_indices {
 					col_data.push_value(right_col.data().get_value(right_idx));
 				}
 			}
-			result_columns.push(Column {
-				name: Fragment::internal(aliased_name),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
 		Columns {
@@ -282,22 +258,16 @@ impl JoinedColumnsBuilder {
 
 		// Add left columns - single value from left_idx
 		for left_col in left.columns.iter() {
-			let mut col_data = ColumnData::with_capacity(left_col.data().get_type(), 1);
+			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), 1);
 			col_data.push_value(left_col.data().get_value(left_idx));
-			result_columns.push(Column {
-				name: left_col.name.clone(),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
 		}
 
 		// Add right columns with Undefined values
 		for (right_col, aliased_name) in right_shape.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), 1);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), 1);
 			col_data.push_value(Value::none());
-			result_columns.push(Column {
-				name: Fragment::internal(aliased_name),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
 		Columns {
@@ -325,26 +295,20 @@ impl JoinedColumnsBuilder {
 
 		// Add left columns - values from specified indices
 		for left_col in left.columns.iter() {
-			let mut col_data = ColumnData::with_capacity(left_col.data().get_type(), count);
+			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), count);
 			for &idx in left_indices {
 				col_data.push_value(left_col.data().get_value(idx));
 			}
-			result_columns.push(Column {
-				name: left_col.name.clone(),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
 		}
 
 		// Add right columns with Undefined values
 		for (right_col, aliased_name) in right_shape.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), count);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), count);
 			for _ in 0..count {
 				col_data.push_value(Value::none());
 			}
-			result_columns.push(Column {
-				name: Fragment::internal(aliased_name),
-				data: col_data,
-			});
+			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
 		Columns {

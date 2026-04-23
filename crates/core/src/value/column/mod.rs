@@ -5,7 +5,6 @@ use std::fmt;
 
 use reifydb_type::{
 	fragment::Fragment,
-	storage::{Cow, Storage},
 	util::bitvec::BitVec,
 	value::{
 		dictionary::DictionaryEntryId,
@@ -14,26 +13,29 @@ use reifydb_type::{
 	},
 };
 
-use crate::value::column::data::ColumnData;
+use crate::value::column::{array::Column, buffer::ColumnBuffer};
 
+pub mod array;
+pub mod buffer;
 pub mod columns;
 pub mod compressed;
-pub mod data;
+pub mod encoding;
 pub mod frame;
 pub mod headers;
-#[allow(dead_code, unused_variables)]
-pub mod pool;
+pub mod mask;
+pub mod nones;
 pub mod push;
 pub mod row;
+pub mod stats;
 pub mod transform;
 pub mod view;
 
-pub struct Column<S: Storage = Cow> {
+pub struct ColumnWithName {
 	pub name: Fragment,
-	pub data: ColumnData<S>,
+	pub data: ColumnBuffer,
 }
 
-impl<S: Storage> Clone for Column<S> {
+impl Clone for ColumnWithName {
 	fn clone(&self) -> Self {
 		Self {
 			name: self.name.clone(),
@@ -42,23 +44,37 @@ impl<S: Storage> Clone for Column<S> {
 	}
 }
 
-impl<S: Storage> PartialEq for Column<S> {
+impl PartialEq for ColumnWithName {
 	fn eq(&self, other: &Self) -> bool {
 		self.name == other.name && self.data == other.data
 	}
 }
 
-impl fmt::Debug for Column<Cow> {
+impl fmt::Debug for ColumnWithName {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("Column").field("name", &self.name).field("data", &self.data).finish()
+		f.debug_struct("ColumnWithName").field("name", &self.name).field("data", &self.data).finish()
 	}
 }
 
-impl<S: Storage> Column<S> {
-	pub fn new(name: impl Into<Fragment>, data: ColumnData<S>) -> Self {
+impl ColumnWithName {
+	pub fn new(name: impl Into<Fragment>, data: ColumnBuffer) -> Self {
 		Self {
 			name: name.into(),
 			data,
+		}
+	}
+
+	// Build a named column from a polymorphic `Column` trait-object handle.
+	// Materializes via `to_canonical` + `to_buffer` (Arc-bumps the inner
+	// buffer when the `Column` is already canonical).
+	pub fn from_column(name: impl Into<Fragment>, column: Column) -> Self {
+		let buffer = column
+			.to_canonical()
+			.map(|c| c.to_buffer())
+			.unwrap_or_else(|_| panic!("ColumnWithName::from_column: to_canonical failed"));
+		Self {
+			name: name.into(),
+			data: buffer,
 		}
 	}
 
@@ -66,8 +82,8 @@ impl<S: Storage> Column<S> {
 		self.data.get_type()
 	}
 
-	pub fn with_new_data(&self, data: ColumnData<S>) -> Column<S> {
-		Column {
+	pub fn with_new_data(&self, data: ColumnBuffer) -> ColumnWithName {
+		ColumnWithName {
 			name: self.name.clone(),
 			data,
 		}
@@ -81,28 +97,32 @@ impl<S: Storage> Column<S> {
 		self.name.clone()
 	}
 
-	pub fn data(&self) -> &ColumnData<S> {
+	pub fn data(&self) -> &ColumnBuffer {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut ColumnData<S> {
+	pub fn data_mut(&mut self) -> &mut ColumnBuffer {
 		&mut self.data
 	}
 
-	/// Convert to a 'static lifetime version
-	pub fn to_static(&self) -> Column<S> {
-		Column {
-			name: self.name.clone(),
-			data: self.data.clone(),
-		}
+	// Return a polymorphic `Column` handle (trait-object wrapper around the
+	// canonical form of `self.data`). Use this when you need encoding-agnostic
+	// read operators (`filter`, `take`, `slice`, ...) or downcasting to
+	// specialized impls - compressed encodings live behind this boundary.
+	pub fn column(&self) -> Column {
+		Column::from_column_buffer(self.data.clone())
+	}
+
+	pub fn to_static(&self) -> ColumnWithName {
+		self.clone()
 	}
 }
 
-impl Column {
+impl ColumnWithName {
 	pub fn int1(name: impl Into<Fragment>, data: impl IntoIterator<Item = i8>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::int1(data),
+			data: ColumnBuffer::int1(data),
 		}
 	}
 
@@ -111,16 +131,16 @@ impl Column {
 		data: impl IntoIterator<Item = i8>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::int1_with_bitvec(data, bitvec),
+			data: ColumnBuffer::int1_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn int2(name: impl Into<Fragment>, data: impl IntoIterator<Item = i16>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::int2(data),
+			data: ColumnBuffer::int2(data),
 		}
 	}
 
@@ -129,16 +149,16 @@ impl Column {
 		data: impl IntoIterator<Item = i16>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::int2_with_bitvec(data, bitvec),
+			data: ColumnBuffer::int2_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn int4(name: impl Into<Fragment>, data: impl IntoIterator<Item = i32>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::int4(data),
+			data: ColumnBuffer::int4(data),
 		}
 	}
 
@@ -147,16 +167,16 @@ impl Column {
 		data: impl IntoIterator<Item = i32>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::int4_with_bitvec(data, bitvec),
+			data: ColumnBuffer::int4_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn int8(name: impl Into<Fragment>, data: impl IntoIterator<Item = i64>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::int8(data),
+			data: ColumnBuffer::int8(data),
 		}
 	}
 
@@ -165,16 +185,16 @@ impl Column {
 		data: impl IntoIterator<Item = i64>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::int8_with_bitvec(data, bitvec),
+			data: ColumnBuffer::int8_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn int16(name: impl Into<Fragment>, data: impl IntoIterator<Item = i128>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::int16(data),
+			data: ColumnBuffer::int16(data),
 		}
 	}
 
@@ -183,16 +203,16 @@ impl Column {
 		data: impl IntoIterator<Item = i128>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::int16_with_bitvec(data, bitvec),
+			data: ColumnBuffer::int16_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn uint1(name: impl Into<Fragment>, data: impl IntoIterator<Item = u8>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uint1(data),
+			data: ColumnBuffer::uint1(data),
 		}
 	}
 
@@ -201,16 +221,16 @@ impl Column {
 		data: impl IntoIterator<Item = u8>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uint1_with_bitvec(data, bitvec),
+			data: ColumnBuffer::uint1_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn uint2(name: impl Into<Fragment>, data: impl IntoIterator<Item = u16>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uint2(data),
+			data: ColumnBuffer::uint2(data),
 		}
 	}
 
@@ -219,16 +239,16 @@ impl Column {
 		data: impl IntoIterator<Item = u16>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uint2_with_bitvec(data, bitvec),
+			data: ColumnBuffer::uint2_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn uint4(name: impl Into<Fragment>, data: impl IntoIterator<Item = u32>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uint4(data),
+			data: ColumnBuffer::uint4(data),
 		}
 	}
 
@@ -237,16 +257,16 @@ impl Column {
 		data: impl IntoIterator<Item = u32>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uint4_with_bitvec(data, bitvec),
+			data: ColumnBuffer::uint4_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn uint8(name: impl Into<Fragment>, data: impl IntoIterator<Item = u64>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uint8(data),
+			data: ColumnBuffer::uint8(data),
 		}
 	}
 
@@ -255,16 +275,16 @@ impl Column {
 		data: impl IntoIterator<Item = u64>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uint8_with_bitvec(data, bitvec),
+			data: ColumnBuffer::uint8_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn uint16(name: impl Into<Fragment>, data: impl IntoIterator<Item = u128>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uint16(data),
+			data: ColumnBuffer::uint16(data),
 		}
 	}
 
@@ -273,16 +293,16 @@ impl Column {
 		data: impl IntoIterator<Item = u128>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uint16_with_bitvec(data, bitvec),
+			data: ColumnBuffer::uint16_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn float4(name: impl Into<Fragment>, data: impl IntoIterator<Item = f32>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::float4(data),
+			data: ColumnBuffer::float4(data),
 		}
 	}
 
@@ -291,16 +311,16 @@ impl Column {
 		data: impl IntoIterator<Item = f32>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::float4_with_bitvec(data, bitvec),
+			data: ColumnBuffer::float4_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn float8(name: impl Into<Fragment>, data: impl IntoIterator<Item = f64>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::float8(data),
+			data: ColumnBuffer::float8(data),
 		}
 	}
 
@@ -309,16 +329,16 @@ impl Column {
 		data: impl IntoIterator<Item = f64>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::float8_with_bitvec(data, bitvec),
+			data: ColumnBuffer::float8_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn bool(name: impl Into<Fragment>, data: impl IntoIterator<Item = bool>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::bool(data),
+			data: ColumnBuffer::bool(data),
 		}
 	}
 
@@ -327,16 +347,16 @@ impl Column {
 		data: impl IntoIterator<Item = bool>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::bool_with_bitvec(data, bitvec),
+			data: ColumnBuffer::bool_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn utf8(name: impl Into<Fragment>, data: impl IntoIterator<Item = String>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::utf8(data),
+			data: ColumnBuffer::utf8(data),
 		}
 	}
 
@@ -345,16 +365,16 @@ impl Column {
 		data: impl IntoIterator<Item = String>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::utf8_with_bitvec(data, bitvec),
+			data: ColumnBuffer::utf8_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn uuid4(name: impl Into<Fragment>, data: impl IntoIterator<Item = Uuid4>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uuid4(data),
+			data: ColumnBuffer::uuid4(data),
 		}
 	}
 
@@ -363,16 +383,16 @@ impl Column {
 		data: impl IntoIterator<Item = Uuid4>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uuid4_with_bitvec(data, bitvec),
+			data: ColumnBuffer::uuid4_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn uuid7(name: impl Into<Fragment>, data: impl IntoIterator<Item = Uuid7>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uuid7(data),
+			data: ColumnBuffer::uuid7(data),
 		}
 	}
 
@@ -381,16 +401,16 @@ impl Column {
 		data: impl IntoIterator<Item = Uuid7>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::uuid7_with_bitvec(data, bitvec),
+			data: ColumnBuffer::uuid7_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn dictionary_id(name: impl Into<Fragment>, data: impl IntoIterator<Item = DictionaryEntryId>) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::dictionary_id(data),
+			data: ColumnBuffer::dictionary_id(data),
 		}
 	}
 
@@ -399,16 +419,16 @@ impl Column {
 		data: impl IntoIterator<Item = DictionaryEntryId>,
 		bitvec: impl Into<BitVec>,
 	) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::dictionary_id_with_bitvec(data, bitvec),
+			data: ColumnBuffer::dictionary_id_with_bitvec(data, bitvec),
 		}
 	}
 
 	pub fn undefined_typed(name: impl Into<Fragment>, ty: Type, row_count: usize) -> Self {
-		Column {
+		ColumnWithName {
 			name: name.into(),
-			data: ColumnData::none_typed(ty, row_count),
+			data: ColumnBuffer::none_typed(ty, row_count),
 		}
 	}
 }

@@ -5,9 +5,9 @@ use std::mem;
 
 use indexmap::IndexMap;
 use reifydb_core::value::column::{
-	Column,
+	ColumnWithName,
+	buffer::ColumnBuffer,
 	columns::Columns,
-	data::ColumnData,
 	view::group_by::{GroupByView, GroupKey},
 };
 use reifydb_type::{
@@ -78,7 +78,7 @@ impl Function for Sum {
 			results.push(Box::new(val1));
 		}
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), ColumnData::any(results))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::any(results))]))
 	}
 
 	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
@@ -132,55 +132,55 @@ impl Accumulator for SumAccumulator {
 		}
 
 		match data {
-			ColumnData::Int1(container) => {
+			ColumnBuffer::Int1(container) => {
 				sum_arm!(self, column, groups, container, i8, Value::Int1);
 				Ok(())
 			}
-			ColumnData::Int2(container) => {
+			ColumnBuffer::Int2(container) => {
 				sum_arm!(self, column, groups, container, i16, Value::Int2);
 				Ok(())
 			}
-			ColumnData::Int4(container) => {
+			ColumnBuffer::Int4(container) => {
 				sum_arm!(self, column, groups, container, i32, Value::Int4);
 				Ok(())
 			}
-			ColumnData::Int8(container) => {
+			ColumnBuffer::Int8(container) => {
 				sum_arm!(self, column, groups, container, i64, Value::Int8);
 				Ok(())
 			}
-			ColumnData::Int16(container) => {
+			ColumnBuffer::Int16(container) => {
 				sum_arm!(self, column, groups, container, i128, Value::Int16);
 				Ok(())
 			}
-			ColumnData::Uint1(container) => {
+			ColumnBuffer::Uint1(container) => {
 				sum_arm!(self, column, groups, container, u8, Value::Uint1);
 				Ok(())
 			}
-			ColumnData::Uint2(container) => {
+			ColumnBuffer::Uint2(container) => {
 				sum_arm!(self, column, groups, container, u16, Value::Uint2);
 				Ok(())
 			}
-			ColumnData::Uint4(container) => {
+			ColumnBuffer::Uint4(container) => {
 				sum_arm!(self, column, groups, container, u32, Value::Uint4);
 				Ok(())
 			}
-			ColumnData::Uint8(container) => {
+			ColumnBuffer::Uint8(container) => {
 				sum_arm!(self, column, groups, container, u64, Value::Uint8);
 				Ok(())
 			}
-			ColumnData::Uint16(container) => {
+			ColumnBuffer::Uint16(container) => {
 				sum_arm!(self, column, groups, container, u128, Value::Uint16);
 				Ok(())
 			}
-			ColumnData::Float4(container) => {
+			ColumnBuffer::Float4(container) => {
 				sum_arm!(self, column, groups, container, f32, Value::float4);
 				Ok(())
 			}
-			ColumnData::Float8(container) => {
+			ColumnBuffer::Float8(container) => {
 				sum_arm!(self, column, groups, container, f64, Value::float8);
 				Ok(())
 			}
-			ColumnData::Int {
+			ColumnBuffer::Int {
 				container,
 				..
 			} => {
@@ -203,7 +203,7 @@ impl Accumulator for SumAccumulator {
 				}
 				Ok(())
 			}
-			ColumnData::Uint {
+			ColumnBuffer::Uint {
 				container,
 				..
 			} => {
@@ -226,7 +226,7 @@ impl Accumulator for SumAccumulator {
 				}
 				Ok(())
 			}
-			ColumnData::Decimal {
+			ColumnBuffer::Decimal {
 				container,
 				..
 			} => {
@@ -258,10 +258,10 @@ impl Accumulator for SumAccumulator {
 		}
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnData), FunctionError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError> {
 		let ty = self.input_type.take().unwrap_or(Type::Int8);
 		let mut keys = Vec::with_capacity(self.sums.len());
-		let mut data = ColumnData::with_capacity(ty, self.sums.len());
+		let mut data = ColumnBuffer::with_capacity(ty, self.sums.len());
 
 		for (key, sum) in mem::take(&mut self.sums) {
 			keys.push(key);

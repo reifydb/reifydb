@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, time::Time, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -55,7 +55,7 @@ impl Function for TimeAdd {
 		let (dur_data, dur_bv) = dur_col.data().unwrap_option();
 
 		match (time_data, dur_data) {
-			(ColumnData::Time(time_container), ColumnData::Duration(dur_container)) => {
+			(ColumnBuffer::Time(time_container), ColumnBuffer::Duration(dur_container)) => {
 				let row_count = time_data.len();
 				let mut container = TemporalContainer::with_capacity(row_count);
 
@@ -77,21 +77,21 @@ impl Function for TimeAdd {
 					}
 				}
 
-				let mut result_data = ColumnData::Time(container);
+				let mut result_data = ColumnBuffer::Time(container);
 				if let Some(bv) = time_bv {
-					result_data = ColumnData::Option {
+					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),
 						bitvec: bv.clone(),
 					};
 				} else if let Some(bv) = dur_bv {
-					result_data = ColumnData::Option {
+					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),
 						bitvec: bv.clone(),
 					};
 				}
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
-			(ColumnData::Time(_), other) => Err(FunctionError::InvalidArgumentType {
+			(ColumnBuffer::Time(_), other) => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Duration],

@@ -7,7 +7,7 @@ use std::iter;
 
 use reifydb_core::{
 	interface::catalog::{column::Column, ringbuffer::RingBuffer, table::Table},
-	value::column::data::ColumnData,
+	value::column::buffer::ColumnBuffer,
 };
 use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
@@ -87,11 +87,11 @@ pub fn reorder_rows_trusted_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Resu
 
 /// Collect rows (params) into columnar format.
 ///
-/// Returns `Vec<ColumnData>` where each entry contains all values for that column.
-fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &str) -> Result<Vec<ColumnData>> {
+/// Returns `Vec<ColumnBuffer>` where each entry contains all values for that column.
+fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &str) -> Result<Vec<ColumnBuffer>> {
 	let num_cols = columns.len();
-	let mut column_data: Vec<ColumnData> =
-		columns.iter().map(|col| ColumnData::none_typed(col.constraint.get_type(), 0)).collect();
+	let mut column_data: Vec<ColumnBuffer> =
+		columns.iter().map(|col| ColumnBuffer::none_typed(col.constraint.get_type(), 0)).collect();
 
 	for params in rows {
 		match params {
@@ -144,7 +144,7 @@ fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &st
 }
 
 /// Convert columnar data back to row format.
-fn columns_to_rows(columns: &[ColumnData], num_rows: usize, num_cols: usize) -> Vec<Vec<Value>> {
+fn columns_to_rows(columns: &[ColumnBuffer], num_rows: usize, num_cols: usize) -> Vec<Vec<Value>> {
 	let mut result = Vec::with_capacity(num_rows);
 
 	for row_idx in 0..num_rows {

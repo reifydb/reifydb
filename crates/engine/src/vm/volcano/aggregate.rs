@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::{
 	error::CoreError,
-	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_routine::function::{Accumulator, FunctionContext, error::FunctionError, registry::Functions};
 use reifydb_rql::expression::Expression;
@@ -122,9 +122,9 @@ impl QueryNode for AggregateNode {
 					} else {
 						Some(group_key_order[0][col_idx].get_type())
 					};
-					let mut c = Column {
+					let mut c = ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
-						data: ColumnData::none_typed(
+						data: ColumnBuffer::none_typed(
 							first_key_type.unwrap_or(Type::Boolean),
 							0,
 						),
@@ -141,7 +141,7 @@ impl QueryNode for AggregateNode {
 				} => {
 					let (keys_out, mut data) = accumulator.finalize().unwrap();
 					align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
-					result_columns.push(Column {
+					result_columns.push(ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
 						data,
 					});
@@ -284,7 +284,7 @@ fn parse_keys_and_aggregates<'a>(
 	Ok((keys, projections))
 }
 
-fn align_column_data(group_key_order: &[Vec<Value>], keys: &[Vec<Value>], data: &mut ColumnData) -> Result<()> {
+fn align_column_data(group_key_order: &[Vec<Value>], keys: &[Vec<Value>], data: &mut ColumnBuffer) -> Result<()> {
 	let mut key_to_index = HashMap::new();
 	for (i, key) in keys.iter().enumerate() {
 		key_to_index.insert(key, i);

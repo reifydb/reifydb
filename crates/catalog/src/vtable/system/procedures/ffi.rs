@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{procedure::Procedure, vtable::VTable},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -45,12 +45,12 @@ impl BaseVTable for SystemProceduresFfi {
 			return Ok(None);
 		}
 
-		let mut id_col = ColumnData::uint8_with_capacity(0);
-		let mut ns_col = ColumnData::uint8_with_capacity(0);
-		let mut name_col = ColumnData::utf8_with_capacity(0);
-		let mut native_col = ColumnData::utf8_with_capacity(0);
-		let mut library_col = ColumnData::utf8_with_capacity(0);
-		let mut entry_col = ColumnData::utf8_with_capacity(0);
+		let mut id_col = ColumnBuffer::uint8_with_capacity(0);
+		let mut ns_col = ColumnBuffer::uint8_with_capacity(0);
+		let mut name_col = ColumnBuffer::utf8_with_capacity(0);
+		let mut native_col = ColumnBuffer::utf8_with_capacity(0);
+		let mut library_col = ColumnBuffer::utf8_with_capacity(0);
+		let mut entry_col = ColumnBuffer::utf8_with_capacity(0);
 
 		for entry in self.catalog.materialized.procedures.iter() {
 			if let Some(Procedure::Ffi {
@@ -73,30 +73,12 @@ impl BaseVTable for SystemProceduresFfi {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: id_col,
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: ns_col,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: name_col,
-			},
-			Column {
-				name: Fragment::internal("native_name"),
-				data: native_col,
-			},
-			Column {
-				name: Fragment::internal("library_path"),
-				data: library_col,
-			},
-			Column {
-				name: Fragment::internal("entry_symbol"),
-				data: entry_col,
-			},
+			ColumnWithName::new(Fragment::internal("id"), id_col),
+			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col),
+			ColumnWithName::new(Fragment::internal("name"), name_col),
+			ColumnWithName::new(Fragment::internal("native_name"), native_col),
+			ColumnWithName::new(Fragment::internal("library_path"), library_col),
+			ColumnWithName::new(Fragment::internal("entry_symbol"), entry_col),
 		];
 
 		self.exhausted = true;

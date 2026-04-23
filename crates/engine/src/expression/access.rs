@@ -4,14 +4,14 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	error::diagnostic::query::column_not_found, interface::identifier::ColumnShape, value::column::Column,
+	error::diagnostic::query::column_not_found, interface::identifier::ColumnShape, value::column::ColumnWithName,
 };
 use reifydb_rql::expression::AccessShapeExpression;
 use reifydb_type::{error, fragment::Fragment};
 
 use crate::{Result, expression::context::EvalContext};
 
-pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessShapeExpression) -> Result<Column> {
+pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessShapeExpression) -> Result<ColumnWithName> {
 	// Extract primitive name based on the ColumnShape type
 	let source = match &expr.column.shape {
 		ColumnShape::Qualified {

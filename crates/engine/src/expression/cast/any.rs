@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_type::{error::TypeError, fragment::LazyFragment, value::r#type::Type};
 
 use super::cast_column_data;
@@ -9,12 +9,12 @@ use crate::{Result, expression::context::EvalContext};
 
 pub fn from_any(
 	ctx: &EvalContext,
-	data: &ColumnData,
+	data: &ColumnBuffer,
 	target: Type,
 	lazy_fragment: impl LazyFragment + Clone,
-) -> Result<ColumnData> {
+) -> Result<ColumnBuffer> {
 	let any_container = match data {
-		ColumnData::Any(container) => container,
+		ColumnBuffer::Any(container) => container,
 		_ => {
 			return Err(TypeError::UnsupportedCast {
 				from: data.get_type(),
@@ -26,7 +26,7 @@ pub fn from_any(
 	};
 
 	if any_container.is_empty() {
-		return Ok(ColumnData::with_capacity(target.clone(), 0));
+		return Ok(ColumnBuffer::with_capacity(target.clone(), 0));
 	}
 
 	// First pass: validate all values can be cast to target type
@@ -43,7 +43,7 @@ pub fn from_any(
 		let value = &*any_container.data()[i];
 
 		// Try to cast this single value to validate it can be done
-		let single_column = ColumnData::from(value.clone());
+		let single_column = ColumnBuffer::from(value.clone());
 		match cast_column_data(ctx, &single_column, target.clone(), lazy_fragment.clone()) {
 			Ok(result) => temp_results.push(Some(result)),
 			Err(e) => {
@@ -55,7 +55,7 @@ pub fn from_any(
 
 	// Second pass: build the result container
 	// All values validated successfully, now we can build the result
-	let mut result = ColumnData::with_capacity(target, any_container.len());
+	let mut result = ColumnBuffer::with_capacity(target, any_container.len());
 
 	for temp_result in temp_results {
 		match temp_result {
@@ -67,98 +67,98 @@ pub fn from_any(
 				// Extract the single value from the casted column and add to result
 				// We know each casted_column has exactly one value
 				match &casted_column {
-					ColumnData::Bool(c) => {
+					ColumnBuffer::Bool(c) => {
 						if c.is_defined(0) {
 							result.push::<bool>(c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Int1(c) => {
+					ColumnBuffer::Int1(c) => {
 						if c.is_defined(0) {
 							result.push::<i8>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Int2(c) => {
+					ColumnBuffer::Int2(c) => {
 						if c.is_defined(0) {
 							result.push::<i16>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Int4(c) => {
+					ColumnBuffer::Int4(c) => {
 						if c.is_defined(0) {
 							result.push::<i32>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Int8(c) => {
+					ColumnBuffer::Int8(c) => {
 						if c.is_defined(0) {
 							result.push::<i64>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Int16(c) => {
+					ColumnBuffer::Int16(c) => {
 						if c.is_defined(0) {
 							result.push::<i128>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Uint1(c) => {
+					ColumnBuffer::Uint1(c) => {
 						if c.is_defined(0) {
 							result.push::<u8>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Uint2(c) => {
+					ColumnBuffer::Uint2(c) => {
 						if c.is_defined(0) {
 							result.push::<u16>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Uint4(c) => {
+					ColumnBuffer::Uint4(c) => {
 						if c.is_defined(0) {
 							result.push::<u32>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Uint8(c) => {
+					ColumnBuffer::Uint8(c) => {
 						if c.is_defined(0) {
 							result.push::<u64>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Uint16(c) => {
+					ColumnBuffer::Uint16(c) => {
 						if c.is_defined(0) {
 							result.push::<u128>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Float4(c) => {
+					ColumnBuffer::Float4(c) => {
 						if c.is_defined(0) {
 							result.push::<f32>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Float8(c) => {
+					ColumnBuffer::Float8(c) => {
 						if c.is_defined(0) {
 							result.push::<f64>(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Utf8 {
+					ColumnBuffer::Utf8 {
 						container: c,
 						..
 					} => {
@@ -168,7 +168,7 @@ pub fn from_any(
 							result.push_none();
 						}
 					}
-					ColumnData::Blob {
+					ColumnBuffer::Blob {
 						container: c,
 						..
 					} => {
@@ -178,56 +178,56 @@ pub fn from_any(
 							result.push_none();
 						}
 					}
-					ColumnData::Date(c) => {
+					ColumnBuffer::Date(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::DateTime(c) => {
+					ColumnBuffer::DateTime(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Time(c) => {
+					ColumnBuffer::Time(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Duration(c) => {
+					ColumnBuffer::Duration(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::IdentityId(c) => {
+					ColumnBuffer::IdentityId(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Uuid4(c) => {
+					ColumnBuffer::Uuid4(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Uuid7(c) => {
+					ColumnBuffer::Uuid7(c) => {
 						if c.is_defined(0) {
 							result.push(*c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Int {
+					ColumnBuffer::Int {
 						container: c,
 						..
 					} => {
@@ -237,7 +237,7 @@ pub fn from_any(
 							result.push_none();
 						}
 					}
-					ColumnData::Uint {
+					ColumnBuffer::Uint {
 						container: c,
 						..
 					} => {
@@ -247,7 +247,7 @@ pub fn from_any(
 							result.push_none();
 						}
 					}
-					ColumnData::Decimal {
+					ColumnBuffer::Decimal {
 						container: c,
 						..
 					} => {
@@ -257,18 +257,18 @@ pub fn from_any(
 							result.push_none();
 						}
 					}
-					ColumnData::DictionaryId(c) => {
+					ColumnBuffer::DictionaryId(c) => {
 						if c.is_defined(0) {
 							result.push(c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}
 					}
-					ColumnData::Any(_) => {
+					ColumnBuffer::Any(_) => {
 						// This shouldn't happen as we're casting FROM Any
 						unreachable!("Casting from Any should not produce Any")
 					}
-					ColumnData::Option {
+					ColumnBuffer::Option {
 						..
 					} => {
 						let value = casted_column.get_value(0);

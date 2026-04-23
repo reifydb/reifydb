@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	value::{
 		batch::lazy::{LazyBatch, LazyColumnMeta},
-		column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+		column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -157,13 +157,13 @@ impl QueryNode for TableScanNode {
 			self.exhausted = true;
 			if self.last_key.is_none() {
 				// Empty table: return empty columns with correct types to preserve shape
-				let columns: Vec<Column> = self
+				let columns: Vec<ColumnWithName> = self
 					.table
 					.columns()
 					.iter()
-					.map(|col| Column {
+					.map(|col| ColumnWithName {
 						name: Fragment::internal(&col.name),
-						data: ColumnData::none_typed(col.constraint.get_type(), 0),
+						data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
 					})
 					.collect();
 				return Ok(Some(Columns::new(columns)));
@@ -174,14 +174,14 @@ impl QueryNode for TableScanNode {
 		self.last_key = new_last_key;
 
 		// Create columns with storage types (dictionary ID types for dictionary columns)
-		let storage_columns: Vec<Column> = {
+		let storage_columns: Vec<ColumnWithName> = {
 			self.table
 				.columns()
 				.iter()
 				.enumerate()
-				.map(|(idx, col)| Column {
+				.map(|(idx, col)| ColumnWithName {
 					name: Fragment::internal(&col.name),
-					data: ColumnData::with_capacity(self.storage_types[idx].clone(), 0),
+					data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
 				})
 				.collect()
 		};

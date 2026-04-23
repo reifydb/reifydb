@@ -10,7 +10,7 @@ use reifydb_core::{
 		procedure::{Procedure, ProcedureParam},
 	},
 	internal_error,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_routine::{function::FunctionContext, procedure::context::ProcedureContext};
 use reifydb_rql::{
@@ -65,7 +65,7 @@ impl<'a> Vm<'a> {
 				columns,
 			} => {
 				let ctx = self.eval_ctx();
-				let coerced: Vec<Column> = columns
+				let coerced: Vec<ColumnWithName> = columns
 					.columns
 					.iter()
 					.map(|col| {
@@ -75,7 +75,7 @@ impl<'a> Vm<'a> {
 							target.clone(),
 							col.name.clone(),
 						)?;
-						Ok(Column::new(col.name.clone(), data))
+						Ok(ColumnWithName::new(col.name.clone(), data))
 					})
 					.collect::<Result<Vec<_>>>()?;
 				Ok(Variable::columns(Columns::new(coerced)))
@@ -88,7 +88,7 @@ impl<'a> Vm<'a> {
 	/// casting, and extracting. Slow-path helper used by the per-row fallback so
 	/// that the accumulator column's element type stays uniform.
 	fn coerce_value(&self, value: Value, target: &Type) -> Result<Value> {
-		let mut data = ColumnData::with_capacity(value.get_type(), 1);
+		let mut data = ColumnBuffer::with_capacity(value.get_type(), 1);
 		data.push_value(value);
 		let ctx = self.eval_ctx();
 		let cast = cast_column_data(&ctx, &data, target.clone(), Fragment::internal("coerce_return"))?;
@@ -279,7 +279,7 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	fn pop_args_as_columns(&mut self, arity: usize) -> Result<Vec<Column>> {
+	fn pop_args_as_columns(&mut self, arity: usize) -> Result<Vec<ColumnWithName>> {
 		let mut arg_columns = Vec::with_capacity(arity);
 		for _ in 0..arity {
 			arg_columns.push(self.pop_as_column()?);
@@ -295,7 +295,7 @@ impl<'a> Vm<'a> {
 		tx: &mut Transaction<'_>,
 		body: &[Instruction],
 		parameters: &[FunctionParameter],
-		arg_columns: Vec<Column>,
+		arg_columns: Vec<ColumnWithName>,
 		_row_count: usize,
 		captured: Option<&HashMap<String, Variable>>,
 		return_type: Option<&TypeConstraint>,
@@ -334,7 +334,7 @@ impl<'a> Vm<'a> {
 		tx: &mut Transaction<'_>,
 		body: &[Instruction],
 		parameters: &[FunctionParameter],
-		arg_columns: Vec<Column>,
+		arg_columns: Vec<ColumnWithName>,
 		captured: Option<&HashMap<String, Variable>>,
 		name: &Fragment,
 		return_type: Option<&TypeConstraint>,
@@ -385,12 +385,12 @@ impl<'a> Vm<'a> {
 			None => Type::super_type_of(results.iter().map(|v| v.get_type())),
 		};
 
-		let mut data = ColumnData::with_capacity(col_type.clone(), row_count);
+		let mut data = ColumnBuffer::with_capacity(col_type.clone(), row_count);
 		for value in results {
 			let coerced = self.coerce_value(value, &col_type)?;
 			data.push_value(coerced);
 		}
-		let result_col = Column::new(name.clone(), data);
+		let result_col = ColumnWithName::new(name.clone(), data);
 		self.stack.push(Variable::columns(Columns::new(vec![result_col])));
 		Ok(())
 	}
@@ -682,13 +682,13 @@ impl<'a> Vm<'a> {
 
 		// Generator function
 		if let Some(generator) = ctx.services.functions.get_generator(func_name) {
-			let arg_columns: Vec<Column> = args
+			let arg_columns: Vec<ColumnWithName> = args
 				.into_iter()
 				.enumerate()
 				.map(|(i, v)| {
-					let mut data = ColumnData::with_capacity(v.get_type(), 1);
+					let mut data = ColumnBuffer::with_capacity(v.get_type(), 1);
 					data.push_value(v);
-					Column::new(format!("arg{}", i), data)
+					ColumnWithName::new(format!("arg{}", i), data)
 				})
 				.collect();
 			let columns_args = Columns::new(arg_columns);
@@ -723,13 +723,13 @@ impl<'a> Vm<'a> {
 			})
 		})?;
 
-		let arg_columns: Vec<Column> = args
+		let arg_columns: Vec<ColumnWithName> = args
 			.into_iter()
 			.enumerate()
 			.map(|(i, v)| {
-				let mut data = ColumnData::with_capacity(v.get_type(), 1);
+				let mut data = ColumnBuffer::with_capacity(v.get_type(), 1);
 				data.push_value(v);
-				Column::new(format!("arg{}", i), data)
+				ColumnWithName::new(format!("arg{}", i), data)
 			})
 			.collect();
 		let columns_args = Columns::new(arg_columns);

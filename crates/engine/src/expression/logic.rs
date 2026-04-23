@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 use reifydb_type::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
@@ -11,14 +11,14 @@ use super::option::binary_op_unwrap_option;
 use crate::Result;
 
 pub(crate) fn execute_logical_op(
-	left: &Column,
-	right: &Column,
+	left: &ColumnWithName,
+	right: &ColumnWithName,
 	fragment: &Fragment,
 	logical_op: LogicalOp,
 	bool_fn: fn(bool, bool) -> bool,
-) -> Result<Column> {
+) -> Result<ColumnWithName> {
 	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
+		(ColumnBuffer::Bool(l_container), ColumnBuffer::Bool(r_container)) => {
 			let data: Vec<bool> = l_container
 				.data()
 				.iter()
@@ -26,10 +26,7 @@ pub(crate) fn execute_logical_op(
 				.map(|(l_val, r_val)| bool_fn(l_val, r_val))
 				.collect();
 
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool(data),
-			})
+			Ok(ColumnWithName::new(fragment.clone(), ColumnBuffer::bool(data)))
 		}
 		(l, r) => {
 			let category = if l.is_number() || r.is_number() {

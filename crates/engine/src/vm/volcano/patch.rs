@@ -5,7 +5,7 @@ use std::{mem, sync::Arc};
 
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::{Column, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
@@ -168,7 +168,7 @@ impl Transform for PatchNode {
 			{
 				let data =
 					cast_column_data(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
-				column = Column {
+				column = ColumnWithName {
 					name: column.name,
 					data,
 				};

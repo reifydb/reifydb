@@ -14,24 +14,17 @@ use compressed::{
 	AllNoneEncoding, BitPackEncoding, ConstantEncoding, DeltaEncoding, DeltaRleEncoding, DictEncoding, ForEncoding,
 	RleEncoding, SparseEncoding,
 };
+use reifydb_core::value::column::{
+	array::{Column, canonical::Canonical},
+	encoding::EncodingId,
+	stats::StatsSet,
+};
 use reifydb_type::Result;
 
 use crate::{
-	array::{Array, canonical::CanonicalArray},
 	compress::CompressConfig,
 	compute::{Compute, DefaultCompute},
-	stats::StatsSet,
 };
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct EncodingId(pub &'static str);
-
-impl EncodingId {
-	pub const CANONICAL_BOOL: EncodingId = EncodingId("column.canonical.bool");
-	pub const CANONICAL_FIXED: EncodingId = EncodingId("column.canonical.fixed");
-	pub const CANONICAL_VARLEN: EncodingId = EncodingId("column.canonical.varlen");
-	pub const CANONICAL_BIGNUM: EncodingId = EncodingId("column.canonical.bignum");
-}
 
 // One `Encoding` per concrete encoding id. Compressed encodings will fill in
 // real `try_compress`/`canonicalize` bodies; canonical encodings perform an
@@ -42,16 +35,16 @@ pub trait Encoding: Send + Sync + 'static {
 	// Try to compress the canonical input into this encoding. `Ok(None)` means
 	// "this encoding doesn't apply to this input" - the compressor will try
 	// the next candidate.
-	fn try_compress(&self, input: &CanonicalArray, cfg: &CompressConfig) -> Result<Option<Array>>;
+	fn try_compress(&self, input: &Canonical, cfg: &CompressConfig) -> Result<Option<Column>>;
 
 	// Decode an array of this encoding back to its canonical form. Must be total.
-	fn canonicalize(&self, array: &Array) -> Result<CanonicalArray>;
+	fn canonicalize(&self, array: &Column) -> Result<Canonical>;
 
 	fn compute(&self) -> &dyn Compute {
 		&DefaultCompute
 	}
 
-	fn derive_stats(&self, _array: &Array) -> StatsSet {
+	fn derive_stats(&self, _array: &Column) -> StatsSet {
 		StatsSet::new()
 	}
 }

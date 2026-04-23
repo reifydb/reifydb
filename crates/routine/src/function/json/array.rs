@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{Value, r#type::Type},
@@ -42,9 +42,9 @@ impl Function for JsonArray {
 
 	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
 		if args.is_empty() {
-			return Ok(Columns::new(vec![Column::new(
+			return Ok(Columns::new(vec![ColumnWithName::new(
 				ctx.fragment.clone(),
-				ColumnData::any(vec![Box::new(Value::List(vec![]))]),
+				ColumnBuffer::any(vec![Box::new(Value::List(vec![]))]),
 			)]));
 		}
 
@@ -74,15 +74,15 @@ impl Function for JsonArray {
 			results.push(Box::new(Value::List(items)));
 		}
 
-		let result_data = ColumnData::any(results);
+		let result_data = ColumnBuffer::any(results);
 		let final_data = match combined_bv {
-			Some(bv) => ColumnData::Option {
+			Some(bv) => ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv,
 			},
 			None => result_data,
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

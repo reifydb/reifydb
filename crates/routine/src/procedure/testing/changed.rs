@@ -5,7 +5,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::{catalog::shape::ShapeId, change::Diff},
 	internal_error,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -161,8 +161,8 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 		return Ok(Columns::empty());
 	}
 
-	let mut op_data = ColumnData::utf8_with_capacity(entries.len());
-	let mut target_data = ColumnData::utf8_with_capacity(entries.len());
+	let mut op_data = ColumnBuffer::utf8_with_capacity(entries.len());
+	let mut target_data = ColumnBuffer::utf8_with_capacity(entries.len());
 
 	let mut field_names: Vec<String> = Vec::new();
 	for entry in entries {
@@ -231,26 +231,26 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 		}
 	}
 
-	let mut columns = vec![Column::new("op", op_data), Column::new("target", target_data)];
+	let mut columns = vec![ColumnWithName::new("op", op_data), ColumnWithName::new("target", target_data)];
 
 	for (i, name) in field_names.iter().enumerate() {
 		let mut old_data = column_for_values(&old_columns[i]);
 		for val in &old_columns[i] {
 			old_data.push_value(val.clone());
 		}
-		columns.push(Column::new(format!("old_{}", name), old_data));
+		columns.push(ColumnWithName::new(format!("old_{}", name), old_data));
 
 		let mut new_data = column_for_values(&new_columns[i]);
 		for val in &new_columns[i] {
 			new_data.push_value(val.clone());
 		}
-		columns.push(Column::new(format!("new_{}", name), new_data));
+		columns.push(ColumnWithName::new(format!("new_{}", name), new_data));
 	}
 
 	Ok(Columns::new(columns))
 }
 
-fn column_for_values(values: &[Value]) -> ColumnData {
+fn column_for_values(values: &[Value]) -> ColumnBuffer {
 	let first_type = values.iter().find_map(|v| {
 		if matches!(v, Value::None { .. }) {
 			None
@@ -259,7 +259,7 @@ fn column_for_values(values: &[Value]) -> ColumnData {
 		}
 	});
 	match first_type {
-		Some(ty) => ColumnData::with_capacity(ty, values.len()),
-		None => ColumnData::none_typed(Type::Boolean, 0),
+		Some(ty) => ColumnBuffer::with_capacity(ty, values.len()),
+		None => ColumnBuffer::none_typed(Type::Boolean, 0),
 	}
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -54,6 +54,6 @@ impl Function for IsNone {
 		let row_count = column.data().len();
 		let data: Vec<bool> = (0..row_count).map(|i| !column.data().is_defined(i)).collect();
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), ColumnData::bool(data))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::bool(data))]))
 	}
 }

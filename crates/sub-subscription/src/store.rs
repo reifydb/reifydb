@@ -125,16 +125,13 @@ impl SubscriptionStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{Column, data::ColumnData};
+	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 	use reifydb_type::fragment::Fragment;
 
 	use super::*;
 
 	fn test_columns(value: u8) -> Columns {
-		Columns::new(vec![Column {
-			name: Fragment::internal("test"),
-			data: ColumnData::uint1(vec![value]),
-		}])
+		Columns::new(vec![ColumnWithName::new(Fragment::internal("test"), ColumnBuffer::uint1(vec![value]))])
 	}
 
 	fn stage(id: SubscriptionId, values: &[u8]) -> HashMap<SubscriptionId, Vec<Columns>> {

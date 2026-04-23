@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	internal_error,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
@@ -69,9 +69,9 @@ impl<'a> Vm<'a> {
 			let mut row_columns = Vec::new();
 			for col in columns.columns.iter() {
 				let value = col.data.get_value(index);
-				let mut data = ColumnData::none_typed(Type::Boolean, 0);
+				let mut data = ColumnBuffer::none_typed(Type::Boolean, 0);
 				data.push_value(value);
-				row_columns.push(Column::new(col.name.clone(), data));
+				row_columns.push(ColumnWithName::new(col.name.clone(), data));
 			}
 			let row_frame = Columns::new(row_columns);
 			self.symbols.set(clean_name.to_string(), Variable::columns(row_frame), true)?;

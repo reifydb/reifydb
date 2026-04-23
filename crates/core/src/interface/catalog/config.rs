@@ -209,7 +209,7 @@ mod tests {
 
 	#[test]
 	fn test_cdc_ttl_default_is_typed_null() {
-		// Defaulting to Value::None means "TTL not configured" — producer skips cleanup.
+		// Defaulting to Value::None means "TTL not configured" - producer skips cleanup.
 		let default = ConfigKey::CdcTtlDuration.default_value();
 		assert!(matches!(
 			default,

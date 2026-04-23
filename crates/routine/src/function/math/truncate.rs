@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use num_traits::ToPrimitive;
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{
 	container::number::NumberContainer,
 	decimal::Decimal,
@@ -56,7 +56,7 @@ impl Function for Truncate {
 		let row_count = data.len();
 
 		let result_data = match data {
-			ColumnData::Float4(container) => {
+			ColumnBuffer::Float4(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -68,9 +68,9 @@ impl Function for Truncate {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::float4_with_bitvec(data, res_bitvec)
+				ColumnBuffer::float4_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Float8(container) => {
+			ColumnBuffer::Float8(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -82,9 +82,9 @@ impl Function for Truncate {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::float8_with_bitvec(data, res_bitvec)
+				ColumnBuffer::float8_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Decimal {
+			ColumnBuffer::Decimal {
 				container,
 				precision,
 				scale,
@@ -98,7 +98,7 @@ impl Function for Truncate {
 						data.push(Decimal::default());
 					}
 				}
-				ColumnData::Decimal {
+				ColumnBuffer::Decimal {
 					container: NumberContainer::new(data),
 					precision: *precision,
 					scale: *scale,
@@ -116,7 +116,7 @@ impl Function for Truncate {
 		};
 
 		let final_data = if let Some(bv) = bitvec {
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			}
@@ -124,6 +124,6 @@ impl Function for Truncate {
 			result_data
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

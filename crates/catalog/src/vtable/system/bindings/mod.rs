@@ -7,16 +7,16 @@ pub mod ws;
 
 use reifydb_core::{
 	interface::catalog::binding::Binding,
-	value::column::{Column, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
 use reifydb_type::fragment::Fragment;
 
 /// Helper to create the first 4 common columns for any binding virtual table.
-pub(crate) fn common_vtable_columns(bindings: &[Binding]) -> Vec<Column> {
-	let mut ids = ColumnData::uint8_with_capacity(bindings.len());
-	let mut namespace_ids = ColumnData::uint8_with_capacity(bindings.len());
-	let mut procedure_ids = ColumnData::uint8_with_capacity(bindings.len());
-	let mut names = ColumnData::utf8_with_capacity(bindings.len());
+pub(crate) fn common_vtable_columns(bindings: &[Binding]) -> Vec<ColumnWithName> {
+	let mut ids = ColumnBuffer::uint8_with_capacity(bindings.len());
+	let mut namespace_ids = ColumnBuffer::uint8_with_capacity(bindings.len());
+	let mut procedure_ids = ColumnBuffer::uint8_with_capacity(bindings.len());
+	let mut names = ColumnBuffer::utf8_with_capacity(bindings.len());
 
 	for b in bindings {
 		ids.push(*b.id);
@@ -26,21 +26,9 @@ pub(crate) fn common_vtable_columns(bindings: &[Binding]) -> Vec<Column> {
 	}
 
 	vec![
-		Column {
-			name: Fragment::internal("id"),
-			data: ids,
-		},
-		Column {
-			name: Fragment::internal("namespace_id"),
-			data: namespace_ids,
-		},
-		Column {
-			name: Fragment::internal("procedure_id"),
-			data: procedure_ids,
-		},
-		Column {
-			name: Fragment::internal("name"),
-			data: names,
-		},
+		ColumnWithName::new(Fragment::internal("id"), ids),
+		ColumnWithName::new(Fragment::internal("namespace_id"), namespace_ids),
+		ColumnWithName::new(Fragment::internal("procedure_id"), procedure_ids),
+		ColumnWithName::new(Fragment::internal("name"), names),
 	]
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -86,8 +86,8 @@ impl Function for DateFormat {
 
 		let result_data = match (date_data, fmt_data) {
 			(
-				ColumnData::Date(date_container),
-				ColumnData::Utf8 {
+				ColumnBuffer::Date(date_container),
+				ColumnBuffer::Utf8 {
 					container: fmt_container,
 					..
 				},
@@ -117,12 +117,12 @@ impl Function for DateFormat {
 					}
 				}
 
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: Utf8Container::new(result),
 					max_bytes: MaxBytes::MAX,
 				}
 			}
-			(ColumnData::Date(_), other) => {
+			(ColumnBuffer::Date(_), other) => {
 				return Err(FunctionError::InvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 1,
@@ -141,13 +141,13 @@ impl Function for DateFormat {
 		};
 
 		let final_data = match (date_bitvec, fmt_bitvec) {
-			(Some(bv), _) | (_, Some(bv)) => ColumnData::Option {
+			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			},
 			_ => result_data,
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

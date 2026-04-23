@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 use reifydb_rql::expression::ColumnExpression;
 use reifydb_type::value::{
 	Value,
@@ -43,29 +43,29 @@ macro_rules! extract_typed_column {
 			}
 			count += 1;
 		}
-		Ok($col.with_new_data(ColumnData::$constructor(data, bitvec)))
+		Ok($col.with_new_data(ColumnBuffer::$constructor(data, bitvec)))
 	}};
 }
 
-pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Result<Column> {
+pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Result<ColumnWithName> {
 	let name = column.0.name.text();
 
 	if name == ROW_NUMBER_COLUMN_NAME && !ctx.columns.row_numbers.is_empty() {
 		let row_numbers: Vec<u64> = ctx.columns.row_numbers.iter().map(|r| r.value()).collect();
-		return Ok(Column::new(ROW_NUMBER_COLUMN_NAME.to_string(), ColumnData::uint8(row_numbers)));
+		return Ok(ColumnWithName::new(ROW_NUMBER_COLUMN_NAME.to_string(), ColumnBuffer::uint8(row_numbers)));
 	}
 
 	if name == CREATED_AT_COLUMN_NAME && !ctx.columns.created_at.is_empty() {
-		return Ok(Column::new(
+		return Ok(ColumnWithName::new(
 			CREATED_AT_COLUMN_NAME.to_string(),
-			ColumnData::datetime(ctx.columns.created_at.to_vec()),
+			ColumnBuffer::datetime(ctx.columns.created_at.to_vec()),
 		));
 	}
 
 	if name == UPDATED_AT_COLUMN_NAME && !ctx.columns.updated_at.is_empty() {
-		return Ok(Column::new(
+		return Ok(ColumnWithName::new(
 			UPDATED_AT_COLUMN_NAME.to_string(),
-			ColumnData::datetime(ctx.columns.updated_at.to_vec()),
+			ColumnBuffer::datetime(ctx.columns.updated_at.to_vec()),
 		));
 	}
 
@@ -82,10 +82,10 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 		return extract_column_data(col, ctx);
 	}
 
-	Ok(Column::new(name.to_string(), ColumnData::none_typed(Type::Boolean, ctx.row_count)))
+	Ok(ColumnWithName::new(name.to_string(), ColumnBuffer::none_typed(Type::Boolean, ctx.row_count)))
 }
 
-fn extract_column_data(col: &Column, ctx: &EvalContext) -> Result<Column> {
+fn extract_column_data(col: &ColumnWithName, ctx: &EvalContext) -> Result<ColumnWithName> {
 	let take = ctx.take.unwrap_or(usize::MAX);
 
 	// Use the column's actual data type instead of checking the first value
@@ -101,7 +101,7 @@ fn extract_column_data(col: &Column, ctx: &EvalContext) -> Result<Column> {
 	extract_column_data_by_type(col, take, effective_type)
 }
 
-fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> Result<Column> {
+fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Type) -> Result<ColumnWithName> {
 	match col_type {
 		Type::Boolean => extract_typed_column!(col, take, Boolean(b) => b, false, bool_with_bitvec),
 		Type::Float4 => extract_typed_column!(col, take, Float4(v) => v.value(), 0.0f32, float4_with_bitvec),
@@ -165,7 +165,7 @@ fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> Res
 pub mod tests {
 	use reifydb_core::{
 		interface::identifier::{ColumnIdentifier, ColumnShape},
-		value::column::{Column, columns::Columns, data::ColumnData},
+		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
 	use reifydb_routine::function::registry::Functions;
 	use reifydb_rql::expression::ColumnExpression;
@@ -178,8 +178,10 @@ pub mod tests {
 	#[test]
 	fn test_column_not_found_returns_correct_row_count() {
 		// Create context with 5 rows
-		let columns =
-			Columns::new(vec![Column::new("existing_col".to_string(), ColumnData::int4([1, 2, 3, 4, 5]))]);
+		let columns = Columns::new(vec![ColumnWithName::new(
+			"existing_col".to_string(),
+			ColumnBuffer::int4([1, 2, 3, 4, 5]),
+		)]);
 
 		let runtime_ctx = RuntimeContext::with_clock(Clock::Real);
 		let base = EvalContext {

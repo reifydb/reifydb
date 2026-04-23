@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{Value, dictionary::DictionaryEntryId};
@@ -22,7 +22,7 @@ pub(crate) fn decode_dictionary_columns(
 			}
 			let col = &columns[col_idx];
 			let row_count = col.data().len();
-			let mut new_data = ColumnData::with_capacity(dictionary.value_type.clone(), row_count);
+			let mut new_data = ColumnBuffer::with_capacity(dictionary.value_type.clone(), row_count);
 			for row_idx in 0..row_count {
 				let id_value = col.data().get_value(row_idx);
 				if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
@@ -34,10 +34,8 @@ pub(crate) fn decode_dictionary_columns(
 					new_data.push_value(Value::none());
 				}
 			}
-			columns.columns.make_mut()[col_idx] = Column {
-				name: columns[col_idx].name().clone(),
-				data: new_data,
-			};
+			columns.columns.make_mut()[col_idx] =
+				ColumnWithName::new(columns[col_idx].name().clone(), new_data);
 		}
 	}
 	Ok(())

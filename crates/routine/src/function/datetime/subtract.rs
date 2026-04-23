@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, datetime::DateTime, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -53,7 +53,7 @@ impl Function for DateTimeSubtract {
 		let row_count = dt_data.len();
 
 		let result_data = match (dt_data, dur_data) {
-			(ColumnData::DateTime(dt_container), ColumnData::Duration(dur_container)) => {
+			(ColumnBuffer::DateTime(dt_container), ColumnBuffer::Duration(dur_container)) => {
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -110,9 +110,9 @@ impl Function for DateTimeSubtract {
 					}
 				}
 
-				ColumnData::DateTime(container)
+				ColumnBuffer::DateTime(container)
 			}
-			(ColumnData::DateTime(_), other) => {
+			(ColumnBuffer::DateTime(_), other) => {
 				return Err(FunctionError::InvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 1,
@@ -131,14 +131,14 @@ impl Function for DateTimeSubtract {
 		};
 
 		let final_data = match (dt_bitvec, dur_bitvec) {
-			(Some(bv), _) | (_, Some(bv)) => ColumnData::Option {
+			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			},
 			_ => result_data,
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }
 

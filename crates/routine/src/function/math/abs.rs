@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use num_traits::sign::Signed;
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::number::NumberContainer, decimal::Decimal, int::Int, r#type::Type, uint::Uint};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -52,7 +52,7 @@ impl Function for Abs {
 		let row_count = data.len();
 
 		let result_data = match data {
-			ColumnData::Int1(container) => {
+			ColumnBuffer::Int1(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -64,9 +64,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::int1_with_bitvec(data, res_bitvec)
+				ColumnBuffer::int1_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Int2(container) => {
+			ColumnBuffer::Int2(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -78,9 +78,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::int2_with_bitvec(data, res_bitvec)
+				ColumnBuffer::int2_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Int4(container) => {
+			ColumnBuffer::Int4(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -92,9 +92,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::int4_with_bitvec(data, res_bitvec)
+				ColumnBuffer::int4_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Int8(container) => {
+			ColumnBuffer::Int8(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -106,9 +106,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::int8_with_bitvec(data, res_bitvec)
+				ColumnBuffer::int8_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Int16(container) => {
+			ColumnBuffer::Int16(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -120,9 +120,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::int16_with_bitvec(data, res_bitvec)
+				ColumnBuffer::int16_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Uint1(container) => {
+			ColumnBuffer::Uint1(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -134,9 +134,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::uint1_with_bitvec(data, res_bitvec)
+				ColumnBuffer::uint1_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Uint2(container) => {
+			ColumnBuffer::Uint2(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -148,9 +148,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::uint2_with_bitvec(data, res_bitvec)
+				ColumnBuffer::uint2_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Uint4(container) => {
+			ColumnBuffer::Uint4(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -162,9 +162,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::uint4_with_bitvec(data, res_bitvec)
+				ColumnBuffer::uint4_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Uint8(container) => {
+			ColumnBuffer::Uint8(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -176,9 +176,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::uint8_with_bitvec(data, res_bitvec)
+				ColumnBuffer::uint8_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Uint16(container) => {
+			ColumnBuffer::Uint16(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -190,9 +190,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::uint16_with_bitvec(data, res_bitvec)
+				ColumnBuffer::uint16_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Float4(container) => {
+			ColumnBuffer::Float4(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -204,9 +204,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::float4_with_bitvec(data, res_bitvec)
+				ColumnBuffer::float4_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Float8(container) => {
+			ColumnBuffer::Float8(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -218,9 +218,9 @@ impl Function for Abs {
 						res_bitvec.push(false);
 					}
 				}
-				ColumnData::float8_with_bitvec(data, res_bitvec)
+				ColumnBuffer::float8_with_bitvec(data, res_bitvec)
 			}
-			ColumnData::Int {
+			ColumnBuffer::Int {
 				container,
 				max_bytes,
 			} => {
@@ -232,12 +232,12 @@ impl Function for Abs {
 						data.push(Int::default());
 					}
 				}
-				ColumnData::Int {
+				ColumnBuffer::Int {
 					container: NumberContainer::new(data),
 					max_bytes: *max_bytes,
 				}
 			}
-			ColumnData::Uint {
+			ColumnBuffer::Uint {
 				container,
 				max_bytes,
 			} => {
@@ -249,12 +249,12 @@ impl Function for Abs {
 						data.push(Uint::default());
 					}
 				}
-				ColumnData::Uint {
+				ColumnBuffer::Uint {
 					container: NumberContainer::new(data),
 					max_bytes: *max_bytes,
 				}
 			}
-			ColumnData::Decimal {
+			ColumnBuffer::Decimal {
 				container,
 				precision,
 				scale,
@@ -267,7 +267,7 @@ impl Function for Abs {
 						data.push(Decimal::default());
 					}
 				}
-				ColumnData::Decimal {
+				ColumnBuffer::Decimal {
 					container: NumberContainer::new(data),
 					precision: *precision,
 					scale: *scale,
@@ -300,7 +300,7 @@ impl Function for Abs {
 		};
 
 		let final_data = if let Some(bv) = bitvec {
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			}
@@ -308,6 +308,6 @@ impl Function for Abs {
 			result_data
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

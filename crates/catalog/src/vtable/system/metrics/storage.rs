@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	interface::{catalog::vtable::VTable, store::Tier},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_metric::storage::{metric::MetricReader, multi::MultiStorageStats};
 use reifydb_store_single::SingleStore;
@@ -145,18 +145,18 @@ impl SystemMetricsStorage {
 
 fn build_columns(rows: Vec<StorageRow>) -> Columns {
 	let capacity = rows.len();
-	let mut ids = ColumnData::uint8_with_capacity(capacity);
-	let mut namespace_ids = ColumnData::uint8_with_capacity(capacity);
-	let mut tiers = ColumnData::utf8_with_capacity(capacity);
-	let mut current_key_bytes = ColumnData::uint8_with_capacity(capacity);
-	let mut current_value_bytes = ColumnData::uint8_with_capacity(capacity);
-	let mut current_total_bytes = ColumnData::uint8_with_capacity(capacity);
-	let mut current_counts = ColumnData::uint8_with_capacity(capacity);
-	let mut historical_key_bytes = ColumnData::uint8_with_capacity(capacity);
-	let mut historical_value_bytes = ColumnData::uint8_with_capacity(capacity);
-	let mut historical_total_bytes = ColumnData::uint8_with_capacity(capacity);
-	let mut historical_counts = ColumnData::uint8_with_capacity(capacity);
-	let mut total_bytes = ColumnData::uint8_with_capacity(capacity);
+	let mut ids = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut namespace_ids = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut tiers = ColumnBuffer::utf8_with_capacity(capacity);
+	let mut current_key_bytes = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut current_value_bytes = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut current_total_bytes = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut current_counts = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut historical_key_bytes = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut historical_value_bytes = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut historical_total_bytes = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut historical_counts = ColumnBuffer::uint8_with_capacity(capacity);
+	let mut total_bytes = ColumnBuffer::uint8_with_capacity(capacity);
 
 	for row in rows {
 		ids.push(row.0);
@@ -174,53 +174,17 @@ fn build_columns(rows: Vec<StorageRow>) -> Columns {
 	}
 
 	Columns::new(vec![
-		Column {
-			name: Fragment::internal("id"),
-			data: ids,
-		},
-		Column {
-			name: Fragment::internal("namespace_id"),
-			data: namespace_ids,
-		},
-		Column {
-			name: Fragment::internal("tier"),
-			data: tiers,
-		},
-		Column {
-			name: Fragment::internal("current_key_bytes"),
-			data: current_key_bytes,
-		},
-		Column {
-			name: Fragment::internal("current_value_bytes"),
-			data: current_value_bytes,
-		},
-		Column {
-			name: Fragment::internal("current_total_bytes"),
-			data: current_total_bytes,
-		},
-		Column {
-			name: Fragment::internal("current_count"),
-			data: current_counts,
-		},
-		Column {
-			name: Fragment::internal("historical_key_bytes"),
-			data: historical_key_bytes,
-		},
-		Column {
-			name: Fragment::internal("historical_value_bytes"),
-			data: historical_value_bytes,
-		},
-		Column {
-			name: Fragment::internal("historical_total_bytes"),
-			data: historical_total_bytes,
-		},
-		Column {
-			name: Fragment::internal("historical_count"),
-			data: historical_counts,
-		},
-		Column {
-			name: Fragment::internal("total_bytes"),
-			data: total_bytes,
-		},
+		ColumnWithName::new(Fragment::internal("id"), ids),
+		ColumnWithName::new(Fragment::internal("namespace_id"), namespace_ids),
+		ColumnWithName::new(Fragment::internal("tier"), tiers),
+		ColumnWithName::new(Fragment::internal("current_key_bytes"), current_key_bytes),
+		ColumnWithName::new(Fragment::internal("current_value_bytes"), current_value_bytes),
+		ColumnWithName::new(Fragment::internal("current_total_bytes"), current_total_bytes),
+		ColumnWithName::new(Fragment::internal("current_count"), current_counts),
+		ColumnWithName::new(Fragment::internal("historical_key_bytes"), historical_key_bytes),
+		ColumnWithName::new(Fragment::internal("historical_value_bytes"), historical_value_bytes),
+		ColumnWithName::new(Fragment::internal("historical_total_bytes"), historical_total_bytes),
+		ColumnWithName::new(Fragment::internal("historical_count"), historical_counts),
+		ColumnWithName::new(Fragment::internal("total_bytes"), total_bytes),
 	])
 }

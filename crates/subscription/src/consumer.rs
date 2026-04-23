@@ -16,7 +16,7 @@ use reifydb_core::{
 		Key,
 		subscription_row::{SubscriptionRowKey, SubscriptionRowKeyRange},
 	},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer},
 };
 use reifydb_type::value::datetime::DateTime;
 use reifydb_engine::engine::StandardEngine;
@@ -67,7 +67,7 @@ impl SubscriptionConsumer {
 		drop(stream); // Explicitly drop to release the borrow on cmd_txn
 
 		// Build dynamic column structure
-		let mut column_data: HashMap<String, ColumnData> = HashMap::new();
+		let mut column_data: HashMap<String, ColumnBuffer> = HashMap::new();
 
 		let mut row_numbers = Vec::new();
 		let mut row_keys = Vec::new();
@@ -105,7 +105,7 @@ impl SubscriptionConsumer {
 						.entry(field.name.clone())
 						.or_insert_with(|| {
 							// New column - backfill with None for all prior rows
-							let mut cd = ColumnData::with_capacity(
+							let mut cd = ColumnBuffer::with_capacity(
 								field.constraint.get_type(),
 								0,
 							);
@@ -129,9 +129,9 @@ impl SubscriptionConsumer {
 		}
 
 		// Convert HashMap to Vec for Columns
-		let columns: Vec<Column> = column_data
+		let columns: Vec<ColumnWithName> = column_data
 			.into_iter()
-			.map(|(name, data)| Column {
+			.map(|(name, data)| ColumnWithName {
 				name: Fragment::internal(&name),
 				data,
 			})

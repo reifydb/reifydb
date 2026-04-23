@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	retention::{CleanupMode, RetentionStrategy},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
@@ -51,10 +51,10 @@ impl BaseVTable for SystemOperatorRetentionStrategies {
 
 		let strategies = CatalogStore::list_operator_retention_strategies(txn)?;
 
-		let mut operator_ids = ColumnData::uint8_with_capacity(strategies.len());
-		let mut strategy_types = ColumnData::utf8_with_capacity(strategies.len());
-		let mut cleanup_modes = ColumnData::utf8_with_capacity(strategies.len());
-		let mut values = ColumnData::uint8_with_capacity(strategies.len());
+		let mut operator_ids = ColumnBuffer::uint8_with_capacity(strategies.len());
+		let mut strategy_types = ColumnBuffer::utf8_with_capacity(strategies.len());
+		let mut cleanup_modes = ColumnBuffer::utf8_with_capacity(strategies.len());
+		let mut values = ColumnBuffer::uint8_with_capacity(strategies.len());
 
 		for entry in strategies {
 			operator_ids.push(entry.operator.0);
@@ -81,22 +81,10 @@ impl BaseVTable for SystemOperatorRetentionStrategies {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("operator_id"),
-				data: operator_ids,
-			},
-			Column {
-				name: Fragment::internal("strategy_type"),
-				data: strategy_types,
-			},
-			Column {
-				name: Fragment::internal("cleanup_mode"),
-				data: cleanup_modes,
-			},
-			Column {
-				name: Fragment::internal("value"),
-				data: values,
-			},
+			ColumnWithName::new(Fragment::internal("operator_id"), operator_ids),
+			ColumnWithName::new(Fragment::internal("strategy_type"), strategy_types),
+			ColumnWithName::new(Fragment::internal("cleanup_mode"), cleanup_modes),
+			ColumnWithName::new(Fragment::internal("value"), values),
 		];
 
 		self.exhausted = true;

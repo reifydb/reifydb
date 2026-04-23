@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	internal_error,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_type::{
 	error::{RuntimeErrorKind, TypeError},
@@ -19,11 +19,11 @@ use crate::{
 impl<'a> Vm<'a> {
 	pub(crate) fn exec_push_const(&mut self, value: &Value) {
 		if self.batch_size > 1 {
-			let mut data = ColumnData::with_capacity(value.get_type(), self.batch_size);
+			let mut data = ColumnBuffer::with_capacity(value.get_type(), self.batch_size);
 			for _ in 0..self.batch_size {
 				data.push_value(value.clone());
 			}
-			let col = Column::new(Fragment::internal("const"), data);
+			let col = ColumnWithName::new(Fragment::internal("const"), data);
 			self.stack.push(Variable::columns(Columns::new(vec![col])));
 		} else {
 			self.stack.push(Variable::scalar(value.clone()));
@@ -32,8 +32,8 @@ impl<'a> Vm<'a> {
 
 	pub(crate) fn exec_push_none(&mut self) {
 		if self.batch_size > 1 {
-			let data = ColumnData::none_typed(Type::Any, self.batch_size);
-			let col = Column::new(Fragment::internal("none"), data);
+			let data = ColumnBuffer::none_typed(Type::Any, self.batch_size);
+			let col = ColumnWithName::new(Fragment::internal("none"), data);
 			self.stack.push(Variable::columns(Columns::new(vec![col])));
 		} else {
 			self.stack.push(Variable::scalar(Value::none()));

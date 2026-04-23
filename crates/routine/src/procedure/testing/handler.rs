@@ -4,7 +4,7 @@
 use reifydb_core::{
 	internal_error,
 	testing::CapturedInvocation,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error::Error, params::Params, value::Value};
@@ -76,14 +76,14 @@ fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&st
 		return Ok(Columns::empty());
 	}
 
-	let mut seq_data = ColumnData::uint8_with_capacity(invocations.len());
-	let mut ns_data = ColumnData::utf8_with_capacity(invocations.len());
-	let mut handler_data = ColumnData::utf8_with_capacity(invocations.len());
-	let mut event_data = ColumnData::utf8_with_capacity(invocations.len());
-	let mut variant_data = ColumnData::utf8_with_capacity(invocations.len());
-	let mut duration_data = ColumnData::uint8_with_capacity(invocations.len());
-	let mut outcome_data = ColumnData::utf8_with_capacity(invocations.len());
-	let mut message_data = ColumnData::utf8_with_capacity(invocations.len());
+	let mut seq_data = ColumnBuffer::uint8_with_capacity(invocations.len());
+	let mut ns_data = ColumnBuffer::utf8_with_capacity(invocations.len());
+	let mut handler_data = ColumnBuffer::utf8_with_capacity(invocations.len());
+	let mut event_data = ColumnBuffer::utf8_with_capacity(invocations.len());
+	let mut variant_data = ColumnBuffer::utf8_with_capacity(invocations.len());
+	let mut duration_data = ColumnBuffer::uint8_with_capacity(invocations.len());
+	let mut outcome_data = ColumnBuffer::utf8_with_capacity(invocations.len());
+	let mut message_data = ColumnBuffer::utf8_with_capacity(invocations.len());
 
 	for inv in &invocations {
 		seq_data.push(inv.sequence);
@@ -97,13 +97,13 @@ fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&st
 	}
 
 	Ok(Columns::new(vec![
-		Column::new("sequence", seq_data),
-		Column::new("namespace", ns_data),
-		Column::new("handler", handler_data),
-		Column::new("event", event_data),
-		Column::new("variant", variant_data),
-		Column::new("duration", duration_data),
-		Column::new("outcome", outcome_data),
-		Column::new("message", message_data),
+		ColumnWithName::new("sequence", seq_data),
+		ColumnWithName::new("namespace", ns_data),
+		ColumnWithName::new("handler", handler_data),
+		ColumnWithName::new("event", event_data),
+		ColumnWithName::new("variant", variant_data),
+		ColumnWithName::new("duration", duration_data),
+		ColumnWithName::new("outcome", outcome_data),
+		ColumnWithName::new("message", message_data),
 	]))
 }

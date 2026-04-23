@@ -20,9 +20,9 @@ use reifydb_type::{
 	},
 };
 
-use crate::value::column::ColumnData;
+use crate::value::column::ColumnBuffer;
 
-impl ColumnData {
+impl ColumnBuffer {
 	/// Merge two columns by mask: row `i` gets `self[i]` if `then_mask[i]`,
 	/// `other[i]` if `else_mask[i]`, `None` otherwise. Callers must satisfy
 	/// `self.len() >= total_len` and `other.len() >= total_len`.
@@ -38,17 +38,17 @@ impl ColumnData {
 	/// row-by-row path.
 	pub fn scatter_merge(
 		&self,
-		other: &ColumnData,
+		other: &ColumnBuffer,
 		then_mask: &BitVec,
 		else_mask: &BitVec,
 		total_len: usize,
-	) -> ColumnData {
+	) -> ColumnBuffer {
 		if let (
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner: a_inner,
 				bitvec: a_bv,
 			},
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner: b_inner,
 				bitvec: b_bv,
 			},
@@ -57,14 +57,14 @@ impl ColumnData {
 			let merged_inner = a_inner.scatter_merge(b_inner, then_mask, else_mask, total_len);
 			let merged_bv = merge_validity_bitvecs(a_bv, b_bv, then_mask, else_mask, total_len);
 			return match merged_inner {
-				ColumnData::Option {
+				ColumnBuffer::Option {
 					inner: nested_inner,
 					bitvec: nested_bv,
-				} => ColumnData::Option {
+				} => ColumnBuffer::Option {
 					inner: nested_inner,
 					bitvec: merged_bv.and(&nested_bv),
 				},
-				inner => ColumnData::Option {
+				inner => ColumnBuffer::Option {
 					inner: Box::new(inner),
 					bitvec: merged_bv,
 				},
@@ -101,14 +101,14 @@ fn merge_validity_bitvecs(
 }
 
 fn scatter_merge_generic(
-	self_col: &ColumnData,
-	other: &ColumnData,
+	self_col: &ColumnBuffer,
+	other: &ColumnBuffer,
 	then_mask: &BitVec,
 	else_mask: &BitVec,
 	total_len: usize,
-) -> ColumnData {
+) -> ColumnBuffer {
 	let result_type = self_col.get_type();
-	let mut data = ColumnData::with_capacity(result_type.clone(), total_len);
+	let mut data = ColumnBuffer::with_capacity(result_type.clone(), total_len);
 	for i in 0..total_len {
 		if DataBitVec::get(then_mask, i) {
 			data.push_value(self_col.get_value(i));
@@ -124,43 +124,43 @@ fn scatter_merge_generic(
 /// Fast-path typed scatter merge. Returns `None` if the variant pair isn't
 /// supported by a typed kernel; callers fall back to the generic path.
 fn scatter_merge_typed(
-	self_col: &ColumnData,
-	other: &ColumnData,
+	self_col: &ColumnBuffer,
+	other: &ColumnBuffer,
 	then_mask: &BitVec,
 	else_mask: &BitVec,
 	total_len: usize,
-) -> Option<ColumnData> {
+) -> Option<ColumnBuffer> {
 	macro_rules! number_kernel {
 		($variant:ident, $t:ty) => {
-			if let (ColumnData::$variant(a), ColumnData::$variant(b)) = (self_col, other) {
+			if let (ColumnBuffer::$variant(a), ColumnBuffer::$variant(b)) = (self_col, other) {
 				let (data, validity) = number_scatter::<$t>(a, b, then_mask, else_mask, total_len);
-				let inner = ColumnData::$variant(NumberContainer::new(data));
+				let inner = ColumnBuffer::$variant(NumberContainer::new(data));
 				return Some(finalize(inner, validity));
 			}
 		};
 	}
 	macro_rules! temporal_kernel {
 		($variant:ident, $t:ty) => {
-			if let (ColumnData::$variant(a), ColumnData::$variant(b)) = (self_col, other) {
+			if let (ColumnBuffer::$variant(a), ColumnBuffer::$variant(b)) = (self_col, other) {
 				let (data, validity) = temporal_scatter::<$t>(a, b, then_mask, else_mask, total_len);
-				let inner = ColumnData::$variant(TemporalContainer::new(data));
+				let inner = ColumnBuffer::$variant(TemporalContainer::new(data));
 				return Some(finalize(inner, validity));
 			}
 		};
 	}
 	macro_rules! uuid_kernel {
 		($variant:ident, $t:ty) => {
-			if let (ColumnData::$variant(a), ColumnData::$variant(b)) = (self_col, other) {
+			if let (ColumnBuffer::$variant(a), ColumnBuffer::$variant(b)) = (self_col, other) {
 				let (data, validity) = uuid_scatter::<$t>(a, b, then_mask, else_mask, total_len);
-				let inner = ColumnData::$variant(UuidContainer::new(data));
+				let inner = ColumnBuffer::$variant(UuidContainer::new(data));
 				return Some(finalize(inner, validity));
 			}
 		};
 	}
 
-	if let (ColumnData::Bool(a), ColumnData::Bool(b)) = (self_col, other) {
+	if let (ColumnBuffer::Bool(a), ColumnBuffer::Bool(b)) = (self_col, other) {
 		let (data, validity) = bool_scatter(a, b, then_mask, else_mask, total_len);
-		let inner = ColumnData::Bool(BoolContainer::from_parts(data));
+		let inner = ColumnBuffer::Bool(BoolContainer::from_parts(data));
 		return Some(finalize(inner, validity));
 	}
 
@@ -188,9 +188,9 @@ fn scatter_merge_typed(
 	None
 }
 
-fn finalize(inner: ColumnData, validity: Option<BitVec>) -> ColumnData {
+fn finalize(inner: ColumnBuffer, validity: Option<BitVec>) -> ColumnBuffer {
 	match validity {
-		Some(bv) => ColumnData::Option {
+		Some(bv) => ColumnBuffer::Option {
 			inner: Box::new(inner),
 			bitvec: bv,
 		},
@@ -363,17 +363,17 @@ where
 mod tests {
 	use reifydb_type::{util::bitvec::BitVec, value::Value};
 
-	use crate::value::column::ColumnData;
+	use crate::value::column::ColumnBuffer;
 
 	#[test]
 	fn scatter_merge_all_mapped_int4() {
-		let a = ColumnData::int4([10, 20, 30, 40]);
-		let b = ColumnData::int4([90, 80, 70, 60]);
+		let a = ColumnBuffer::int4([10, 20, 30, 40]);
+		let b = ColumnBuffer::int4([90, 80, 70, 60]);
 		let then_mask = BitVec::from_slice(&[true, false, true, false]);
 		let else_mask = BitVec::from_slice(&[false, true, false, true]);
 
 		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 4);
-		assert!(matches!(merged, ColumnData::Int4(_)));
+		assert!(matches!(merged, ColumnBuffer::Int4(_)));
 		assert_eq!(merged.get_value(0), Value::Int4(10));
 		assert_eq!(merged.get_value(1), Value::Int4(80));
 		assert_eq!(merged.get_value(2), Value::Int4(30));
@@ -382,14 +382,14 @@ mod tests {
 
 	#[test]
 	fn scatter_merge_unmapped_promotes_to_option() {
-		let a = ColumnData::int4([10, 20, 30]);
-		let b = ColumnData::int4([90, 80, 70]);
+		let a = ColumnBuffer::int4([10, 20, 30]);
+		let b = ColumnBuffer::int4([90, 80, 70]);
 		// Row 1 is in neither mask - should yield None.
 		let then_mask = BitVec::from_slice(&[true, false, true]);
 		let else_mask = BitVec::from_slice(&[false, false, false]);
 
 		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 3);
-		assert!(matches!(merged, ColumnData::Option { .. }));
+		assert!(matches!(merged, ColumnBuffer::Option { .. }));
 		assert_eq!(merged.get_value(0), Value::Int4(10));
 		assert_eq!(merged.get_value(1), Value::none());
 		assert_eq!(merged.get_value(2), Value::Int4(30));
@@ -397,13 +397,13 @@ mod tests {
 
 	#[test]
 	fn scatter_merge_bool_all_mapped() {
-		let a = ColumnData::bool([true, true, false, false]);
-		let b = ColumnData::bool([false, false, true, true]);
+		let a = ColumnBuffer::bool([true, true, false, false]);
+		let b = ColumnBuffer::bool([false, false, true, true]);
 		let then_mask = BitVec::from_slice(&[true, false, true, false]);
 		let else_mask = BitVec::from_slice(&[false, true, false, true]);
 
 		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 4);
-		assert!(matches!(merged, ColumnData::Bool(_)));
+		assert!(matches!(merged, ColumnBuffer::Bool(_)));
 		assert_eq!(merged.get_value(0), Value::Boolean(true));
 		assert_eq!(merged.get_value(1), Value::Boolean(false));
 		assert_eq!(merged.get_value(2), Value::Boolean(false));
@@ -412,8 +412,8 @@ mod tests {
 
 	#[test]
 	fn scatter_merge_utf8_uses_generic_fallback() {
-		let a = ColumnData::utf8(["a", "b", "c"]);
-		let b = ColumnData::utf8(["x", "y", "z"]);
+		let a = ColumnBuffer::utf8(["a", "b", "c"]);
+		let b = ColumnBuffer::utf8(["x", "y", "z"]);
 		let then_mask = BitVec::from_slice(&[true, false, true]);
 		let else_mask = BitVec::from_slice(&[false, true, false]);
 

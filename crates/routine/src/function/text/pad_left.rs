@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type},
@@ -59,7 +59,7 @@ impl Function for TextPadLeft {
 		let row_count = str_data.len();
 
 		let pad_container = match pad_data {
-			ColumnData::Utf8 {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => container,
@@ -74,7 +74,7 @@ impl Function for TextPadLeft {
 		};
 
 		match str_data {
-			ColumnData::Utf8 {
+			ColumnBuffer::Utf8 {
 				container: str_container,
 				..
 			} => {
@@ -87,13 +87,13 @@ impl Function for TextPadLeft {
 					}
 
 					let target_len = match len_data {
-						ColumnData::Int1(c) => c.get(i).map(|&v| v as i64),
-						ColumnData::Int2(c) => c.get(i).map(|&v| v as i64),
-						ColumnData::Int4(c) => c.get(i).map(|&v| v as i64),
-						ColumnData::Int8(c) => c.get(i).copied(),
-						ColumnData::Uint1(c) => c.get(i).map(|&v| v as i64),
-						ColumnData::Uint2(c) => c.get(i).map(|&v| v as i64),
-						ColumnData::Uint4(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Int8(c) => c.get(i).copied(),
+						ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
 						_ => {
 							return Err(FunctionError::InvalidArgumentType {
 								function: ctx.fragment.clone(),
@@ -147,7 +147,7 @@ impl Function for TextPadLeft {
 					}
 				}
 
-				let result_col_data = ColumnData::Utf8 {
+				let result_col_data = ColumnBuffer::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: MaxBytes::MAX,
 				};
@@ -162,13 +162,13 @@ impl Function for TextPadLeft {
 				}
 
 				let final_data = match combined_bv {
-					Some(bv) => ColumnData::Option {
+					Some(bv) => ColumnBuffer::Option {
 						inner: Box::new(result_col_data),
 						bitvec: bv,
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			other => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),

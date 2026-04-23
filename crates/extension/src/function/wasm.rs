@@ -3,7 +3,7 @@
 
 //! WASM scalar function implementation that executes WebAssembly modules as scalar functions
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 use reifydb_sdk::marshal::wasm::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
@@ -20,7 +20,7 @@ use crate::loader::wasm::invoke_wasm_module;
 ///
 /// Input: the context's `columns` marshalled as flat binary.
 /// Output: flat binary representing a single-column `Columns`, from which
-///   the first column's `ColumnData` is extracted.
+///   the first column's `ColumnBuffer` is extracted.
 pub struct WasmScalarFunction {
 	info: FunctionInfo,
 	wasm_bytes: Vec<u8>,
@@ -78,11 +78,11 @@ impl Function for WasmScalarFunction {
 		match output_columns.first() {
 			Some(col) => {
 				let data = col.data().clone();
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
 			}
 			None => {
-				let data = ColumnData::none_typed(Type::Any, args.row_count());
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), data)]))
+				let data = ColumnBuffer::none_typed(Type::Any, args.row_count());
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
 			}
 		}
 	}

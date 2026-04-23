@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer};
 use reifydb_type::value::r#type::Type;
 
 use crate::function::{
@@ -53,8 +53,8 @@ impl Function for InspectSubscription {
 		// In a real scenario, this would query the subscription manager or context
 		// and return information about active subscriptions.
 		// For this example, we return a dummy column.
-		let dummy_data = ColumnData::text_with_capacity(1);
-		let dummy_column = Column::text("subscription_info", dummy_data);
+		let dummy_data = ColumnBuffer::text_with_capacity(1);
+		let dummy_column = ColumnWithName::text("subscription_info", dummy_data);
 
 		Ok(Columns::new(vec![dummy_column]))
 	}

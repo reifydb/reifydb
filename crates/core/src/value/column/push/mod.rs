@@ -11,7 +11,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::value::column::ColumnData;
+use crate::value::column::ColumnBuffer;
 
 pub mod decimal;
 pub mod int;
@@ -24,7 +24,7 @@ pub trait Push<T> {
 	fn push(&mut self, value: T);
 }
 
-impl ColumnData {
+impl ColumnBuffer {
 	pub fn push<T>(&mut self, value: T)
 	where
 		Self: Push<T>,
@@ -36,13 +36,13 @@ impl ColumnData {
 
 macro_rules! impl_push {
 	($t:ty, $variant:ident, $factory:ident) => {
-		impl Push<$t> for ColumnData {
+		impl Push<$t> for ColumnBuffer {
 			fn push(&mut self, value: $t) {
 				match self {
-					ColumnData::$variant(container) => {
+					ColumnBuffer::$variant(container) => {
 						container.push(value);
 					}
-					ColumnData::Option {
+					ColumnBuffer::Option {
 						inner,
 						bitvec,
 					} => {
@@ -50,7 +50,7 @@ macro_rules! impl_push {
 						DataBitVec::push(bitvec, true);
 					}
 					other => panic!(
-						"called `push::<{}>()` on EngineColumnData::{:?}",
+						"called `push::<{}>()` on ColumnBuffer::{:?}",
 						stringify!($t),
 						other.get_type()
 					),
@@ -62,25 +62,25 @@ macro_rules! impl_push {
 
 macro_rules! impl_numeric_push {
 	($from:ty, $native_variant:ident, $factory:ident, $default:expr, [$(($variant:ident, $target:ty)),* $(,)?]) => {
-		impl Push<$from> for ColumnData {
+		impl Push<$from> for ColumnBuffer {
 			fn push(&mut self, value: $from) {
 				match self {
 					$(
-						ColumnData::$variant(container) => match <$from as SafeConvert<$target>>::checked_convert(value) {
+						ColumnBuffer::$variant(container) => match <$from as SafeConvert<$target>>::checked_convert(value) {
 							Some(v) => container.push(v),
 							None => container.push_default(),
 						},
 					)*
-					ColumnData::$native_variant(container) => {
+					ColumnBuffer::$native_variant(container) => {
 						container.push(value);
 					}
-					ColumnData::Option { inner, bitvec } => {
+					ColumnBuffer::Option { inner, bitvec } => {
 						inner.push(value);
 						DataBitVec::push(bitvec, true);
 					}
 					other => {
 						panic!(
-							"called `push::<{}>()` on incompatible EngineColumnData::{:?}",
+							"called `push::<{}>()` on incompatible ColumnBuffer::{:?}",
 							stringify!($from),
 							other.get_type()
 						);
@@ -91,20 +91,20 @@ macro_rules! impl_numeric_push {
 	};
 }
 
-impl Push<bool> for ColumnData {
+impl Push<bool> for ColumnBuffer {
 	fn push(&mut self, value: bool) {
 		match self {
-			ColumnData::Bool(container) => {
+			ColumnBuffer::Bool(container) => {
 				container.push(value);
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			other => panic!("called `push::<bool>()` on EngineColumnData::{:?}", other.get_type()),
+			other => panic!("called `push::<bool>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}
 }
@@ -318,37 +318,37 @@ impl_numeric_push!(
 	]
 );
 
-impl Push<Blob> for ColumnData {
+impl Push<Blob> for ColumnBuffer {
 	fn push(&mut self, value: Blob) {
 		match self {
-			ColumnData::Blob {
+			ColumnBuffer::Blob {
 				container,
 				..
 			} => {
 				container.push(value);
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			other => panic!("called `push::<Blob>()` on EngineColumnData::{:?}", other.get_type()),
+			other => panic!("called `push::<Blob>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}
 }
 
-impl Push<String> for ColumnData {
+impl Push<String> for ColumnBuffer {
 	fn push(&mut self, value: String) {
 		match self {
-			ColumnData::Utf8 {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
 				container.push(value);
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
@@ -356,34 +356,31 @@ impl Push<String> for ColumnData {
 				DataBitVec::push(bitvec, true);
 			}
 			other => {
-				panic!("called `push::<String>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `push::<String>()` on ColumnBuffer::{:?}", other.get_type())
 			}
 		}
 	}
 }
 
-impl Push<DictionaryEntryId> for ColumnData {
+impl Push<DictionaryEntryId> for ColumnBuffer {
 	fn push(&mut self, value: DictionaryEntryId) {
 		match self {
-			ColumnData::DictionaryId(container) => {
+			ColumnBuffer::DictionaryId(container) => {
 				container.push(value);
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			other => panic!(
-				"called `push::<DictionaryEntryId>()` on EngineColumnData::{:?}",
-				other.get_type()
-			),
+			other => panic!("called `push::<DictionaryEntryId>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}
 }
 
-impl Push<&str> for ColumnData {
+impl Push<&str> for ColumnBuffer {
 	fn push(&mut self, value: &str) {
 		self.push(value.to_string());
 	}

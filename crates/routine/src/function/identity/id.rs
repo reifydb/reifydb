@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -49,15 +49,15 @@ impl Function for Id {
 		let identity = ctx.identity;
 		let row_count = ctx.row_count.max(1);
 		if identity.is_anonymous() {
-			return Ok(Columns::new(vec![Column::new(
+			return Ok(Columns::new(vec![ColumnWithName::new(
 				ctx.fragment.clone(),
-				ColumnData::none_typed(Type::IdentityId, row_count),
+				ColumnBuffer::none_typed(Type::IdentityId, row_count),
 			)]));
 		}
 
-		Ok(Columns::new(vec![Column::new(
+		Ok(Columns::new(vec![ColumnWithName::new(
 			ctx.fragment.clone(),
-			ColumnData::identity_id(vec![identity; row_count]),
+			ColumnBuffer::identity_id(vec![identity; row_count]),
 		)]))
 	}
 }

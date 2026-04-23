@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{container::utf8::Utf8Container, r#type::Type},
@@ -61,12 +61,12 @@ impl Function for TextSubstring {
 
 		match (text_data, start_data, length_data) {
 			(
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: text_container,
 					max_bytes,
 				},
-				ColumnData::Int4(start_container),
-				ColumnData::Int4(length_container),
+				ColumnBuffer::Int4(start_container),
+				ColumnBuffer::Int4(length_container),
 			) => {
 				let mut result_data = Vec::with_capacity(text_container.data().len());
 
@@ -108,7 +108,7 @@ impl Function for TextSubstring {
 					}
 				}
 
-				let result_col_data = ColumnData::Utf8 {
+				let result_col_data = ColumnBuffer::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: *max_bytes,
 				};
@@ -123,17 +123,17 @@ impl Function for TextSubstring {
 				}
 
 				let final_data = match combined_bv {
-					Some(bv) => ColumnData::Option {
+					Some(bv) => ColumnBuffer::Option {
 						inner: Box::new(result_col_data),
 						bitvec: bv,
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			// Handle cases where start/length are different integer types
 			(
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: text_container,
 					max_bytes,
 				},
@@ -148,16 +148,16 @@ impl Function for TextSubstring {
 
 						// Extract start position from various integer types
 						let start_pos = match start_d {
-							ColumnData::Int1(container) => {
+							ColumnBuffer::Int1(container) => {
 								container.get(i).map(|&v| v as i32).unwrap_or(0)
 							}
-							ColumnData::Int2(container) => {
+							ColumnBuffer::Int2(container) => {
 								container.get(i).map(|&v| v as i32).unwrap_or(0)
 							}
-							ColumnData::Int4(container) => {
+							ColumnBuffer::Int4(container) => {
 								container.get(i).copied().unwrap_or(0)
 							}
-							ColumnData::Int8(container) => {
+							ColumnBuffer::Int8(container) => {
 								container.get(i).map(|&v| v as i32).unwrap_or(0)
 							}
 							_ => 0,
@@ -165,16 +165,16 @@ impl Function for TextSubstring {
 
 						// Extract length from various integer types
 						let length = match length_d {
-							ColumnData::Int1(container) => {
+							ColumnBuffer::Int1(container) => {
 								container.get(i).map(|&v| v as i32).unwrap_or(0)
 							}
-							ColumnData::Int2(container) => {
+							ColumnBuffer::Int2(container) => {
 								container.get(i).map(|&v| v as i32).unwrap_or(0)
 							}
-							ColumnData::Int4(container) => {
+							ColumnBuffer::Int4(container) => {
 								container.get(i).copied().unwrap_or(0)
 							}
-							ColumnData::Int8(container) => {
+							ColumnBuffer::Int8(container) => {
 								container.get(i).map(|&v| v as i32).unwrap_or(0)
 							}
 							_ => 0,
@@ -210,7 +210,7 @@ impl Function for TextSubstring {
 					}
 				}
 
-				let result_col_data = ColumnData::Utf8 {
+				let result_col_data = ColumnBuffer::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: *max_bytes,
 				};
@@ -225,13 +225,13 @@ impl Function for TextSubstring {
 				}
 
 				let final_data = match combined_bv {
-					Some(bv) => ColumnData::Option {
+					Some(bv) => ColumnBuffer::Option {
 						inner: Box::new(result_col_data),
 						bitvec: bv,
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			(other, _, _) => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),

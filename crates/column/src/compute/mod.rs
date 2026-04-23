@@ -3,9 +3,10 @@
 
 pub mod canonical;
 
+use reifydb_core::value::column::{array::Column, mask::RowMask};
 use reifydb_type::{Result, value::Value};
 
-use crate::{array::Array, encoding, mask::RowMask};
+use crate::encoding;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompareOp {
@@ -29,31 +30,31 @@ pub enum SearchResult {
 // while running the specialization. Free functions below dispatch through
 // this trait and fall back to canonicalize-and-run when `None` is returned.
 pub trait Compute: Send + Sync {
-	fn filter(&self, _array: &Array, _mask: &RowMask) -> Option<Result<Array>> {
+	fn filter(&self, _array: &Column, _mask: &RowMask) -> Option<Result<Column>> {
 		None
 	}
 
-	fn take(&self, _array: &Array, _indices: &Array) -> Option<Result<Array>> {
+	fn take(&self, _array: &Column, _indices: &Column) -> Option<Result<Column>> {
 		None
 	}
 
-	fn slice(&self, _array: &Array, _start: usize, _end: usize) -> Option<Result<Array>> {
+	fn slice(&self, _array: &Column, _start: usize, _end: usize) -> Option<Result<Column>> {
 		None
 	}
 
-	fn compare(&self, _array: &Array, _rhs: &Value, _op: CompareOp) -> Option<Result<Array>> {
+	fn compare(&self, _array: &Column, _rhs: &Value, _op: CompareOp) -> Option<Result<Column>> {
 		None
 	}
 
-	fn search_sorted(&self, _array: &Array, _needle: &Value) -> Option<Result<SearchResult>> {
+	fn search_sorted(&self, _array: &Column, _needle: &Value) -> Option<Result<SearchResult>> {
 		None
 	}
 
-	fn min_max(&self, _array: &Array) -> Option<Result<(Value, Value)>> {
+	fn min_max(&self, _array: &Column) -> Option<Result<(Value, Value)>> {
 		None
 	}
 
-	fn sum(&self, _array: &Array) -> Option<Result<Value>> {
+	fn sum(&self, _array: &Column) -> Option<Result<Value>> {
 		None
 	}
 }
@@ -67,40 +68,40 @@ impl Compute for DefaultCompute {}
 // kernel. This preserves the "compressed encodings can always fall back
 // correctly" invariant - correctness only depends on the canonical path.
 
-pub fn filter(array: &Array, mask: &RowMask) -> Result<Array> {
+pub fn filter(array: &Column, mask: &RowMask) -> Result<Column> {
 	if let Some(result) = specialized(array, |c| c.filter(array, mask)) {
 		return result;
 	}
 	let canon = array.to_canonical()?;
-	Ok(Array::from_canonical(canonical::filter::filter(&canon, mask)?))
+	Ok(Column::from_canonical(canonical::filter::filter(&canon, mask)?))
 }
 
-pub fn take(array: &Array, indices: &Array) -> Result<Array> {
+pub fn take(array: &Column, indices: &Column) -> Result<Column> {
 	if let Some(result) = specialized(array, |c| c.take(array, indices)) {
 		return result;
 	}
 	let canon = array.to_canonical()?;
 	let idx = indices.to_canonical()?;
-	Ok(Array::from_canonical(canonical::take::take(&canon, &idx)?))
+	Ok(Column::from_canonical(canonical::take::take(&canon, &idx)?))
 }
 
-pub fn slice(array: &Array, start: usize, end: usize) -> Result<Array> {
+pub fn slice(array: &Column, start: usize, end: usize) -> Result<Column> {
 	if let Some(result) = specialized(array, |c| c.slice(array, start, end)) {
 		return result;
 	}
 	let canon = array.to_canonical()?;
-	Ok(Array::from_canonical(canonical::slice::slice(&canon, start, end)?))
+	Ok(Column::from_canonical(canonical::slice::slice(&canon, start, end)?))
 }
 
-pub fn compare(array: &Array, rhs: &Value, op: CompareOp) -> Result<Array> {
+pub fn compare(array: &Column, rhs: &Value, op: CompareOp) -> Result<Column> {
 	if let Some(result) = specialized(array, |c| c.compare(array, rhs, op)) {
 		return result;
 	}
 	let canon = array.to_canonical()?;
-	Ok(Array::from_canonical(canonical::compare::compare(&canon, rhs, op)?))
+	Ok(Column::from_canonical(canonical::compare::compare(&canon, rhs, op)?))
 }
 
-pub fn search_sorted(array: &Array, needle: &Value) -> Result<SearchResult> {
+pub fn search_sorted(array: &Column, needle: &Value) -> Result<SearchResult> {
 	if let Some(result) = specialized(array, |c| c.search_sorted(array, needle)) {
 		return result;
 	}
@@ -108,7 +109,7 @@ pub fn search_sorted(array: &Array, needle: &Value) -> Result<SearchResult> {
 	canonical::search_sorted::search_sorted(&canon, needle)
 }
 
-pub fn min_max(array: &Array) -> Result<(Value, Value)> {
+pub fn min_max(array: &Column) -> Result<(Value, Value)> {
 	if let Some(result) = specialized(array, |c| c.min_max(array)) {
 		return result;
 	}
@@ -116,7 +117,7 @@ pub fn min_max(array: &Array) -> Result<(Value, Value)> {
 	canonical::min_max::min_max(&canon)
 }
 
-pub fn sum(array: &Array) -> Result<Value> {
+pub fn sum(array: &Column) -> Result<Value> {
 	if let Some(result) = specialized(array, |c| c.sum(array)) {
 		return result;
 	}
@@ -124,7 +125,7 @@ pub fn sum(array: &Array) -> Result<Value> {
 	canonical::sum::sum(&canon)
 }
 
-fn specialized<T>(array: &Array, hook: impl FnOnce(&dyn Compute) -> Option<Result<T>>) -> Option<Result<T>> {
+fn specialized<T>(array: &Column, hook: impl FnOnce(&dyn Compute) -> Option<Result<T>>) -> Option<Result<T>> {
 	let registry = encoding::global();
 	let encoding = registry.get(array.encoding())?;
 	hook(encoding.compute())

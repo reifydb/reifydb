@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::{
 	expression::Expression,
 	instruction::{Instruction, ScopeType},
@@ -169,8 +169,8 @@ impl QueryNode for UdfEvalNode {
 						..
 					} if !c.is_empty() => c.columns.into_inner().into_iter().next().unwrap(),
 					_ => {
-						let data = ColumnData::none_typed(Type::Any, row_count);
-						Column {
+						let data = ColumnBuffer::none_typed(Type::Any, row_count);
+						ColumnWithName {
 							name: call.udf.result_column.clone(),
 							data,
 						}
@@ -214,20 +214,19 @@ impl QueryNode for UdfEvalNode {
 				}
 
 				let col_type = results.first().map(|v| v.get_type()).unwrap_or(Type::Any);
-				let mut data = ColumnData::none_typed(col_type, 0);
+				let mut data = ColumnBuffer::none_typed(col_type, 0);
 				for value in &results {
 					data.push_value(value.clone());
 				}
-				Column {
+				ColumnWithName {
 					name: call.udf.result_column.clone(),
 					data,
 				}
 			};
 
-			columns.columns.make_mut().push(Column {
-				name: call.udf.result_column.clone(),
-				data: result_column.data,
-			});
+			columns.columns
+				.make_mut()
+				.push(ColumnWithName::new(call.udf.result_column.clone(), result_column.data));
 		}
 
 		Ok(Some(columns))
@@ -340,9 +339,9 @@ pub(crate) fn evaluate_udfs_no_input(
 			_ => Value::none(),
 		};
 
-		let mut data = ColumnData::none_typed(value.get_type(), 0);
+		let mut data = ColumnBuffer::none_typed(value.get_type(), 0);
 		data.push_value(value);
-		result_columns.push(Column {
+		result_columns.push(ColumnWithName {
 			name: udf.result_column.clone(),
 			data,
 		});

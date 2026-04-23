@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_type::{
 	error::{IntoDiagnostic, TypeError},
 	fragment::Fragment,
@@ -20,7 +20,7 @@ pub(crate) struct NumberParser;
 impl NumberParser {
 	/// Parse a number to a specific target type with detailed error
 	/// handling and range checking
-	pub(crate) fn from_number(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnData> {
+	pub(crate) fn from_number(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
 		match &target {
 			Type::Boolean => Self::parse_bool(fragment, row_count),
 			Type::Float4 => Self::parse_float4(fragment, row_count),
@@ -47,9 +47,9 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_bool(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_bool(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_bool(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::bool(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::bool(vec![v; row_count])),
 			Err(err) => Err(CastError::InvalidBoolean {
 				fragment,
 				cause: err.diagnostic(),
@@ -58,9 +58,9 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_float4(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_float4(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_float::<f32>(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::float4(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::float4(vec![v; row_count])),
 			Err(err) => Err(CastError::InvalidNumber {
 				fragment,
 				target: Type::Float4,
@@ -70,9 +70,9 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_float8(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_float8(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_float::<f64>(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::float8(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::float8(vec![v; row_count])),
 			Err(err) => Err(CastError::InvalidNumber {
 				fragment,
 				target: Type::Float8,
@@ -82,13 +82,13 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int1(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_int1(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnBuffer> {
 		if let Ok(v) = parse_primitive_int::<i8>(fragment.clone()) {
-			Ok(ColumnData::int1(vec![v; row_count]))
+			Ok(ColumnBuffer::int1(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64 {
-				Ok(ColumnData::int1(vec![truncated as i8; row_count]))
+				Ok(ColumnBuffer::int1(vec![truncated as i8; row_count]))
 			} else {
 				Err(CastError::InvalidNumber {
 					fragment: fragment.clone(),
@@ -115,13 +115,13 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int2(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_int2(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnBuffer> {
 		if let Ok(v) = parse_primitive_int::<i16>(fragment.clone()) {
-			Ok(ColumnData::int2(vec![v; row_count]))
+			Ok(ColumnBuffer::int2(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64 {
-				Ok(ColumnData::int2(vec![truncated as i16; row_count]))
+				Ok(ColumnBuffer::int2(vec![truncated as i16; row_count]))
 			} else {
 				Err(CastError::InvalidNumber {
 					fragment: fragment.clone(),
@@ -149,13 +149,13 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int4(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_int4(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnBuffer> {
 		if let Ok(v) = parse_primitive_int::<i32>(fragment.clone()) {
-			Ok(ColumnData::int4(vec![v; row_count]))
+			Ok(ColumnBuffer::int4(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64 {
-				Ok(ColumnData::int4(vec![truncated as i32; row_count]))
+				Ok(ColumnBuffer::int4(vec![truncated as i32; row_count]))
 			} else {
 				Err(CastError::InvalidNumber {
 					fragment: fragment.clone(),
@@ -183,13 +183,13 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int8(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_int8(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnBuffer> {
 		if let Ok(v) = parse_primitive_int::<i64>(fragment.clone()) {
-			Ok(ColumnData::int8(vec![v; row_count]))
+			Ok(ColumnBuffer::int8(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64 {
-				Ok(ColumnData::int8(vec![truncated as i64; row_count]))
+				Ok(ColumnBuffer::int8(vec![truncated as i64; row_count]))
 			} else {
 				Err(CastError::InvalidNumber {
 					fragment: fragment.clone(),
@@ -217,13 +217,13 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int16(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_int16(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnBuffer> {
 		if let Ok(v) = parse_primitive_int::<i128>(fragment.clone()) {
-			Ok(ColumnData::int16(vec![v; row_count]))
+			Ok(ColumnBuffer::int16(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64 {
-				Ok(ColumnData::int16(vec![truncated as i128; row_count]))
+				Ok(ColumnBuffer::int16(vec![truncated as i128; row_count]))
 			} else {
 				Err(CastError::InvalidNumber {
 					fragment: fragment.clone(),
@@ -251,13 +251,13 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint1(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_uint1(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnBuffer> {
 		if let Ok(v) = parse_primitive_uint::<u8>(fragment.clone()) {
-			Ok(ColumnData::uint1(vec![v; row_count]))
+			Ok(ColumnBuffer::uint1(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= 0.0 && truncated <= u8::MAX as f64 {
-				Ok(ColumnData::uint1(vec![truncated as u8; row_count]))
+				Ok(ColumnBuffer::uint1(vec![truncated as u8; row_count]))
 			} else {
 				Err(CastError::InvalidNumber {
 					fragment: fragment.clone(),
@@ -285,13 +285,13 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint2(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_uint2(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnBuffer> {
 		if let Ok(v) = parse_primitive_uint::<u16>(fragment.clone()) {
-			Ok(ColumnData::uint2(vec![v; row_count]))
+			Ok(ColumnBuffer::uint2(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= 0.0 && truncated <= u16::MAX as f64 {
-				Ok(ColumnData::uint2(vec![truncated as u16; row_count]))
+				Ok(ColumnBuffer::uint2(vec![truncated as u16; row_count]))
 			} else {
 				Err(CastError::InvalidNumber {
 					fragment: fragment.clone(),
@@ -319,13 +319,13 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint4(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_uint4(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnBuffer> {
 		if let Ok(v) = parse_primitive_uint::<u32>(fragment.clone()) {
-			Ok(ColumnData::uint4(vec![v; row_count]))
+			Ok(ColumnBuffer::uint4(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= 0.0 && truncated <= u32::MAX as f64 {
-				Ok(ColumnData::uint4(vec![truncated as u32; row_count]))
+				Ok(ColumnBuffer::uint4(vec![truncated as u32; row_count]))
 			} else {
 				Err(CastError::InvalidNumber {
 					fragment: fragment.clone(),
@@ -353,13 +353,13 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint8(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_uint8(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnBuffer> {
 		if let Ok(v) = parse_primitive_uint::<u64>(fragment.clone()) {
-			Ok(ColumnData::uint8(vec![v; row_count]))
+			Ok(ColumnBuffer::uint8(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= 0.0 && truncated <= u64::MAX as f64 {
-				Ok(ColumnData::uint8(vec![truncated as u64; row_count]))
+				Ok(ColumnBuffer::uint8(vec![truncated as u64; row_count]))
 			} else {
 				Err(CastError::InvalidNumber {
 					fragment: fragment.clone(),
@@ -387,13 +387,13 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint16(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_uint16(fragment: Fragment, ty: Type, row_count: usize) -> Result<ColumnBuffer> {
 		if let Ok(v) = parse_primitive_uint::<u128>(fragment.clone()) {
-			Ok(ColumnData::uint16(vec![v; row_count]))
+			Ok(ColumnBuffer::uint16(vec![v; row_count]))
 		} else if let Ok(f) = parse_float::<f64>(fragment.clone()) {
 			let truncated = f.trunc();
 			if truncated >= 0.0 && truncated <= u128::MAX as f64 {
-				Ok(ColumnData::uint16(vec![truncated as u128; row_count]))
+				Ok(ColumnBuffer::uint16(vec![truncated as u128; row_count]))
 			} else {
 				Err(CastError::InvalidNumber {
 					fragment: fragment.clone(),
@@ -421,9 +421,9 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_int(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_int(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_primitive_int(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::int(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::int(vec![v; row_count])),
 			Err(err) => Err(CastError::InvalidNumber {
 				fragment,
 				target: Type::Int,
@@ -433,9 +433,9 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_uint(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_uint(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_primitive_uint(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::uint(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::uint(vec![v; row_count])),
 			Err(err) => Err(CastError::InvalidNumber {
 				fragment,
 				target: Type::Uint,
@@ -445,9 +445,9 @@ impl NumberParser {
 		}
 	}
 
-	fn parse_decimal(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_decimal(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_decimal(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::decimal(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::decimal(vec![v; row_count])),
 			Err(err) => Err(CastError::InvalidNumber {
 				fragment,
 				target: Type::Decimal,

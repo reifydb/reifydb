@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{procedure::Procedure, vtable::VTable},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -67,10 +67,10 @@ impl BaseVTable for SystemProceduresNative {
 		}
 
 		let len = ids.len();
-		let mut id_col = ColumnData::uint8_with_capacity(len);
-		let mut ns_col = ColumnData::uint8_with_capacity(len);
-		let mut name_col = ColumnData::utf8_with_capacity(len);
-		let mut native_col = ColumnData::utf8_with_capacity(len);
+		let mut id_col = ColumnBuffer::uint8_with_capacity(len);
+		let mut ns_col = ColumnBuffer::uint8_with_capacity(len);
+		let mut name_col = ColumnBuffer::utf8_with_capacity(len);
+		let mut native_col = ColumnBuffer::utf8_with_capacity(len);
 
 		for v in &ids {
 			id_col.push(*v);
@@ -86,22 +86,10 @@ impl BaseVTable for SystemProceduresNative {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: id_col,
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: ns_col,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: name_col,
-			},
-			Column {
-				name: Fragment::internal("native_name"),
-				data: native_col,
-			},
+			ColumnWithName::new(Fragment::internal("id"), id_col),
+			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col),
+			ColumnWithName::new(Fragment::internal("name"), name_col),
+			ColumnWithName::new(Fragment::internal("native_name"), native_col),
 		];
 
 		self.exhausted = true;

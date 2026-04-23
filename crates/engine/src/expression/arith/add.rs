@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, push::Push};
 use reifydb_type::{
 	error::{BinaryOp, TypeError},
 	fragment::{Fragment, LazyFragment},
@@ -20,10 +20,10 @@ use crate::{
 
 pub(crate) fn add_columns(
 	ctx: &EvalContext,
-	left: &Column,
-	right: &Column,
+	left: &ColumnWithName,
+	right: &ColumnWithName,
 	fragment: impl LazyFragment + Copy,
-) -> Result<Column> {
+) -> Result<ColumnWithName> {
 	binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let target = Type::promote(left.get_type(), right.get_type());
 
@@ -32,7 +32,7 @@ pub(crate) fn add_columns(
 			fixed: add_numeric, arb: add_numeric_clone (ctx, target, fragment);
 
 			// Duration + Duration
-			(ColumnData::Duration(l), ColumnData::Duration(r)) => {
+			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => {
 				let mut container = TemporalContainer::with_capacity(l.len());
 				for i in 0..l.len() {
 					match (l.get(i), r.get(i)) {
@@ -40,19 +40,16 @@ pub(crate) fn add_columns(
 						_ => container.push_default(),
 					}
 				}
-				Ok(Column {
-					name: fragment.fragment(),
-					data: ColumnData::Duration(container),
-				})
+				Ok(ColumnWithName::new(fragment.fragment(), ColumnBuffer::Duration(container)))
 			}
 
 			// String concatenation
 			(
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: l,
 					..
 				},
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: r,
 					..
 				},
@@ -60,7 +57,7 @@ pub(crate) fn add_columns(
 
 			// String + Other types (auto-promote to string)
 			(
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: l,
 					..
 				},
@@ -70,7 +67,7 @@ pub(crate) fn add_columns(
 			// Other types + String (auto-promote to string)
 			(
 				l,
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: r,
 					..
 				},
@@ -92,17 +89,17 @@ fn add_numeric<L, R>(
 	r: &NumberContainer<R>,
 	target: Type,
 	fragment: impl LazyFragment + Copy,
-) -> Result<Column>
+) -> Result<ColumnWithName>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeAdd,
-	ColumnData: Push<<L as Promote<R>>::Output>,
+	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ColumnData::with_capacity(target, l.len());
+	let mut data = ColumnBuffer::with_capacity(target, l.len());
 	let l_data = l.data();
 	let r_data = r.data();
 	for i in 0..l.len() {
@@ -112,7 +109,7 @@ where
 			data.push_none()
 		}
 	}
-	Ok(Column {
+	Ok(ColumnWithName {
 		name: fragment.fragment(),
 		data,
 	})
@@ -124,17 +121,17 @@ fn add_numeric_clone<L, R>(
 	r: &NumberContainer<R>,
 	target: Type,
 	fragment: impl LazyFragment + Copy,
-) -> Result<Column>
+) -> Result<ColumnWithName>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeAdd,
-	ColumnData: Push<<L as Promote<R>>::Output>,
+	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ColumnData::with_capacity(target, l.len());
+	let mut data = ColumnBuffer::with_capacity(target, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l_val), Some(r_val)) => {
@@ -149,41 +146,45 @@ where
 			_ => data.push_none(),
 		}
 	}
-	Ok(Column {
+	Ok(ColumnWithName {
 		name: fragment.fragment(),
 		data,
 	})
 }
 
-fn can_promote_to_string(data: &ColumnData) -> bool {
+fn can_promote_to_string(data: &ColumnBuffer) -> bool {
 	matches!(
 		data,
-		ColumnData::Bool(_)
-			| ColumnData::Float4(_)
-			| ColumnData::Float8(_)
-			| ColumnData::Int1(_) | ColumnData::Int2(_)
-			| ColumnData::Int4(_) | ColumnData::Int8(_)
-			| ColumnData::Int16(_)
-			| ColumnData::Uint1(_)
-			| ColumnData::Uint2(_)
-			| ColumnData::Uint4(_)
-			| ColumnData::Uint8(_)
-			| ColumnData::Uint16(_)
-			| ColumnData::Date(_) | ColumnData::DateTime(_)
-			| ColumnData::Time(_) | ColumnData::Duration(_)
-			| ColumnData::Uuid4(_)
-			| ColumnData::Uuid7(_)
-			| ColumnData::Blob { .. }
-			| ColumnData::Int { .. }
-			| ColumnData::Uint { .. }
-			| ColumnData::Decimal { .. }
+		ColumnBuffer::Bool(_)
+			| ColumnBuffer::Float4(_)
+			| ColumnBuffer::Float8(_)
+			| ColumnBuffer::Int1(_)
+			| ColumnBuffer::Int2(_)
+			| ColumnBuffer::Int4(_)
+			| ColumnBuffer::Int8(_)
+			| ColumnBuffer::Int16(_)
+			| ColumnBuffer::Uint1(_)
+			| ColumnBuffer::Uint2(_)
+			| ColumnBuffer::Uint4(_)
+			| ColumnBuffer::Uint8(_)
+			| ColumnBuffer::Uint16(_)
+			| ColumnBuffer::Date(_)
+			| ColumnBuffer::DateTime(_)
+			| ColumnBuffer::Time(_)
+			| ColumnBuffer::Duration(_)
+			| ColumnBuffer::Uuid4(_)
+			| ColumnBuffer::Uuid7(_)
+			| ColumnBuffer::Blob { .. }
+			| ColumnBuffer::Int { .. }
+			| ColumnBuffer::Uint { .. }
+			| ColumnBuffer::Decimal { .. }
 	)
 }
 
-fn concat_strings(l: &Utf8Container, r: &Utf8Container, target: Type, fragment: Fragment) -> Result<Column> {
+fn concat_strings(l: &Utf8Container, r: &Utf8Container, target: Type, fragment: Fragment) -> Result<ColumnWithName> {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ColumnData::with_capacity(target, l.len());
+	let mut data = ColumnBuffer::with_capacity(target, l.len());
 	for i in 0..l.len() {
 		match (l.get(i), r.get(i)) {
 			(Some(l_str), Some(r_str)) => {
@@ -193,7 +194,7 @@ fn concat_strings(l: &Utf8Container, r: &Utf8Container, target: Type, fragment: 
 			_ => data.push_none(),
 		}
 	}
-	Ok(Column {
+	Ok(ColumnWithName {
 		name: fragment,
 		data,
 	})
@@ -201,14 +202,14 @@ fn concat_strings(l: &Utf8Container, r: &Utf8Container, target: Type, fragment: 
 
 fn concat_string_with_other(
 	string_data: &Utf8Container,
-	other_data: &ColumnData,
+	other_data: &ColumnBuffer,
 	string_is_left: bool,
 	target: Type,
 	fragment: Fragment,
-) -> Result<Column> {
+) -> Result<ColumnWithName> {
 	debug_assert_eq!(string_data.len(), other_data.len());
 
-	let mut data = ColumnData::with_capacity(target, string_data.len());
+	let mut data = ColumnBuffer::with_capacity(target, string_data.len());
 	for i in 0..string_data.len() {
 		match (string_data.get(i), other_data.is_defined(i)) {
 			(Some(str_val), true) => {
@@ -223,7 +224,7 @@ fn concat_string_with_other(
 			_ => data.push_none(),
 		}
 	}
-	Ok(Column {
+	Ok(ColumnWithName {
 		name: fragment,
 		data,
 	})

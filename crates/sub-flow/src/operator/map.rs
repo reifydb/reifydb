@@ -8,7 +8,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	value::column::{Column, columns::Columns},
+	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{
 	expression::{
@@ -105,10 +105,8 @@ impl MapOperator {
 				_ => expr.full_fragment_owned().text().to_string(),
 			};
 
-			let named_column = Column {
-				name: Fragment::internal(field_name),
-				data: evaluated_col.data().clone(),
-			};
+			let named_column =
+				ColumnWithName::new(Fragment::internal(field_name), evaluated_col.data().clone());
 
 			result_columns.push(named_column);
 		}

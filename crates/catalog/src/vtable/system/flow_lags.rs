@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::{catalog::vtable::VTable, flow::FlowLagsProvider},
 	util::ioc::IocContainer,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -52,9 +52,9 @@ impl BaseVTable for SystemFlowLags {
 			Err(_) => vec![],
 		};
 
-		let mut flow_ids = ColumnData::uint8_with_capacity(rows.len());
-		let mut primitive_ids = ColumnData::uint8_with_capacity(rows.len());
-		let mut lags = ColumnData::uint8_with_capacity(rows.len());
+		let mut flow_ids = ColumnBuffer::uint8_with_capacity(rows.len());
+		let mut primitive_ids = ColumnBuffer::uint8_with_capacity(rows.len());
+		let mut lags = ColumnBuffer::uint8_with_capacity(rows.len());
 
 		for row in rows {
 			flow_ids.push(row.flow_id.0);
@@ -63,18 +63,9 @@ impl BaseVTable for SystemFlowLags {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("flow_id"),
-				data: flow_ids,
-			},
-			Column {
-				name: Fragment::internal("shape_id"),
-				data: primitive_ids,
-			},
-			Column {
-				name: Fragment::internal("lag"),
-				data: lags,
-			},
+			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids),
+			ColumnWithName::new(Fragment::internal("shape_id"), primitive_ids),
+			ColumnWithName::new(Fragment::internal("lag"), lags),
 		];
 
 		self.exhausted = true;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -51,7 +51,7 @@ impl Function for DurationNegate {
 		let row_count = data.len();
 
 		match data {
-			ColumnData::Duration(container_in) => {
+			ColumnBuffer::Duration(container_in) => {
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -62,14 +62,14 @@ impl Function for DurationNegate {
 					}
 				}
 
-				let mut result_data = ColumnData::Duration(container);
+				let mut result_data = ColumnBuffer::Duration(container);
 				if let Some(bv) = bitvec {
-					result_data = ColumnData::Option {
+					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),
 						bitvec: bv.clone(),
 					};
 				}
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
 			other => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),

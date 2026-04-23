@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	internal_error,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{
 	compiler::CompilationResult,
@@ -165,27 +165,27 @@ impl<'a> Vm<'a> {
 /// Convert a `Diagnostic` into a single-row `Columns` with fields:
 /// `code`, `message`, `rql`, `label`, `help`.
 fn diagnostic_to_columns(diag: &Diagnostic) -> Columns {
-	let code_col = Column::new("code", ColumnData::utf8([diag.code.as_str()]));
-	let message_col = Column::new("message", ColumnData::utf8([diag.message.as_str()]));
-	let rql_col = Column::new(
+	let code_col = ColumnWithName::new("code", ColumnBuffer::utf8([diag.code.as_str()]));
+	let message_col = ColumnWithName::new("message", ColumnBuffer::utf8([diag.message.as_str()]));
+	let rql_col = ColumnWithName::new(
 		"rql",
 		match &diag.rql {
-			Some(s) => ColumnData::utf8([s.as_str()]),
-			None => ColumnData::none_typed(Type::Utf8, 1),
+			Some(s) => ColumnBuffer::utf8([s.as_str()]),
+			None => ColumnBuffer::none_typed(Type::Utf8, 1),
 		},
 	);
-	let label_col = Column::new(
+	let label_col = ColumnWithName::new(
 		"label",
 		match &diag.label {
-			Some(s) => ColumnData::utf8([s.as_str()]),
-			None => ColumnData::none_typed(Type::Utf8, 1),
+			Some(s) => ColumnBuffer::utf8([s.as_str()]),
+			None => ColumnBuffer::none_typed(Type::Utf8, 1),
 		},
 	);
-	let help_col = Column::new(
+	let help_col = ColumnWithName::new(
 		"help",
 		match &diag.help {
-			Some(s) => ColumnData::utf8([s.as_str()]),
-			None => ColumnData::none_typed(Type::Utf8, 1),
+			Some(s) => ColumnBuffer::utf8([s.as_str()]),
+			None => ColumnBuffer::none_typed(Type::Utf8, 1),
 		},
 	);
 	Columns::new(vec![code_col, message_col, rql_col, label_col, help_col])

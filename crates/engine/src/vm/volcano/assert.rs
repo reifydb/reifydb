@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{columns::Columns, data::ColumnData, headers::ColumnHeaders};
+use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
@@ -58,7 +58,7 @@ impl QueryNode for AssertNode {
 
 				let frag = assert_expr.full_fragment_owned();
 				match result.data() {
-					ColumnData::Bool(container) => {
+					ColumnBuffer::Bool(container) => {
 						for i in 0..row_count {
 							let valid = container.is_defined(i);
 							let value = container.data().get(i);
@@ -142,7 +142,7 @@ impl QueryNode for AssertWithoutInputNode {
 
 			let frag = assert_expr.full_fragment_owned();
 			match result.data() {
-				ColumnData::Bool(container) => {
+				ColumnBuffer::Bool(container) => {
 					let valid = container.is_defined(0);
 					let value = container.data().get(0);
 					if !valid || !value {

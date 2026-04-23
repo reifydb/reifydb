@@ -10,7 +10,7 @@ use reifydb_abi::data::{
 	buffer::BufferFFI,
 	column::{ColumnDataFFI, ColumnFFI, ColumnTypeCode, ColumnsFFI},
 };
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
@@ -151,7 +151,7 @@ impl Arena {
 		};
 
 		// Unmarshal columns
-		let mut columns: Vec<Column> = Vec::with_capacity(ffi.column_count);
+		let mut columns: Vec<ColumnWithName> = Vec::with_capacity(ffi.column_count);
 		unsafe {
 			let cols_slice = slice::from_raw_parts(ffi.columns, ffi.column_count);
 			for col_ffi in cols_slice {
@@ -168,7 +168,7 @@ impl Arena {
 }
 
 impl Arena {
-	pub(super) fn marshal_column(&mut self, column: &Column) -> ColumnFFI {
+	pub(super) fn marshal_column(&mut self, column: &ColumnWithName) -> ColumnFFI {
 		// Marshal column name
 		let name_bytes = column.name.text().as_bytes();
 		let name_ptr = self.copy_bytes(name_bytes);
@@ -179,7 +179,8 @@ impl Arena {
 		};
 
 		// Marshal column data
-		let data = self.marshal_column_data(column.data());
+		let buffer = column.data();
+		let data = self.marshal_column_data(buffer);
 
 		ColumnFFI {
 			name,
@@ -187,8 +188,8 @@ impl Arena {
 		}
 	}
 
-	/// Marshal ColumnData to FFI representation
-	pub(super) fn marshal_column_data(&mut self, data: &ColumnData) -> ColumnDataFFI {
+	/// Marshal ColumnBuffer to FFI representation
+	pub(super) fn marshal_column_data(&mut self, data: &ColumnBuffer) -> ColumnDataFFI {
 		let row_count = data.len();
 
 		if row_count == 0 {
@@ -223,7 +224,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_column(&self, ffi: &ColumnFFI, row_count: usize) -> Column {
+	pub(super) fn unmarshal_column(&self, ffi: &ColumnFFI, row_count: usize) -> ColumnWithName {
 		// Unmarshal name
 		let name = if !ffi.name.ptr.is_null() && ffi.name.len > 0 {
 			unsafe {
@@ -238,130 +239,127 @@ impl Arena {
 		// Unmarshal data
 		let data = self.unmarshal_column_data(&ffi.data, row_count);
 
-		Column {
-			name,
-			data,
-		}
+		ColumnWithName::new(name, data)
 	}
 
-	/// Unmarshal ColumnData from FFI representation
-	pub(super) fn unmarshal_column_data(&self, ffi: &ColumnDataFFI, row_count: usize) -> ColumnData {
+	/// Unmarshal ColumnBuffer from FFI representation
+	pub(super) fn unmarshal_column_data(&self, ffi: &ColumnDataFFI, row_count: usize) -> ColumnBuffer {
 		if row_count == 0 {
-			return ColumnData::none_typed(Type::Boolean, 0);
+			return ColumnBuffer::none_typed(Type::Boolean, 0);
 		}
 
 		let inner = match ffi.type_code {
 			ColumnTypeCode::Bool => {
 				let container = self.unmarshal_bool_data(ffi);
-				ColumnData::Bool(container)
+				ColumnBuffer::Bool(container)
 			}
 			ColumnTypeCode::Float4 => {
 				let container = self.unmarshal_numeric_data::<f32>(ffi);
-				ColumnData::Float4(container)
+				ColumnBuffer::Float4(container)
 			}
 			ColumnTypeCode::Float8 => {
 				let container = self.unmarshal_numeric_data::<f64>(ffi);
-				ColumnData::Float8(container)
+				ColumnBuffer::Float8(container)
 			}
 			ColumnTypeCode::Int1 => {
 				let container = self.unmarshal_numeric_data::<i8>(ffi);
-				ColumnData::Int1(container)
+				ColumnBuffer::Int1(container)
 			}
 			ColumnTypeCode::Int2 => {
 				let container = self.unmarshal_numeric_data::<i16>(ffi);
-				ColumnData::Int2(container)
+				ColumnBuffer::Int2(container)
 			}
 			ColumnTypeCode::Int4 => {
 				let container = self.unmarshal_numeric_data::<i32>(ffi);
-				ColumnData::Int4(container)
+				ColumnBuffer::Int4(container)
 			}
 			ColumnTypeCode::Int8 => {
 				let container = self.unmarshal_numeric_data::<i64>(ffi);
-				ColumnData::Int8(container)
+				ColumnBuffer::Int8(container)
 			}
 			ColumnTypeCode::Int16 => {
 				let container = self.unmarshal_numeric_data::<i128>(ffi);
-				ColumnData::Int16(container)
+				ColumnBuffer::Int16(container)
 			}
 			ColumnTypeCode::Uint1 => {
 				let container = self.unmarshal_numeric_data::<u8>(ffi);
-				ColumnData::Uint1(container)
+				ColumnBuffer::Uint1(container)
 			}
 			ColumnTypeCode::Uint2 => {
 				let container = self.unmarshal_numeric_data::<u16>(ffi);
-				ColumnData::Uint2(container)
+				ColumnBuffer::Uint2(container)
 			}
 			ColumnTypeCode::Uint4 => {
 				let container = self.unmarshal_numeric_data::<u32>(ffi);
-				ColumnData::Uint4(container)
+				ColumnBuffer::Uint4(container)
 			}
 			ColumnTypeCode::Uint8 => {
 				let container = self.unmarshal_numeric_data::<u64>(ffi);
-				ColumnData::Uint8(container)
+				ColumnBuffer::Uint8(container)
 			}
 			ColumnTypeCode::Uint16 => {
 				let container = self.unmarshal_numeric_data::<u128>(ffi);
-				ColumnData::Uint16(container)
+				ColumnBuffer::Uint16(container)
 			}
 			ColumnTypeCode::Utf8 => {
 				let container = self.unmarshal_utf8_data(ffi);
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container,
 					max_bytes: MaxBytes::MAX,
 				}
 			}
 			ColumnTypeCode::Date => {
 				let container = self.unmarshal_date_data(ffi);
-				ColumnData::Date(container)
+				ColumnBuffer::Date(container)
 			}
 			ColumnTypeCode::DateTime => {
 				let container = self.unmarshal_datetime_data(ffi);
-				ColumnData::DateTime(container)
+				ColumnBuffer::DateTime(container)
 			}
 			ColumnTypeCode::Time => {
 				let container = self.unmarshal_time_data(ffi);
-				ColumnData::Time(container)
+				ColumnBuffer::Time(container)
 			}
 			ColumnTypeCode::Duration => {
 				let container = self.unmarshal_duration_data(ffi);
-				ColumnData::Duration(container)
+				ColumnBuffer::Duration(container)
 			}
 			ColumnTypeCode::IdentityId => {
 				let container = self.unmarshal_identity_id_data(ffi);
-				ColumnData::IdentityId(container)
+				ColumnBuffer::IdentityId(container)
 			}
 			ColumnTypeCode::Uuid4 => {
 				let container = self.unmarshal_uuid4_data(ffi);
-				ColumnData::Uuid4(container)
+				ColumnBuffer::Uuid4(container)
 			}
 			ColumnTypeCode::Uuid7 => {
 				let container = self.unmarshal_uuid7_data(ffi);
-				ColumnData::Uuid7(container)
+				ColumnBuffer::Uuid7(container)
 			}
 			ColumnTypeCode::Blob => {
 				let container = self.unmarshal_blob_data(ffi);
-				ColumnData::Blob {
+				ColumnBuffer::Blob {
 					container,
 					max_bytes: MaxBytes::MAX,
 				}
 			}
 			ColumnTypeCode::Int => {
 				let container = self.unmarshal_serialized_data::<Int>(ffi);
-				ColumnData::Int {
+				ColumnBuffer::Int {
 					container,
 					max_bytes: MaxBytes::MAX,
 				}
 			}
 			ColumnTypeCode::Uint => {
 				let container = self.unmarshal_serialized_data::<Uint>(ffi);
-				ColumnData::Uint {
+				ColumnBuffer::Uint {
 					container,
 					max_bytes: MaxBytes::MAX,
 				}
 			}
 			ColumnTypeCode::Decimal => {
 				let container = self.unmarshal_serialized_data::<Decimal>(ffi);
-				ColumnData::Decimal {
+				ColumnBuffer::Decimal {
 					container,
 					precision: Precision::MAX,
 					scale: Scale::MIN,
@@ -369,21 +367,21 @@ impl Arena {
 			}
 			ColumnTypeCode::Any => {
 				let container = self.unmarshal_any_data(ffi);
-				ColumnData::Any(container)
+				ColumnBuffer::Any(container)
 			}
 			ColumnTypeCode::DictionaryId => {
 				let u128_container = self.unmarshal_numeric_data::<u128>(ffi);
 				let entries: Vec<DictionaryEntryId> =
 					u128_container.data().iter().map(|&v| DictionaryEntryId::U16(v)).collect();
-				ColumnData::DictionaryId(DictionaryContainer::new(entries))
+				ColumnBuffer::DictionaryId(DictionaryContainer::new(entries))
 			}
-			ColumnTypeCode::Undefined => ColumnData::none_typed(Type::Boolean, row_count),
+			ColumnTypeCode::Undefined => ColumnBuffer::none_typed(Type::Boolean, row_count),
 		};
 
 		// If defined_bitvec is present, wrap in Option
 		if !ffi.defined_bitvec.is_empty() {
 			let bitvec = self.unmarshal_bitvec(&ffi.defined_bitvec, row_count);
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner: Box::new(inner),
 				bitvec,
 			}
@@ -394,10 +392,10 @@ impl Arena {
 }
 
 impl Arena {
-	pub(super) fn marshal_column_data_bytes(&mut self, data: &ColumnData) -> (BufferFFI, BufferFFI) {
+	pub(super) fn marshal_column_data_bytes(&mut self, data: &ColumnBuffer) -> (BufferFFI, BufferFFI) {
 		match data {
 			// Fixed-size numeric types - use Deref to get slice
-			ColumnData::Bool(container) => {
+			ColumnBuffer::Bool(container) => {
 				// BoolContainer stores packed bits internally
 				let len = container.len();
 				let byte_count = len.div_ceil(8);
@@ -427,43 +425,43 @@ impl Arena {
 			}
 
 			// Numeric types - use Deref to [T]
-			ColumnData::Float4(container) => self.marshal_numeric_slice::<f32>(container),
-			ColumnData::Float8(container) => self.marshal_numeric_slice::<f64>(container),
-			ColumnData::Int1(container) => self.marshal_numeric_slice::<i8>(container),
-			ColumnData::Int2(container) => self.marshal_numeric_slice::<i16>(container),
-			ColumnData::Int4(container) => self.marshal_numeric_slice::<i32>(container),
-			ColumnData::Int8(container) => self.marshal_numeric_slice::<i64>(container),
-			ColumnData::Int16(container) => self.marshal_numeric_slice::<i128>(container),
-			ColumnData::Uint1(container) => self.marshal_numeric_slice::<u8>(container),
-			ColumnData::Uint2(container) => self.marshal_numeric_slice::<u16>(container),
-			ColumnData::Uint4(container) => self.marshal_numeric_slice::<u32>(container),
-			ColumnData::Uint8(container) => self.marshal_numeric_slice::<u64>(container),
-			ColumnData::Uint16(container) => self.marshal_numeric_slice::<u128>(container),
+			ColumnBuffer::Float4(container) => self.marshal_numeric_slice::<f32>(container),
+			ColumnBuffer::Float8(container) => self.marshal_numeric_slice::<f64>(container),
+			ColumnBuffer::Int1(container) => self.marshal_numeric_slice::<i8>(container),
+			ColumnBuffer::Int2(container) => self.marshal_numeric_slice::<i16>(container),
+			ColumnBuffer::Int4(container) => self.marshal_numeric_slice::<i32>(container),
+			ColumnBuffer::Int8(container) => self.marshal_numeric_slice::<i64>(container),
+			ColumnBuffer::Int16(container) => self.marshal_numeric_slice::<i128>(container),
+			ColumnBuffer::Uint1(container) => self.marshal_numeric_slice::<u8>(container),
+			ColumnBuffer::Uint2(container) => self.marshal_numeric_slice::<u16>(container),
+			ColumnBuffer::Uint4(container) => self.marshal_numeric_slice::<u32>(container),
+			ColumnBuffer::Uint8(container) => self.marshal_numeric_slice::<u64>(container),
+			ColumnBuffer::Uint16(container) => self.marshal_numeric_slice::<u128>(container),
 
 			// Temporal types - extract encoded values
-			ColumnData::Date(container) => {
+			ColumnBuffer::Date(container) => {
 				let dates: &[Date] = container;
 				let encoded: Vec<i32> = dates.iter().map(|d| d.to_days_since_epoch()).collect();
 				self.marshal_numeric_slice(&encoded)
 			}
-			ColumnData::DateTime(container) => {
+			ColumnBuffer::DateTime(container) => {
 				let datetimes: &[DateTime] = container;
 				let encoded: Vec<i64> = datetimes.iter().map(|dt| dt.timestamp()).collect();
 				self.marshal_numeric_slice(&encoded)
 			}
-			ColumnData::Time(container) => {
+			ColumnBuffer::Time(container) => {
 				let times: &[Time] = container;
 				let encoded: Vec<u64> = times.iter().map(|t| t.to_nanos_since_midnight()).collect();
 				self.marshal_numeric_slice(&encoded)
 			}
-			ColumnData::Duration(container) => {
+			ColumnBuffer::Duration(container) => {
 				// Duration has 3 fields (months, days, nanos), serialize with postcard
 				let durations: &[Duration] = container;
 				self.marshal_serialized(durations)
 			}
 
 			// UUID types - 16 bytes each
-			ColumnData::IdentityId(container) => {
+			ColumnBuffer::IdentityId(container) => {
 				let ids: &[IdentityId] = container;
 				let bytes: Vec<u8> =
 					ids.iter().flat_map(|id| id.0.as_bytes().iter().copied()).collect();
@@ -477,7 +475,7 @@ impl Arena {
 					BufferFFI::empty(),
 				)
 			}
-			ColumnData::Uuid4(container) => {
+			ColumnBuffer::Uuid4(container) => {
 				let uuids: &[Uuid4] = container;
 				let bytes: Vec<u8> =
 					uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
@@ -491,7 +489,7 @@ impl Arena {
 					BufferFFI::empty(),
 				)
 			}
-			ColumnData::Uuid7(container) => {
+			ColumnBuffer::Uuid7(container) => {
 				let uuids: &[Uuid7] = container;
 				let bytes: Vec<u8> =
 					uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
@@ -507,14 +505,14 @@ impl Arena {
 			}
 
 			// Variable-length types with offsets
-			ColumnData::Utf8 {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
 				let strings: &[String] = container;
 				self.marshal_strings(strings)
 			}
-			ColumnData::Blob {
+			ColumnBuffer::Blob {
 				container,
 				..
 			} => {
@@ -524,28 +522,28 @@ impl Arena {
 			}
 
 			// Complex types - serialize with postcard
-			ColumnData::Int {
+			ColumnBuffer::Int {
 				container,
 				..
 			} => {
 				let values: &[Int] = container;
 				self.marshal_serialized(values)
 			}
-			ColumnData::Uint {
+			ColumnBuffer::Uint {
 				container,
 				..
 			} => {
 				let values: &[Uint] = container;
 				self.marshal_serialized(values)
 			}
-			ColumnData::Decimal {
+			ColumnBuffer::Decimal {
 				container,
 				..
 			} => {
 				let values: &[Decimal] = container;
 				self.marshal_serialized(values)
 			}
-			ColumnData::Any(container) => {
+			ColumnBuffer::Any(container) => {
 				let mut offsets: Vec<u64> = Vec::with_capacity(container.len() + 1);
 				let mut data_bytes: Vec<u8> = Vec::new();
 				offsets.push(0);
@@ -559,12 +557,12 @@ impl Arena {
 			}
 
 			// DictionaryId - serialize as u128 values
-			ColumnData::DictionaryId(container) => {
+			ColumnBuffer::DictionaryId(container) => {
 				let encoded: Vec<u128> = container.data().iter().map(|id| id.to_u128()).collect();
 				self.marshal_numeric_slice(&encoded)
 			}
 
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				..
 			} => self.marshal_column_data_bytes(inner),

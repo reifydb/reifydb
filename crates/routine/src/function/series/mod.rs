@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -53,7 +53,7 @@ impl Function for GenerateSeries {
 			actual: args.len(),
 		})?;
 		let start_value = match start_column.data() {
-			ColumnData::Int4(container) => container.get(0).copied().unwrap_or(1),
+			ColumnBuffer::Int4(container) => container.get(0).copied().unwrap_or(1),
 			_ => {
 				return Err(FunctionError::ExecutionFailed {
 					function: ctx.fragment.clone(),
@@ -69,7 +69,7 @@ impl Function for GenerateSeries {
 			actual: args.len(),
 		})?;
 		let end_value = match end_column.data() {
-			ColumnData::Int4(container) => container.get(0).copied().unwrap_or(10),
+			ColumnBuffer::Int4(container) => container.get(0).copied().unwrap_or(10),
 			_ => {
 				return Err(FunctionError::ExecutionFailed {
 					function: ctx.fragment.clone(),
@@ -80,7 +80,7 @@ impl Function for GenerateSeries {
 
 		// Generate the series
 		let series: Vec<i32> = (start_value..=end_value).collect();
-		let series_column = Column::int4("value", series);
+		let series_column = ColumnWithName::int4("value", series);
 
 		Ok(Columns::new(vec![series_column]))
 	}
@@ -104,15 +104,15 @@ impl Series {
 	}
 }
 
-fn extract_i32(data: &ColumnData, index: usize) -> Option<i32> {
+fn extract_i32(data: &ColumnBuffer, index: usize) -> Option<i32> {
 	match data {
-		ColumnData::Int1(c) => c.get(index).map(|&v| v as i32),
-		ColumnData::Int2(c) => c.get(index).map(|&v| v as i32),
-		ColumnData::Int4(c) => c.get(index).copied(),
-		ColumnData::Int8(c) => c.get(index).map(|&v| v as i32),
-		ColumnData::Uint1(c) => c.get(index).map(|&v| v as i32),
-		ColumnData::Uint2(c) => c.get(index).map(|&v| v as i32),
-		ColumnData::Uint4(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Int1(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Int2(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Int4(c) => c.get(index).copied(),
+		ColumnBuffer::Int8(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Uint1(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Uint2(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Uint4(c) => c.get(index).map(|&v| v as i32),
 		_ => None,
 	}
 }
@@ -154,6 +154,6 @@ impl Function for Series {
 		let end_value = extract_i32(end_column.data(), 0).unwrap_or(10);
 
 		let series: Vec<i32> = (start_value..=end_value).collect();
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), ColumnData::int4(series))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::int4(series))]))
 	}
 }

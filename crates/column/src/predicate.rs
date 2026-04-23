@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::value::column::{array::Column, buffer::ColumnBuffer, mask::RowMask};
 use reifydb_type::{Result, value::Value};
 
 use crate::{
-	array::{Array, canonical::CanonicalStorage},
-	chunked::ChunkedArray,
 	column_block::ColumnBlock,
+	column_chunks::ColumnChunks,
 	compute::{self, CompareOp},
 	error::ColumnError,
-	mask::RowMask,
 	selection::Selection,
 };
 
@@ -104,7 +103,7 @@ fn compare_mask(block: &ColumnBlock, col: &ColRef, rhs: &Value, op: CompareOp) -
 	bool_array_to_mask(&result)
 }
 
-fn is_none_mask(ch: &ChunkedArray) -> RowMask {
+fn is_none_mask(ch: &ColumnChunks) -> RowMask {
 	let len = ch.len();
 	let mut mask = RowMask::none_set(len);
 	// v1: single-chunk assumption checked by evaluate().
@@ -120,7 +119,7 @@ fn is_none_mask(ch: &ChunkedArray) -> RowMask {
 	mask
 }
 
-fn column<'a>(block: &'a ColumnBlock, col: &ColRef) -> Result<&'a ChunkedArray> {
+fn column<'a>(block: &'a ColumnBlock, col: &ColRef) -> Result<&'a ColumnChunks> {
 	block.column_by_name(&col.0).map(|(_, ch)| ch).ok_or_else(|| {
 		ColumnError::ColumnNotInSchema {
 			operation: "predicate::evaluate",
@@ -130,7 +129,7 @@ fn column<'a>(block: &'a ColumnBlock, col: &ColRef) -> Result<&'a ChunkedArray> 
 	})
 }
 
-fn single_chunk(ch: &ChunkedArray) -> Result<&Array> {
+fn single_chunk(ch: &ColumnChunks) -> Result<&Column> {
 	ch.chunks.first().ok_or_else(|| {
 		ColumnError::EmptyChunkedArray {
 			operation: "predicate::evaluate",
@@ -139,19 +138,20 @@ fn single_chunk(ch: &ChunkedArray) -> Result<&Array> {
 	})
 }
 
-// Convert a bool canonical `Array` to a `RowMask`. None-valued rows count as
+// Convert a bool canonical `Column` to a `RowMask`. None-valued rows count as
 // "not selected" - three-valued-logic collapses to a two-valued mask at the
 // `Selection` boundary.
-fn bool_array_to_mask(array: &Array) -> Result<RowMask> {
+fn bool_array_to_mask(array: &Column) -> Result<RowMask> {
 	let canon = array.to_canonical()?;
-	let CanonicalStorage::Bool(b) = &canon.storage else {
+	if !matches!(canon.buffer, ColumnBuffer::Bool(_)) {
 		return Err(ColumnError::PredicateCompareNotBool.into());
-	};
-	let len = b.len();
+	}
+	let len = canon.len();
 	let mut mask = RowMask::none_set(len);
 	let nones = canon.nones.as_ref();
 	for i in 0..len {
-		if b.get(i) && !nones.map(|n| n.is_none(i)).unwrap_or(false) {
+		let is_true = matches!(canon.buffer.get_value(i), Value::Boolean(true));
+		if is_true && !nones.map(|n| n.is_none(i)).unwrap_or(false) {
 			mask.set(i, true);
 		}
 	}
@@ -173,24 +173,26 @@ fn mask_to_selection(mask: RowMask) -> Selection {
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::value::column::data::ColumnData;
+	use reifydb_core::value::column::{
+		array::{Column, canonical::Canonical},
+		buffer::ColumnBuffer,
+	};
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
-	use crate::array::{Array, canonical::CanonicalArray};
 
 	fn mkblock(rows: [(i32, bool); 5]) -> ColumnBlock {
-		let ids = ColumnData::int4(rows.map(|(v, _)| v).to_vec());
-		let flags = ColumnData::bool(rows.map(|(_, v)| v).to_vec());
-		let id_col = ChunkedArray::single(
+		let ids = ColumnBuffer::int4(rows.map(|(v, _)| v).to_vec());
+		let flags = ColumnBuffer::bool(rows.map(|(_, v)| v).to_vec());
+		let id_col = ColumnChunks::single(
 			Type::Int4,
 			false,
-			Array::from_canonical(CanonicalArray::from_column_data(&ids).unwrap()),
+			Column::from_canonical(Canonical::from_column_buffer(&ids).unwrap()),
 		);
-		let flag_col = ChunkedArray::single(
+		let flag_col = ColumnChunks::single(
 			Type::Boolean,
 			false,
-			Array::from_canonical(CanonicalArray::from_column_data(&flags).unwrap()),
+			Column::from_canonical(Canonical::from_column_buffer(&flags).unwrap()),
 		);
 		let schema = Arc::new(vec![
 			("id".to_string(), Type::Int4, false),
@@ -254,15 +256,15 @@ mod tests {
 
 	#[test]
 	fn evaluate_is_none_on_nullable_column() {
-		let mut nullable_ids = ColumnData::int4_with_capacity(4);
+		let mut nullable_ids = ColumnBuffer::int4_with_capacity(4);
 		nullable_ids.push::<i32>(10);
 		nullable_ids.push_none();
 		nullable_ids.push::<i32>(30);
 		nullable_ids.push_none();
-		let id_col = ChunkedArray::single(
+		let id_col = ColumnChunks::single(
 			Type::Int4,
 			true,
-			Array::from_canonical(CanonicalArray::from_column_data(&nullable_ids).unwrap()),
+			Column::from_canonical(Canonical::from_column_buffer(&nullable_ids).unwrap()),
 		);
 		let schema = Arc::new(vec![("id".to_string(), Type::Int4, true)]);
 		let t = ColumnBlock::new(schema, vec![id_col]);

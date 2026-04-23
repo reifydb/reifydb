@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{binding::BindingProtocol, vtable::VTable},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -54,9 +54,9 @@ impl BaseVTable for SystemBindingsHttp {
 			.filter(|b| matches!(b.protocol, BindingProtocol::Http { .. }))
 			.collect();
 
-		let mut methods = ColumnData::utf8_with_capacity(bindings.len());
-		let mut paths = ColumnData::utf8_with_capacity(bindings.len());
-		let mut formats = ColumnData::utf8_with_capacity(bindings.len());
+		let mut methods = ColumnBuffer::utf8_with_capacity(bindings.len());
+		let mut paths = ColumnBuffer::utf8_with_capacity(bindings.len());
+		let mut formats = ColumnBuffer::utf8_with_capacity(bindings.len());
 
 		for b in &bindings {
 			let BindingProtocol::Http {
@@ -73,18 +73,9 @@ impl BaseVTable for SystemBindingsHttp {
 
 		let mut columns = common_vtable_columns(&bindings);
 		columns.extend(vec![
-			Column {
-				name: Fragment::internal("method"),
-				data: methods,
-			},
-			Column {
-				name: Fragment::internal("path"),
-				data: paths,
-			},
-			Column {
-				name: Fragment::internal("format"),
-				data: formats,
-			},
+			ColumnWithName::new(Fragment::internal("method"), methods),
+			ColumnWithName::new(Fragment::internal("path"), paths),
+			ColumnWithName::new(Fragment::internal("format"), formats),
 		]);
 
 		self.exhausted = true;

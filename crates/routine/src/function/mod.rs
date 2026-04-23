@@ -25,9 +25,9 @@ use std::sync::Arc;
 
 use error::FunctionError;
 use reifydb_core::value::column::{
-	Column,
+	ColumnWithName,
+	buffer::ColumnBuffer,
 	columns::Columns,
-	data::ColumnData,
 	view::group_by::{GroupByView, GroupKey},
 };
 use reifydb_runtime::context::RuntimeContext;
@@ -109,7 +109,7 @@ pub trait Function: Send + Sync {
 			return self.execute(ctx, args);
 		}
 
-		let has_option = args.iter().any(|c| matches!(c.data(), ColumnData::Option { .. }));
+		let has_option = args.iter().any(|c| matches!(c.data(), ColumnBuffer::Option { .. }));
 		if !has_option {
 			return self.execute(ctx, args);
 		}
@@ -124,7 +124,7 @@ pub trait Function: Send + Sync {
 					None => bv.clone(),
 				});
 			}
-			unwrapped.push(Column::new(col.name().clone(), inner.clone()));
+			unwrapped.push(ColumnWithName::new(col.name().clone(), inner.clone()));
 		}
 
 		// Short-circuit: when all combined values are None, skip the inner function
@@ -135,8 +135,8 @@ pub trait Function: Send + Sync {
 			let row_count = args.row_count();
 			let input_types: Vec<Type> = unwrapped.iter().map(|c| c.data.get_type()).collect();
 			let result_type = self.return_type(&input_types);
-			let result_data = ColumnData::none_typed(result_type, row_count);
-			return Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]));
+			let result_data = ColumnBuffer::none_typed(result_type, row_count);
+			return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]));
 		}
 
 		let unwrapped_args = Columns::new(unwrapped);
@@ -144,12 +144,12 @@ pub trait Function: Send + Sync {
 
 		match combined_bv {
 			Some(bv) => {
-				let wrapped_cols: Vec<Column> = result
+				let wrapped_cols: Vec<ColumnWithName> = result
 					.into_iter()
 					.map(|col| {
-						Column::new(
+						ColumnWithName::new(
 							col.name,
-							ColumnData::Option {
+							ColumnBuffer::Option {
 								inner: Box::new(col.data),
 								bitvec: bv.clone(),
 							},
@@ -169,7 +169,7 @@ pub trait Function: Send + Sync {
 
 pub trait Accumulator: Send + Sync {
 	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError>;
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnData), FunctionError>;
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError>;
 }
 
 pub fn default_functions() -> registry::FunctionsConfigurator {

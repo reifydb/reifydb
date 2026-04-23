@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_type::{
 	error::TypeError,
 	fragment::Fragment,
@@ -23,7 +23,7 @@ pub(crate) struct TextParser;
 
 impl TextParser {
 	/// Parse text to a specific target type with detailed error handling
-	pub(crate) fn from_text(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnData> {
+	pub(crate) fn from_text(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
 		match target {
 			Type::Boolean => Self::parse_bool(fragment, row_count),
 			Type::Float4 => Self::parse_float4(fragment, row_count),
@@ -93,9 +93,9 @@ impl TextParser {
 		}
 	}
 
-	fn parse_bool(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_bool(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_bool(fragment.clone()) {
-			Ok(value) => Ok(ColumnData::bool(vec![value; row_count])),
+			Ok(value) => Ok(ColumnBuffer::bool(vec![value; row_count])),
 			Err(err) => Err(CastError::InvalidBoolean {
 				fragment,
 				cause: err.diagnostic(),
@@ -104,9 +104,9 @@ impl TextParser {
 		}
 	}
 
-	fn parse_float4(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_float4(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_float::<f32>(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::float4(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::float4(vec![v; row_count])),
 			Err(err) => Err(CastError::InvalidNumber {
 				fragment,
 				target: Type::Float4,
@@ -116,9 +116,9 @@ impl TextParser {
 		}
 	}
 
-	fn parse_float8(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_float8(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_float::<f64>(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::float8(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::float8(vec![v; row_count])),
 			Err(err) => Err(CastError::InvalidNumber {
 				fragment,
 				target: Type::Float8,
@@ -128,8 +128,8 @@ impl TextParser {
 		}
 	}
 
-	fn parse_int1(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
-		Ok(ColumnData::int1(vec![
+	fn parse_int1(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+		Ok(ColumnBuffer::int1(vec![
 			match parse_primitive_int::<i8>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) =>
@@ -144,8 +144,8 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_int2(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
-		Ok(ColumnData::int2(vec![
+	fn parse_int2(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+		Ok(ColumnBuffer::int2(vec![
 			match parse_primitive_int::<i16>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) =>
@@ -160,8 +160,8 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_int4(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
-		Ok(ColumnData::int4(vec![
+	fn parse_int4(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+		Ok(ColumnBuffer::int4(vec![
 			match parse_primitive_int::<i32>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) =>
@@ -176,8 +176,8 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_int8(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
-		Ok(ColumnData::int8(vec![
+	fn parse_int8(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+		Ok(ColumnBuffer::int8(vec![
 			match parse_primitive_int::<i64>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) =>
@@ -192,8 +192,8 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_int16(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
-		Ok(ColumnData::int16(vec![
+	fn parse_int16(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+		Ok(ColumnBuffer::int16(vec![
 			match parse_primitive_int::<i128>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) =>
@@ -208,8 +208,8 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_uint1(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
-		Ok(ColumnData::uint1(vec![
+	fn parse_uint1(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+		Ok(ColumnBuffer::uint1(vec![
 			match parse_primitive_uint::<u8>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) =>
@@ -224,8 +224,8 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_uint2(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
-		Ok(ColumnData::uint2(vec![
+	fn parse_uint2(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+		Ok(ColumnBuffer::uint2(vec![
 			match parse_primitive_uint::<u16>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) =>
@@ -240,8 +240,8 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_uint4(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
-		Ok(ColumnData::uint4(vec![
+	fn parse_uint4(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+		Ok(ColumnBuffer::uint4(vec![
 			match parse_primitive_uint::<u32>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) =>
@@ -256,8 +256,8 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_uint8(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
-		Ok(ColumnData::uint8(vec![
+	fn parse_uint8(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+		Ok(ColumnBuffer::uint8(vec![
 			match parse_primitive_uint::<u64>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) =>
@@ -272,8 +272,8 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_uint16(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
-		Ok(ColumnData::uint16(vec![
+	fn parse_uint16(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
+		Ok(ColumnBuffer::uint16(vec![
 			match parse_primitive_uint::<u128>(fragment.clone()) {
 				Ok(v) => v,
 				Err(e) =>
@@ -288,9 +288,9 @@ impl TextParser {
 		]))
 	}
 
-	fn parse_int(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_int(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_primitive_int::<Int>(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::int(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::int(vec![v; row_count])),
 			Err(e) => Err(CastError::InvalidNumber {
 				fragment,
 				target: Type::Int,
@@ -300,9 +300,9 @@ impl TextParser {
 		}
 	}
 
-	fn parse_uint(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	fn parse_uint(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_primitive_uint::<Uint>(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::uint(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::uint(vec![v; row_count])),
 			Err(e) => Err(CastError::InvalidNumber {
 				fragment,
 				target: Type::Uint,
@@ -312,9 +312,9 @@ impl TextParser {
 		}
 	}
 
-	fn parse_decimal(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnData> {
+	fn parse_decimal(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_decimal(fragment.clone()) {
-			Ok(v) => Ok(ColumnData::decimal(vec![v; row_count])),
+			Ok(v) => Ok(ColumnBuffer::decimal(vec![v; row_count])),
 			Err(e) => Err(CastError::InvalidNumber {
 				fragment,
 				target,

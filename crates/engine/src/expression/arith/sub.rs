@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, data::ColumnData, push::Push};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, push::Push};
 use reifydb_type::{
 	error::{BinaryOp, TypeError},
 	fragment::LazyFragment,
@@ -20,10 +20,10 @@ use crate::{
 
 pub(crate) fn sub_columns(
 	ctx: &EvalContext,
-	left: &Column,
-	right: &Column,
+	left: &ColumnWithName,
+	right: &ColumnWithName,
 	fragment: impl LazyFragment + Copy,
-) -> Result<Column> {
+) -> Result<ColumnWithName> {
 	binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let target = Type::promote(left.get_type(), right.get_type());
 
@@ -32,7 +32,7 @@ pub(crate) fn sub_columns(
 			fixed: sub_numeric, arb: sub_numeric_clone (ctx, target, fragment);
 
 			// Duration - Duration
-			(ColumnData::Duration(l), ColumnData::Duration(r)) => {
+			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => {
 				let mut container = TemporalContainer::with_capacity(l.len());
 				for i in 0..l.len() {
 					match (l.get(i), r.get(i)) {
@@ -40,10 +40,7 @@ pub(crate) fn sub_columns(
 						_ => container.push_default(),
 					}
 				}
-				Ok(Column {
-					name: fragment.fragment(),
-					data: ColumnData::Duration(container),
-				})
+				Ok(ColumnWithName::new(fragment.fragment(), ColumnBuffer::Duration(container)))
 			}
 
 			_ => Err(TypeError::BinaryOperatorNotApplicable {
@@ -62,17 +59,17 @@ fn sub_numeric<L, R>(
 	r: &NumberContainer<R>,
 	target: Type,
 	fragment: impl LazyFragment + Copy,
-) -> Result<Column>
+) -> Result<ColumnWithName>
 where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeSub,
-	ColumnData: Push<<L as Promote<R>>::Output>,
+	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ColumnData::with_capacity(target, l.len());
+	let mut data = ColumnBuffer::with_capacity(target, l.len());
 	let l_data = l.data();
 	let r_data = r.data();
 	for i in 0..l.len() {
@@ -82,7 +79,7 @@ where
 			data.push_none()
 		}
 	}
-	Ok(Column {
+	Ok(ColumnWithName {
 		name: fragment.fragment(),
 		data,
 	})
@@ -94,17 +91,17 @@ fn sub_numeric_clone<L, R>(
 	r: &NumberContainer<R>,
 	target: Type,
 	fragment: impl LazyFragment + Copy,
-) -> Result<Column>
+) -> Result<ColumnWithName>
 where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 	<L as Promote<R>>::Output: SafeSub,
-	ColumnData: Push<<L as Promote<R>>::Output>,
+	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
 	debug_assert_eq!(l.len(), r.len());
 
-	let mut data = ColumnData::with_capacity(target, l.len());
+	let mut data = ColumnBuffer::with_capacity(target, l.len());
 	let l_data = l.data();
 	let r_data = r.data();
 	for i in 0..l.len() {
@@ -116,7 +113,7 @@ where
 			data.push_none()
 		}
 	}
-	Ok(Column {
+	Ok(ColumnWithName {
 		name: fragment.fragment(),
 		data,
 	})

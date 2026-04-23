@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::resolved::ResolvedDictionary,
 	internal_error,
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
-	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -120,13 +120,13 @@ impl QueryNode for DictionaryScanNode {
 			if self.last_key.is_none() {
 				// Empty dictionary: return empty columns with correct types to preserve shape
 				let columns = Columns::new(vec![
-					Column {
+					ColumnWithName {
 						name: Fragment::internal("id"),
-						data: ColumnData::none_typed(dict_def.id_type.clone(), 0),
+						data: ColumnBuffer::none_typed(dict_def.id_type.clone(), 0),
 					},
-					Column {
+					ColumnWithName {
 						name: Fragment::internal("value"),
-						data: ColumnData::none_typed(dict_def.value_type.clone(), 0),
+						data: ColumnBuffer::none_typed(dict_def.value_type.clone(), 0),
 					},
 				]);
 				return Ok(Some(columns));
@@ -155,39 +155,39 @@ impl QueryNode for DictionaryScanNode {
 }
 
 /// Build the ID column based on the dictionary's id_type
-fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> Result<Column> {
+fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> Result<ColumnWithName> {
 	let data = match id_type {
 		Type::Uint1 => {
 			let vals: Vec<u8> = ids.iter().map(|id| id.to_u128() as u8).collect();
-			ColumnData::uint1(vals)
+			ColumnBuffer::uint1(vals)
 		}
 		Type::Uint2 => {
 			let vals: Vec<u16> = ids.iter().map(|id| id.to_u128() as u16).collect();
-			ColumnData::uint2(vals)
+			ColumnBuffer::uint2(vals)
 		}
 		Type::Uint4 => {
 			let vals: Vec<u32> = ids.iter().map(|id| id.to_u128() as u32).collect();
-			ColumnData::uint4(vals)
+			ColumnBuffer::uint4(vals)
 		}
 		Type::Uint8 => {
 			let vals: Vec<u64> = ids.iter().map(|id| id.to_u128() as u64).collect();
-			ColumnData::uint8(vals)
+			ColumnBuffer::uint8(vals)
 		}
 		Type::Uint16 => {
 			let vals: Vec<u128> = ids.iter().map(|id| id.to_u128()).collect();
-			ColumnData::uint16(vals)
+			ColumnBuffer::uint16(vals)
 		}
 		_ => return Err(internal_error!("Invalid dictionary id_type: {:?}", id_type)),
 	};
 
-	Ok(Column {
+	Ok(ColumnWithName {
 		name: Fragment::internal("id"),
 		data,
 	})
 }
 
 /// Build the value column based on the dictionary's value_type
-fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
+fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithName> {
 	let data = match value_type {
 		Type::Utf8 => {
 			let vals: Vec<String> = values
@@ -197,7 +197,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 					_ => format!("{:?}", v), // Fallback representation
 				})
 				.collect();
-			ColumnData::utf8(vals)
+			ColumnBuffer::utf8(vals)
 		}
 		Type::Int1 => {
 			let vals: Vec<i8> = values
@@ -207,7 +207,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 					_ => 0,
 				})
 				.collect();
-			ColumnData::int1(vals)
+			ColumnBuffer::int1(vals)
 		}
 		Type::Int2 => {
 			let vals: Vec<i16> = values
@@ -217,7 +217,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 					_ => 0,
 				})
 				.collect();
-			ColumnData::int2(vals)
+			ColumnBuffer::int2(vals)
 		}
 		Type::Int4 => {
 			let vals: Vec<i32> = values
@@ -227,7 +227,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 					_ => 0,
 				})
 				.collect();
-			ColumnData::int4(vals)
+			ColumnBuffer::int4(vals)
 		}
 		Type::Int8 => {
 			let vals: Vec<i64> = values
@@ -237,7 +237,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 					_ => 0,
 				})
 				.collect();
-			ColumnData::int8(vals)
+			ColumnBuffer::int8(vals)
 		}
 		Type::Uint1 => {
 			let vals: Vec<u8> = values
@@ -247,7 +247,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 					_ => 0,
 				})
 				.collect();
-			ColumnData::uint1(vals)
+			ColumnBuffer::uint1(vals)
 		}
 		Type::Uint2 => {
 			let vals: Vec<u16> = values
@@ -257,7 +257,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 					_ => 0,
 				})
 				.collect();
-			ColumnData::uint2(vals)
+			ColumnBuffer::uint2(vals)
 		}
 		Type::Uint4 => {
 			let vals: Vec<u32> = values
@@ -267,7 +267,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 					_ => 0,
 				})
 				.collect();
-			ColumnData::uint4(vals)
+			ColumnBuffer::uint4(vals)
 		}
 		Type::Uint8 => {
 			let vals: Vec<u64> = values
@@ -277,16 +277,16 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<Column> {
 					_ => 0,
 				})
 				.collect();
-			ColumnData::uint8(vals)
+			ColumnBuffer::uint8(vals)
 		}
 		_ => {
 			// For other types, convert to string representation
 			let vals: Vec<String> = values.iter().map(|v| format!("{:?}", v)).collect();
-			ColumnData::utf8(vals)
+			ColumnBuffer::utf8(vals)
 		}
 	};
 
-	Ok(Column {
+	Ok(ColumnWithName {
 		name: Fragment::internal("value"),
 		data,
 	})

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::{Batch, VTable},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
@@ -138,13 +138,13 @@ impl<U: UserVTableIterator> VTable for UserVTableIteratorAdapter<U> {
 pub(super) fn convert_rows_to_columns(
 	user_columns: &[UserVTableColumn],
 	rows: Vec<Vec<Value>>,
-) -> Vec<Column> {
+) -> Vec<ColumnWithName> {
 	let num_rows = rows.len();
 	let num_cols = user_columns.len();
 
 	// Initialize column data vectors
-	let mut column_data: Vec<ColumnData> =
-		user_columns.iter().map(|col| ColumnData::with_capacity(col.data_type.clone(), num_rows)).collect();
+	let mut column_data: Vec<ColumnBuffer> =
+		user_columns.iter().map(|col| ColumnBuffer::with_capacity(col.data_type.clone(), num_rows)).collect();
 
 	// Transpose row data into columns
 	for row in rows {
@@ -159,7 +159,7 @@ pub(super) fn convert_rows_to_columns(
 	user_columns
 		.iter()
 		.zip(column_data)
-		.map(|(def, data)| Column {
+		.map(|(def, data)| ColumnWithName {
 			name: Fragment::internal(def.name.clone()),
 			data,
 		})

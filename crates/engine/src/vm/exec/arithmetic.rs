@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns};
+use reifydb_core::value::column::{ColumnWithName, columns::Columns};
 use reifydb_rql::expression::PrefixOperator;
 use reifydb_type::fragment::Fragment;
 
@@ -19,7 +19,7 @@ use crate::{
 impl<'a> Vm<'a> {
 	fn exec_binary_column_op<F>(&mut self, op: F, frag: fn() -> Fragment) -> Result<()>
 	where
-		F: FnOnce(&EvalContext, &Column, &Column, fn() -> Fragment) -> Result<Column>,
+		F: FnOnce(&EvalContext, &ColumnWithName, &ColumnWithName, fn() -> Fragment) -> Result<ColumnWithName>,
 	{
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;

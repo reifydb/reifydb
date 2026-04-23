@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_type::{
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
@@ -18,15 +18,15 @@ use reifydb_type::{
 
 use crate::{Result, error::CastError};
 
-pub fn to_uuid(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
+pub fn to_uuid(data: &ColumnBuffer, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match data {
-		ColumnData::Utf8 {
+		ColumnBuffer::Utf8 {
 			container,
 			..
 		} => from_text(container, target, lazy_fragment),
-		ColumnData::Uuid4(container) => from_uuid4(container, target, lazy_fragment),
-		ColumnData::Uuid7(container) => from_uuid7(container, target, lazy_fragment),
-		ColumnData::IdentityId(container) => from_identity_id(container, target, lazy_fragment),
+		ColumnBuffer::Uuid4(container) => from_uuid4(container, target, lazy_fragment),
+		ColumnBuffer::Uuid7(container) => from_uuid7(container, target, lazy_fragment),
+		ColumnBuffer::IdentityId(container) => from_identity_id(container, target, lazy_fragment),
 		_ => {
 			let shape_type = data.get_type();
 			Err(TypeError::UnsupportedCast {
@@ -40,7 +40,7 @@ pub fn to_uuid(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment
 }
 
 #[inline]
-fn from_text(container: &Utf8Container, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
+fn from_text(container: &Utf8Container, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match target {
 		Type::Uuid4 => to_uuid4(container, lazy_fragment),
 		Type::Uuid7 => to_uuid7(container, lazy_fragment),
@@ -60,8 +60,8 @@ fn from_text(container: &Utf8Container, target: Type, lazy_fragment: impl LazyFr
 macro_rules! impl_to_uuid {
 	($fn_name:ident, $type:ty, $target_type:expr, $parse_fn:expr) => {
 		#[inline]
-		fn $fn_name(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
-			let mut out = ColumnData::with_capacity($target_type, container.len());
+		fn $fn_name(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+			let mut out = ColumnBuffer::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = &container[idx];
@@ -98,9 +98,13 @@ impl_to_uuid!(to_uuid7, Uuid7, Type::Uuid7, parse_uuid7);
 impl_to_uuid!(to_identity_id, IdentityId, Type::IdentityId, parse_identity_id);
 
 #[inline]
-fn from_uuid4(container: &UuidContainer<Uuid4>, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
+fn from_uuid4(
+	container: &UuidContainer<Uuid4>,
+	target: Type,
+	lazy_fragment: impl LazyFragment,
+) -> Result<ColumnBuffer> {
 	match target {
-		Type::Uuid4 => Ok(ColumnData::Uuid4(UuidContainer::new(container.data().to_vec()))),
+		Type::Uuid4 => Ok(ColumnBuffer::Uuid4(UuidContainer::new(container.data().to_vec()))),
 		_ => {
 			let shape_type = Type::Uuid4;
 			Err(TypeError::UnsupportedCast {
@@ -114,9 +118,13 @@ fn from_uuid4(container: &UuidContainer<Uuid4>, target: Type, lazy_fragment: imp
 }
 
 #[inline]
-fn from_uuid7(container: &UuidContainer<Uuid7>, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
+fn from_uuid7(
+	container: &UuidContainer<Uuid7>,
+	target: Type,
+	lazy_fragment: impl LazyFragment,
+) -> Result<ColumnBuffer> {
 	match target {
-		Type::Uuid7 => Ok(ColumnData::Uuid7(UuidContainer::new(container.data().to_vec()))),
+		Type::Uuid7 => Ok(ColumnBuffer::Uuid7(UuidContainer::new(container.data().to_vec()))),
 		_ => {
 			let shape_type = Type::Uuid7;
 			Err(TypeError::UnsupportedCast {
@@ -134,10 +142,10 @@ fn from_identity_id(
 	container: &IdentityIdContainer,
 	target: Type,
 	lazy_fragment: impl LazyFragment,
-) -> Result<ColumnData> {
+) -> Result<ColumnBuffer> {
 	match target {
 		Type::IdentityId => {
-			Ok(ColumnData::IdentityId(IdentityIdContainer::from_vec(container.data().to_vec())))
+			Ok(ColumnBuffer::IdentityId(IdentityIdContainer::from_vec(container.data().to_vec())))
 		}
 		_ => Err(TypeError::UnsupportedCast {
 			from: Type::IdentityId,

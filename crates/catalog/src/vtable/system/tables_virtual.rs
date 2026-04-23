@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -67,10 +67,10 @@ impl BaseVTable for SystemTablesVirtual {
 		}
 
 		// Build column data
-		let mut id_col = ColumnData::uint8_with_capacity(ids.len());
-		let mut ns_col = ColumnData::uint8_with_capacity(namespaces.len());
-		let mut name_col = ColumnData::utf8_with_capacity(names.len());
-		let mut kind_col = ColumnData::utf8_with_capacity(kinds.len());
+		let mut id_col = ColumnBuffer::uint8_with_capacity(ids.len());
+		let mut ns_col = ColumnBuffer::uint8_with_capacity(namespaces.len());
+		let mut name_col = ColumnBuffer::utf8_with_capacity(names.len());
+		let mut kind_col = ColumnBuffer::utf8_with_capacity(kinds.len());
 
 		for id in ids {
 			id_col.push(id);
@@ -86,22 +86,10 @@ impl BaseVTable for SystemTablesVirtual {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: id_col,
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: ns_col,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: name_col,
-			},
-			Column {
-				name: Fragment::internal("kind"),
-				data: kind_col,
-			},
+			ColumnWithName::new(Fragment::internal("id"), id_col),
+			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col),
+			ColumnWithName::new(Fragment::internal("name"), name_col),
+			ColumnWithName::new(Fragment::internal("kind"), kind_col),
 		];
 
 		self.exhausted = true;

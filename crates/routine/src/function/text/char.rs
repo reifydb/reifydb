@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -51,25 +51,25 @@ impl Function for TextChar {
 		let row_count = data.len();
 
 		let result_data = match data {
-			ColumnData::Int1(c) => {
+			ColumnBuffer::Int1(c) => {
 				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
 			}
-			ColumnData::Int2(c) => {
+			ColumnBuffer::Int2(c) => {
 				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
 			}
-			ColumnData::Int4(c) => {
+			ColumnBuffer::Int4(c) => {
 				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
 			}
-			ColumnData::Int8(c) => {
+			ColumnBuffer::Int8(c) => {
 				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
 			}
-			ColumnData::Uint1(c) => {
+			ColumnBuffer::Uint1(c) => {
 				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
 			}
-			ColumnData::Uint2(c) => {
+			ColumnBuffer::Uint2(c) => {
 				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
 			}
-			ColumnData::Uint4(c) => convert_to_char(row_count, c.data().len(), |i| c.get(i).copied()),
+			ColumnBuffer::Uint4(c) => convert_to_char(row_count, c.data().len(), |i| c.get(i).copied()),
 			other => {
 				return Err(FunctionError::InvalidArgumentType {
 					function: ctx.fragment.clone(),
@@ -81,17 +81,17 @@ impl Function for TextChar {
 		};
 
 		let final_data = match bitvec {
-			Some(bv) => ColumnData::Option {
+			Some(bv) => ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			},
 			None => result_data,
 		};
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }
 
-fn convert_to_char<F>(row_count: usize, _capacity: usize, get_value: F) -> ColumnData
+fn convert_to_char<F>(row_count: usize, _capacity: usize, get_value: F) -> ColumnBuffer
 where
 	F: Fn(usize) -> Option<u32>,
 {
@@ -112,7 +112,7 @@ where
 		}
 	}
 
-	ColumnData::Utf8 {
+	ColumnBuffer::Utf8 {
 		container: Utf8Container::new(result_data),
 		max_bytes: MaxBytes::MAX,
 	}

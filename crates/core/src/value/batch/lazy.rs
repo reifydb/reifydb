@@ -10,7 +10,7 @@ use reifydb_type::{
 use crate::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	interface::catalog::dictionary::Dictionary,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 
 /// Metadata for a column in a lazy batch
@@ -139,7 +139,7 @@ impl LazyBatch {
 		// Materialize each column
 		let mut result_columns = Vec::with_capacity(self.column_metas.len());
 		for (col_idx, meta) in self.column_metas.iter().enumerate() {
-			let mut data = ColumnData::with_capacity(meta.storage_type.clone(), valid_count);
+			let mut data = ColumnBuffer::with_capacity(meta.storage_type.clone(), valid_count);
 
 			for (row_idx, row) in self.rows.iter().enumerate() {
 				if self.is_row_valid(row_idx) {
@@ -148,7 +148,7 @@ impl LazyBatch {
 				}
 			}
 
-			result_columns.push(Column {
+			result_columns.push(ColumnWithName {
 				name: meta.name.clone(),
 				data,
 			});

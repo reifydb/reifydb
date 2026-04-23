@@ -79,8 +79,8 @@ fn series_materialization_produces_snapshot_in_registry() {
 		assert_eq!(schema_names, vec!["k", "value"]);
 
 		let mut reader = SnapshotReader::new(Arc::clone(&snap), 100);
-		let batch = reader.next().expect("read batch").expect("batch present");
-		assert!(reader.next().expect("drain").is_none(), "reader should yield a single batch per bucket");
+		let batch = reader.next().expect("batch present").expect("read batch");
+		assert!(reader.next().is_none(), "reader should yield a single batch per bucket");
 		assert_eq!(batch.row_count(), meta.row_count);
 
 		let k_col = batch.column("k").expect("k column");

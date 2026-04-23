@@ -9,7 +9,7 @@ pub mod uuid;
 use std::iter;
 
 use number::NumberParser;
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_rql::expression::ConstantExpression;
 use reifydb_type::{
 	error::TypeError,
@@ -25,13 +25,13 @@ use text::TextParser;
 
 use crate::Result;
 
-pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Result<ColumnData> {
+pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Result<ColumnBuffer> {
 	Ok(match expr {
 		ConstantExpression::Bool {
 			fragment,
 		} => match parse_bool(fragment.clone()) {
 			Ok(v) => {
-				return Ok(ColumnData::bool(vec![v; row_count]));
+				return Ok(ColumnBuffer::bool(vec![v; row_count]));
 			}
 			Err(err) => return_error!(err.diagnostic()),
 		},
@@ -40,32 +40,32 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 		} => {
 			if fragment.text().contains(".") || fragment.text().contains("e") {
 				return match parse_float(fragment.clone()) {
-					Ok(v) => Ok(ColumnData::float8(vec![v; row_count])),
+					Ok(v) => Ok(ColumnBuffer::float8(vec![v; row_count])),
 					Err(err) => return_error!(err.diagnostic()),
 				};
 			}
 
 			if let Ok(v) = parse_primitive_int::<i8>(fragment.clone()) {
-				return Ok(ColumnData::int1(vec![v; row_count]));
+				return Ok(ColumnBuffer::int1(vec![v; row_count]));
 			}
 
 			if let Ok(v) = parse_primitive_int::<i16>(fragment.clone()) {
-				return Ok(ColumnData::int2(vec![v; row_count]));
+				return Ok(ColumnBuffer::int2(vec![v; row_count]));
 			}
 
 			if let Ok(v) = parse_primitive_int::<i32>(fragment.clone()) {
-				return Ok(ColumnData::int4(vec![v; row_count]));
+				return Ok(ColumnBuffer::int4(vec![v; row_count]));
 			}
 
 			if let Ok(v) = parse_primitive_int::<i64>(fragment.clone()) {
-				return Ok(ColumnData::int8(vec![v; row_count]));
+				return Ok(ColumnBuffer::int8(vec![v; row_count]));
 			}
 
 			// if parsing as i128 fails and its a negative
 			// number, we are maxed out and can stop
 			match parse_primitive_int::<i128>(fragment.clone()) {
 				Ok(v) => {
-					return Ok(ColumnData::int16(vec![v; row_count]));
+					return Ok(ColumnBuffer::int16(vec![v; row_count]));
 				}
 				Err(err) => {
 					if fragment.text().starts_with("-") {
@@ -75,7 +75,7 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 			}
 
 			return match parse_primitive_uint::<u128>(fragment.clone()) {
-				Ok(v) => Ok(ColumnData::uint16(vec![v; row_count])),
+				Ok(v) => Ok(ColumnBuffer::uint16(vec![v; row_count])),
 				Err(err) => {
 					return_error!(err.diagnostic());
 				}
@@ -83,17 +83,17 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 		}
 		ConstantExpression::Text {
 			fragment,
-		} => ColumnData::utf8(iter::repeat_n(fragment.text(), row_count)),
+		} => ColumnBuffer::utf8(iter::repeat_n(fragment.text(), row_count)),
 		ConstantExpression::Temporal {
 			fragment,
 		} => TemporalParser::parse_temporal(fragment.clone(), row_count)?,
 		ConstantExpression::None {
 			..
-		} => ColumnData::none_typed(Type::Any, row_count),
+		} => ColumnBuffer::none_typed(Type::Any, row_count),
 	})
 }
 
-pub(crate) fn constant_value_of(expr: &ConstantExpression, target: Type, row_count: usize) -> Result<ColumnData> {
+pub(crate) fn constant_value_of(expr: &ConstantExpression, target: Type, row_count: usize) -> Result<ColumnBuffer> {
 	Ok(match (expr, target) {
 		(
 			ConstantExpression::Number {
@@ -124,7 +124,7 @@ pub(crate) fn constant_value_of(expr: &ConstantExpression, target: Type, row_cou
 				..
 			},
 			target,
-		) => ColumnData::none_typed(target, row_count),
+		) => ColumnBuffer::none_typed(target, row_count),
 
 		(_, target) => {
 			let shape_type = match expr {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	error::TypeError,
 	value::{container::temporal::TemporalContainer, date::Date, duration::Duration, r#type::Type},
@@ -96,7 +96,7 @@ impl Function for DateAge {
 		let row_count = data1.len();
 
 		let result_data = match (data1, data2) {
-			(ColumnData::Date(container1), ColumnData::Date(container2)) => {
+			(ColumnBuffer::Date(container1), ColumnBuffer::Date(container2)) => {
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -108,9 +108,9 @@ impl Function for DateAge {
 					}
 				}
 
-				ColumnData::Duration(container)
+				ColumnBuffer::Duration(container)
 			}
-			(ColumnData::Date(_), other) => {
+			(ColumnBuffer::Date(_), other) => {
 				return Err(FunctionError::InvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 1,
@@ -129,13 +129,13 @@ impl Function for DateAge {
 		};
 
 		let final_data = match (bitvec1, bitvec2) {
-			(Some(bv), _) | (_, Some(bv)) => ColumnData::Option {
+			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			},
 			_ => result_data,
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

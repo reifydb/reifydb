@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use postcard::to_stdvec;
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
@@ -98,15 +98,15 @@ pub fn build_eval_columns(
 	left_row: &[Value],
 	right_row: &[Value],
 	alias: &Option<Fragment>,
-) -> Vec<Column> {
+) -> Vec<ColumnWithName> {
 	let mut eval_columns = Vec::new();
 
 	for (idx, col) in left_columns.iter().enumerate() {
 		let data = match &left_row[idx] {
 			Value::None {
 				..
-			} => ColumnData::typed_none(&col.data().get_type()),
-			value => ColumnData::from(value.clone()),
+			} => ColumnBuffer::typed_none(&col.data().get_type()),
+			value => ColumnBuffer::from(value.clone()),
 		};
 		eval_columns.push(col.with_new_data(data));
 	}
@@ -115,12 +115,12 @@ pub fn build_eval_columns(
 		let data = match &right_row[idx] {
 			Value::None {
 				..
-			} => ColumnData::typed_none(&col.data().get_type()),
-			value => ColumnData::from(value.clone()),
+			} => ColumnBuffer::typed_none(&col.data().get_type()),
+			value => ColumnBuffer::from(value.clone()),
 		};
 		if let Some(alias) = alias {
 			let aliased_name = Fragment::internal(format!("{}.{}", alias.text(), col.name().text()));
-			eval_columns.push(Column {
+			eval_columns.push(ColumnWithName {
 				name: aliased_name,
 				data,
 			});

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
 use crate::function::{
@@ -58,17 +58,21 @@ impl Function for FormatBytesSi {
 		let row_count = data.len();
 
 		let result_data = match data {
-			ColumnData::Int1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Int2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Int4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Int8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Uint1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Uint2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Uint4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Uint8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Float4(container) => process_float_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Float8(container) => process_float_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Decimal {
+			ColumnBuffer::Int1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Int2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Int4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Int8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Uint1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Uint2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Uint4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Uint8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Float4(container) => {
+				process_float_column!(container, row_count, 1000.0, &SI_UNITS)
+			}
+			ColumnBuffer::Float8(container) => {
+				process_float_column!(container, row_count, 1000.0, &SI_UNITS)
+			}
+			ColumnBuffer::Decimal {
 				container,
 				..
 			} => {
@@ -97,12 +101,12 @@ impl Function for FormatBytesSi {
 		};
 
 		let final_data = match bitvec {
-			Some(bv) => ColumnData::Option {
+			Some(bv) => ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			},
 			None => result_data,
 		};
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

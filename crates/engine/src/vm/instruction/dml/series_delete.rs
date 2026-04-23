@@ -19,7 +19,7 @@ use reifydb_core::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::nodes::DeleteSeriesNode;
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
@@ -147,15 +147,15 @@ pub(crate) fn delete_series(
 
 				let row_number = RowNumber::from(sequence);
 				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
-				pre_col_vec.push(Column {
-					name: Fragment::internal(series.key.column()),
-					data: series.key_column_data(vec![key_value]),
-				});
+				pre_col_vec.push(ColumnWithName::new(
+					Fragment::internal(series.key.column()),
+					series.key_column_data(vec![key_value]),
+				));
 				for col in columns.iter() {
 					if col.name().text() != series.key.column() && col.name().text() != "tag" {
-						let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
+						let mut data = ColumnBuffer::with_capacity(col.data().get_type(), 1);
 						data.push_value(col.data().get_value(row_idx));
-						pre_col_vec.push(Column {
+						pre_col_vec.push(ColumnWithName {
 							name: col.name().clone(),
 							data,
 						});
@@ -192,7 +192,7 @@ pub(crate) fn delete_series(
 						let mut cols = Vec::new();
 						for (i, col) in columns.iter().enumerate() {
 							if let Some(existing_col) = existing.get(i) {
-								let mut data = ColumnData::with_capacity(
+								let mut data = ColumnBuffer::with_capacity(
 									col.data().get_type(),
 									existing_col.data().len() + col.data().len(),
 								);
@@ -204,7 +204,7 @@ pub(crate) fn delete_series(
 								for j in 0..col.data().len() {
 									data.push_value(col.data().get_value(j));
 								}
-								cols.push(Column {
+								cols.push(ColumnWithName {
 									name: col.name().clone(),
 									data,
 								});
@@ -243,14 +243,14 @@ pub(crate) fn delete_series(
 					.map(|(i, _)| delete_all_shape.get_value(encoded_row, i + 1))
 					.collect();
 				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
-				pre_col_vec.push(Column {
-					name: Fragment::internal(series.key.column()),
-					data: series.key_column_data(vec![decoded_key.key]),
-				});
+				pre_col_vec.push(ColumnWithName::new(
+					Fragment::internal(series.key.column()),
+					series.key_column_data(vec![decoded_key.key]),
+				));
 				for (col_idx, col_def) in series.data_columns().enumerate() {
-					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
+					let mut data = ColumnBuffer::with_capacity(col_def.constraint.get_type(), 1);
 					data.push_value(data_values.get(col_idx).cloned().unwrap_or(Value::none()));
-					pre_col_vec.push(Column {
+					pre_col_vec.push(ColumnWithName {
 						name: Fragment::internal(&col_def.name),
 						data,
 					});

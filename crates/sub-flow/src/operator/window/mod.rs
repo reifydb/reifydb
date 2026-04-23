@@ -41,7 +41,7 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	row::Row,
 	util::encoding::keycode::serializer::KeySerializer,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::{
 	expression::{
@@ -282,7 +282,7 @@ impl WindowOperator {
 		let session = self.eval_session(false);
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 
-		let mut group_columns: Vec<Column> = Vec::new();
+		let mut group_columns: Vec<ColumnWithName> = Vec::new();
 		for compiled_expr in &self.compiled_group_by {
 			let col = compiled_expr.execute(&exec_ctx)?;
 			group_columns.push(col);
@@ -616,10 +616,10 @@ impl WindowOperator {
 			return Ok(Columns::new(Vec::new()));
 		}
 
-		let mut builders: Vec<ColumnData> = window_layout
+		let mut builders: Vec<ColumnBuffer> = window_layout
 			.types
 			.iter()
-			.map(|ty| ColumnData::with_capacity(ty.clone(), events.len()))
+			.map(|ty| ColumnBuffer::with_capacity(ty.clone(), events.len()))
 			.collect();
 
 		for event in events.iter() {
@@ -634,7 +634,7 @@ impl WindowOperator {
 			.names
 			.iter()
 			.zip(builders)
-			.map(|(name, data)| Column {
+			.map(|(name, data)| ColumnWithName {
 				name: Fragment::internal(name.clone()),
 				data,
 			})

@@ -181,6 +181,17 @@ impl<S: Storage> AnyContainer<S> {
 		}
 	}
 
+	pub fn slice(&self, start: usize, end: usize) -> Self {
+		let count = (end - start).min(self.len().saturating_sub(start));
+		let mut new_data = DataVec::spawn(&self.data, count);
+		for i in start..(start + count) {
+			DataVec::push(&mut new_data, self.data[i].clone());
+		}
+		Self {
+			data: new_data,
+		}
+	}
+
 	pub fn filter(&mut self, mask: &S::BitVec) {
 		let mut new_data = DataVec::spawn(&self.data, DataBitVec::count_ones(mask));
 

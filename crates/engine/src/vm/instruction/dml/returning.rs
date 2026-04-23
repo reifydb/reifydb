@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::{row::EncodedRow, shape::RowShape},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::expression::Expression;
 use reifydb_type::{
@@ -28,11 +28,11 @@ use crate::{
 pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedRow)]) -> Columns {
 	let fields = shape.fields();
 
-	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
+	let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
 	for field in fields.iter() {
-		columns_vec.push(Column {
+		columns_vec.push(ColumnWithName {
 			name: Fragment::internal(&field.name),
-			data: ColumnData::with_capacity(field.constraint.get_type(), rows.len()),
+			data: ColumnBuffer::with_capacity(field.constraint.get_type(), rows.len()),
 		});
 	}
 

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::data::ColumnData,
+	value::column::buffer::ColumnBuffer,
 };
 use reifydb_type::{
 	fragment::Fragment,
@@ -58,7 +58,7 @@ pub(crate) fn coerce_value_to_column_type(
 		};
 	}
 
-	let temp_column_data = ColumnData::from(value.clone());
+	let temp_column_data = ColumnBuffer::from(value.clone());
 	let value_str = value.to_string();
 
 	let base = EvalContext::from_query(ctx);

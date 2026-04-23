@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -90,8 +90,8 @@ impl Function for DurationFormat {
 
 		match (dur_data, fmt_data) {
 			(
-				ColumnData::Duration(dur_container),
-				ColumnData::Utf8 {
+				ColumnBuffer::Duration(dur_container),
+				ColumnBuffer::Utf8 {
 					container: fmt_container,
 					..
 				},
@@ -126,19 +126,19 @@ impl Function for DurationFormat {
 					}
 				}
 
-				let mut final_data = ColumnData::Utf8 {
+				let mut final_data = ColumnBuffer::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: MaxBytes::MAX,
 				};
 				if let Some(bv) = dur_bv {
-					final_data = ColumnData::Option {
+					final_data = ColumnBuffer::Option {
 						inner: Box::new(final_data),
 						bitvec: bv.clone(),
 					};
 				}
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			(ColumnData::Duration(_), other) => Err(FunctionError::InvalidArgumentType {
+			(ColumnBuffer::Duration(_), other) => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Utf8],

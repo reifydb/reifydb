@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{Value, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -117,15 +117,15 @@ impl Function for JsonPretty {
 
 		let results: Vec<String> = (0..row_count).map(|row| to_json_pretty(&data.get_value(row), 0)).collect();
 
-		let result_data = ColumnData::utf8(results);
+		let result_data = ColumnBuffer::utf8(results);
 		let final_data = match bitvec {
-			Some(bv) => ColumnData::Option {
+			Some(bv) => ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			},
 			None => result_data,
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

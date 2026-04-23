@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	error::{RuntimeErrorKind, TypeError},
 	util::bitvec::BitVec,
@@ -96,14 +96,14 @@ pub(crate) struct LoopMaskState {
 /// Merge two columns by mask: row i gets `then_col[i]` if `then_mask[i]`,
 /// `else_col[i]` if `else_mask[i]`, `None` otherwise.
 pub(crate) fn scatter_merge_columns(
-	then_col: &Column,
-	else_col: &Column,
+	then_col: &ColumnWithName,
+	else_col: &ColumnWithName,
 	then_mask: &BitVec,
 	else_mask: &BitVec,
 	total_len: usize,
-) -> Column {
+) -> ColumnWithName {
 	let merged = then_col.data().scatter_merge(else_col.data(), then_mask, else_mask, total_len);
-	Column::new(then_col.name().clone(), merged)
+	ColumnWithName::new(then_col.name().clone(), merged)
 }
 
 /// Selective update: row i gets `new_value[i]` if `mask[i]`, keeps `existing[i]` otherwise.
@@ -112,13 +112,13 @@ pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitV
 	debug_assert_eq!(new_value.row_count(), len);
 	debug_assert_eq!(mask.len(), len);
 
-	let merged_columns: Vec<Column> = existing
+	let merged_columns: Vec<ColumnWithName> = existing
 		.columns
 		.iter()
 		.zip(new_value.columns.iter())
 		.map(|(old_col, new_col)| {
 			let result_type = old_col.data().get_type();
-			let mut data = ColumnData::with_capacity(result_type, len);
+			let mut data = ColumnBuffer::with_capacity(result_type, len);
 			for i in 0..len {
 				if mask.get(i) {
 					data.push_value(new_col.data().get_value(i));
@@ -126,7 +126,7 @@ pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitV
 					data.push_value(old_col.data().get_value(i));
 				}
 			}
-			Column::new(old_col.name().clone(), data)
+			ColumnWithName::new(old_col.name().clone(), data)
 		})
 		.collect();
 
@@ -144,7 +144,7 @@ pub(crate) fn scatter_merge_variables(
 	let then_cols = variable_to_columns(then_var);
 	let else_cols = variable_to_columns(else_var);
 
-	let merged: Vec<Column> = then_cols
+	let merged: Vec<ColumnWithName> = then_cols
 		.columns
 		.iter()
 		.zip(else_cols.columns.iter())
@@ -196,7 +196,7 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
 	let col = &cols.columns[0];
 	let (inner_data, opt_bv) = col.data.unwrap_option();
 	match inner_data {
-		ColumnData::Bool(container) => {
+		ColumnBuffer::Bool(container) => {
 			let bv = container.data().clone();
 			match opt_bv {
 				Some(defined_bv) => Ok(bv.and(defined_bv)),
@@ -520,7 +520,7 @@ impl<'a> Vm<'a> {
 			if let Some(current) = self.symbols.get(name) {
 				let then_cols = variable_to_columns(then_snapshot);
 				let else_cols = variable_to_columns(current);
-				let merged_cols: Vec<Column> = then_cols
+				let merged_cols: Vec<ColumnWithName> = then_cols
 					.columns
 					.iter()
 					.zip(else_cols.columns.iter())
@@ -580,7 +580,7 @@ impl<'a> Vm<'a> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 	use reifydb_type::{
 		fragment::Fragment,
 		util::bitvec::BitVec,
@@ -589,12 +589,12 @@ mod tests {
 
 	use super::*;
 
-	fn int4_column(name: &str, values: &[i32]) -> Column {
-		let mut data = ColumnData::with_capacity(Type::Int4, values.len());
+	fn int4_column(name: &str, values: &[i32]) -> ColumnWithName {
+		let mut data = ColumnBuffer::with_capacity(Type::Int4, values.len());
 		for &v in values {
 			data.push(v);
 		}
-		Column::new(Fragment::internal(name), data)
+		ColumnWithName::new(Fragment::internal(name), data)
 	}
 
 	#[test]

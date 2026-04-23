@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -67,26 +67,11 @@ impl BaseVTable for SystemSequences {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ColumnData::uint8(sequence_ids),
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: ColumnData::uint8(namespace_ids),
-			},
-			Column {
-				name: Fragment::internal("namespace_name"),
-				data: ColumnData::utf8(namespace_names),
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: ColumnData::utf8(sequence_names),
-			},
-			Column {
-				name: Fragment::internal("value"),
-				data: ColumnData::uint8(current_values),
-			},
+			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(sequence_ids)),
+			ColumnWithName::new(Fragment::internal("namespace_id"), ColumnBuffer::uint8(namespace_ids)),
+			ColumnWithName::new(Fragment::internal("namespace_name"), ColumnBuffer::utf8(namespace_names)),
+			ColumnWithName::new(Fragment::internal("name"), ColumnBuffer::utf8(sequence_names)),
+			ColumnWithName::new(Fragment::internal("value"), ColumnBuffer::uint8(current_values)),
 		];
 
 		self.exhausted = true;

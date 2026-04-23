@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 use reifydb_type::{fragment::Fragment, util::bitvec::BitVec, value::r#type::Type};
 
 use crate::Result;
@@ -23,19 +23,19 @@ pub(crate) fn combine_option_bitvecs(a: Option<&BitVec>, b: Option<&BitVec>) -> 
 	}
 }
 
-pub(crate) fn apply_option_bitvec(result: ColumnData, bitvec: BitVec) -> ColumnData {
+pub(crate) fn apply_option_bitvec(result: ColumnBuffer, bitvec: BitVec) -> ColumnBuffer {
 	match result {
-		ColumnData::Option {
+		ColumnBuffer::Option {
 			inner,
 			bitvec: existing,
 		} => {
 			let combined = existing.and(&bitvec);
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec: combined,
 			}
 		}
-		other => ColumnData::Option {
+		other => ColumnBuffer::Option {
 			inner: Box::new(other),
 			bitvec,
 		},
@@ -43,24 +43,24 @@ pub(crate) fn apply_option_bitvec(result: ColumnData, bitvec: BitVec) -> ColumnD
 }
 
 pub(crate) fn binary_op_unwrap_option(
-	left: &Column,
-	right: &Column,
+	left: &ColumnWithName,
+	right: &ColumnWithName,
 	fragment: Fragment,
-	inner: impl FnOnce(&Column, &Column) -> Result<Column>,
-) -> Result<Column> {
+	inner: impl FnOnce(&ColumnWithName, &ColumnWithName) -> Result<ColumnWithName>,
+) -> Result<ColumnWithName> {
 	let (left_data, left_bv) = left.data().unwrap_option();
 	let (right_data, right_bv) = right.data().unwrap_option();
 
 	// Short-circuit: if either operand is all-None, return an all-None result
 	if is_all_none(left_bv) || is_all_none(right_bv) {
 		let len = left_data.len();
-		return Ok(Column::new(fragment, ColumnData::none_typed(Type::Boolean, len)));
+		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(Type::Boolean, len)));
 	}
 
 	let combined_bv = combine_option_bitvecs(left_bv, right_bv);
 
-	let l = Column::new(left.name().clone(), left_data.clone());
-	let r = Column::new(right.name().clone(), right_data.clone());
+	let l = ColumnWithName::new(left.name().clone(), left_data.clone());
+	let r = ColumnWithName::new(right.name().clone(), right_data.clone());
 
 	let result = inner(&l, &r)?;
 
@@ -70,16 +70,19 @@ pub(crate) fn binary_op_unwrap_option(
 	})
 }
 
-pub(crate) fn unary_op_unwrap_option(col: &Column, inner: impl FnOnce(&Column) -> Result<Column>) -> Result<Column> {
+pub(crate) fn unary_op_unwrap_option(
+	col: &ColumnWithName,
+	inner: impl FnOnce(&ColumnWithName) -> Result<ColumnWithName>,
+) -> Result<ColumnWithName> {
 	let (inner_data, bv) = col.data().unwrap_option();
 
 	// Short-circuit: if all-None, return an all-None result
 	if is_all_none(bv) {
 		let len = inner_data.len();
-		return Ok(Column::new(col.name().clone(), ColumnData::none_typed(Type::Boolean, len)));
+		return Ok(ColumnWithName::new(col.name().clone(), ColumnBuffer::none_typed(Type::Boolean, len)));
 	}
 
-	let unwrapped = Column::new(col.name().clone(), inner_data.clone());
+	let unwrapped = ColumnWithName::new(col.name().clone(), inner_data.clone());
 
 	let result = inner(&unwrapped)?;
 

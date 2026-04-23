@@ -1,22 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::value::column::array::Column;
 use reifydb_type::value::r#type::Type;
 
-use crate::array::Array;
-
-// A column as a sequence of `Array` chunks, each encoded independently. v1
-// materialization produces single-chunk `ChunkedArray`s; multi-chunk support
+// A column as a sequence of `Column` chunks, each encoded independently. v1
+// materialization produces single-chunk `ColumnChunks`s; multi-chunk support
 // is reserved for the future batched-scan path.
 #[derive(Clone)]
-pub struct ChunkedArray {
+pub struct ColumnChunks {
 	pub ty: Type,
 	pub nullable: bool,
-	pub chunks: Vec<Array>,
+	pub chunks: Vec<Column>,
 }
 
-impl ChunkedArray {
-	pub fn new(ty: Type, nullable: bool, chunks: Vec<Array>) -> Self {
+impl ColumnChunks {
+	pub fn new(ty: Type, nullable: bool, chunks: Vec<Column>) -> Self {
 		Self {
 			ty,
 			nullable,
@@ -24,7 +23,7 @@ impl ChunkedArray {
 		}
 	}
 
-	pub fn single(ty: Type, nullable: bool, array: Array) -> Self {
+	pub fn single(ty: Type, nullable: bool, array: Column) -> Self {
 		Self {
 			ty,
 			nullable,

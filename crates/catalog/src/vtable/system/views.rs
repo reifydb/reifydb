@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -53,10 +53,10 @@ impl BaseVTable for SystemViews {
 
 		let views = CatalogStore::list_views_all(txn)?;
 
-		let mut ids = ColumnData::uint8_with_capacity(views.len());
-		let mut namespaces = ColumnData::uint8_with_capacity(views.len());
-		let mut names = ColumnData::utf8_with_capacity(views.len());
-		let mut primary_keys = ColumnData::uint4_with_capacity(views.len());
+		let mut ids = ColumnBuffer::uint8_with_capacity(views.len());
+		let mut namespaces = ColumnBuffer::uint8_with_capacity(views.len());
+		let mut names = ColumnBuffer::utf8_with_capacity(views.len());
+		let mut primary_keys = ColumnBuffer::uint4_with_capacity(views.len());
 
 		for view in views {
 			ids.push(view.id().0);
@@ -71,22 +71,10 @@ impl BaseVTable for SystemViews {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: namespaces,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
-			Column {
-				name: Fragment::internal("primary_key_id"),
-				data: primary_keys,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces),
+			ColumnWithName::new(Fragment::internal("name"), names),
+			ColumnWithName::new(Fragment::internal("primary_key_id"), primary_keys),
 		];
 
 		self.exhausted = true;

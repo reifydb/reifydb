@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -51,7 +51,7 @@ impl Function for TextTrimStart {
 		let row_count = data.len();
 
 		match data {
-			ColumnData::Utf8 {
+			ColumnBuffer::Utf8 {
 				container,
 				max_bytes,
 			} => {
@@ -67,18 +67,18 @@ impl Function for TextTrimStart {
 					}
 				}
 
-				let result_col_data = ColumnData::Utf8 {
+				let result_col_data = ColumnBuffer::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: *max_bytes,
 				};
 				let final_data = match bitvec {
-					Some(bv) => ColumnData::Option {
+					Some(bv) => ColumnBuffer::Option {
 						inner: Box::new(result_col_data),
 						bitvec: bv.clone(),
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			other => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),

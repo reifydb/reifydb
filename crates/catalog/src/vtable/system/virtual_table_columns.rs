@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -74,26 +74,11 @@ impl BaseVTable for SystemVirtualTableColumns {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ColumnData::uint8(column_ids),
-			},
-			Column {
-				name: Fragment::internal("vtable_id"),
-				data: ColumnData::uint8(vtable_ids),
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: ColumnData::utf8(names),
-			},
-			Column {
-				name: Fragment::internal("type"),
-				data: ColumnData::uint1(types),
-			},
-			Column {
-				name: Fragment::internal("position"),
-				data: ColumnData::uint1(positions),
-			},
+			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(column_ids)),
+			ColumnWithName::new(Fragment::internal("vtable_id"), ColumnBuffer::uint8(vtable_ids)),
+			ColumnWithName::new(Fragment::internal("name"), ColumnBuffer::utf8(names)),
+			ColumnWithName::new(Fragment::internal("type"), ColumnBuffer::uint1(types)),
+			ColumnWithName::new(Fragment::internal("position"), ColumnBuffer::uint1(positions)),
 		];
 
 		self.exhausted = true;

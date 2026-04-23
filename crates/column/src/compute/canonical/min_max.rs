@@ -1,35 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::value::column::{array::canonical::Canonical, buffer::ColumnBuffer};
 use reifydb_type::{Result, value::Value};
 
-use crate::{
-	array::{
-		canonical::{CanonicalArray, CanonicalStorage},
-		fixed::FixedStorage,
-	},
-	error::ColumnError,
-};
+use crate::error::ColumnError;
 
-pub fn min_max(array: &CanonicalArray) -> Result<(Value, Value)> {
+pub fn min_max(array: &Canonical) -> Result<(Value, Value)> {
 	if array.is_empty() {
 		return Err(ColumnError::MinMaxEmpty.into());
 	}
 
-	let CanonicalStorage::Fixed(f) = &array.storage else {
-		return Err(ColumnError::FixedArrayRequired {
-			operation: "min_max",
-		}
-		.into());
-	};
-
 	let skip = |row: usize| -> bool { array.nones.as_ref().map(|n| n.is_none(row)).unwrap_or(false) };
 
 	macro_rules! reduce_int {
-		($v:expr, $variant:ident) => {{
+		($slice:expr, $variant:ident) => {{
 			let mut min = None;
 			let mut max = None;
-			for (i, &x) in $v.iter().enumerate() {
+			for (i, &x) in $slice.iter().enumerate() {
 				if skip(i) {
 					continue;
 				}
@@ -55,31 +43,33 @@ pub fn min_max(array: &CanonicalArray) -> Result<(Value, Value)> {
 		}};
 	}
 
-	match &f.storage {
-		FixedStorage::I8(v) => reduce_int!(v, Int1),
-		FixedStorage::I16(v) => reduce_int!(v, Int2),
-		FixedStorage::I32(v) => reduce_int!(v, Int4),
-		FixedStorage::I64(v) => reduce_int!(v, Int8),
-		FixedStorage::I128(v) => reduce_int!(v, Int16),
-		FixedStorage::U8(v) => reduce_int!(v, Uint1),
-		FixedStorage::U16(v) => reduce_int!(v, Uint2),
-		FixedStorage::U32(v) => reduce_int!(v, Uint4),
-		FixedStorage::U64(v) => reduce_int!(v, Uint8),
-		FixedStorage::U128(v) => reduce_int!(v, Uint16),
-		FixedStorage::F32(_) | FixedStorage::F64(_) => Err(ColumnError::MinMaxFloatUnsupported.into()),
+	match &array.buffer {
+		ColumnBuffer::Int1(_) => reduce_int!(array.buffer.as_slice::<i8>(), Int1),
+		ColumnBuffer::Int2(_) => reduce_int!(array.buffer.as_slice::<i16>(), Int2),
+		ColumnBuffer::Int4(_) => reduce_int!(array.buffer.as_slice::<i32>(), Int4),
+		ColumnBuffer::Int8(_) => reduce_int!(array.buffer.as_slice::<i64>(), Int8),
+		ColumnBuffer::Int16(_) => reduce_int!(array.buffer.as_slice::<i128>(), Int16),
+		ColumnBuffer::Uint1(_) => reduce_int!(array.buffer.as_slice::<u8>(), Uint1),
+		ColumnBuffer::Uint2(_) => reduce_int!(array.buffer.as_slice::<u16>(), Uint2),
+		ColumnBuffer::Uint4(_) => reduce_int!(array.buffer.as_slice::<u32>(), Uint4),
+		ColumnBuffer::Uint8(_) => reduce_int!(array.buffer.as_slice::<u64>(), Uint8),
+		ColumnBuffer::Uint16(_) => reduce_int!(array.buffer.as_slice::<u128>(), Uint16),
+		ColumnBuffer::Float4(_) | ColumnBuffer::Float8(_) => Err(ColumnError::MinMaxFloatUnsupported.into()),
+		_ => Err(ColumnError::FixedArrayRequired {
+			operation: "min_max",
+		}
+		.into()),
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::data::ColumnData;
-
 	use super::*;
 
 	#[test]
 	fn min_max_over_int4() {
-		let cd = ColumnData::int4([30i32, 10, 50, 20, 40]);
-		let ca = CanonicalArray::from_column_data(&cd).unwrap();
+		let cd = ColumnBuffer::int4([30i32, 10, 50, 20, 40]);
+		let ca = Canonical::from_column_buffer(&cd).unwrap();
 		let (min, max) = min_max(&ca).unwrap();
 		assert_eq!(min, Value::Int4(10));
 		assert_eq!(max, Value::Int4(50));
@@ -87,13 +77,13 @@ mod tests {
 
 	#[test]
 	fn min_max_skips_nones() {
-		let mut cd = ColumnData::int4_with_capacity(5);
+		let mut cd = ColumnBuffer::int4_with_capacity(5);
 		cd.push::<i32>(30);
 		cd.push_none();
 		cd.push::<i32>(10);
 		cd.push_none();
 		cd.push::<i32>(50);
-		let ca = CanonicalArray::from_column_data(&cd).unwrap();
+		let ca = Canonical::from_column_buffer(&cd).unwrap();
 		let (min, max) = min_max(&ca).unwrap();
 		assert_eq!(min, Value::Int4(10));
 		assert_eq!(max, Value::Int4(50));

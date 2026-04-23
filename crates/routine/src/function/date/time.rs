@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer};
 use reifydb_type::value::r#type::{Type, input_types::InputTypes};
 
 use crate::function::{
@@ -66,7 +66,7 @@ impl Function for DateTime {
 			});
 		}
 
-		let mut result_data = ColumnData::time_with_capacity(row_count);
+		let mut result_data = ColumnBuffer::time_with_capacity(row_count);
 
 		for i in 0..row_count {
 			if data.is_defined(i) {
@@ -77,6 +77,6 @@ impl Function for DateTime {
 			}
 		}
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
 }

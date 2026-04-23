@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -52,7 +52,7 @@ macro_rules! process_int_column {
 			}
 		}
 
-		ColumnData::Utf8 {
+		ColumnBuffer::Utf8 {
 			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
 		}
@@ -72,7 +72,7 @@ macro_rules! process_float_column {
 			}
 		}
 
-		ColumnData::Utf8 {
+		ColumnBuffer::Utf8 {
 			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
 		}
@@ -96,7 +96,7 @@ macro_rules! process_decimal_column {
 			}
 		}
 
-		ColumnData::Utf8 {
+		ColumnBuffer::Utf8 {
 			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
 		}
@@ -149,21 +149,21 @@ impl Function for FormatBytes {
 		let row_count = data.len();
 
 		let result_data = match data {
-			ColumnData::Int1(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
-			ColumnData::Int2(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
-			ColumnData::Int4(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
-			ColumnData::Int8(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
-			ColumnData::Uint1(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
-			ColumnData::Uint2(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
-			ColumnData::Uint4(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
-			ColumnData::Uint8(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
-			ColumnData::Float4(container) => {
+			ColumnBuffer::Int1(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
+			ColumnBuffer::Int2(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
+			ColumnBuffer::Int4(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
+			ColumnBuffer::Int8(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
+			ColumnBuffer::Uint1(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
+			ColumnBuffer::Uint2(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
+			ColumnBuffer::Uint4(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
+			ColumnBuffer::Uint8(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
+			ColumnBuffer::Float4(container) => {
 				process_float_column!(container, row_count, 1024.0, &IEC_UNITS)
 			}
-			ColumnData::Float8(container) => {
+			ColumnBuffer::Float8(container) => {
 				process_float_column!(container, row_count, 1024.0, &IEC_UNITS)
 			}
-			ColumnData::Decimal {
+			ColumnBuffer::Decimal {
 				container,
 				..
 			} => {
@@ -192,13 +192,13 @@ impl Function for FormatBytes {
 		};
 
 		let final_data = match bitvec {
-			Some(bv) => ColumnData::Option {
+			Some(bv) => ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			},
 			None => result_data,
 		};
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }
 

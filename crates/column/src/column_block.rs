@@ -5,21 +5,21 @@ use std::sync::Arc;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::chunked::ChunkedArray;
+use crate::column_chunks::ColumnChunks;
 
 pub type Schema = Arc<Vec<(String, Type, bool)>>;
 
 // The column container used by a `Snapshot` - a schema plus one
-// `ChunkedArray` per user column. The schema's tuple entries are
+// `ColumnChunks` per user column. The schema's tuple entries are
 // `(name, ty, nullable)` in positional order.
 #[derive(Clone)]
 pub struct ColumnBlock {
 	pub schema: Schema,
-	pub columns: Vec<ChunkedArray>,
+	pub columns: Vec<ColumnChunks>,
 }
 
 impl ColumnBlock {
-	pub fn new(schema: Schema, columns: Vec<ChunkedArray>) -> Self {
+	pub fn new(schema: Schema, columns: Vec<ColumnChunks>) -> Self {
 		debug_assert_eq!(schema.len(), columns.len(), "ColumnBlock::new: schema and columns length mismatch");
 		Self {
 			schema,
@@ -35,7 +35,7 @@ impl ColumnBlock {
 		self.len() == 0
 	}
 
-	pub fn column_by_name(&self, name: &str) -> Option<(usize, &ChunkedArray)> {
+	pub fn column_by_name(&self, name: &str) -> Option<(usize, &ColumnChunks)> {
 		self.schema.iter().position(|(n, _, _)| n == name).map(|i| (i, &self.columns[i]))
 	}
 }

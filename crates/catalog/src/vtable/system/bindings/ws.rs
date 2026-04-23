@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{binding::BindingProtocol, vtable::VTable},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -54,8 +54,8 @@ impl BaseVTable for SystemBindingsWs {
 			.filter(|b| matches!(b.protocol, BindingProtocol::Ws { .. }))
 			.collect();
 
-		let mut rpc_names = ColumnData::utf8_with_capacity(bindings.len());
-		let mut formats = ColumnData::utf8_with_capacity(bindings.len());
+		let mut rpc_names = ColumnBuffer::utf8_with_capacity(bindings.len());
+		let mut formats = ColumnBuffer::utf8_with_capacity(bindings.len());
 
 		for b in &bindings {
 			let BindingProtocol::Ws {
@@ -70,14 +70,8 @@ impl BaseVTable for SystemBindingsWs {
 
 		let mut columns = common_vtable_columns(&bindings);
 		columns.extend(vec![
-			Column {
-				name: Fragment::internal("rpc_name"),
-				data: rpc_names,
-			},
-			Column {
-				name: Fragment::internal("format"),
-				data: formats,
-			},
+			ColumnWithName::new(Fragment::internal("rpc_name"), rpc_names),
+			ColumnWithName::new(Fragment::internal("format"), formats),
 		]);
 
 		self.exhausted = true;

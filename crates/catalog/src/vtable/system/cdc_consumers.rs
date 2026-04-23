@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -50,14 +50,8 @@ impl BaseVTable for SystemCdcConsumers {
 
 		// TODO: Implement CDC consumer state retrieval using the new transaction API
 		let columns = vec![
-			Column {
-				name: Fragment::internal("consumer_id"),
-				data: ColumnData::utf8_with_capacity(0),
-			},
-			Column {
-				name: Fragment::internal("checkpoint"),
-				data: ColumnData::uint8_with_capacity(0),
-			},
+			ColumnWithName::new(Fragment::internal("consumer_id"), ColumnBuffer::utf8_with_capacity(0)),
+			ColumnWithName::new(Fragment::internal("checkpoint"), ColumnBuffer::uint8_with_capacity(0)),
 		];
 
 		self.exhausted = true;

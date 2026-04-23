@@ -8,7 +8,7 @@ use reifydb_core::{
 		procedure::{Procedure, RqlTrigger},
 		vtable::VTable,
 	},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -60,14 +60,14 @@ impl BaseVTable for SystemProceduresRql {
 			.filter(|p| matches!(p, Procedure::Rql { .. }))
 			.collect();
 
-		let mut ids = ColumnData::uint8_with_capacity(procs.len());
-		let mut namespace_ids = ColumnData::uint8_with_capacity(procs.len());
-		let mut names = ColumnData::utf8_with_capacity(procs.len());
-		let mut return_types = ColumnData::utf8_with_capacity(procs.len());
-		let mut bodies = ColumnData::utf8_with_capacity(procs.len());
-		let mut trigger_kinds = ColumnData::utf8_with_capacity(procs.len());
-		let mut event_sumtypes = ColumnData::uint8_with_capacity(procs.len());
-		let mut event_indexes = ColumnData::uint2_with_capacity(procs.len());
+		let mut ids = ColumnBuffer::uint8_with_capacity(procs.len());
+		let mut namespace_ids = ColumnBuffer::uint8_with_capacity(procs.len());
+		let mut names = ColumnBuffer::utf8_with_capacity(procs.len());
+		let mut return_types = ColumnBuffer::utf8_with_capacity(procs.len());
+		let mut bodies = ColumnBuffer::utf8_with_capacity(procs.len());
+		let mut trigger_kinds = ColumnBuffer::utf8_with_capacity(procs.len());
+		let mut event_sumtypes = ColumnBuffer::uint8_with_capacity(procs.len());
+		let mut event_indexes = ColumnBuffer::uint2_with_capacity(procs.len());
 
 		for p in procs {
 			let Procedure::Rql {
@@ -107,38 +107,14 @@ impl BaseVTable for SystemProceduresRql {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: namespace_ids,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
-			Column {
-				name: Fragment::internal("return_type"),
-				data: return_types,
-			},
-			Column {
-				name: Fragment::internal("body"),
-				data: bodies,
-			},
-			Column {
-				name: Fragment::internal("trigger_kind"),
-				data: trigger_kinds,
-			},
-			Column {
-				name: Fragment::internal("event_variant_sumtype_id"),
-				data: event_sumtypes,
-			},
-			Column {
-				name: Fragment::internal("event_variant_index"),
-				data: event_indexes,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("namespace_id"), namespace_ids),
+			ColumnWithName::new(Fragment::internal("name"), names),
+			ColumnWithName::new(Fragment::internal("return_type"), return_types),
+			ColumnWithName::new(Fragment::internal("body"), bodies),
+			ColumnWithName::new(Fragment::internal("trigger_kind"), trigger_kinds),
+			ColumnWithName::new(Fragment::internal("event_variant_sumtype_id"), event_sumtypes),
+			ColumnWithName::new(Fragment::internal("event_variant_index"), event_indexes),
 		];
 
 		self.exhausted = true;

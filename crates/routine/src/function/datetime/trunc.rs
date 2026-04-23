@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -54,8 +54,8 @@ impl Function for DateTimeTrunc {
 
 		let result_data = match (dt_data, prec_data) {
 			(
-				ColumnData::DateTime(dt_container),
-				ColumnData::Utf8 {
+				ColumnBuffer::DateTime(dt_container),
+				ColumnBuffer::Utf8 {
 					container: prec_container,
 					..
 				},
@@ -132,9 +132,9 @@ impl Function for DateTimeTrunc {
 					}
 				}
 
-				ColumnData::DateTime(container)
+				ColumnBuffer::DateTime(container)
 			}
-			(ColumnData::DateTime(_), other) => {
+			(ColumnBuffer::DateTime(_), other) => {
 				return Err(FunctionError::InvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 1,
@@ -153,13 +153,13 @@ impl Function for DateTimeTrunc {
 		};
 
 		let final_data = match (dt_bitvec, prec_bitvec) {
-			(Some(bv), _) | (_, Some(bv)) => ColumnData::Option {
+			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			},
 			_ => result_data,
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use num_traits::ToPrimitive;
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{
 	container::number::NumberContainer,
 	decimal::Decimal,
@@ -62,34 +62,34 @@ impl Function for Round {
 			if let Some(prec_col) = precision_column {
 				let (p_data, _) = prec_col.data().unwrap_option();
 				match p_data {
-					ColumnData::Int4(prec_container) => {
+					ColumnBuffer::Int4(prec_container) => {
 						prec_container.get(row_idx).copied().unwrap_or(0)
 					}
-					ColumnData::Int1(prec_container) => {
+					ColumnBuffer::Int1(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
-					ColumnData::Int2(prec_container) => {
+					ColumnBuffer::Int2(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
-					ColumnData::Int8(prec_container) => {
+					ColumnBuffer::Int8(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
-					ColumnData::Int16(prec_container) => {
+					ColumnBuffer::Int16(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
-					ColumnData::Uint1(prec_container) => {
+					ColumnBuffer::Uint1(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
-					ColumnData::Uint2(prec_container) => {
+					ColumnBuffer::Uint2(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
-					ColumnData::Uint4(prec_container) => {
+					ColumnBuffer::Uint4(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
-					ColumnData::Uint8(prec_container) => {
+					ColumnBuffer::Uint8(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
-					ColumnData::Uint16(prec_container) => {
+					ColumnBuffer::Uint16(prec_container) => {
 						prec_container.get(row_idx).map(|&v| v as i32).unwrap_or(0)
 					}
 					_ => 0,
@@ -100,7 +100,7 @@ impl Function for Round {
 		};
 
 		let result_data = match val_data {
-			ColumnData::Float4(container) => {
+			ColumnBuffer::Float4(container) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -115,9 +115,9 @@ impl Function for Round {
 						bitvec.push(false);
 					}
 				}
-				ColumnData::float4_with_bitvec(result, bitvec)
+				ColumnBuffer::float4_with_bitvec(result, bitvec)
 			}
-			ColumnData::Float8(container) => {
+			ColumnBuffer::Float8(container) => {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
@@ -132,9 +132,9 @@ impl Function for Round {
 						bitvec.push(false);
 					}
 				}
-				ColumnData::float8_with_bitvec(result, bitvec)
+				ColumnBuffer::float8_with_bitvec(result, bitvec)
 			}
-			ColumnData::Decimal {
+			ColumnBuffer::Decimal {
 				container,
 				precision,
 				scale,
@@ -154,7 +154,7 @@ impl Function for Round {
 						bitvec.push(false);
 					}
 				}
-				ColumnData::Decimal {
+				ColumnBuffer::Decimal {
 					container: NumberContainer::new(result),
 					precision: *precision,
 					scale: *scale,
@@ -172,7 +172,7 @@ impl Function for Round {
 		};
 
 		let final_data = if let Some(bv) = val_bitvec {
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv.clone(),
 			}
@@ -180,6 +180,6 @@ impl Function for Round {
 			result_data
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

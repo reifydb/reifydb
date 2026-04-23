@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -52,11 +52,11 @@ impl BaseVTable for SystemFlowOperatorInputs {
 		let capacity: usize = infos.iter().map(|op| op.input_columns.len()).sum();
 
 		// Pre-allocate vectors for column data
-		let mut operators = ColumnData::utf8_with_capacity(capacity);
-		let mut positions = ColumnData::uint1_with_capacity(capacity);
-		let mut names = ColumnData::utf8_with_capacity(capacity);
-		let mut column_types = ColumnData::uint1_with_capacity(capacity);
-		let mut descriptions = ColumnData::utf8_with_capacity(capacity);
+		let mut operators = ColumnBuffer::utf8_with_capacity(capacity);
+		let mut positions = ColumnBuffer::uint1_with_capacity(capacity);
+		let mut names = ColumnBuffer::utf8_with_capacity(capacity);
+		let mut column_types = ColumnBuffer::uint1_with_capacity(capacity);
+		let mut descriptions = ColumnBuffer::utf8_with_capacity(capacity);
 
 		// Populate column data from loaded operators
 		for info in infos {
@@ -70,26 +70,11 @@ impl BaseVTable for SystemFlowOperatorInputs {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("operator"),
-				data: operators,
-			},
-			Column {
-				name: Fragment::internal("position"),
-				data: positions,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
-			Column {
-				name: Fragment::internal("type"),
-				data: column_types,
-			},
-			Column {
-				name: Fragment::internal("description"),
-				data: descriptions,
-			},
+			ColumnWithName::new(Fragment::internal("operator"), operators),
+			ColumnWithName::new(Fragment::internal("position"), positions),
+			ColumnWithName::new(Fragment::internal("name"), names),
+			ColumnWithName::new(Fragment::internal("type"), column_types),
+			ColumnWithName::new(Fragment::internal("description"), descriptions),
 		];
 
 		self.exhausted = true;

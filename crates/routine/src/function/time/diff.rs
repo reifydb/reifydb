@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, duration::Duration, r#type::Type};
 
 use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
@@ -53,7 +53,7 @@ impl Function for TimeDiff {
 		let (data2, bv2) = col2.data().unwrap_option();
 
 		match (data1, data2) {
-			(ColumnData::Time(container1), ColumnData::Time(container2)) => {
+			(ColumnBuffer::Time(container1), ColumnBuffer::Time(container2)) => {
 				let row_count = data1.len();
 				let mut container = TemporalContainer::with_capacity(row_count);
 
@@ -68,21 +68,21 @@ impl Function for TimeDiff {
 					}
 				}
 
-				let mut result_data = ColumnData::Duration(container);
+				let mut result_data = ColumnBuffer::Duration(container);
 				if let Some(bv) = bv1 {
-					result_data = ColumnData::Option {
+					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),
 						bitvec: bv.clone(),
 					};
 				} else if let Some(bv) = bv2 {
-					result_data = ColumnData::Option {
+					result_data = ColumnBuffer::Option {
 						inner: Box::new(result_data),
 						bitvec: bv.clone(),
 					};
 				}
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
-			(ColumnData::Time(_), other) => Err(FunctionError::InvalidArgumentType {
+			(ColumnBuffer::Time(_), other) => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Time],

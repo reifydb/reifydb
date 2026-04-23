@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::row::RowKey,
-	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -167,13 +167,13 @@ impl QueryNode for RingBufferScan {
 		if self.partitions.is_empty() {
 			if self.current_partition_index == 0 {
 				self.current_partition_index = 1; // prevent re-entry
-				let columns: Vec<Column> = self
+				let columns: Vec<ColumnWithName> = self
 					.ringbuffer
 					.columns()
 					.iter()
-					.map(|col| Column {
+					.map(|col| ColumnWithName {
 						name: Fragment::internal(&col.name),
-						data: ColumnData::none_typed(col.constraint.get_type(), 0),
+						data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
 					})
 					.collect();
 				return Ok(Some(Columns::new(columns)));
@@ -260,13 +260,13 @@ impl QueryNode for RingBufferScan {
 		if batch_rows.is_empty() {
 			// If we never returned any rows at all, return empty shape
 			if self.partitions.iter().all(|p| p.metadata.is_empty()) {
-				let columns: Vec<Column> = self
+				let columns: Vec<ColumnWithName> = self
 					.ringbuffer
 					.columns()
 					.iter()
-					.map(|col| Column {
+					.map(|col| ColumnWithName {
 						name: Fragment::internal(&col.name),
-						data: ColumnData::none_typed(col.constraint.get_type(), 0),
+						data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
 					})
 					.collect();
 				return Ok(Some(Columns::new(columns)));
@@ -274,14 +274,14 @@ impl QueryNode for RingBufferScan {
 			Ok(None)
 		} else {
 			// Create columns with storage types (Type::DictionaryId for dictionary columns)
-			let storage_columns: Vec<Column> = self
+			let storage_columns: Vec<ColumnWithName> = self
 				.ringbuffer
 				.columns()
 				.iter()
 				.enumerate()
-				.map(|(idx, col)| Column {
+				.map(|(idx, col)| ColumnWithName {
 					name: Fragment::internal(&col.name),
-					data: ColumnData::with_capacity(self.storage_types[idx].clone(), 0),
+					data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
 				})
 				.collect();
 

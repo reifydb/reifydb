@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_type::{
 	error::{TemporalKind, TypeError},
 	fragment::Fragment,
@@ -20,32 +20,32 @@ pub struct TemporalParser;
 impl TemporalParser {
 	/// Parse temporal expression to a specific target type with detailed
 	/// error handling
-	pub fn from_temporal(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnData> {
+	pub fn from_temporal(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
 		Self::parse_temporal_type(fragment, target, row_count)
 	}
 
 	/// Parse a temporal constant expression and create a column with the
 	/// specified encoded count
-	pub fn parse_temporal(fragment: Fragment, row_count: usize) -> Result<ColumnData> {
+	pub fn parse_temporal(fragment: Fragment, row_count: usize) -> Result<ColumnBuffer> {
 		let value = fragment.text();
 
 		// Route based on character patterns
 		if value.starts_with('P') || value.starts_with('p') {
 			// Duration format (ISO 8601 duration)
 			let duration = parse_duration(fragment.clone())?;
-			Ok(ColumnData::duration(vec![duration; row_count]))
+			Ok(ColumnBuffer::duration(vec![duration; row_count]))
 		} else if value.contains(':') && value.contains('-') {
 			// DateTime format (contains both : and -)
 			let datetime = parse_datetime(fragment.clone())?;
-			Ok(ColumnData::datetime(vec![datetime; row_count]))
+			Ok(ColumnBuffer::datetime(vec![datetime; row_count]))
 		} else if value.contains('-') {
 			// Date format with - separators
 			let date = parse_date(fragment.clone())?;
-			Ok(ColumnData::date(vec![date; row_count]))
+			Ok(ColumnBuffer::date(vec![date; row_count]))
 		} else if value.contains(':') {
 			// Time format (contains :)
 			let time = parse_time(fragment.clone())?;
-			Ok(ColumnData::time(vec![time; row_count]))
+			Ok(ColumnBuffer::time(vec![time; row_count]))
 		} else {
 			// Unrecognized pattern
 			Err(TypeError::Temporal {
@@ -58,23 +58,23 @@ impl TemporalParser {
 	}
 
 	/// Parse temporal to specific target type with detailed error handling
-	pub fn parse_temporal_type(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnData> {
+	pub fn parse_temporal_type(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
 		match target {
 			Type::Date => {
 				let date = parse_date(fragment.clone())?;
-				Ok(ColumnData::date(vec![date; row_count]))
+				Ok(ColumnBuffer::date(vec![date; row_count]))
 			}
 			Type::DateTime => {
 				let datetime = parse_datetime(fragment.clone())?;
-				Ok(ColumnData::datetime(vec![datetime; row_count]))
+				Ok(ColumnBuffer::datetime(vec![datetime; row_count]))
 			}
 			Type::Time => {
 				let time = parse_time(fragment.clone())?;
-				Ok(ColumnData::time(vec![time; row_count]))
+				Ok(ColumnBuffer::time(vec![time; row_count]))
 			}
 			Type::Duration => {
 				let duration = parse_duration(fragment.clone())?;
-				Ok(ColumnData::duration(vec![duration; row_count]))
+				Ok(ColumnBuffer::duration(vec![duration; row_count]))
 			}
 			_ => Err(TypeError::UnsupportedCast {
 				from: Type::DateTime,

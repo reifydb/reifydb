@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::value::column::{
+	array::{Column, canonical::Canonical},
+	encoding::EncodingId,
+};
 use reifydb_type::Result;
 
-use crate::{
-	array::{Array, canonical::CanonicalArray},
-	compress::CompressConfig,
-	encoding::{Encoding, EncodingId},
-};
+use crate::{compress::CompressConfig, encoding::Encoding};
 
 macro_rules! declare_compressed {
-	($ty:ident, $id:ident, $id_str:literal) => {
+	($ty:ident, $id:ident) => {
 		pub struct $ty;
 
 		impl $ty {
-			pub const ID: EncodingId = EncodingId($id_str);
+			pub const ID: EncodingId = EncodingId::$id;
 		}
 
 		impl Encoding for $ty {
@@ -22,31 +22,23 @@ macro_rules! declare_compressed {
 				Self::ID
 			}
 
-			fn try_compress(
-				&self,
-				_input: &CanonicalArray,
-				_cfg: &CompressConfig,
-			) -> Result<Option<Array>> {
+			fn try_compress(&self, _input: &Canonical, _cfg: &CompressConfig) -> Result<Option<Column>> {
 				Ok(None)
 			}
 
-			fn canonicalize(&self, _array: &Array) -> Result<CanonicalArray> {
+			fn canonicalize(&self, _array: &Column) -> Result<Canonical> {
 				todo!(concat!(stringify!($ty), "::canonicalize not yet implemented"))
 			}
-		}
-
-		impl EncodingId {
-			pub const $id: EncodingId = $ty::ID;
 		}
 	};
 }
 
-declare_compressed!(ConstantEncoding, CONSTANT, "column.constant");
-declare_compressed!(AllNoneEncoding, ALL_NONE, "column.all_none");
-declare_compressed!(DictEncoding, DICT, "column.dict");
-declare_compressed!(RleEncoding, RLE, "column.rle");
-declare_compressed!(DeltaEncoding, DELTA, "column.delta");
-declare_compressed!(DeltaRleEncoding, DELTA_RLE, "column.delta_rle");
-declare_compressed!(ForEncoding, FOR, "column.for");
-declare_compressed!(BitPackEncoding, BITPACK, "column.bitpack");
-declare_compressed!(SparseEncoding, SPARSE, "column.sparse");
+declare_compressed!(ConstantEncoding, CONSTANT);
+declare_compressed!(AllNoneEncoding, ALL_NONE);
+declare_compressed!(DictEncoding, DICT);
+declare_compressed!(RleEncoding, RLE);
+declare_compressed!(DeltaEncoding, DELTA);
+declare_compressed!(DeltaRleEncoding, DELTA_RLE);
+declare_compressed!(ForEncoding, FOR);
+declare_compressed!(BitPackEncoding, BITPACK);
+declare_compressed!(SparseEncoding, SPARSE);

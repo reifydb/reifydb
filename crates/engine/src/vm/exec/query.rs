@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{params::Params, value::r#type::Type};
@@ -74,12 +74,12 @@ pub(crate) fn run_query_plan(
 
 	if all_columns.is_none() {
 		let headers = query_node.headers().unwrap_or_else(ColumnHeaders::empty);
-		let empty_columns: Vec<Column> = headers
+		let empty_columns: Vec<ColumnWithName> = headers
 			.columns
 			.into_iter()
-			.map(|name| Column {
+			.map(|name| ColumnWithName {
 				name,
-				data: ColumnData::none_typed(Type::Boolean, 0),
+				data: ColumnBuffer::none_typed(Type::Boolean, 0),
 			})
 			.collect();
 		return Ok(Some(Columns::new(empty_columns)));

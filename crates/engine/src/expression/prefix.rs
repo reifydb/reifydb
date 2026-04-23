@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	error::CoreError,
-	value::column::{Column, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
 use reifydb_rql::expression::PrefixOperator;
 use reifydb_type::{
@@ -37,7 +37,7 @@ macro_rules! prefix_signed_int {
 				result.push(0);
 			}
 		}
-		let new_data = ColumnData::$variant(result);
+		let new_data = ColumnBuffer::$variant(result);
 		Ok($column.with_new_data(new_data))
 	}};
 }
@@ -62,7 +62,7 @@ macro_rules! prefix_unsigned_int {
 				}
 			});
 		}
-		let new_data = ColumnData::$constructor(result);
+		let new_data = ColumnBuffer::$constructor(result);
 		Ok($column.with_new_data(new_data))
 	}};
 }
@@ -90,7 +90,7 @@ macro_rules! prefix_float {
 				result.push($zero);
 			}
 		}
-		let new_data = ColumnData::$constructor(result);
+		let new_data = ColumnBuffer::$constructor(result);
 		Ok($column.with_new_data(new_data))
 	}};
 }
@@ -113,9 +113,13 @@ macro_rules! prefix_not_error {
 /// Applies a prefix operator to an already-evaluated column, without re-evaluating
 /// the inner expression. This avoids recompilation when the column has already been
 /// computed.
-pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment: &Fragment) -> Result<Column> {
+pub(crate) fn prefix_apply(
+	column: &ColumnWithName,
+	operator: &PrefixOperator,
+	fragment: &Fragment,
+) -> Result<ColumnWithName> {
 	unary_op_unwrap_option(column, |column| match column.data() {
-		ColumnData::Bool(container) => match operator {
+		ColumnBuffer::Bool(container) => match operator {
 			PrefixOperator::Not(_) => {
 				let mut result = Vec::with_capacity(container.data().len());
 				for (idx, val) in container.data().iter().enumerate() {
@@ -126,7 +130,7 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 					}
 				}
 
-				let new_data = ColumnData::bool(result);
+				let new_data = ColumnBuffer::bool(result);
 				Ok(column.with_new_data(new_data))
 			}
 			_ => Err(CoreError::FrameError {
@@ -135,35 +139,35 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 			.into()),
 		},
 
-		ColumnData::Float4(container) => {
+		ColumnBuffer::Float4(container) => {
 			prefix_float!(column, container, operator, fragment.clone(), 0.0f32, float4)
 		}
 
-		ColumnData::Float8(container) => {
+		ColumnBuffer::Float8(container) => {
 			prefix_float!(column, container, operator, fragment.clone(), 0.0f64, float8)
 		}
 
-		ColumnData::Int1(container) => {
+		ColumnBuffer::Int1(container) => {
 			prefix_signed_int!(column, container, operator, fragment.clone(), int1)
 		}
 
-		ColumnData::Int2(container) => {
+		ColumnBuffer::Int2(container) => {
 			prefix_signed_int!(column, container, operator, fragment.clone(), int2)
 		}
 
-		ColumnData::Int4(container) => {
+		ColumnBuffer::Int4(container) => {
 			prefix_signed_int!(column, container, operator, fragment.clone(), int4)
 		}
 
-		ColumnData::Int8(container) => {
+		ColumnBuffer::Int8(container) => {
 			prefix_signed_int!(column, container, operator, fragment.clone(), int8)
 		}
 
-		ColumnData::Int16(container) => {
+		ColumnBuffer::Int16(container) => {
 			prefix_signed_int!(column, container, operator, fragment.clone(), int16)
 		}
 
-		ColumnData::Utf8 {
+		ColumnBuffer::Utf8 {
 			container: _,
 			..
 		} => match operator {
@@ -179,49 +183,49 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 			.into()),
 		},
 
-		ColumnData::Uint1(container) => {
+		ColumnBuffer::Uint1(container) => {
 			prefix_unsigned_int!(column, container, operator, fragment.clone(), i8, int1)
 		}
 
-		ColumnData::Uint2(container) => {
+		ColumnBuffer::Uint2(container) => {
 			prefix_unsigned_int!(column, container, operator, fragment.clone(), i16, int2)
 		}
 
-		ColumnData::Uint4(container) => {
+		ColumnBuffer::Uint4(container) => {
 			prefix_unsigned_int!(column, container, operator, fragment.clone(), i32, int4)
 		}
 
-		ColumnData::Uint8(container) => {
+		ColumnBuffer::Uint8(container) => {
 			prefix_unsigned_int!(column, container, operator, fragment.clone(), i64, int8)
 		}
 
-		ColumnData::Uint16(container) => {
+		ColumnBuffer::Uint16(container) => {
 			prefix_unsigned_int!(column, container, operator, fragment.clone(), i128, int16)
 		}
 
-		ColumnData::Date(_) => {
+		ColumnBuffer::Date(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
 		}
-		ColumnData::DateTime(_) => {
+		ColumnBuffer::DateTime(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
 		}
-		ColumnData::Time(_) => {
+		ColumnBuffer::Time(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
 		}
-		ColumnData::Duration(_) => {
+		ColumnBuffer::Duration(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
 		}
-		ColumnData::IdentityId(_) => {
+		ColumnBuffer::IdentityId(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid)
 		}
-		ColumnData::Uuid4(_) => {
+		ColumnBuffer::Uuid4(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid)
 		}
-		ColumnData::Uuid7(_) => {
+		ColumnBuffer::Uuid7(_) => {
 			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid)
 		}
 
-		ColumnData::Blob {
+		ColumnBuffer::Blob {
 			container: _,
 			..
 		} => match operator {
@@ -234,7 +238,7 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 			}
 			.into()),
 		},
-		ColumnData::Int {
+		ColumnBuffer::Int {
 			container,
 			..
 		} => {
@@ -257,10 +261,10 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 					result.push(Int::zero());
 				}
 			}
-			let new_data = ColumnData::int(result);
+			let new_data = ColumnBuffer::int(result);
 			Ok(column.with_new_data(new_data))
 		}
-		ColumnData::Uint {
+		ColumnBuffer::Uint {
 			container,
 			..
 		} => match operator {
@@ -274,7 +278,7 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 						result.push(Int::zero());
 					}
 				}
-				let new_data = ColumnData::int(result);
+				let new_data = ColumnBuffer::int(result);
 				Ok(column.with_new_data(new_data))
 			}
 			PrefixOperator::Plus(_) => {
@@ -286,7 +290,7 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 						result.push(Uint::zero());
 					}
 				}
-				let new_data = ColumnData::uint(result);
+				let new_data = ColumnBuffer::uint(result);
 				Ok(column.with_new_data(new_data))
 			}
 			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
@@ -296,7 +300,7 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 			}
 			.into()),
 		},
-		ColumnData::Decimal {
+		ColumnBuffer::Decimal {
 			container,
 			..
 		} => {
@@ -319,10 +323,10 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 					result.push(Decimal::from(0));
 				}
 			}
-			let new_data = ColumnData::decimal(result);
+			let new_data = ColumnBuffer::decimal(result);
 			Ok(column.with_new_data(new_data))
 		}
-		ColumnData::DictionaryId(_) => match operator {
+		ColumnBuffer::DictionaryId(_) => match operator {
 			PrefixOperator::Not(_) => Err(CoreError::FrameError {
 				message: "Cannot apply NOT operator to DictionaryId type".to_string(),
 			}
@@ -332,7 +336,7 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 			}
 			.into()),
 		},
-		ColumnData::Any(_) => match operator {
+		ColumnBuffer::Any(_) => match operator {
 			PrefixOperator::Not(_) => Err(CoreError::FrameError {
 				message: "Cannot apply NOT operator to Any type".to_string(),
 			}
@@ -342,7 +346,7 @@ pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment:
 			}
 			.into()),
 		},
-		ColumnData::Option {
+		ColumnBuffer::Option {
 			..
 		} => unreachable!("nested Option after unwrap"),
 	})

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 use uuid::Uuid;
 
@@ -49,8 +49,8 @@ impl Function for UuidV7 {
 
 		if args.is_empty() {
 			let uuid = Uuid7::generate(&ctx.runtime_context.clock, &ctx.runtime_context.rng);
-			let result_data = ColumnData::uuid7(vec![uuid]);
-			return Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]));
+			let result_data = ColumnBuffer::uuid7(vec![uuid]);
+			return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]));
 		}
 
 		let column = &args[0];
@@ -58,7 +58,7 @@ impl Function for UuidV7 {
 		let row_count = data.len();
 
 		match data {
-			ColumnData::Utf8 {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
@@ -81,15 +81,15 @@ impl Function for UuidV7 {
 					}
 					result.push(Uuid7::from(parsed));
 				}
-				let result_data = ColumnData::uuid7(result);
+				let result_data = ColumnBuffer::uuid7(result);
 				let final_data = match bitvec {
-					Some(bv) => ColumnData::Option {
+					Some(bv) => ColumnBuffer::Option {
 						inner: Box::new(result_data),
 						bitvec: bv.clone(),
 					},
 					None => result_data,
 				};
-				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			other => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),

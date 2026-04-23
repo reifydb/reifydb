@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{Value, r#type::Type},
@@ -68,7 +68,7 @@ impl Function for JsonObject {
 		for i in (0..unwrapped.len()).step_by(2) {
 			let col_data = unwrapped[i];
 			match col_data {
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					..
 				} => {}
 				other => {
@@ -104,15 +104,15 @@ impl Function for JsonObject {
 			results.push(Box::new(Value::Record(fields)));
 		}
 
-		let result_data = ColumnData::any(results);
+		let result_data = ColumnBuffer::any(results);
 		let final_data = match combined_bv {
-			Some(bv) => ColumnData::Option {
+			Some(bv) => ColumnBuffer::Option {
 				inner: Box::new(result_data),
 				bitvec: bv,
 			},
 			None => result_data,
 		};
 
-		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 	}
 }

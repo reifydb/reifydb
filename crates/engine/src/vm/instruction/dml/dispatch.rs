@@ -6,7 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_core::{
 	internal_error,
 	testing::CapturedInvocation,
-	value::column::{Column, columns::Columns},
+	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_routine::procedure::context::ProcedureContext;
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
@@ -88,7 +88,7 @@ pub(crate) fn dispatch(
 	for (field_name, expr) in &plan.fields {
 		let eval_ctx = base.with_eval_empty();
 		let col = evaluate(&eval_ctx, expr)?;
-		event_columns.push(Column::new(Fragment::internal(field_name), col.data));
+		event_columns.push(ColumnWithName::new(Fragment::internal(field_name), col.data));
 	}
 	let event_payload = Columns::new(event_columns);
 

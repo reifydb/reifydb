@@ -9,7 +9,7 @@ use reifydb_abi::operator::capabilities::{
 };
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -52,15 +52,15 @@ impl BaseVTable for SystemFlowOperators {
 		let infos = self.flow_operator_store.list();
 
 		let capacity = infos.len();
-		let mut operators = ColumnData::utf8_with_capacity(capacity);
-		let mut library_paths = ColumnData::utf8_with_capacity(capacity);
-		let mut apis = ColumnData::uint4_with_capacity(capacity);
-		let mut cap_inserts = ColumnData::bool_with_capacity(capacity);
-		let mut cap_updates = ColumnData::bool_with_capacity(capacity);
-		let mut cap_deletes = ColumnData::bool_with_capacity(capacity);
-		let mut cap_pull_list = ColumnData::bool_with_capacity(capacity);
-		let mut cap_drops = ColumnData::bool_with_capacity(capacity);
-		let mut cap_ticks = ColumnData::bool_with_capacity(capacity);
+		let mut operators = ColumnBuffer::utf8_with_capacity(capacity);
+		let mut library_paths = ColumnBuffer::utf8_with_capacity(capacity);
+		let mut apis = ColumnBuffer::uint4_with_capacity(capacity);
+		let mut cap_inserts = ColumnBuffer::bool_with_capacity(capacity);
+		let mut cap_updates = ColumnBuffer::bool_with_capacity(capacity);
+		let mut cap_deletes = ColumnBuffer::bool_with_capacity(capacity);
+		let mut cap_pull_list = ColumnBuffer::bool_with_capacity(capacity);
+		let mut cap_drops = ColumnBuffer::bool_with_capacity(capacity);
+		let mut cap_ticks = ColumnBuffer::bool_with_capacity(capacity);
 
 		for info in infos {
 			operators.push(info.operator.as_str());
@@ -77,42 +77,15 @@ impl BaseVTable for SystemFlowOperators {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("operator"),
-				data: operators,
-			},
-			Column {
-				name: Fragment::internal("library_path"),
-				data: library_paths,
-			},
-			Column {
-				name: Fragment::internal("api"),
-				data: apis,
-			},
-			Column {
-				name: Fragment::internal("cap_insert"),
-				data: cap_inserts,
-			},
-			Column {
-				name: Fragment::internal("cap_update"),
-				data: cap_updates,
-			},
-			Column {
-				name: Fragment::internal("cap_delete"),
-				data: cap_deletes,
-			},
-			Column {
-				name: Fragment::internal("cap_pull"),
-				data: cap_pull_list,
-			},
-			Column {
-				name: Fragment::internal("cap_drop"),
-				data: cap_drops,
-			},
-			Column {
-				name: Fragment::internal("cap_tick"),
-				data: cap_ticks,
-			},
+			ColumnWithName::new(Fragment::internal("operator"), operators),
+			ColumnWithName::new(Fragment::internal("library_path"), library_paths),
+			ColumnWithName::new(Fragment::internal("api"), apis),
+			ColumnWithName::new(Fragment::internal("cap_insert"), cap_inserts),
+			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates),
+			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes),
+			ColumnWithName::new(Fragment::internal("cap_pull"), cap_pull_list),
+			ColumnWithName::new(Fragment::internal("cap_drop"), cap_drops),
+			ColumnWithName::new(Fragment::internal("cap_tick"), cap_ticks),
 		];
 
 		self.exhausted = true;

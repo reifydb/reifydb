@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::{storage::DataBitVec, util::bitvec::BitVec};
+
 // ReifyDB convention: a set bit means "this row is None." Columns are either
 // non-nullable (no `NoneBitmap`) or nullable (`NoneBitmap` present).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -73,6 +75,28 @@ impl NoneBitmap {
 			words,
 			len: self.len,
 		}
+	}
+
+	// Convert ColumnBuffer's definedness bitvec (set bit = defined) into a
+	// NoneBitmap (set bit = None) by inverting each row.
+	pub fn from_defined_bitvec(bv: &BitVec) -> Self {
+		let len = DataBitVec::len(bv);
+		let mut out = Self::all_present(len);
+		for row in 0..len {
+			if !DataBitVec::get(bv, row) {
+				out.set_none(row);
+			}
+		}
+		out
+	}
+
+	// Inverse of from_defined_bitvec: set bit = None becomes set bit = defined.
+	pub fn to_defined_bitvec(&self) -> BitVec {
+		let mut bits = Vec::with_capacity(self.len);
+		for row in 0..self.len {
+			bits.push(!self.is_none(row));
+		}
+		BitVec::from(bits)
 	}
 }
 

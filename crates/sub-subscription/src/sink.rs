@@ -13,7 +13,7 @@ use reifydb_core::{
 		catalog::{flow::FlowNodeId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},
 		change::{Change, Diff},
 	},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_sub_flow::{
 	operator::{Operator, Operators},
@@ -95,12 +95,12 @@ impl EphemeralSinkSubscriptionOperator {
 	fn add_implicit_columns(columns: &Columns, op: DiffType) -> Columns {
 		let row_count = columns.row_count();
 
-		let mut all_columns: Vec<Column> = columns.iter().cloned().collect();
+		let mut all_columns: Vec<ColumnWithName> = columns.iter().cloned().collect();
 
-		all_columns.push(Column {
-			name: Fragment::internal(IMPLICIT_COLUMN_OP),
-			data: ColumnData::uint1(vec![op as u8; row_count]),
-		});
+		all_columns.push(ColumnWithName::new(
+			Fragment::internal(IMPLICIT_COLUMN_OP),
+			ColumnBuffer::uint1(vec![op as u8; row_count]),
+		));
 
 		Columns::with_system_columns(
 			all_columns,

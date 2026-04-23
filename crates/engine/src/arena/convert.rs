@@ -4,7 +4,7 @@
 use std::fmt::Debug;
 
 use bumpalo::Bump as BumpAlloc;
-use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 use reifydb_type::{
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::{bitvec::BitVec, cowvec::CowVec},
@@ -148,166 +148,171 @@ fn dictionary_to_bump<'bump, S: Storage>(
 	DictionaryContainer::from_parts(vec_to_bump::<DictionaryEntryId, S>(src.data(), bump), src.dictionary_id())
 }
 
-pub fn column_data_to_cow<S: Storage>(src: &ColumnData<S>) -> ColumnData<Cow> {
+pub fn column_data_to_cow<S: Storage>(src: &ColumnBuffer<S>) -> ColumnBuffer<Cow> {
 	match src {
-		ColumnData::Bool(c) => ColumnData::Bool(bool_to_cow(c)),
-		ColumnData::Float4(c) => ColumnData::Float4(number_to_cow(c)),
-		ColumnData::Float8(c) => ColumnData::Float8(number_to_cow(c)),
-		ColumnData::Int1(c) => ColumnData::Int1(number_to_cow(c)),
-		ColumnData::Int2(c) => ColumnData::Int2(number_to_cow(c)),
-		ColumnData::Int4(c) => ColumnData::Int4(number_to_cow(c)),
-		ColumnData::Int8(c) => ColumnData::Int8(number_to_cow(c)),
-		ColumnData::Int16(c) => ColumnData::Int16(number_to_cow(c)),
-		ColumnData::Uint1(c) => ColumnData::Uint1(number_to_cow(c)),
-		ColumnData::Uint2(c) => ColumnData::Uint2(number_to_cow(c)),
-		ColumnData::Uint4(c) => ColumnData::Uint4(number_to_cow(c)),
-		ColumnData::Uint8(c) => ColumnData::Uint8(number_to_cow(c)),
-		ColumnData::Uint16(c) => ColumnData::Uint16(number_to_cow(c)),
-		ColumnData::Utf8 {
+		ColumnBuffer::Bool(c) => ColumnBuffer::Bool(bool_to_cow(c)),
+		ColumnBuffer::Float4(c) => ColumnBuffer::Float4(number_to_cow(c)),
+		ColumnBuffer::Float8(c) => ColumnBuffer::Float8(number_to_cow(c)),
+		ColumnBuffer::Int1(c) => ColumnBuffer::Int1(number_to_cow(c)),
+		ColumnBuffer::Int2(c) => ColumnBuffer::Int2(number_to_cow(c)),
+		ColumnBuffer::Int4(c) => ColumnBuffer::Int4(number_to_cow(c)),
+		ColumnBuffer::Int8(c) => ColumnBuffer::Int8(number_to_cow(c)),
+		ColumnBuffer::Int16(c) => ColumnBuffer::Int16(number_to_cow(c)),
+		ColumnBuffer::Uint1(c) => ColumnBuffer::Uint1(number_to_cow(c)),
+		ColumnBuffer::Uint2(c) => ColumnBuffer::Uint2(number_to_cow(c)),
+		ColumnBuffer::Uint4(c) => ColumnBuffer::Uint4(number_to_cow(c)),
+		ColumnBuffer::Uint8(c) => ColumnBuffer::Uint8(number_to_cow(c)),
+		ColumnBuffer::Uint16(c) => ColumnBuffer::Uint16(number_to_cow(c)),
+		ColumnBuffer::Utf8 {
 			container,
 			max_bytes,
-		} => ColumnData::Utf8 {
+		} => ColumnBuffer::Utf8 {
 			container: utf8_to_cow(container),
 			max_bytes: *max_bytes,
 		},
-		ColumnData::Date(c) => ColumnData::Date(temporal_to_cow(c)),
-		ColumnData::DateTime(c) => ColumnData::DateTime(temporal_to_cow(c)),
-		ColumnData::Time(c) => ColumnData::Time(temporal_to_cow(c)),
-		ColumnData::Duration(c) => ColumnData::Duration(temporal_to_cow(c)),
-		ColumnData::IdentityId(c) => ColumnData::IdentityId(identity_id_to_cow(c)),
-		ColumnData::Uuid4(c) => ColumnData::Uuid4(uuid_to_cow(c)),
-		ColumnData::Uuid7(c) => ColumnData::Uuid7(uuid_to_cow(c)),
-		ColumnData::Blob {
+		ColumnBuffer::Date(c) => ColumnBuffer::Date(temporal_to_cow(c)),
+		ColumnBuffer::DateTime(c) => ColumnBuffer::DateTime(temporal_to_cow(c)),
+		ColumnBuffer::Time(c) => ColumnBuffer::Time(temporal_to_cow(c)),
+		ColumnBuffer::Duration(c) => ColumnBuffer::Duration(temporal_to_cow(c)),
+		ColumnBuffer::IdentityId(c) => ColumnBuffer::IdentityId(identity_id_to_cow(c)),
+		ColumnBuffer::Uuid4(c) => ColumnBuffer::Uuid4(uuid_to_cow(c)),
+		ColumnBuffer::Uuid7(c) => ColumnBuffer::Uuid7(uuid_to_cow(c)),
+		ColumnBuffer::Blob {
 			container,
 			max_bytes,
-		} => ColumnData::Blob {
+		} => ColumnBuffer::Blob {
 			container: blob_to_cow(container),
 			max_bytes: *max_bytes,
 		},
-		ColumnData::Int {
+		ColumnBuffer::Int {
 			container,
 			max_bytes,
-		} => ColumnData::Int {
+		} => ColumnBuffer::Int {
 			container: number_to_cow(container),
 			max_bytes: *max_bytes,
 		},
-		ColumnData::Uint {
+		ColumnBuffer::Uint {
 			container,
 			max_bytes,
-		} => ColumnData::Uint {
+		} => ColumnBuffer::Uint {
 			container: number_to_cow(container),
 			max_bytes: *max_bytes,
 		},
-		ColumnData::Decimal {
+		ColumnBuffer::Decimal {
 			container,
 			precision,
 			scale,
-		} => ColumnData::Decimal {
+		} => ColumnBuffer::Decimal {
 			container: number_to_cow(container),
 			precision: *precision,
 			scale: *scale,
 		},
-		ColumnData::Any(c) => ColumnData::Any(any_to_cow(c)),
-		ColumnData::DictionaryId(c) => ColumnData::DictionaryId(dictionary_to_cow(c)),
-		ColumnData::Option {
+		ColumnBuffer::Any(c) => ColumnBuffer::Any(any_to_cow(c)),
+		ColumnBuffer::DictionaryId(c) => ColumnBuffer::DictionaryId(dictionary_to_cow(c)),
+		ColumnBuffer::Option {
 			inner,
 			bitvec,
-		} => ColumnData::Option {
+		} => ColumnBuffer::Option {
 			inner: Box::new(column_data_to_cow(inner)),
 			bitvec: bitvec_to_cow::<S>(bitvec),
 		},
 	}
 }
 
-pub fn column_data_to_bump<'bump, S: Storage>(src: &ColumnData<S>, bump: &'bump BumpAlloc) -> ColumnData<Bump<'bump>> {
+pub fn column_data_to_bump<'bump, S: Storage>(
+	src: &ColumnBuffer<S>,
+	bump: &'bump BumpAlloc,
+) -> ColumnBuffer<Bump<'bump>> {
 	match src {
-		ColumnData::Bool(c) => ColumnData::Bool(bool_to_bump(c, bump)),
-		ColumnData::Float4(c) => ColumnData::Float4(number_to_bump(c, bump)),
-		ColumnData::Float8(c) => ColumnData::Float8(number_to_bump(c, bump)),
-		ColumnData::Int1(c) => ColumnData::Int1(number_to_bump(c, bump)),
-		ColumnData::Int2(c) => ColumnData::Int2(number_to_bump(c, bump)),
-		ColumnData::Int4(c) => ColumnData::Int4(number_to_bump(c, bump)),
-		ColumnData::Int8(c) => ColumnData::Int8(number_to_bump(c, bump)),
-		ColumnData::Int16(c) => ColumnData::Int16(number_to_bump(c, bump)),
-		ColumnData::Uint1(c) => ColumnData::Uint1(number_to_bump(c, bump)),
-		ColumnData::Uint2(c) => ColumnData::Uint2(number_to_bump(c, bump)),
-		ColumnData::Uint4(c) => ColumnData::Uint4(number_to_bump(c, bump)),
-		ColumnData::Uint8(c) => ColumnData::Uint8(number_to_bump(c, bump)),
-		ColumnData::Uint16(c) => ColumnData::Uint16(number_to_bump(c, bump)),
-		ColumnData::Utf8 {
+		ColumnBuffer::Bool(c) => ColumnBuffer::Bool(bool_to_bump(c, bump)),
+		ColumnBuffer::Float4(c) => ColumnBuffer::Float4(number_to_bump(c, bump)),
+		ColumnBuffer::Float8(c) => ColumnBuffer::Float8(number_to_bump(c, bump)),
+		ColumnBuffer::Int1(c) => ColumnBuffer::Int1(number_to_bump(c, bump)),
+		ColumnBuffer::Int2(c) => ColumnBuffer::Int2(number_to_bump(c, bump)),
+		ColumnBuffer::Int4(c) => ColumnBuffer::Int4(number_to_bump(c, bump)),
+		ColumnBuffer::Int8(c) => ColumnBuffer::Int8(number_to_bump(c, bump)),
+		ColumnBuffer::Int16(c) => ColumnBuffer::Int16(number_to_bump(c, bump)),
+		ColumnBuffer::Uint1(c) => ColumnBuffer::Uint1(number_to_bump(c, bump)),
+		ColumnBuffer::Uint2(c) => ColumnBuffer::Uint2(number_to_bump(c, bump)),
+		ColumnBuffer::Uint4(c) => ColumnBuffer::Uint4(number_to_bump(c, bump)),
+		ColumnBuffer::Uint8(c) => ColumnBuffer::Uint8(number_to_bump(c, bump)),
+		ColumnBuffer::Uint16(c) => ColumnBuffer::Uint16(number_to_bump(c, bump)),
+		ColumnBuffer::Utf8 {
 			container,
 			max_bytes,
-		} => ColumnData::Utf8 {
+		} => ColumnBuffer::Utf8 {
 			container: utf8_to_bump(container, bump),
 			max_bytes: *max_bytes,
 		},
-		ColumnData::Date(c) => ColumnData::Date(temporal_to_bump(c, bump)),
-		ColumnData::DateTime(c) => ColumnData::DateTime(temporal_to_bump(c, bump)),
-		ColumnData::Time(c) => ColumnData::Time(temporal_to_bump(c, bump)),
-		ColumnData::Duration(c) => ColumnData::Duration(temporal_to_bump(c, bump)),
-		ColumnData::IdentityId(c) => ColumnData::IdentityId(identity_id_to_bump(c, bump)),
-		ColumnData::Uuid4(c) => ColumnData::Uuid4(uuid_to_bump(c, bump)),
-		ColumnData::Uuid7(c) => ColumnData::Uuid7(uuid_to_bump(c, bump)),
-		ColumnData::Blob {
+		ColumnBuffer::Date(c) => ColumnBuffer::Date(temporal_to_bump(c, bump)),
+		ColumnBuffer::DateTime(c) => ColumnBuffer::DateTime(temporal_to_bump(c, bump)),
+		ColumnBuffer::Time(c) => ColumnBuffer::Time(temporal_to_bump(c, bump)),
+		ColumnBuffer::Duration(c) => ColumnBuffer::Duration(temporal_to_bump(c, bump)),
+		ColumnBuffer::IdentityId(c) => ColumnBuffer::IdentityId(identity_id_to_bump(c, bump)),
+		ColumnBuffer::Uuid4(c) => ColumnBuffer::Uuid4(uuid_to_bump(c, bump)),
+		ColumnBuffer::Uuid7(c) => ColumnBuffer::Uuid7(uuid_to_bump(c, bump)),
+		ColumnBuffer::Blob {
 			container,
 			max_bytes,
-		} => ColumnData::Blob {
+		} => ColumnBuffer::Blob {
 			container: blob_to_bump(container, bump),
 			max_bytes: *max_bytes,
 		},
-		ColumnData::Int {
+		ColumnBuffer::Int {
 			container,
 			max_bytes,
-		} => ColumnData::Int {
+		} => ColumnBuffer::Int {
 			container: number_to_bump(container, bump),
 			max_bytes: *max_bytes,
 		},
-		ColumnData::Uint {
+		ColumnBuffer::Uint {
 			container,
 			max_bytes,
-		} => ColumnData::Uint {
+		} => ColumnBuffer::Uint {
 			container: number_to_bump(container, bump),
 			max_bytes: *max_bytes,
 		},
-		ColumnData::Decimal {
+		ColumnBuffer::Decimal {
 			container,
 			precision,
 			scale,
-		} => ColumnData::Decimal {
+		} => ColumnBuffer::Decimal {
 			container: number_to_bump(container, bump),
 			precision: *precision,
 			scale: *scale,
 		},
-		ColumnData::Any(c) => ColumnData::Any(any_to_bump(c, bump)),
-		ColumnData::DictionaryId(c) => ColumnData::DictionaryId(dictionary_to_bump(c, bump)),
-		ColumnData::Option {
+		ColumnBuffer::Any(c) => ColumnBuffer::Any(any_to_bump(c, bump)),
+		ColumnBuffer::DictionaryId(c) => ColumnBuffer::DictionaryId(dictionary_to_bump(c, bump)),
+		ColumnBuffer::Option {
 			inner,
 			bitvec,
-		} => ColumnData::Option {
+		} => ColumnBuffer::Option {
 			inner: Box::new(column_data_to_bump(inner, bump)),
 			bitvec: bitvec_to_bump::<S>(bitvec, bump),
 		},
 	}
 }
 
-pub fn column_to_cow<S: Storage>(src: &Column<S>) -> Column<Cow> {
-	Column::new(src.name().clone(), column_data_to_cow(src.data()))
+pub fn column_to_cow(src: &ColumnWithName) -> ColumnWithName {
+	ColumnWithName::new(src.name().clone(), column_data_to_cow::<Cow>(src.data()))
 }
 
-pub fn column_to_bump<'bump, S: Storage>(src: &Column<S>, bump: &'bump BumpAlloc) -> Column<Bump<'bump>> {
-	Column::new(src.name().clone(), column_data_to_bump(src.data(), bump))
+pub fn column_to_bump(src: &ColumnWithName, _bump: &BumpAlloc) -> ColumnWithName {
+	// Column no longer carries a storage generic; this helper stays
+	// as a Cow-returning alias during the Phase 6 migration.
+	ColumnWithName::new(src.name().clone(), column_data_to_cow::<Cow>(src.data()))
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::Column;
+	use reifydb_core::value::column::ColumnWithName;
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
 
 	#[test]
 	fn test_column_data_cow_roundtrip() {
-		let original = ColumnData::int4(vec![10, 20, 30]);
+		let original = ColumnBuffer::int4(vec![10, 20, 30]);
 		let bump_alloc = BumpAlloc::new();
 
 		// Cow -> Bump
@@ -321,7 +326,7 @@ mod tests {
 
 	#[test]
 	fn test_column_data_bool_roundtrip() {
-		let original = ColumnData::bool(vec![true, false, true]);
+		let original = ColumnBuffer::bool(vec![true, false, true]);
 		let bump_alloc = BumpAlloc::new();
 
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);
@@ -331,7 +336,7 @@ mod tests {
 
 	#[test]
 	fn test_column_data_utf8_roundtrip() {
-		let original = ColumnData::utf8(vec![String::from("hello"), String::from("world")]);
+		let original = ColumnBuffer::utf8(vec![String::from("hello"), String::from("world")]);
 		let bump_alloc = BumpAlloc::new();
 
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);
@@ -341,7 +346,7 @@ mod tests {
 
 	#[test]
 	fn test_column_data_float8_roundtrip() {
-		let original = ColumnData::float8(vec![1.5, 2.7, 3.9]);
+		let original = ColumnBuffer::float8(vec![1.5, 2.7, 3.9]);
 		let bump_alloc = BumpAlloc::new();
 
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);
@@ -351,7 +356,7 @@ mod tests {
 
 	#[test]
 	fn test_column_data_none_roundtrip() {
-		let original = ColumnData::none_typed(Type::Boolean, 5);
+		let original = ColumnBuffer::none_typed(Type::Boolean, 5);
 		let bump_alloc = BumpAlloc::new();
 
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);
@@ -361,11 +366,11 @@ mod tests {
 
 	#[test]
 	fn test_column_roundtrip() {
-		let original = Column::int4("age", vec![25, 30, 35]);
+		let original = ColumnWithName::int4("age", vec![25, 30, 35]);
 		let bump_alloc = BumpAlloc::new();
 
-		let bump_col = column_to_bump::<Cow>(&original, &bump_alloc);
-		let cow_col = column_to_cow::<Bump>(&bump_col);
+		let bump_col = column_to_bump(&original, &bump_alloc);
+		let cow_col = column_to_cow(&bump_col);
 		assert_eq!(cow_col, original);
 	}
 }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -50,10 +50,10 @@ impl BaseVTable for SystemFlowEdges {
 
 		let edges = CatalogStore::list_flow_edges_all(txn)?;
 
-		let mut ids = ColumnData::uint8_with_capacity(edges.len());
-		let mut flow_ids = ColumnData::uint8_with_capacity(edges.len());
-		let mut sources = ColumnData::uint8_with_capacity(edges.len());
-		let mut targets = ColumnData::uint8_with_capacity(edges.len());
+		let mut ids = ColumnBuffer::uint8_with_capacity(edges.len());
+		let mut flow_ids = ColumnBuffer::uint8_with_capacity(edges.len());
+		let mut sources = ColumnBuffer::uint8_with_capacity(edges.len());
+		let mut targets = ColumnBuffer::uint8_with_capacity(edges.len());
 
 		for edge in edges {
 			ids.push(edge.id.0);
@@ -63,22 +63,10 @@ impl BaseVTable for SystemFlowEdges {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("flow_id"),
-				data: flow_ids,
-			},
-			Column {
-				name: Fragment::internal("source"),
-				data: sources,
-			},
-			Column {
-				name: Fragment::internal("target"),
-				data: targets,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids),
+			ColumnWithName::new(Fragment::internal("source"), sources),
+			ColumnWithName::new(Fragment::internal("target"), targets),
 		];
 
 		self.exhausted = true;

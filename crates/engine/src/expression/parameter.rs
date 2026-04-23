@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	error::diagnostic::engine,
-	value::column::{Column, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
 use reifydb_rql::expression::ParameterExpression;
 use reifydb_type::{
@@ -14,7 +14,7 @@ use reifydb_type::{
 
 use crate::{Result, expression::context::EvalContext};
 
-pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) -> Result<Column> {
+pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) -> Result<ColumnWithName> {
 	let value = match expr {
 		ParameterExpression::Positional {
 			fragment,
@@ -39,41 +39,38 @@ pub(crate) fn parameter_lookup(ctx: &EvalContext, expr: &ParameterExpression) ->
 	};
 
 	let column_data = match value {
-		Value::Boolean(b) => ColumnData::bool(vec![*b; ctx.row_count]),
-		Value::Float4(f) => ColumnData::float4(vec![f.value(); ctx.row_count]),
-		Value::Float8(f) => ColumnData::float8(vec![f.value(); ctx.row_count]),
-		Value::Int1(i) => ColumnData::int1(vec![*i; ctx.row_count]),
-		Value::Int2(i) => ColumnData::int2(vec![*i; ctx.row_count]),
-		Value::Int4(i) => ColumnData::int4(vec![*i; ctx.row_count]),
-		Value::Int8(i) => ColumnData::int8(vec![*i; ctx.row_count]),
-		Value::Int16(i) => ColumnData::int16(vec![*i; ctx.row_count]),
-		Value::Uint1(u) => ColumnData::uint1(vec![*u; ctx.row_count]),
-		Value::Uint2(u) => ColumnData::uint2(vec![*u; ctx.row_count]),
-		Value::Uint4(u) => ColumnData::uint4(vec![*u; ctx.row_count]),
-		Value::Uint8(u) => ColumnData::uint8(vec![*u; ctx.row_count]),
-		Value::Uint16(u) => ColumnData::uint16(vec![*u; ctx.row_count]),
-		Value::Utf8(s) => ColumnData::utf8(vec![s.clone(); ctx.row_count]),
-		Value::Date(d) => ColumnData::date(vec![*d; ctx.row_count]),
-		Value::DateTime(dt) => ColumnData::datetime(vec![*dt; ctx.row_count]),
-		Value::Time(t) => ColumnData::time(vec![*t; ctx.row_count]),
-		Value::Duration(i) => ColumnData::duration(vec![*i; ctx.row_count]),
-		Value::Uuid4(u) => ColumnData::uuid4(vec![*u; ctx.row_count]),
-		Value::Uuid7(u) => ColumnData::uuid7(vec![*u; ctx.row_count]),
-		Value::Blob(b) => ColumnData::blob(vec![b.clone(); ctx.row_count]),
-		Value::IdentityId(id) => ColumnData::identity_id(vec![*id; ctx.row_count]),
-		Value::DictionaryId(v) => ColumnData::dictionary_id(vec![*v; ctx.row_count]),
-		Value::Int(bi) => ColumnData::int(vec![bi.clone(); ctx.row_count]),
-		Value::Uint(bu) => ColumnData::uint(vec![bu.clone(); ctx.row_count]),
-		Value::Decimal(bd) => ColumnData::decimal(vec![bd.clone(); ctx.row_count]),
+		Value::Boolean(b) => ColumnBuffer::bool(vec![*b; ctx.row_count]),
+		Value::Float4(f) => ColumnBuffer::float4(vec![f.value(); ctx.row_count]),
+		Value::Float8(f) => ColumnBuffer::float8(vec![f.value(); ctx.row_count]),
+		Value::Int1(i) => ColumnBuffer::int1(vec![*i; ctx.row_count]),
+		Value::Int2(i) => ColumnBuffer::int2(vec![*i; ctx.row_count]),
+		Value::Int4(i) => ColumnBuffer::int4(vec![*i; ctx.row_count]),
+		Value::Int8(i) => ColumnBuffer::int8(vec![*i; ctx.row_count]),
+		Value::Int16(i) => ColumnBuffer::int16(vec![*i; ctx.row_count]),
+		Value::Uint1(u) => ColumnBuffer::uint1(vec![*u; ctx.row_count]),
+		Value::Uint2(u) => ColumnBuffer::uint2(vec![*u; ctx.row_count]),
+		Value::Uint4(u) => ColumnBuffer::uint4(vec![*u; ctx.row_count]),
+		Value::Uint8(u) => ColumnBuffer::uint8(vec![*u; ctx.row_count]),
+		Value::Uint16(u) => ColumnBuffer::uint16(vec![*u; ctx.row_count]),
+		Value::Utf8(s) => ColumnBuffer::utf8(vec![s.clone(); ctx.row_count]),
+		Value::Date(d) => ColumnBuffer::date(vec![*d; ctx.row_count]),
+		Value::DateTime(dt) => ColumnBuffer::datetime(vec![*dt; ctx.row_count]),
+		Value::Time(t) => ColumnBuffer::time(vec![*t; ctx.row_count]),
+		Value::Duration(i) => ColumnBuffer::duration(vec![*i; ctx.row_count]),
+		Value::Uuid4(u) => ColumnBuffer::uuid4(vec![*u; ctx.row_count]),
+		Value::Uuid7(u) => ColumnBuffer::uuid7(vec![*u; ctx.row_count]),
+		Value::Blob(b) => ColumnBuffer::blob(vec![b.clone(); ctx.row_count]),
+		Value::IdentityId(id) => ColumnBuffer::identity_id(vec![*id; ctx.row_count]),
+		Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![*v; ctx.row_count]),
+		Value::Int(bi) => ColumnBuffer::int(vec![bi.clone(); ctx.row_count]),
+		Value::Uint(bu) => ColumnBuffer::uint(vec![bu.clone(); ctx.row_count]),
+		Value::Decimal(bd) => ColumnBuffer::decimal(vec![bd.clone(); ctx.row_count]),
 		Value::None {
 			..
-		} => ColumnData::none_typed(Type::Boolean, ctx.row_count),
+		} => ColumnBuffer::none_typed(Type::Boolean, ctx.row_count),
 		Value::Type(_) | Value::Any(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_) => {
 			unreachable!("Any/Type/List/Record/Tuple not supported as parameter")
 		}
 	};
-	Ok(Column {
-		name: Fragment::internal("parameter"),
-		data: column_data,
-	})
+	Ok(ColumnWithName::new(Fragment::internal("parameter"), column_data))
 }
