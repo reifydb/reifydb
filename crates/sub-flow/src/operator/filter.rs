@@ -128,18 +128,6 @@ impl FilterOperator {
 			columns.extract_by_indices(&passing_indices)
 		}
 	}
-
-	/// Filter Columns to only include rows that fail the filter
-	fn filter_failing(&self, columns: &Columns, mask: &[bool]) -> Columns {
-		let failing_indices: Vec<usize> =
-			mask.iter().enumerate().filter(|&(_, pass)| !*pass).map(|(idx, _)| idx).collect();
-
-		if failing_indices.is_empty() {
-			Columns::empty()
-		} else {
-			columns.extract_by_indices(&failing_indices)
-		}
-	}
 }
 
 impl Operator for FilterOperator {
@@ -155,9 +143,10 @@ impl Operator for FilterOperator {
 				Diff::Insert {
 					post,
 				} => {
+					// Post matches filter  → forward Insert.
+					// Post fails filter    → drop (subscriber never saw it).
 					let mask = self.evaluate(&post)?;
 					let passing = self.filter_passing(&post, &mask);
-
 					if !passing.is_empty() {
 						result.push(Diff::Insert {
 							post: passing,
@@ -168,47 +157,60 @@ impl Operator for FilterOperator {
 					pre,
 					post,
 				} => {
-					let mask = self.evaluate(&post)?;
-					let passing = self.filter_passing(&post, &mask);
-					let failing = self.filter_failing(&post, &mask);
+					// Diff filter must look at both sides: the subscriber only ever
+					// saw rows whose pre matched the predicate. Partition row indices
+					// into 4 buckets; emit one diff per non-empty bucket.
+					//
+					//   pre=T, post=T  →  Update { pre, post }   (still visible)
+					//   pre=F, post=T  →  Insert { post }        (became visible)
+					//   pre=T, post=F  →  Remove { pre }         (became invisible)
+					//   pre=F, post=F  →  drop                   (never visible)
+					let pre_mask = self.evaluate(&pre)?;
+					let post_mask = self.evaluate(&post)?;
 
-					if !passing.is_empty() {
-						let passing_indices: Vec<usize> = mask
-							.iter()
-							.enumerate()
-							.filter(|&(_, pass)| *pass)
-							.map(|(idx, _)| idx)
-							.collect();
-						let pre_passing = pre.extract_by_indices(&passing_indices);
+					let mut updated_idx = Vec::new();
+					let mut inserted_idx = Vec::new();
+					let mut removed_idx = Vec::new();
 
-						result.push(Diff::Update {
-							pre: pre_passing,
-							post: passing,
-						});
+					let row_count = pre_mask.len().min(post_mask.len());
+					for i in 0..row_count {
+						match (pre_mask[i], post_mask[i]) {
+							(true, true) => updated_idx.push(i),
+							(false, true) => inserted_idx.push(i),
+							(true, false) => removed_idx.push(i),
+							(false, false) => {}
+						}
 					}
 
-					if !failing.is_empty() {
-						// Rows no longer match filter - emit removes for the pre values
-						let failing_indices: Vec<usize> = mask
-							.iter()
-							.enumerate()
-							.filter(|&(_, pass)| !*pass)
-							.map(|(idx, _)| idx)
-							.collect();
-						let pre_failing = pre.extract_by_indices(&failing_indices);
-
+					if !updated_idx.is_empty() {
+						result.push(Diff::Update {
+							pre: pre.extract_by_indices(&updated_idx),
+							post: post.extract_by_indices(&updated_idx),
+						});
+					}
+					if !inserted_idx.is_empty() {
+						result.push(Diff::Insert {
+							post: post.extract_by_indices(&inserted_idx),
+						});
+					}
+					if !removed_idx.is_empty() {
 						result.push(Diff::Remove {
-							pre: pre_failing,
+							pre: pre.extract_by_indices(&removed_idx),
 						});
 					}
 				}
 				Diff::Remove {
 					pre,
 				} => {
-					// Always pass through removes
-					result.push(Diff::Remove {
-						pre,
-					});
+					// Pre matches filter  → forward Remove (row was visible, now gone).
+					// Pre fails filter    → drop (subscriber never saw it).
+					let mask = self.evaluate(&pre)?;
+					let passing = self.filter_passing(&pre, &mask);
+					if !passing.is_empty() {
+						result.push(Diff::Remove {
+							pre: passing,
+						});
+					}
 				}
 			}
 		}
