@@ -8,7 +8,8 @@ use reifydb_type::{
 	Result,
 	error::Error,
 	storage::{Cow, DataBitVec, Storage},
-	value::{Value, r#type::Type},
+	util::bitvec::BitVec,
+	value::{Value, blob::Blob, r#type::Type},
 };
 use serde::de::Error as _;
 
@@ -78,6 +79,10 @@ impl CanonicalArray {
 
 	pub fn stats(&self) -> &StatsSet {
 		&self.stats
+	}
+
+	pub fn slice(&self, start: usize, end: usize) -> Result<Self> {
+		crate::compute::canonical::slice::slice(self, start, end)
 	}
 
 	// Bridge from ReifyDB's `ColumnData` into a canonical columnar array.
@@ -168,6 +173,89 @@ impl CanonicalArray {
 	fn bignum(ty: Type, values: Vec<BigNum>) -> Self {
 		let ba = BigNumArray::from_values(ty.clone(), values);
 		Self::new(ty, false, None, CanonicalStorage::BigNum(ba))
+	}
+
+	// Inverse of `from_column_data`. `NoneBitmap` uses set bit = None; the
+	// `ColumnData::Option.bitvec` wrapping uses set bit = defined, so the
+	// per-row polarity is inverted when rebuilding the definedness bitvec.
+	pub fn to_column_data(&self) -> Result<ColumnData> {
+		let inner = match &self.storage {
+			CanonicalStorage::Bool(b) => {
+				let values: Vec<bool> = (0..b.len()).map(|i| b.get(i)).collect();
+				ColumnData::bool(values)
+			}
+			CanonicalStorage::Fixed(f) => match &f.storage {
+				FixedStorage::I8(v) => ColumnData::int1(v.clone()),
+				FixedStorage::I16(v) => ColumnData::int2(v.clone()),
+				FixedStorage::I32(v) => ColumnData::int4(v.clone()),
+				FixedStorage::I64(v) => ColumnData::int8(v.clone()),
+				FixedStorage::I128(v) => ColumnData::int16(v.clone()),
+				FixedStorage::U8(v) => ColumnData::uint1(v.clone()),
+				FixedStorage::U16(v) => ColumnData::uint2(v.clone()),
+				FixedStorage::U32(v) => ColumnData::uint4(v.clone()),
+				FixedStorage::U64(v) => ColumnData::uint8(v.clone()),
+				FixedStorage::U128(v) => ColumnData::uint16(v.clone()),
+				FixedStorage::F32(v) => ColumnData::float4(v.clone()),
+				FixedStorage::F64(v) => ColumnData::float8(v.clone()),
+			},
+			CanonicalStorage::VarLen(v) => match self.ty {
+				Type::Utf8 => {
+					let strings: Vec<String> = (0..v.len())
+						.map(|i| std::str::from_utf8(v.bytes_at(i)).map(str::to_string))
+						.collect::<std::result::Result<_, _>>()
+						.map_err(|e| {
+							Error::custom(format!(
+								"CanonicalArray::to_column_data: invalid UTF-8: {e}"
+							))
+						})?;
+					ColumnData::utf8(strings)
+				}
+				Type::Blob => {
+					let blobs: Vec<Blob> =
+						(0..v.len()).map(|i| Blob::from(v.bytes_at(i).to_vec())).collect();
+					ColumnData::blob(blobs)
+				}
+				ref other => {
+					return Err(Error::custom(format!(
+						"CanonicalArray::to_column_data: unexpected VarLen type {other:?}"
+					)));
+				}
+			},
+			CanonicalStorage::BigNum(b) => match self.ty {
+				Type::Int => ColumnData::int(b.values.iter().map(|n| match n {
+					BigNum::Int(v) => v.clone(),
+					other => unreachable!("BigNum ty=Int mismatched variant: {other:?}"),
+				})),
+				Type::Uint => ColumnData::uint(b.values.iter().map(|n| match n {
+					BigNum::Uint(v) => v.clone(),
+					other => unreachable!("BigNum ty=Uint mismatched variant: {other:?}"),
+				})),
+				Type::Decimal => ColumnData::decimal(b.values.iter().map(|n| match n {
+					BigNum::Decimal(v) => v.clone(),
+					other => unreachable!("BigNum ty=Decimal mismatched variant: {other:?}"),
+				})),
+				ref other => {
+					return Err(Error::custom(format!(
+						"CanonicalArray::to_column_data: unexpected BigNum type {other:?}"
+					)));
+				}
+			},
+		};
+
+		match &self.nones {
+			Some(nones) => {
+				let len = self.len();
+				let mut bits = Vec::with_capacity(len);
+				for row in 0..len {
+					bits.push(!nones.is_none(row));
+				}
+				Ok(ColumnData::Option {
+					inner: Box::new(inner),
+					bitvec: BitVec::from(bits),
+				})
+			}
+			None => Ok(inner),
+		}
 	}
 }
 
@@ -316,5 +404,52 @@ mod tests {
 		let cd = ColumnData::int4([1i32, 2, 3]);
 		let ca = CanonicalArray::from_column_data(&cd).unwrap();
 		assert_eq!(ca.encoding(), EncodingId::CANONICAL_FIXED);
+	}
+
+	#[test]
+	fn to_column_data_round_trips_bool() {
+		let cd = ColumnData::bool([true, false, true, true]);
+		let ca = CanonicalArray::from_column_data(&cd).unwrap();
+		let out = ca.to_column_data().unwrap();
+		assert_eq!(out, cd);
+	}
+
+	#[test]
+	fn to_column_data_round_trips_int4() {
+		let cd = ColumnData::int4([10i32, 20, 30, 40]);
+		let ca = CanonicalArray::from_column_data(&cd).unwrap();
+		let out = ca.to_column_data().unwrap();
+		assert_eq!(out, cd);
+	}
+
+	#[test]
+	fn to_column_data_round_trips_utf8() {
+		let cd = ColumnData::utf8(["alpha", "bravo", "charlie"]);
+		let ca = CanonicalArray::from_column_data(&cd).unwrap();
+		let out = ca.to_column_data().unwrap();
+		assert_eq!(out, cd);
+	}
+
+	// Load-bearing test: the NoneBitmap set=None polarity must be inverted
+	// back to ColumnData::Option's set=defined polarity on the return trip.
+	#[test]
+	fn to_column_data_round_trips_nullable_int4() {
+		let mut cd = ColumnData::int4_with_capacity(4);
+		cd.push::<i32>(10);
+		cd.push_none();
+		cd.push::<i32>(30);
+		cd.push_none();
+		let ca = CanonicalArray::from_column_data(&cd).unwrap();
+		let out = ca.to_column_data().unwrap();
+		assert_eq!(out, cd);
+	}
+
+	#[test]
+	fn to_column_data_round_trips_bignum_int() {
+		use reifydb_type::value::int::Int;
+		let cd = ColumnData::int([Int::from_i64(-7), Int::from_i64(0), Int::from_i64(42)]);
+		let ca = CanonicalArray::from_column_data(&cd).unwrap();
+		let out = ca.to_column_data().unwrap();
+		assert_eq!(out, cd);
 	}
 }

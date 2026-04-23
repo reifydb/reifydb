@@ -11,6 +11,7 @@ pub mod encoding;
 pub mod mask;
 pub mod nones;
 pub mod predicate;
+pub mod reader;
 pub mod registry;
 pub mod scan_source;
 pub mod selection;

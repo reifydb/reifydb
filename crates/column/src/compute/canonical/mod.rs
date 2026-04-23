@@ -5,6 +5,6 @@ pub(super) mod compare;
 pub(super) mod filter;
 pub(super) mod min_max;
 pub(super) mod search_sorted;
-pub(super) mod slice;
+pub(crate) mod slice;
 pub(super) mod sum;
 pub(super) mod take;

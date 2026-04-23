@@ -1,46 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	collections::BTreeSet,
-	thread,
-	time::{Duration, Instant},
-};
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use reifydb::{Params, WithSubsystem, embedded as db_embedded};
-use reifydb_column::{
-	array::{canonical::CanonicalStorage, fixed::Primitive},
-	column_block::ColumnBlock,
-};
+use reifydb_column::reader::SnapshotReader;
 use reifydb_sub_column::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
+use reifydb_type::value::Value;
 
-fn poll_until<T>(mut f: impl FnMut() -> Option<T>, timeout: Duration) -> Option<T> {
-	let deadline = Instant::now() + timeout;
-	loop {
-		if let Some(value) = f() {
-			return Some(value);
-		}
-		if Instant::now() >= deadline {
-			return None;
-		}
-		thread::sleep(Duration::from_millis(10));
-	}
-}
-
-fn fixed_slice<T: Primitive>(block: &ColumnBlock, name: &str) -> Vec<T> {
-	let (_, chunked) = block.column_by_name(name).unwrap_or_else(|| panic!("column `{name}` missing"));
-	let canonical = chunked.chunks[0].to_canonical().expect("to_canonical");
-	match &canonical.storage {
-		CanonicalStorage::Fixed(f) => f
-			.try_as_slice::<T>()
-			.unwrap_or_else(|| panic!("column `{name}` is not the requested fixed type"))
-			.to_vec(),
-		_ => panic!("column `{name}` is not a fixed-width column"),
-	}
-}
+mod common;
+use common::poll_until;
 
 // Exercises the series actor's bucket enumeration + `is_closed` path with
 // integer keys. For integer-keyed series, a bucket is considered closed once
@@ -102,19 +74,29 @@ fn series_materialization_produces_snapshot_in_registry() {
 		assert!(meta.row_count > 0);
 
 		let snap = registry.get(&meta.id).expect("snapshot fetchable by id");
-		let block = &snap.block;
 
-		let schema_names: Vec<&str> = block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
+		let schema_names: Vec<&str> = snap.block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
 		assert_eq!(schema_names, vec!["k", "value"]);
 
-		let ks = fixed_slice::<u64>(block, "k");
-		let values = fixed_slice::<f64>(block, "value");
-		assert_eq!(ks.len(), values.len());
-		assert_eq!(ks.len(), meta.row_count);
+		let mut reader = SnapshotReader::new(Arc::clone(&snap), 100);
+		let batch = reader.next().expect("read batch").expect("batch present");
+		assert!(reader.next().expect("drain").is_none(), "reader should yield a single batch per bucket");
+		assert_eq!(batch.row_count(), meta.row_count);
 
-		for (k, v) in ks.iter().zip(values.iter()) {
-			assert_eq!(*v, *k as f64, "value should equal key for k={k}");
-			assert!(all_keys.insert(*k), "duplicate key {k} across snapshots");
+		let k_col = batch.column("k").expect("k column");
+		let v_col = batch.column("value").expect("value column");
+
+		for i in 0..meta.row_count {
+			let k = match k_col.data().get_value(i) {
+				Value::Uint8(v) => v,
+				other => panic!("row {i}: expected Uint8, got {other:?}"),
+			};
+			let v = match v_col.data().get_value(i) {
+				Value::Float8(v) => f64::from(v),
+				other => panic!("row {i}: expected Float8, got {other:?}"),
+			};
+			assert_eq!(v, k as f64, "value should equal key for k={k}");
+			assert!(all_keys.insert(k), "duplicate key {k} across snapshots");
 		}
 	}
 

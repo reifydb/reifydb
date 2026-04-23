@@ -1,57 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	collections::BTreeMap,
-	thread,
-	time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use reifydb::{Params, WithSubsystem, embedded as db_embedded};
-use reifydb_column::{
-	array::{canonical::CanonicalStorage, fixed::Primitive},
-	column_block::ColumnBlock,
-};
+use reifydb_column::reader::SnapshotReader;
 use reifydb_sub_column::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
+use reifydb_type::value::Value;
 
-fn poll_until<T>(mut f: impl FnMut() -> Option<T>, timeout: Duration) -> Option<T> {
-	let deadline = Instant::now() + timeout;
-	loop {
-		if let Some(value) = f() {
-			return Some(value);
-		}
-		if Instant::now() >= deadline {
-			return None;
-		}
-		thread::sleep(Duration::from_millis(10));
-	}
-}
-
-fn fixed_slice<T: Primitive>(block: &ColumnBlock, name: &str) -> Vec<T> {
-	let (_, chunked) = block.column_by_name(name).unwrap_or_else(|| panic!("column `{name}` missing"));
-	let canonical = chunked.chunks[0].to_canonical().expect("to_canonical");
-	match &canonical.storage {
-		CanonicalStorage::Fixed(f) => f
-			.try_as_slice::<T>()
-			.unwrap_or_else(|| panic!("column `{name}` is not the requested fixed type"))
-			.to_vec(),
-		_ => panic!("column `{name}` is not a fixed-width column"),
-	}
-}
-
-fn utf8_strings(block: &ColumnBlock, name: &str) -> Vec<String> {
-	let (_, chunked) = block.column_by_name(name).unwrap_or_else(|| panic!("column `{name}` missing"));
-	let canonical = chunked.chunks[0].to_canonical().expect("to_canonical");
-	match &canonical.storage {
-		CanonicalStorage::VarLen(v) => {
-			(0..v.len()).map(|i| std::str::from_utf8(v.bytes_at(i)).expect("utf8").to_string()).collect()
-		}
-		_ => panic!("column `{name}` is not a varlen column"),
-	}
-}
+mod common;
+use common::poll_until;
 
 #[test]
 fn table_materialization_produces_snapshot_in_registry() {
@@ -94,21 +55,35 @@ fn table_materialization_produces_snapshot_in_registry() {
 	assert_eq!(meta.row_count, 3);
 
 	let snap = registry.get(&meta.id).expect("snapshot fetchable by id");
-	let block = &snap.block;
 
-	let schema_names: Vec<&str> = block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
+	let schema_names: Vec<&str> = snap.block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
 	assert_eq!(schema_names, vec!["id", "name", "score"]);
 
-	let ids = fixed_slice::<i32>(block, "id");
-	let names = utf8_strings(block, "name");
-	let scores = fixed_slice::<f64>(block, "score");
+	let mut reader = SnapshotReader::new(Arc::clone(&snap), 100);
+	let batch = reader.next().expect("read batch").expect("batch present");
+	assert!(reader.next().expect("drain").is_none(), "reader should yield a single batch for 3 rows");
+	assert_eq!(batch.row_count(), 3);
 
-	assert_eq!(ids.len(), 3);
-	assert_eq!(names.len(), 3);
-	assert_eq!(scores.len(), 3);
+	let id_col = batch.column("id").expect("id column");
+	let name_col = batch.column("name").expect("name column");
+	let score_col = batch.column("score").expect("score column");
 
-	let actual: BTreeMap<i32, (String, f64)> =
-		ids.iter().zip(names.iter()).zip(scores.iter()).map(|((id, n), s)| (*id, (n.clone(), *s))).collect();
+	let mut actual: BTreeMap<i32, (String, f64)> = BTreeMap::new();
+	for i in 0..3 {
+		let id = match id_col.data().get_value(i) {
+			Value::Int4(v) => v,
+			other => panic!("row {i}: expected Int4, got {other:?}"),
+		};
+		let name = match name_col.data().get_value(i) {
+			Value::Utf8(s) => s,
+			other => panic!("row {i}: expected Utf8, got {other:?}"),
+		};
+		let score = match score_col.data().get_value(i) {
+			Value::Float8(v) => f64::from(v),
+			other => panic!("row {i}: expected Float8, got {other:?}"),
+		};
+		actual.insert(id, (name, score));
+	}
 	let expected: BTreeMap<i32, (String, f64)> = BTreeMap::from([
 		(1, ("alpha".to_string(), 1.5)),
 		(2, ("bravo".to_string(), 2.5)),
