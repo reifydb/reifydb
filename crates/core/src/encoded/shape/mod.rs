@@ -364,7 +364,7 @@ impl RowShape {
 				self.write_dynamic_ref(row, i, new_off, len);
 			}
 		} else {
-			// First set or transitioning from inline — append to dynamic section
+			// First set or transitioning from inline - append to dynamic section
 			let dynamic_offset = self.dynamic_section_size(row);
 			row.0.extend_from_slice(new_data);
 			self.write_dynamic_ref(row, index, dynamic_offset, new_data.len());

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 // Per-row selection bitmap. Set bit = row is selected/kept. This is the dual
-// of `NoneBitmap` — the storage layout is identical but the semantics are
+// of `NoneBitmap` - the storage layout is identical but the semantics are
 // opposite, so the two are kept as distinct types to prevent accidental mixing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RowMask {

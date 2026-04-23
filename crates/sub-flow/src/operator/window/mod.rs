@@ -399,7 +399,7 @@ impl WindowOperator {
 	}
 
 	/// Replace an event across all its windows in-place (for UPDATE handling).
-	/// For sliding windows, an event may exist in multiple windows — all are updated.
+	/// For sliding windows, an event may exist in multiple windows - all are updated.
 	fn replace_event_in_windows(
 		&self,
 		txn: &mut FlowTransaction,

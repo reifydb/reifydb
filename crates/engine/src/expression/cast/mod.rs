@@ -76,7 +76,7 @@ pub fn cast_column_data(
 			});
 		}
 
-		// All positions defined — cast directly (fast path)
+		// All positions defined - cast directly (fast path)
 		let cast_inner = cast_column_data(ctx, inner, inner_target, lazy_fragment)?;
 		return Ok(match cast_inner {
 			already @ ColumnData::Option {

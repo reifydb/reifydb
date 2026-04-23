@@ -29,7 +29,7 @@ use crate::store::SubscriptionStore;
 /// map instead of pushing to the `SubscriptionStore` directly. At the end of
 /// the pass, `commit_batch` drains the staging map and applies all pushes to
 /// the store atomically (from the poller's point of view). This prevents the
-/// poller from observing a partial batch — where, for example, one batch
+/// poller from observing a partial batch - where, for example, one batch
 /// member's diff has been pushed but another's is still in flight.
 ///
 /// Only one CDC pass runs at a time per subsystem (the `PollConsumer` is

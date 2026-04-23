@@ -70,7 +70,7 @@ fn main() {
 	)
 	.unwrap();
 
-	// Step 4: Insert data into the source table — triggers post_insert on the view
+	// Step 4: Insert data into the source table - triggers post_insert on the view
 	info!("\n--- Inserting users into source table (triggers view post_insert interceptor) ---");
 	log_query(
 		r#"INSERT test::users [

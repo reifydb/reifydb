@@ -95,7 +95,7 @@ pub fn scan_digit_starting_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Tok
 	});
 
 	if !has_alpha {
-		// Pure number — restore cursor and return None
+		// Pure number - restore cursor and return None
 		cursor.restore_state(state);
 		return None;
 	}

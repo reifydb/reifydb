@@ -29,7 +29,7 @@ use crate::{challenge::ChallengeStore, registry::AuthenticationRegistry};
 /// This allows the auth crate to remain independent of the engine crate while
 /// still being able to create transactions and access the catalog.
 ///
-/// All transactions are created with system identity — authentication operates
+/// All transactions are created with system identity - authentication operates
 /// at a privileged level.
 pub trait AuthEngine: Send + Sync {
 	fn begin_admin(&self) -> Result<AdminTransaction, Error>;
@@ -129,7 +129,7 @@ pub struct Inner {
 /// token/challenge stores. All transports and embedded mode call through
 /// this single service.
 ///
-/// Cheap to clone — uses `Arc` internally.
+/// Cheap to clone - uses `Arc` internally.
 #[derive(Clone)]
 pub struct AuthService(Arc<Inner>);
 
@@ -188,7 +188,7 @@ impl AuthService {
 	/// Create a token for an identity with an explicit expiration.
 	///
 	/// Unlike `persist_token` (which uses the configured session TTL), this
-	/// accepts an explicit `expires_at` — pass `None` for non-expiring tokens.
+	/// accepts an explicit `expires_at` - pass `None` for non-expiring tokens.
 	///
 	/// Used by applications to issue API tokens.
 	pub fn create_token(

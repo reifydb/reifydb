@@ -58,7 +58,7 @@ struct SubscriptionState {
 	flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
 	/// Mapping from subscription_id to flow_id for lifecycle management.
 	subscription_flows: RwLock<HashMap<SubscriptionId, FlowId>>,
-	/// Staged delivery buffer — sinks push here, CDC consumer commits per batch.
+	/// Staged delivery buffer - sinks push here, CDC consumer commits per batch.
 	delivery: Arc<DeliveryBuffer>,
 }
 

@@ -5,7 +5,7 @@
 //!
 //! The same `handle()` code runs in both native (rayon pool) and DST modes.
 //! Protocol-specific concerns (serialization, HTTP status codes, etc.) live in
-//! the transport layer — this actor only does engine dispatch and auth.
+//! the transport layer - this actor only does engine dispatch and auth.
 
 use reifydb_auth::service::{AuthResponse, AuthService};
 use reifydb_core::{

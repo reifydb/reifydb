@@ -225,7 +225,7 @@ fn process_session_group_insert(
 	Ok(result)
 }
 
-/// Apply changes for session windows (no time-based expiration — sessions close lazily)
+/// Apply changes for session windows (no time-based expiration - sessions close lazily)
 pub fn apply_session_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let changed_at = change.changed_at;
 	let diffs = operator.apply_window_change(txn, &change, false, |op, txn, columns| {

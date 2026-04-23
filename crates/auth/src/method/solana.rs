@@ -114,7 +114,7 @@ impl AuthenticationProvider for SolanaProvider {
 			}
 		}
 
-		// Step 1: Generate challenge — build SIWS message with nonce
+		// Step 1: Generate challenge - build SIWS message with nonce
 		let nonce_bytes = Rng::Os.bytes_32();
 		let nonce: String = nonce_bytes.iter().map(|b| format!("{:02x}", b)).collect();
 

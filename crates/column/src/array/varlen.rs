@@ -3,7 +3,7 @@
 
 use reifydb_type::value::r#type::Type;
 
-// Variable-length byte storage — an offsets-plus-bytes layout for `Utf8` and
+// Variable-length byte storage - an offsets-plus-bytes layout for `Utf8` and
 // `Blob` columns. `offsets[i]..offsets[i+1]` spans row `i`'s bytes in `data`.
 // `offsets.len() == element_count + 1`, and `offsets[0] == 0`.
 #[derive(Clone, Debug)]

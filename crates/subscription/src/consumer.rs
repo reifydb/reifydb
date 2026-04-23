@@ -104,7 +104,7 @@ impl SubscriptionConsumer {
 					column_data
 						.entry(field.name.clone())
 						.or_insert_with(|| {
-							// New column — backfill with None for all prior rows
+							// New column - backfill with None for all prior rows
 							let mut cd = ColumnData::with_capacity(
 								field.constraint.get_type(),
 								0,

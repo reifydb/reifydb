@@ -186,7 +186,7 @@ impl Operator for GateOperator {
 					post,
 				} => {
 					if post.row_numbers.is_empty() {
-						// No state info available — treat as visible (pass-through)
+						// No state info available - treat as visible (pass-through)
 						result.push(Diff::Update {
 							pre,
 							post,
@@ -202,16 +202,16 @@ impl Operator for GateOperator {
 							let visible = self.is_visible(txn, rn)?;
 
 							if visible {
-								// Already open — pass through as Update unconditionally
+								// Already open - pass through as Update unconditionally
 								update_indices.push(i);
 							} else {
-								// Not yet open — check condition on post
+								// Not yet open - check condition on post
 								if mask_val {
 									// Open the latch, emit as Insert
 									self.mark_visible(txn, rn)?;
 									insert_indices.push(i);
 								}
-								// else: still fails — drop
+								// else: still fails - drop
 							}
 						}
 
@@ -233,7 +233,7 @@ impl Operator for GateOperator {
 					pre,
 				} => {
 					if pre.row_numbers.is_empty() {
-						// No state info available — treat as visible (pass-through)
+						// No state info available - treat as visible (pass-through)
 						result.push(Diff::Remove {
 							pre,
 						});
@@ -245,7 +245,7 @@ impl Operator for GateOperator {
 								self.mark_invisible(txn, rn)?;
 								remove_indices.push(i);
 							}
-							// else: was never visible — drop
+							// else: was never visible - drop
 						}
 
 						if !remove_indices.is_empty() {

@@ -148,7 +148,7 @@ impl CatalogStore {
 	}
 
 	/// Create a table with a specific ID and column IDs. Used for bootstrapping system shapes.
-	/// Skips duplicate check — caller must ensure uniqueness.
+	/// Skips duplicate check - caller must ensure uniqueness.
 	pub(crate) fn create_table_with_id(
 		txn: &mut AdminTransaction,
 		table_id: TableId,

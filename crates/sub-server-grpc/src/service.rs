@@ -79,7 +79,7 @@ impl ReifyDbService {
 			return Ok(extract_identity_from_auth_header(self.state.auth_service(), header)?);
 		}
 
-		// No credentials provided — anonymous access
+		// No credentials provided - anonymous access
 		Ok(IdentityId::anonymous())
 	}
 
@@ -686,7 +686,7 @@ impl ReifyDb for ReifyDbService {
 			.ok_or_else(|| Status::internal("binding references missing namespace"))?;
 
 		// Decode typed params from the wire and validate against the procedure's declared set
-		// (unknown keys, missing required) — without unpacking the Arc<HashMap>.
+		// (unknown keys, missing required) - without unpacking the Arc<HashMap>.
 		let params = Self::extract_params(inner.params)?;
 		match &params {
 			Params::None => {
@@ -726,7 +726,7 @@ impl ReifyDb for ReifyDbService {
 				.map_err(GrpcError::from)?;
 
 		// Encode per binding format. Rbcf → bytes; Frames → proto FramesPayload.
-		// Json isn't representable over this gRPC schema — fall back to FramesPayload.
+		// Json isn't representable over this gRPC schema - fall back to FramesPayload.
 		let payload = match binding.format {
 			BindingFormat::Rbcf => operation_response::Payload::Rbcf(
 				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),

@@ -159,7 +159,7 @@ impl CatalogStore {
 	}
 
 	/// Create a column with a specific ID. Used for bootstrapping system shapes.
-	/// Skips duplicate check — caller must ensure uniqueness.
+	/// Skips duplicate check - caller must ensure uniqueness.
 	pub(crate) fn create_column_with_id(
 		txn: &mut AdminTransaction,
 		id: ColumnId,

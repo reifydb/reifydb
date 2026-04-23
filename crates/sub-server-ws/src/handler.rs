@@ -271,7 +271,7 @@ pub async fn handle_connection(
 		}
 	}
 
-	// Drop actor handle — actor stops
+	// Drop actor handle - actor stops
 	drop(actor_handle);
 
 	// Abort all remote proxy tasks
@@ -378,7 +378,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 					))),
 				}
 			} else {
-				// Token validation flow (existing behavior — stays outside actor)
+				// Token validation flow (existing behavior - stays outside actor)
 				match extract_identity_from_ws_auth(conn.state.auth_service(), auth.token.as_deref()) {
 					Ok(id) => {
 						*conn.identity = Some(id);
@@ -833,7 +833,7 @@ async fn handle_call(
 }
 
 /// Build response body with content_type based on format parameter.
-/// Only called for `WireFormat::Json` and `WireFormat::Frames` — `Rbcf` is handled separately.
+/// Only called for `WireFormat::Json` and `WireFormat::Frames` - `Rbcf` is handled separately.
 fn build_response_body(frames: Vec<Frame>, format: WireFormat, unwrap: bool) -> (String, JsonValue) {
 	match format {
 		WireFormat::Json => match resolve_response_json(frames, unwrap) {

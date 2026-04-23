@@ -25,7 +25,7 @@ use crate::{
 ///
 /// This is a lean, purpose-built transaction type that commits at the
 /// primary's exact version. It has no interceptors, no change tracking,
-/// no RQL executor — only the read/write surface needed by
+/// no RQL executor - only the read/write surface needed by
 /// `CatalogChangeApplier` implementations.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.

@@ -82,7 +82,7 @@ impl CanonicalArray {
 
 	// Bridge from ReifyDB's `ColumnData` into a canonical columnar array.
 	// `ColumnData::Option { inner, bitvec }` wraps a non-nullable inner with a
-	// definedness bitmap — set bit in `bitvec` means the row is defined, cleared
+	// definedness bitmap - set bit in `bitvec` means the row is defined, cleared
 	// means None. Our `NoneBitmap` uses the opposite convention (set bit = None),
 	// so the bridge inverts per-row.
 	pub fn from_column_data(cd: &ColumnData) -> Result<Self> {

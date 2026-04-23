@@ -7,7 +7,7 @@ use reifydb_transaction::transaction::replica::ReplicaTransaction;
 use super::test_multi;
 use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
 
-/// Mirrors write.rs::test_write — basic replica write + query read.
+/// Mirrors write.rs::test_write - basic replica write + query read.
 #[test]
 fn test_replica_write() {
 	let engine = test_multi();
@@ -27,7 +27,7 @@ fn test_replica_write() {
 	}
 }
 
-/// Mirrors write.rs::test_multiple_write — multiple keys in one replica commit.
+/// Mirrors write.rs::test_multiple_write - multiple keys in one replica commit.
 #[test]
 fn test_replica_multiple_write() {
 	let engine = test_multi();
@@ -52,7 +52,7 @@ fn test_replica_multiple_write() {
 	assert_eq!(from_row!(i32, *sv.row()), 8);
 }
 
-/// Mirrors get.rs::test_read_after_write — sequential replica commits, query after each.
+/// Mirrors get.rs::test_read_after_write - sequential replica commits, query after each.
 #[test]
 fn test_replica_read_after_write() {
 	let engine = test_multi();
@@ -72,7 +72,7 @@ fn test_replica_read_after_write() {
 	}
 }
 
-/// Mirrors version.rs::test_versions — version tracking and time-travel reads.
+/// Mirrors version.rs::test_versions - version tracking and time-travel reads.
 #[test]
 fn test_replica_versions() {
 	let engine = test_multi();
@@ -103,7 +103,7 @@ fn test_replica_versions() {
 	assert_eq!(9, from_row!(i32, sv.row()));
 }
 
-/// Mirrors range.rs::test_range — forward and reverse range after replica commit.
+/// Mirrors range.rs::test_range - forward and reverse range after replica commit.
 #[test]
 fn test_replica_range() {
 	let engine = test_multi();
@@ -133,7 +133,7 @@ fn test_replica_range() {
 	}
 }
 
-/// Mirrors range.rs::test_range2 — two replica commits, range sees merged data.
+/// Mirrors range.rs::test_range2 - two replica commits, range sees merged data.
 #[test]
 fn test_replica_range_multiple_commits() {
 	let engine = test_multi();
@@ -167,7 +167,7 @@ fn test_replica_range_multiple_commits() {
 	}
 }
 
-/// Mirrors rollback.rs::test_rollback_same_tx — rollback within replica transaction.
+/// Mirrors rollback.rs::test_rollback_same_tx - rollback within replica transaction.
 #[test]
 fn test_replica_rollback_same_tx() {
 	let engine = test_multi();
@@ -177,7 +177,7 @@ fn test_replica_rollback_same_tx() {
 	assert!(tx.get(&as_key!(1)).unwrap().is_none());
 }
 
-/// Mirrors rollback.rs::test_rollback_different_tx — rollback not visible to queries.
+/// Mirrors rollback.rs::test_rollback_different_tx - rollback not visible to queries.
 #[test]
 fn test_replica_rollback_different_tx() {
 	let engine = test_multi();
@@ -197,7 +197,7 @@ fn test_replica_empty_commit() {
 	tx.commit_at_version().unwrap();
 }
 
-/// advance_version_for_replica — version gaps for data-only commits.
+/// advance_version_for_replica - version gaps for data-only commits.
 #[test]
 fn test_advance_version_for_replica() {
 	let engine = test_multi();
@@ -285,7 +285,7 @@ fn test_replica_sequential_commits() {
 	assert_eq!(from_row!(i32, txn.get(&k).unwrap().unwrap().row()), 2);
 }
 
-/// Replica overwrite — same key at different primary versions.
+/// Replica overwrite - same key at different primary versions.
 #[test]
 fn test_replica_overwrite() {
 	let engine = test_multi();
@@ -312,7 +312,7 @@ fn test_replica_overwrite() {
 	assert_eq!(from_row!(String, txn.get(&k).unwrap().unwrap().row()), "v1");
 }
 
-/// Replica remove — commit key then remove it at a later version.
+/// Replica remove - commit key then remove it at a later version.
 #[test]
 fn test_replica_remove() {
 	let engine = test_multi();
@@ -417,7 +417,7 @@ fn test_replica_transaction_get_after_commit() {
 	assert!(err.to_string().contains("committed"), "expected AlreadyCommitted, got: {err}");
 }
 
-/// Auto-rollback on drop — uncommitted writes not visible.
+/// Auto-rollback on drop - uncommitted writes not visible.
 #[test]
 fn test_replica_transaction_drop_auto_rollback() {
 	let engine = test_multi();
@@ -431,7 +431,7 @@ fn test_replica_transaction_drop_auto_rollback() {
 	assert!(rx.get(&as_key!(1)).unwrap().is_none());
 }
 
-/// Replica unset — delete with tombstone preservation.
+/// Replica unset - delete with tombstone preservation.
 #[test]
 fn test_replica_unset() {
 	let engine = test_multi();

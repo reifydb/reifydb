@@ -23,8 +23,8 @@ use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::Fl
 
 /// Final state of a single row according to the in-transaction view overlay.
 ///
-/// `Present(columns, idx)` — the row exists with data at `columns[idx]`.
-/// `Removed` — the row was removed in this transaction and should be absent
+/// `Present(columns, idx)` - the row exists with data at `columns[idx]`.
+/// `Removed` - the row was removed in this transaction and should be absent
 /// from the pull result.
 enum OverlayRow<'a> {
 	Present(&'a Columns, usize),
@@ -144,7 +144,7 @@ impl Operator for PrimitiveViewOperator {
 
 		// Build the in-transaction overlay for this view (sibling views' outputs
 		// produced earlier in the same pre-commit). Empty for Deferred / Ephemeral
-		// transactions — those read everything from committed storage.
+		// transactions - those read everything from committed storage.
 		// Hold the Arc in a local so the overlay HashMap (which borrows from it)
 		// stays alive across the subsequent mutable borrow for `txn.get`.
 		let overlay_arc = txn.view_overlay();

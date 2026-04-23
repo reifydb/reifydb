@@ -38,7 +38,7 @@ pub(crate) struct EquiJoinAnalysis {
 
 /// Analyze join `ON` expressions to separate equi-join key pairs from residual
 /// predicates.  An equi-key pair is `Equal(Column(name), AccessSource(name))`
-/// (in either order).  Any `Or` anywhere causes an immediate abort — all
+/// (in either order).  Any `Or` anywhere causes an immediate abort - all
 /// expressions are returned as residual.
 pub(crate) fn extract_equi_keys(on: &[Expression]) -> EquiJoinAnalysis {
 	let mut leaves = Vec::new();

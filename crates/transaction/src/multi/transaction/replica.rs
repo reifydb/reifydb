@@ -58,7 +58,7 @@ impl MultiReplicaTransaction {
 	///
 	/// Bypasses oracle conflict detection and version allocation.
 	/// Registers with the command watermark so the system doesn't stall.
-	/// Does NOT emit PostCommitEvent — replicas do not generate CDC.
+	/// Does NOT emit PostCommitEvent - replicas do not generate CDC.
 	#[instrument(name = "transaction::replica::commit", level = "debug", skip(self), fields(version = %self.version.0, pending_count = self.tm.pending_writes().len()))]
 	pub fn commit_at_version(&mut self) -> Result<()> {
 		let version = self.version;
@@ -68,7 +68,7 @@ impl MultiReplicaTransaction {
 			return Ok(());
 		}
 
-		// Take pending writes directly — bypass oracle entirely
+		// Take pending writes directly - bypass oracle entirely
 		let pending_writes = mem::take(&mut self.tm.pending_writes);
 		let duplicate_writes = mem::take(&mut self.tm.duplicates);
 
@@ -98,7 +98,7 @@ impl MultiReplicaTransaction {
 		// Release query watermark
 		self.tm.discard();
 
-		// NO PostCommitEvent — replica does not generate CDC
+		// NO PostCommitEvent - replica does not generate CDC
 		Ok(())
 	}
 }

@@ -146,7 +146,7 @@ pub struct ChangePayload {
 	pub body: JsonValue,
 }
 
-/// Batch-change push payload — one envelope containing deltas from N members.
+/// Batch-change push payload - one envelope containing deltas from N members.
 #[derive(Debug, Serialize)]
 pub struct BatchChangePayload {
 	pub batch_id: String,

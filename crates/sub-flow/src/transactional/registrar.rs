@@ -44,7 +44,7 @@ impl TransactionalFlowRegistrar {
 
 		let mut cmd = self.engine.begin_command(IdentityId::system())?;
 		engine.register(&mut cmd, flow)?;
-		// Registration performs only catalog reads — no writes were made to cmd.
+		// Registration performs only catalog reads - no writes were made to cmd.
 		// Dropping cmd without commit is safe (auto-rollback is a no-op).
 		Ok(true)
 	}

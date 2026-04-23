@@ -124,7 +124,7 @@ fn test_batch_udf_in_list() {
 #[test]
 fn test_batch_udf_cast() {
 	let t = setup();
-	// CAST to utf8 — every integer round-trips unambiguously, unlike CAST-to-boolean
+	// CAST to utf8 - every integer round-trips unambiguously, unlike CAST-to-boolean
 	// which in ReifyDB only accepts literal 0 or 1.
 	let frames = t.query(r#"
 			UDF as_utf8 ($x: int) { RETURN CAST($x, utf8) };

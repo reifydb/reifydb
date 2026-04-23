@@ -9,7 +9,7 @@ use crate::metric::ExecutionMetrics;
 
 /// Result of executing one or more RQL statements.
 ///
-/// Metrics and frames are **always** present — even when execution fails.
+/// Metrics and frames are **always** present - even when execution fails.
 /// On failure, `error` holds the cause while `frames` contains partial output
 /// (whatever succeeded before the failure) and `metrics` holds partial telemetry.
 ///

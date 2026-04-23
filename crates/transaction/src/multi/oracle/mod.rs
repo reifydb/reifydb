@@ -376,7 +376,7 @@ where
 	}
 
 	/// Clear the conflict detection window and mark the oracle as ready.
-	/// Called after bootstrap completes — bootstrap transactions committed
+	/// Called after bootstrap completes - bootstrap transactions committed
 	/// sequentially before any concurrent access and should not participate
 	/// in conflict detection.
 	pub(crate) fn bootstrapping_completed(&self) {

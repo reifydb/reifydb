@@ -337,7 +337,7 @@ pub enum ProcedureErrorKind {
 	},
 	/// A catalog entry for a Native/FFI/WASM procedure references a `native_name` that
 	/// is not registered in the runtime `Procedures` registry. This is a user-visible
-	/// condition — can happen after a binary upgrade that removed a built-in, or after
+	/// condition - can happen after a binary upgrade that removed a built-in, or after
 	/// an FFI/WASM plugin was removed.
 	NoRegisteredImplementation {
 		name: String,

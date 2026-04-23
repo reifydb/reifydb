@@ -19,7 +19,7 @@ pub struct Bucket {
 }
 
 impl Bucket {
-	// Stable id for map lookup — the bucket's start, which is unique within a
+	// Stable id for map lookup - the bucket's start, which is unique within a
 	// given `(series_id, width)` combination. The registry scopes buckets by
 	// `SeriesId`, so the start alone is enough to identify.
 	pub fn id(&self) -> BucketId {
@@ -52,7 +52,7 @@ pub fn bucket_for(key: u64, width: u64) -> Bucket {
 	}
 }
 
-// A bucket is closed when its end has been passed — no more rows should land
+// A bucket is closed when its end has been passed - no more rows should land
 // in it. Rules differ per series-key kind:
 // - `DateTime`: bucket closed when `now - bucket_end_wall > grace`.
 // - `Integer`: bucket closed when `metadata.newest_key >= bucket.end`; the `grace` parameter is ignored because integer

@@ -40,7 +40,7 @@ pub trait Encoding: Send + Sync + 'static {
 	fn id(&self) -> EncodingId;
 
 	// Try to compress the canonical input into this encoding. `Ok(None)` means
-	// "this encoding doesn't apply to this input" — the compressor will try
+	// "this encoding doesn't apply to this input" - the compressor will try
 	// the next candidate.
 	fn try_compress(&self, input: &CanonicalArray, cfg: &CompressConfig) -> Result<Option<Array>>;
 

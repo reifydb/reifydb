@@ -130,7 +130,7 @@ macro_rules! compile_compare {
 
 /// Compile an `Expression` into a `CompiledExpr`.
 ///
-/// All execution logic is baked into closures at compile time — no match dispatch at runtime.
+/// All execution logic is baked into closures at compile time - no match dispatch at runtime.
 pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<CompiledExpr> {
 	Ok(match expr {
 		Expression::Constant(e) => {

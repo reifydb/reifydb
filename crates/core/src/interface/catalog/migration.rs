@@ -17,7 +17,7 @@ pub struct Migration {
 }
 
 /// An audit trail entry for a migration apply or rollback.
-/// The CommitVersion is NOT a field — it's the MVCC version key.
+/// The CommitVersion is NOT a field - it's the MVCC version key.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MigrationEvent {
 	pub id: MigrationEventId,

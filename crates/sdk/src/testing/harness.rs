@@ -209,7 +209,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	}
 }
 
-/// Index into the harness history — `harness[i]` returns the i-th recorded `Change`.
+/// Index into the harness history - `harness[i]` returns the i-th recorded `Change`.
 ///
 /// Panics if `i` is out of bounds.
 impl<T: FFIOperator> Index<usize> for OperatorTestHarness<T> {

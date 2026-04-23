@@ -217,7 +217,7 @@ async fn execute_step(
 				info!("Step run {} {} (exit_code: {})", step_run_id, status, exit_code);
 				Ok(succeeded)
 			} else {
-				// Pure RQL step — collect log lines from result frames
+				// Pure RQL step - collect log lines from result frames
 				let mut log_lines: Vec<String> = Vec::new();
 				for frame in &command_result {
 					let headers: Vec<&str> =

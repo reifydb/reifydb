@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Router Example — Data Server
+//! # Router Example - Data Server
 //!
 //! A ReifyDB instance that serves real data over gRPC.
 //! Creates a `store` namespace with a `store::products` table and listens on port 50052.

@@ -114,7 +114,7 @@ impl Actor for MetricCollectorActor {
 					drops.len(),
 				);
 
-				// Collect dropped keys first — if a key is dropped in this batch, any
+				// Collect dropped keys first - if a key is dropped in this batch, any
 				// write to that key is a fresh insert (not an update to the old entry).
 				let dropped_keys: HashSet<_> = drops.iter().map(|d| d.key.clone()).collect();
 

@@ -237,7 +237,7 @@ impl Database {
 
 			rql.push(';');
 
-			// Try to create — ignore "already exists" errors
+			// Try to create - ignore "already exists" errors
 			match self.admin_as_root(&rql, Params::None) {
 				Ok(_) => {
 					debug!("Registered migration '{}'", migration.name);

@@ -413,7 +413,7 @@ pub struct GrpcSubscription {
 	format: WireFormat,
 }
 
-/// Member information returned from a successful `batch_subscribe` — pairs the
+/// Member information returned from a successful `batch_subscribe` - pairs the
 /// client's query index with the server-assigned subscription id.
 #[derive(Debug, Clone)]
 pub struct BatchMemberHandle {
@@ -983,7 +983,7 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 
 	match ty {
 		Type::Option(inner) => {
-			// None value — the type tag has 0x80 set
+			// None value - the type tag has 0x80 set
 			(
 				Value::None {
 					inner: *inner,
@@ -1110,7 +1110,7 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			(Value::Decimal(d), pos + len)
 		}
 		Type::Any => {
-			// Any wraps another value — recursively decode the inner
+			// Any wraps another value - recursively decode the inner
 			let (inner_val, consumed) = decode_any_value(&data[pos..]);
 			(Value::Any(Box::new(inner_val)), pos + consumed)
 		}

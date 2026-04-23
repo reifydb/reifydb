@@ -218,7 +218,7 @@ pub(crate) fn delete_ringbuffer(
 				}
 			}
 
-			// Reset metadata — empty buffer: head = tail
+			// Reset metadata - empty buffer: head = tail
 			partition.count = 0;
 			partition.head = partition.tail;
 			services.catalog.save_partition_metadata(txn, &ringbuffer, &partition_key, &partition)?;

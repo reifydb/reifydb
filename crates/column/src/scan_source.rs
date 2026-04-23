@@ -4,7 +4,7 @@
 use reifydb_core::value::column::columns::Columns;
 use reifydb_type::Result;
 
-// Abstraction over "something that emits `Columns` batches" — the upstream
+// Abstraction over "something that emits `Columns` batches" - the upstream
 // input to materialization. The trait is defined here (pure crate) so that
 // `reifydb-column` consumers can see the shape, but impls live in
 // `reifydb-sub-column` where the engine's `QueryNode`-backed scan is in

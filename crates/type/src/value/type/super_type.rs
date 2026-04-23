@@ -324,7 +324,7 @@ mod tests {
 	#[test]
 	fn any_is_absorbing() {
 		// Any is the top of the type lattice: whenever it appears in
-		// the input, the result is Any — regardless of position or
+		// the input, the result is Any - regardless of position or
 		// what else it's paired with, including types that otherwise
 		// dominate (Utf8, Boolean, Float*) or short-circuit (Option).
 		let others = [Int4, Uint8, Utf8, Boolean, Float4, Float8, Date, Uuid4, Blob, opt(Int4)];

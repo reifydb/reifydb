@@ -30,7 +30,7 @@ pub enum ResolvedProcedure {
 		address: String,
 		token: Option<String>,
 	},
-	/// Test procedure — always local, only callable from test context
+	/// Test procedure - always local, only callable from test context
 	Test(Procedure),
 }
 
@@ -369,7 +369,7 @@ impl Catalog {
 	}
 
 	/// Register an ephemeral (Native/Ffi/Wasm) procedure directly into the materialized
-	/// catalog. Bypasses transaction and storage — used by the bootstrap registrar to
+	/// catalog. Bypasses transaction and storage - used by the bootstrap registrar to
 	/// repopulate the runtime-bound procedure tier on every boot. Refuses persistent
 	/// (Rql/Test) variants since those must go through `create_procedure`.
 	pub fn register_ephemeral_procedure(

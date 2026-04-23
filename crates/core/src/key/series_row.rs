@@ -106,7 +106,10 @@ impl SeriesRowKeyRange {
 		EncodedKeyRange::new(Bound::Included(range.start_key()), Bound::Included(range.end_key()))
 	}
 
-	/// Create a range scan with optional key bounds.
+	/// Create a range scan with optional key bounds. Semantics are half-open
+	/// `[key_start, key_end)` - `key_start` is inclusive, `key_end` is
+	/// exclusive. This matches `Bucket`'s convention so callers can pass
+	/// bucket bounds directly.
 	pub fn scan_range(
 		series: SeriesId,
 		variant_tag: Option<u8>,
@@ -114,6 +117,13 @@ impl SeriesRowKeyRange {
 		key_end: Option<u64>,
 		last_key: Option<&EncodedKey>,
 	) -> EncodedKeyRange {
+		// `[start, 0)` is empty regardless of `key_start`. Represent it as
+		// a range that yields no rows.
+		if matches!(key_end, Some(0)) {
+			let empty = EncodedKey::new(Vec::<u8>::new());
+			return EncodedKeyRange::new(Bound::Excluded(empty.clone()), Bound::Excluded(empty));
+		}
+
 		let range = SeriesRowKeyRange {
 			series,
 			variant_tag,
@@ -138,10 +148,13 @@ impl SeriesRowKeyRange {
 			serializer.extend_u8(tag);
 		}
 		// Descending key encoding: higher key values have lower encoded values.
-		// The start key (lower bound) uses key_end (the highest key value in
-		// the desired range) to begin scanning from the newest matching row.
+		// The start key (lower bound) uses key_end (exclusive) to begin
+		// scanning from the newest matching row. Under half-open
+		// `[start, end)` semantics the highest *included* key is
+		// `end - 1`, so serialize that. `key_end == Some(0)` is handled
+		// in `scan_range` before reaching here.
 		if let Some(key_val) = self.key_end {
-			serializer.extend_u64(key_val);
+			serializer.extend_u64(key_val - 1);
 		}
 		serializer.to_encoded_key()
 	}

@@ -2364,7 +2364,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Read key — "on" tokenizes as Keyword::On, handle like Keyword::Tag pattern
+			// Read key - "on" tokenizes as Keyword::On, handle like Keyword::Tag pattern
 			let key = {
 				let current = self.current()?;
 				match current.kind {
@@ -2403,7 +2403,7 @@ impl<'bump> Parser<'bump> {
 					anchor = Some(token);
 				}
 				"mode" => {
-					// "delete"/"drop" tokenize as keywords — accept them as values
+					// "delete"/"drop" tokenize as keywords - accept them as values
 					let current = self.current()?;
 					let token = match current.kind {
 						TokenKind::Identifier => self.consume(TokenKind::Identifier)?,

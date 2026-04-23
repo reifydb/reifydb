@@ -35,7 +35,7 @@ pub(crate) enum ReadFrom {
 	/// previous CDC batches (operator state, ringbuffer metadata, series metadata).
 	StateQuery,
 	/// Snapshots at the CDC event version. Use for keys whose values are the
-	/// source data being consumed — the original table rows that triggered
+	/// source data being consumed - the original table rows that triggered
 	/// the CDC event, plus catalog/schema metadata the flow reads but never writes.
 	Query,
 }
@@ -151,7 +151,7 @@ impl FlowTransaction {
 		match Key::kind(key) {
 			None => ReadFrom::Query,
 			Some(kind) => match kind {
-				// Flow-produced state — read from state_query so subsequent
+				// Flow-produced state - read from state_query so subsequent
 				// CDC batches see the prior batch's committed writes.
 				KeyKind::FlowNodeState => ReadFrom::StateQuery,
 				KeyKind::FlowNodeInternalState => ReadFrom::StateQuery,
@@ -160,14 +160,14 @@ impl FlowTransaction {
 
 				// Row keys are used for both source tables and flow-produced views.
 				// Sink operators write view/ringbuffer rows but never read them
-				// back via get() — they only read metadata and operator state.
+				// back via get() - they only read metadata and operator state.
 				// Source table rows must come from query (CDC event version).
 				// If a future operator needs to read back its own row output
 				// across CDC batches, this will need finer-grained routing
 				// based on the ShapeId embedded in the RowKey.
 				KeyKind::Row => ReadFrom::Query,
 
-				// Source data & catalog metadata — read from query
+				// Source data & catalog metadata - read from query
 				KeyKind::Namespace => ReadFrom::Query,
 				KeyKind::Table => ReadFrom::Query,
 				KeyKind::NamespaceTable => ReadFrom::Query,

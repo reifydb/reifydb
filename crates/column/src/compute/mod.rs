@@ -24,7 +24,7 @@ pub enum SearchResult {
 }
 
 // Per-encoding compute specialization. Each method returns `Option<Result<_>>`:
-// `None` means "this encoding doesn't specialize — fall back to canonical;"
+// `None` means "this encoding doesn't specialize - fall back to canonical;"
 // `Some(Ok(_))` is a real result; `Some(Err(_))` is a real error encountered
 // while running the specialization. Free functions below dispatch through
 // this trait and fall back to canonicalize-and-run when `None` is returned.
@@ -65,7 +65,7 @@ impl Compute for DefaultCompute {}
 // Each free function first asks the array's encoding for a specialization; if
 // the encoding returns `None`, the caller canonicalizes and runs the canonical
 // kernel. This preserves the "compressed encodings can always fall back
-// correctly" invariant — correctness only depends on the canonical path.
+// correctly" invariant - correctness only depends on the canonical path.
 
 pub fn filter(array: &Array, mask: &RowMask) -> Result<Array> {
 	if let Some(result) = specialized(array, |c| c.filter(array, mask)) {

@@ -213,7 +213,7 @@ fn test_update_first_of_three_dynamic_fields() {
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3, 4, 5]));
 	shape.set_utf8(&mut row, 2, "ccc");
 
-	// Update first with larger data — should shift blob and third utf8
+	// Update first with larger data - should shift blob and third utf8
 	shape.set_utf8(&mut row, 0, "aaaaaaaaaa"); // 3 → 10
 
 	assert_eq!(shape.get_utf8(&row, 0), "aaaaaaaaaa");

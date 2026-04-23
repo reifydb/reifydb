@@ -107,7 +107,7 @@ fn emit_select_inner(sel: &SelectStatement, cte_names: &HashSet<String>) -> Resu
 				parts.push(format!("DISTINCT {{{cols}}}"));
 			}
 		}
-		// MAP (column projection) — only if not SELECT *
+		// MAP (column projection) - only if not SELECT *
 		else if !is_all_columns(&sel.columns) {
 			let cols = emit_select_columns(&sel.columns)?;
 			parts.push(format!("MAP {{{cols}}}"));
@@ -289,11 +289,11 @@ fn emit_insert(ins: &InsertStatement) -> Result<String, Error> {
 			let mut rows = Vec::new();
 			for row_values in values {
 				if ins.columns.is_empty() {
-					// No column names — emit positional tuple
+					// No column names - emit positional tuple
 					let vals: Result<Vec<_>, _> = row_values.iter().map(emit_expr).collect();
 					rows.push(format!("({})", vals?.join(", ")));
 				} else {
-					// Named columns — emit record
+					// Named columns - emit record
 					let mut fields = Vec::new();
 					for (i, val) in row_values.iter().enumerate() {
 						let col_name = if i < ins.columns.len() {

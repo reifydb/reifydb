@@ -28,7 +28,7 @@ pub enum SnapshotId {
 	},
 }
 
-// Provenance — what the snapshot was built from. The `Series` variant carries
+// Provenance - what the snapshot was built from. The `Series` variant carries
 // the full `Bucket` (not just `BucketId`) and the `sequence_counter` observed
 // at materialization time. Readers use these to decide whether a snapshot is
 // still current vs. stale.
@@ -46,7 +46,7 @@ pub enum SnapshotSource {
 }
 
 // A materialized columnar snapshot. Same `ColumnBlock` container for both
-// shapes — table and series snapshots differ only in their provenance and
+// shapes - table and series snapshots differ only in their provenance and
 // keying.
 #[derive(Clone)]
 pub struct Snapshot {
@@ -70,7 +70,7 @@ impl Snapshot {
 	}
 }
 
-// Lightweight listing record — the shape callers get from
+// Lightweight listing record - the shape callers get from
 // `SnapshotRegistry::list()` without cloning the backing `ColumnBlock`.
 #[derive(Clone, Debug)]
 pub struct SnapshotMeta {

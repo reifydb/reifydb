@@ -4,7 +4,7 @@
 //! Request-level interceptors for pre/post query execution hooks.
 //!
 //! This module provides an async interceptor mechanism that allows consumers
-//! to hook into the request lifecycle — before and after query execution.
+//! to hook into the request lifecycle - before and after query execution.
 //! Interceptors can reject requests (for auth, rate limiting, credit checks)
 //! or observe results (for logging, billing, usage tracking).
 //!
@@ -67,7 +67,7 @@ pub enum Protocol {
 /// HTTP headers, gRPC metadata, and WS auth tokens are all normalized into
 /// a string-keyed map. Header names are lowercased for consistent lookup.
 ///
-/// Note: this is a single-value map — duplicate keys are overwritten
+/// Note: this is a single-value map - duplicate keys are overwritten
 /// (last-write-wins). Multi-valued headers (e.g. `Set-Cookie`) only
 /// retain the last value. This is intentional for simplicity; most
 /// interceptor use cases only need single-valued lookups.

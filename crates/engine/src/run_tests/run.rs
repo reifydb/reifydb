@@ -129,7 +129,7 @@ pub(crate) fn run_tests(
 		}
 	};
 
-	// Stack-allocated test state — passed into Transaction::Test by reference
+	// Stack-allocated test state - passed into Transaction::Test by reference
 	let mut events: Vec<CapturedEvent> = Vec::new();
 	let mut invocations: Vec<CapturedInvocation> = Vec::new();
 	let mut event_seq: u64 = 0;

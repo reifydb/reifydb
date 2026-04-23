@@ -19,9 +19,9 @@ fn ext_err(err: ExtensionError) -> ProcedureError {
 /// WASM procedure that loads and executes a `.wasm` module.
 ///
 /// Each WASM module must export:
-/// - `alloc(size: i32) -> i32` — allocate `size` bytes, return pointer
-/// - `dealloc(ptr: i32, size: i32)` — free memory
-/// - `procedure(params_ptr: i32, params_len: i32) -> i32` — pointer to output (first 4 bytes at output pointer = output
+/// - `alloc(size: i32) -> i32` - allocate `size` bytes, return pointer
+/// - `dealloc(ptr: i32, size: i32)` - free memory
+/// - `procedure(params_ptr: i32, params_len: i32) -> i32` - pointer to output (first 4 bytes at output pointer = output
 ///   length as LE u32)
 pub struct WasmProcedure {
 	name: String,

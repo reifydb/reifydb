@@ -124,7 +124,7 @@ mod tests {
 
 	#[test]
 	fn test_create_policy_rejects_typo_on_crud_operation() {
-		// `select` is a common typo — RQL reads are `FROM`, not `SELECT`.
+		// `select` is a common typo - RQL reads are `FROM`, not `SELECT`.
 		let mut txn = create_test_admin_transaction();
 		let err = CatalogStore::create_policy(
 			&mut txn,
@@ -145,7 +145,7 @@ mod tests {
 
 	#[test]
 	fn test_create_policy_rejects_unknown_session_operation() {
-		// `subscribe` is the real-world mistake this validator was added to catch —
+		// `subscribe` is the real-world mistake this validator was added to catch -
 		// the session enforcer dispatches on `subscription`, not `subscribe`.
 		let mut txn = create_test_admin_transaction();
 		let err = CatalogStore::create_policy(
@@ -207,7 +207,7 @@ mod tests {
 
 	#[test]
 	fn test_create_policy_allows_empty_operations() {
-		// A policy with no operations is meaningless but not malformed — leave that
+		// A policy with no operations is meaningless but not malformed - leave that
 		// judgment to a separate validator. This test pins the current behaviour.
 		let mut txn = create_test_admin_transaction();
 		let (def, ops) = CatalogStore::create_policy(

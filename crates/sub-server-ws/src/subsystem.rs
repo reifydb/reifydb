@@ -299,7 +299,7 @@ impl Subsystem for WsSubsystem {
 
 			self.shutdown_complete_rx = Some(complete_rx);
 		} else {
-			// No main listener — mark running synchronously
+			// No main listener - mark running synchronously
 			self.running.store(true, Ordering::SeqCst);
 		}
 

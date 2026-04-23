@@ -142,7 +142,7 @@ impl LeftHashJoin {
 
 				// If first right row(s), remove previously emitted unmatched left rows.
 				// Pull via `pull_from_store` so we read the state's cached column
-				// snapshot — `parent.pull` fails for transactional cross-view joins
+				// snapshot - `parent.pull` fails for transactional cross-view joins
 				// because the parent view's rows aren't committed yet.
 				if is_first && ctx.state.left.get(txn, key_hash)?.is_some() {
 					let left_columns = pull_left_columns(

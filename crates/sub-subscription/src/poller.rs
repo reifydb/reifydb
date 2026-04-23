@@ -29,7 +29,7 @@ impl StoreBackedPoller {
 	/// Holds the store's coord read lock for the full cycle so that commits
 	/// from the subscription CDC consumer are blocked until the cycle
 	/// completes. This guarantees the poller never observes a partial
-	/// commit — either a CDC batch's diffs are all visible, or none are.
+	/// commit - either a CDC batch's diffs are all visible, or none are.
 	pub fn poll_all(&self, delivery: &dyn SubscriptionDelivery) {
 		let _coord = self.store.begin_poll();
 		let active = delivery.active_subscriptions();

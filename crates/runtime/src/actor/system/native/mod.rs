@@ -157,7 +157,7 @@ impl ActorSystem {
 			match rx.recv_timeout(remaining) {
 				Ok(()) => {}
 				Err(CcRecvTimeoutError::Disconnected) => {
-					// Cell dropped without sending — actor already cleaned up
+					// Cell dropped without sending - actor already cleaned up
 				}
 				Err(CcRecvTimeoutError::Timeout) => {
 					return Err(JoinError::new("timed out waiting for actors to stop"));

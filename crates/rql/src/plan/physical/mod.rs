@@ -62,7 +62,7 @@ use crate::{
 	},
 };
 
-/// Bump-allocated physical plan — the intermediate representation between
+/// Bump-allocated physical plan - the intermediate representation between
 /// logical planning and instruction compilation. Uses `BumpBox`/`Vec` for
 /// tree structure while keeping `Fragment` (Arc<str>) for identifiers
 /// (already materialized from `BumpFragment` during physical compilation).

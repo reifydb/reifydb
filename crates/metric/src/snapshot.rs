@@ -62,7 +62,7 @@ pub struct HistogramSnapshot {
 	pub percentiles: Percentiles,
 }
 
-/// Point-in-time snapshot of a tabular metric family — one named family,
+/// Point-in-time snapshot of a tabular metric family - one named family,
 /// many rows, one row per object. Shape is self-describing via `Columns`
 /// so consumers (e.g. vtables) can render without type-specific code.
 #[derive(Debug, Clone)]

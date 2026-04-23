@@ -63,7 +63,7 @@ pub(crate) fn update_ringbuffer(
 		return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 	};
 
-	// Load all partitions — unified across global and partitioned
+	// Load all partitions - unified across global and partitioned
 	let partitions = services.catalog.list_ringbuffer_partitions(txn, &ringbuffer)?;
 
 	// Get or create shape with proper field names and constraints

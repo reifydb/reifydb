@@ -71,13 +71,13 @@ fn timer_cancellation_after_fire() {
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 	let timer = ctx.schedule_once(Duration::from_millis(100), || "fired".to_string());
 
-	// Advance past deadline — timer fires.
+	// Advance past deadline - timer fires.
 	system.advance_time(Duration::from_millis(100));
 	system.run_until_idle();
 
 	assert_eq!(log_contents(&log), vec!["fired"]);
 
-	// Cancel after fire — the cancelled flag was never set by firing (it's a CAS),
+	// Cancel after fire - the cancelled flag was never set by firing (it's a CAS),
 	// so cancel() still returns true (sets the flag). But the timer already fired.
 	// The important thing is the message was delivered.
 	let _ = timer.cancel(); // no-op, timer already consumed
@@ -125,7 +125,7 @@ fn repeat_timer_cancellation() {
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 	let timer = ctx.schedule_repeat(Duration::from_millis(100), "tick".to_string());
 
-	// Advance 250ms — should fire at 100ms and 200ms.
+	// Advance 250ms - should fire at 100ms and 200ms.
 	system.advance_time(Duration::from_millis(250));
 	system.run_until_idle();
 	assert_eq!(log_contents(&log).len(), 2);
@@ -133,7 +133,7 @@ fn repeat_timer_cancellation() {
 	// Cancel the repeating timer.
 	timer.cancel();
 
-	// Advance more — no more fires.
+	// Advance more - no more fires.
 	system.advance_time(Duration::from_millis(200));
 	system.run_until_idle();
 	assert_eq!(log_contents(&log).len(), 2);
@@ -230,7 +230,7 @@ fn schedule_tick_uses_mock_clock() {
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 	ctx.schedule_tick(Duration::from_millis(100), |nanos| TickMessage(nanos));
 
-	// Advance 350ms — ticks at 100ms, 200ms, 300ms.
+	// Advance 350ms - ticks at 100ms, 200ms, 300ms.
 	system.advance_time(Duration::from_millis(350));
 	system.run_until_idle();
 
@@ -276,7 +276,7 @@ fn repeat_timer_fires_correct_count() {
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 	ctx.schedule_repeat(Duration::from_millis(50), "tick".to_string());
 
-	// Advance exactly 200ms — should fire at 50, 100, 150, 200.
+	// Advance exactly 200ms - should fire at 50, 100, 150, 200.
 	system.advance_time(Duration::from_millis(200));
 	system.run_until_idle();
 

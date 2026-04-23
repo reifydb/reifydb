@@ -123,7 +123,7 @@ impl FlowEngine {
 				//    changes through `available_changes`), or
 				//  - the current flow is an ephemeral subscription (a `SinkSubscription` is its
 				//    terminal node). Subscription consumers rely on the `view.underlying_id()` CDC
-				//    registration above, exactly like they do for deferred views — per the principle
+				//    registration above, exactly like they do for deferred views - per the principle
 				//    that subscription behavior is identical across view kinds. Registering upstream
 				//    primitives here would leak raw base-table rows to the subscriber.
 				if view.kind() == ViewKind::Transactional {

@@ -5,7 +5,7 @@
 //!
 //! Provides a synchronous client that sends `ServerMessage`s to the unified
 //! `ServerActor` and reads replies after `run_until_idle()`. There is no
-//! protocol distinction in DST — all operations go through the same actor.
+//! protocol distinction in DST - all operations go through the same actor.
 
 use std::collections::HashMap;
 

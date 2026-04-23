@@ -2,11 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
+	collections::BTreeSet,
 	thread,
 	time::{Duration, Instant},
 };
 
 use reifydb::{Params, WithSubsystem, embedded as db_embedded};
+use reifydb_column::{
+	array::{canonical::CanonicalStorage, fixed::Primitive},
+	column_block::ColumnBlock,
+};
 use reifydb_sub_column::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
@@ -25,6 +30,18 @@ fn poll_until<T>(mut f: impl FnMut() -> Option<T>, timeout: Duration) -> Option<
 	}
 }
 
+fn fixed_slice<T: Primitive>(block: &ColumnBlock, name: &str) -> Vec<T> {
+	let (_, chunked) = block.column_by_name(name).unwrap_or_else(|| panic!("column `{name}` missing"));
+	let canonical = chunked.chunks[0].to_canonical().expect("to_canonical");
+	match &canonical.storage {
+		CanonicalStorage::Fixed(f) => f
+			.try_as_slice::<T>()
+			.unwrap_or_else(|| panic!("column `{name}` is not the requested fixed type"))
+			.to_vec(),
+		_ => panic!("column `{name}` is not a fixed-width column"),
+	}
+}
+
 // Exercises the series actor's bucket enumeration + `is_closed` path with
 // integer keys. For integer-keyed series, a bucket is considered closed once
 // `metadata.newest_key >= bucket.end`, so inserting keys past a bucket
@@ -34,7 +51,7 @@ fn series_materialization_produces_snapshot_in_registry() {
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_millis(50),
 		series_tick_interval: Duration::from_millis(50),
-		// Small integer bucket width — with keys 0..=11 and width 5,
+		// Small integer bucket width - with keys 0..=11 and width 5,
 		// buckets are [0,5), [5,10), [10,15). newest_key=11 closes the
 		// first two buckets.
 		series_bucket_width: 5,
@@ -64,7 +81,7 @@ fn series_materialization_produces_snapshot_in_registry() {
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 	let registry = storage.registry();
 
-	let snaps = poll_until(
+	let metas = poll_until(
 		|| {
 			let list: Vec<_> = registry.list().into_iter().filter(|s| s.name == "s").collect();
 			if list.len() >= 2 {
@@ -77,10 +94,32 @@ fn series_materialization_produces_snapshot_in_registry() {
 	)
 	.expect("at least two series buckets did not materialize within 5 seconds");
 
-	assert!(snaps.len() >= 2, "expected >= 2 closed-bucket snapshots, got {}", snaps.len());
-	for snap in &snaps {
-		assert_eq!(snap.namespace, "test");
-		assert!(snap.row_count > 0);
+	assert!(metas.len() >= 2, "expected >= 2 closed-bucket snapshots, got {}", metas.len());
+
+	let mut all_keys: BTreeSet<u64> = BTreeSet::new();
+	for meta in &metas {
+		assert_eq!(meta.namespace, "test");
+		assert!(meta.row_count > 0);
+
+		let snap = registry.get(&meta.id).expect("snapshot fetchable by id");
+		let block = &snap.block;
+
+		let schema_names: Vec<&str> = block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
+		assert_eq!(schema_names, vec!["k", "value"]);
+
+		let ks = fixed_slice::<u64>(block, "k");
+		let values = fixed_slice::<f64>(block, "value");
+		assert_eq!(ks.len(), values.len());
+		assert_eq!(ks.len(), meta.row_count);
+
+		for (k, v) in ks.iter().zip(values.iter()) {
+			assert_eq!(*v, *k as f64, "value should equal key for k={k}");
+			assert!(all_keys.insert(*k), "duplicate key {k} across snapshots");
+		}
+	}
+
+	for k in 0u64..=9 {
+		assert!(all_keys.contains(&k), "expected key {k} from closed buckets [0,5) and [5,10)");
 	}
 
 	db.stop().expect("stop");

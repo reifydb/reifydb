@@ -176,7 +176,7 @@ impl<'bump> Compiler<'bump> {
 						// This is a variable assignment statement
 						self.compile_infix(infix_node)
 					}
-					// Variable calls ($f(args)) — route through CallFunction for VM execution
+					// Variable calls ($f(args)) - route through CallFunction for VM execution
 					InfixOperator::Call(_) if matches!(*infix_node.left, Ast::Variable(_)) => {
 						let Ast::Variable(var) = BumpBox::into_inner(infix_node.left) else {
 							unreachable!()

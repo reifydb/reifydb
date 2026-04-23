@@ -142,7 +142,7 @@ impl FromStr for ConfigKey {
 ///
 /// `value` is the currently active value (either the persisted override or the default).
 /// `default_value`, `description`, and `requires_restart` are compile-time constants
-/// provided at registration time — they are never stored to disk.
+/// provided at registration time - they are never stored to disk.
 #[derive(Debug, Clone)]
 pub struct Config {
 	/// System configuration key

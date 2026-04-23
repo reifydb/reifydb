@@ -15,14 +15,14 @@ use crate::{
 };
 
 // Process-local snapshot registry. Three `DashMap`s:
-// - `snapshots` — primary store keyed by `SnapshotId`.
-// - `latest_table` — per-`TableId`, the highest `CommitVersion` materialized.
-// - `latest_series` — per-`SeriesId`, the newest closed `BucketId`.
+// - `snapshots` - primary store keyed by `SnapshotId`.
+// - `latest_table` - per-`TableId`, the highest `CommitVersion` materialized.
+// - `latest_series` - per-`SeriesId`, the newest closed `BucketId`.
 //
 // Cheap to clone (`Arc`-backed). Lock-free reads. Writers are the two
 // materialization actors; they write to disjoint primary-key spaces, so there
 // is no shard contention between them. `insert` is atomic at the `DashMap`
-// per-key granularity — readers holding `Arc<Snapshot>` observe either the
+// per-key granularity - readers holding `Arc<Snapshot>` observe either the
 // old or the new entry, never a partial state, so bucket replacement is safe
 // under concurrent reads.
 #[derive(Clone)]

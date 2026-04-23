@@ -9,6 +9,10 @@
 //! - `<key_column> <= X` / `<key_column> < X` → key_end bound
 //! - `<key_column> BETWEEN A AND B` → both bounds
 //! - `tag == X` → variant_tag filter
+//!
+//! `key_end` is exclusive (matches `SeriesRowKeyRange::scan_range` half-open
+//! semantics), so `<= CONST` becomes `key_end = CONST + 1` and `BETWEEN`'s
+//! upper bound is similarly bumped by one.
 
 use crate::expression::{ColumnExpression, ConstantExpression, Expression};
 
@@ -88,15 +92,16 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_n
 			}
 			// CONST < key_column  →  key_column > CONST
 			if let Some(val) = try_key_const(&gt.right, &gt.left, key_column_name) {
-				result.key_end = Some(merge_min(result.key_end, val.saturating_sub(1)));
+				// key_end is exclusive: key < CONST → key_end = CONST
+				result.key_end = Some(merge_min(result.key_end, val));
 				return true;
 			}
 			false
 		}
-		// key_column <= CONST
+		// key_column <= CONST → key_end = CONST + 1 (exclusive)
 		Expression::LessThanEqual(lte) => {
 			if let Some(val) = try_key_const(&lte.left, &lte.right, key_column_name) {
-				result.key_end = Some(merge_min(result.key_end, val));
+				result.key_end = Some(merge_min(result.key_end, val.saturating_add(1)));
 				return true;
 			}
 			// CONST >= key_column  →  key_column <= CONST
@@ -106,10 +111,10 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_n
 			}
 			false
 		}
-		// key_column < CONST → key_end = CONST - 1
+		// key_column < CONST → key_end = CONST (exclusive - matches naturally)
 		Expression::LessThan(lt) => {
 			if let Some(val) = try_key_const(&lt.left, &lt.right, key_column_name) {
-				result.key_end = Some(merge_min(result.key_end, val.saturating_sub(1)));
+				result.key_end = Some(merge_min(result.key_end, val));
 				return true;
 			}
 			// CONST > key_column  →  key_column < CONST
@@ -119,14 +124,15 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_n
 			}
 			false
 		}
-		// key_column BETWEEN A AND B
+		// key_column BETWEEN A AND B  (RQL BETWEEN is inclusive on both ends;
+		// key_end is exclusive, so bump by one)
 		Expression::Between(between) => {
 			if is_key_column(&between.value, key_column_name)
 				&& let (Some(lower), Some(upper)) =
 					(extract_constant_u64(&between.lower), extract_constant_u64(&between.upper))
 			{
 				result.key_start = Some(merge_max(result.key_start, lower));
-				result.key_end = Some(merge_min(result.key_end, upper));
+				result.key_end = Some(merge_min(result.key_end, upper.saturating_add(1)));
 				return true;
 			}
 			false

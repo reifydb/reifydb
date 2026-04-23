@@ -121,7 +121,7 @@ fn try_numeric_heuristic_i32(slice: &[i32]) -> Encoding {
 		return Encoding::Plain;
 	}
 
-	// Check RLE first — high repetition benefits more from RLE than delta
+	// Check RLE first - high repetition benefits more from RLE than delta
 	let run_count = count_runs_generic(slice);
 	if run_count * 2 < slice.len() {
 		return Encoding::Rle;
@@ -145,7 +145,7 @@ fn try_numeric_heuristic_i64(slice: &[i64]) -> Encoding {
 		return Encoding::Plain;
 	}
 
-	// Check RLE first — high repetition benefits more from RLE than delta
+	// Check RLE first - high repetition benefits more from RLE than delta
 	let run_count = count_runs_generic(slice);
 	if run_count * 2 < slice.len() {
 		return Encoding::Rle;
@@ -166,7 +166,7 @@ fn try_numeric_heuristic_u64(slice: &[u64]) -> Encoding {
 		return Encoding::Plain;
 	}
 
-	// Check RLE first — high repetition benefits more from RLE than delta
+	// Check RLE first - high repetition benefits more from RLE than delta
 	let run_count = count_runs_generic(slice);
 	if run_count * 2 < slice.len() {
 		return Encoding::Rle;

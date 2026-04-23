@@ -190,7 +190,7 @@ impl FlowTransaction {
 	/// Create a deferred (CDC) FlowTransaction from a parent transaction.
 	///
 	/// Used by the async worker path. Reads only from committed storage +
-	/// flow-generated pending writes — no base pending from a parent transaction.
+	/// flow-generated pending writes - no base pending from a parent transaction.
 	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(parent, catalog, interceptors, clock), fields(version = version.0))]
 	pub fn deferred(
 		parent: &AdminTransaction,

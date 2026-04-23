@@ -61,7 +61,7 @@ impl CatalogStore {
 	}
 
 	/// Create a namespace with a specific ID. Used for bootstrapping system namespaces.
-	/// Skips duplicate check — caller must ensure uniqueness.
+	/// Skips duplicate check - caller must ensure uniqueness.
 	pub(crate) fn create_namespace_with_id(
 		txn: &mut AdminTransaction,
 		namespace_id: NamespaceId,

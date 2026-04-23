@@ -90,7 +90,7 @@ pub struct Vm<'a> {
 	pub(crate) mask_stack: Vec<MaskFrame>,
 	/// Stack of loop mask states for nested WHILE loops in columnar mode.
 	pub(crate) loop_mask_stack: Vec<LoopMaskState>,
-	/// Borrowed evaluation invariants — combined with `&self.symbols` on demand
+	/// Borrowed evaluation invariants - combined with `&self.symbols` on demand
 	/// in `eval_ctx()` to produce a full `EvalContext`. Stored as loose fields
 	/// rather than a nested `EvalContext` because the latter would need
 	/// `&self.symbols` and would be self-referential.
@@ -308,20 +308,20 @@ impl<'a> Vm<'a> {
 								.last()
 								.is_none_or(|s| s.loop_end_addr != *addr)
 						{
-							// First entry into a WHILE loop — handle specially
+							// First entry into a WHILE loop - handle specially
 							let var = self.stack.pop()?;
 							let bool_bv = extract_bool_bitvec(&var)?;
 							let parent = self.effective_mask();
 							let candidate = self.intersect_condition(&bool_bv);
 
 							if candidate == parent {
-								// All true — no mask needed, proceed normally
+								// All true - no mask needed, proceed normally
 							} else if candidate.none() {
-								// All false — skip the loop
+								// All false - skip the loop
 								self.ip = *addr;
 								continue;
 							} else {
-								// Mixed — enter loop mask
+								// Mixed - enter loop mask
 								self.enter_loop_mask(*addr, candidate);
 							}
 						} else if self.exec_jump_if_false_pop_columnar(*addr)? {

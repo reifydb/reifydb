@@ -13,9 +13,9 @@ use crate::loader::wasm::invoke_wasm_module;
 /// WASM scalar function that loads and executes a `.wasm` module.
 ///
 /// Each WASM module must export:
-/// - `alloc(size: i32) -> i32` — allocate `size` bytes, return pointer
-/// - `dealloc(ptr: i32, size: i32)` — free memory
-/// - `scalar(input_ptr: i32, input_len: i32) -> i32` — pointer to output (first 4 bytes at output pointer = output
+/// - `alloc(size: i32) -> i32` - allocate `size` bytes, return pointer
+/// - `dealloc(ptr: i32, size: i32)` - free memory
+/// - `scalar(input_ptr: i32, input_len: i32) -> i32` - pointer to output (first 4 bytes at output pointer = output
 ///   length as LE u32)
 ///
 /// Input: the context's `columns` marshalled as flat binary.

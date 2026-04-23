@@ -50,7 +50,7 @@ use crate::{
 /// Pre-commit interceptor that executes transactional (inline) flows.
 ///
 /// This interceptor holds a separate `FlowEngine` containing ONLY transactional
-/// views — it is distinct from the coordinator's CDC `FlowEngine` which handles
+/// views - it is distinct from the coordinator's CDC `FlowEngine` which handles
 /// deferred views.
 pub struct TransactionalFlowPreCommitInterceptor {
 	/// The flow engine containing only transactional view flows.
@@ -230,7 +230,7 @@ struct FlowResult {
 ///
 /// When an admin transaction that creates a new flow commits, this interceptor
 /// loads the flow DAG and registers it in the transactional `FlowEngine` so it
-/// is available for the very next transaction's pre-commit phase — without
+/// is available for the very next transaction's pre-commit phase - without
 /// waiting for CDC polling to discover it.
 pub struct TransactionalFlowPostCommitInterceptor {
 	pub registrar: TransactionalFlowRegistrar,

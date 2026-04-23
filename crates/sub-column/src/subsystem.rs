@@ -36,7 +36,7 @@ impl Default for StorageConfig {
 		Self {
 			table_tick_interval: Duration::from_secs(1),
 			series_tick_interval: Duration::from_secs(1),
-			// 1 hour in nanoseconds — reasonable default for a DateTime series.
+			// 1 hour in nanoseconds - reasonable default for a DateTime series.
 			series_bucket_width: 3_600 * 1_000_000_000,
 			series_grace: Duration::from_secs(5),
 		}
@@ -46,7 +46,7 @@ impl Default for StorageConfig {
 // `StorageSubsystem` is a thin lifecycle marker: the factory spawns both actors
 // during `create()`, and this struct just holds clones of their refs so
 // `shutdown()` can deliver an explicit stop signal. Joining actually happens
-// via actor-system shutdown on `Database::stop()` — same pattern as
+// via actor-system shutdown on `Database::stop()` - same pattern as
 // `MetricSubsystem`.
 pub struct StorageSubsystem {
 	registry: SnapshotRegistry,

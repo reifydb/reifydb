@@ -90,7 +90,7 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 		let (bitvec_offset, bitvec_len) = if let Some(bv) = opt_bitvec {
 			marshal_bitvec_to_buf(&mut buf, bv)
 		} else if data_row_count > 0 {
-			// All defined — write all-ones bitvec
+			// All defined - write all-ones bitvec
 			let all_ones = BitVec::repeat(data_row_count as usize, true);
 			marshal_bitvec_to_buf(&mut buf, &all_ones)
 		} else {

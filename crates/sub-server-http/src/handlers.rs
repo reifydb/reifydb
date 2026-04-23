@@ -346,7 +346,7 @@ fn extract_identity(state: &HttpServerState, headers: &HeaderMap) -> Result<Iden
 		return extract_identity_from_auth_header(state.auth_service(), auth_str).map_err(AppError::Auth);
 	}
 
-	// No credentials provided — anonymous access
+	// No credentials provided - anonymous access
 	Ok(IdentityId::anonymous())
 }
 

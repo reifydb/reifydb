@@ -184,7 +184,7 @@ fn process_rolling_group_insert(
 	Ok(result)
 }
 
-/// Apply changes for rolling windows (no expiration — eviction handles cleanup)
+/// Apply changes for rolling windows (no expiration - eviction handles cleanup)
 pub fn apply_rolling_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let changed_at = change.changed_at;
 	let diffs = operator.apply_window_change(txn, &change, false, |op, txn, columns| {

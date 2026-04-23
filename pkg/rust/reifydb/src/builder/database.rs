@@ -315,7 +315,7 @@ impl DatabaseBuilder {
 
 		load_materialized_catalog(&multi, &single, &catalog)?;
 
-		// Bootstrap complete — clear conflict window so bootstrap entries
+		// Bootstrap complete - clear conflict window so bootstrap entries
 		// don't participate in conflict detection.
 		multi.bootstrapping_completed();
 
@@ -491,7 +491,7 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
-		// Columnar storage materialization — always-on, no feature gate. Produces
+		// Columnar storage materialization - always-on, no feature gate. Produces
 		// read-optimised `Snapshot`s in an in-memory `SnapshotRegistry`; safe
 		// even on empty catalogs (the Tick is a no-op until tables/series exist).
 		{

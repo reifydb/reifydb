@@ -7,7 +7,7 @@ use crate::snapshot::CounterSnapshot;
 
 /// A monotonically increasing counter with f64 values.
 ///
-/// Safe to use from any thread — backed by a single `AtomicU64` storing
+/// Safe to use from any thread - backed by a single `AtomicU64` storing
 /// `f64` bits. Constructable in `const` context so it can live in a `static`.
 pub struct Counter {
 	pub name: &'static str,

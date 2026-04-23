@@ -76,7 +76,7 @@ fn test_create_handler_unknown_variant() {
 
 #[test]
 fn test_dispatch_no_handlers() {
-	// Dispatching an event with no registered handlers is a no-op — zero handlers fired.
+	// Dispatching an event with no registered handlers is a no-op - zero handlers fired.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE EVENT ns::order_event { OrderPlaced { id: int4 } }");
@@ -109,7 +109,7 @@ fn test_dispatch_single_handler() {
 
 #[test]
 fn test_dispatch_fanout_two_handlers() {
-	// Two handlers registered on the same variant — both must fire.
+	// Two handlers registered on the same variant - both must fire.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE TABLE ns::audit { kind: utf8 }");
@@ -137,7 +137,7 @@ fn test_dispatch_only_matching_variant() {
 	t.admin("CREATE HANDLER ns::on_shipped ON ns::order_event::OrderShipped \
 		 { INSERT ns::audit [{ kind: \"shipped\" }] }");
 
-	// Dispatch OrderPlaced — the handler is for OrderShipped, should not fire.
+	// Dispatch OrderPlaced - the handler is for OrderShipped, should not fire.
 	let frames = t.command("DISPATCH ns::order_event::OrderPlaced { id: 1 }");
 	let fired: u8 = frames[0].get::<u8>("handlers_fired", 0).unwrap().unwrap();
 	assert_eq!(fired, 0);
@@ -148,7 +148,7 @@ fn test_dispatch_only_matching_variant() {
 
 #[test]
 fn test_dispatch_chained_events() {
-	// Handler A DISPATCHes event B; handler B inserts a row — both effects land in the
+	// Handler A DISPATCHes event B; handler B inserts a row - both effects land in the
 	// same transaction.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");

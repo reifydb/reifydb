@@ -25,7 +25,7 @@ use crate::{
 type CdcRow = (u64, u64, u64, u64, u64, u64);
 
 /// Generic CDC-stats virtual table. One row per object id for the matched
-/// `StatsPrimitive`. No tier dimension — CDC stats are not tiered.
+/// `StatsPrimitive`. No tier dimension - CDC stats are not tiered.
 pub struct SystemMetricsCdc {
 	pub(crate) vtable: Arc<VTable>,
 	primitive: StatsPrimitive,

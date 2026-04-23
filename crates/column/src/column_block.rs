@@ -9,7 +9,7 @@ use crate::chunked::ChunkedArray;
 
 pub type Schema = Arc<Vec<(String, Type, bool)>>;
 
-// The column container used by a `Snapshot` — a schema plus one
+// The column container used by a `Snapshot` - a schema plus one
 // `ChunkedArray` per user column. The schema's tuple entries are
 // `(name, ty, nullable)` in positional order.
 #[derive(Clone)]

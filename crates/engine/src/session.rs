@@ -52,7 +52,7 @@ impl Default for RetryStrategy {
 }
 
 impl RetryStrategy {
-	/// No retries — fail immediately on conflict.
+	/// No retries - fail immediately on conflict.
 	pub fn no_retry() -> Self {
 		Self {
 			max_attempts: 1,

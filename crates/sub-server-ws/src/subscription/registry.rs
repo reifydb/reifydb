@@ -427,7 +427,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 				batch.pending.entry(*subscription_id).or_default().push(Frame::from(columns));
 				return DeliveryResult::Delivered;
 			}
-			// batch dropped since lookup — fall through to Disconnected
+			// batch dropped since lookup - fall through to Disconnected
 			return DeliveryResult::Disconnected;
 		}
 
@@ -826,7 +826,7 @@ pub mod tests {
 		let batch_id =
 			registry.register_batch(connection_id, vec![sub_a], push_tx, WireFormat::Frames, &clock, &rng);
 
-		// Two deliveries in one tick — should merge into one envelope entry with two frames.
+		// Two deliveries in one tick - should merge into one envelope entry with two frames.
 		registry.try_deliver(&sub_a, single_int_columns("value", 1));
 		registry.try_deliver(&sub_a, single_int_columns("value", 2));
 

@@ -112,7 +112,7 @@ pub enum IndexType {
 	Primary,
 }
 
-/// How a window is measured — either by time duration or by event count.
+/// How a window is measured - either by time duration or by event count.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WindowSize {
 	Duration(Duration),

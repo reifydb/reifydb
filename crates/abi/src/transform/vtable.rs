@@ -8,7 +8,7 @@ use crate::data::column::ColumnsFFI;
 /// Virtual function table for FFI transforms
 ///
 /// Transforms are stateless Columns → Columns operations. Unlike operators,
-/// they do not receive Change/Diff or a ContextFFI — they are pure data transformations.
+/// they do not receive Change/Diff or a ContextFFI - they are pure data transformations.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TransformVTableFFI {

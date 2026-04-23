@@ -4,7 +4,7 @@
 //! Shared message and response types for network server actors.
 //!
 //! `ServerMessage` is the unified message type used by HTTP, gRPC, and WebSocket
-//! server actors. The same actor handles all protocols — the transport layer is
+//! server actors. The same actor handles all protocols - the transport layer is
 //! just a thin shell that converts protocol-specific requests into `ServerMessage`.
 
 use std::{collections::HashMap, time::Duration};

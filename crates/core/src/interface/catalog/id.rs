@@ -636,14 +636,14 @@ impl ProcedureId {
 	pub const SYSTEM_CONFIG_SET: ProcedureId = ProcedureId::persistent(1);
 
 	/// Construct a persistent procedure id. Panics if `id >= SYSTEM_RESERVED_START`
-	/// — that band is reserved for ephemeral (Native/Ffi/Wasm) procedures.
+	/// - that band is reserved for ephemeral (Native/Ffi/Wasm) procedures.
 	pub const fn persistent(id: u64) -> Self {
 		assert!(id < Self::SYSTEM_RESERVED_START, "persistent ProcedureId must be below SYSTEM_RESERVED_START");
 		Self(id)
 	}
 
 	/// Construct an ephemeral procedure id. Panics if `id < SYSTEM_RESERVED_START`
-	/// — that band belongs to persistent procedures.
+	/// - that band belongs to persistent procedures.
 	pub const fn ephemeral(id: u64) -> Self {
 		assert!(
 			id >= Self::SYSTEM_RESERVED_START,

@@ -15,7 +15,7 @@ use reifydb_type::{
 /// Executes a shell command in a workspace directory, captures stdout/stderr to files,
 /// and returns the exit code.
 ///
-/// Expects 2 positional arguments: command (Utf8), workspace (Utf8 — directory path).
+/// Expects 2 positional arguments: command (Utf8), workspace (Utf8 - directory path).
 pub struct ExecProcedure;
 
 impl Procedure for ExecProcedure {

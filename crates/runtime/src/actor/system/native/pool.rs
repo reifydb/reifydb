@@ -4,7 +4,7 @@
 //! Pool-based scheduler for actors with Send-compatible state.
 //!
 //! Each actor is a self-scheduling state machine on the shared rayon pool.
-//! No dedicated OS thread per actor — idle actors consume zero pool resources.
+//! No dedicated OS thread per actor - idle actors consume zero pool resources.
 
 use std::sync::{
 	Arc, Mutex,
@@ -92,7 +92,7 @@ where
 				}
 			}
 			Err(CcTryRecvError::Empty) => {
-				// No messages — run idle handler
+				// No messages - run idle handler
 				flow = cell.actor.idle(&cell.ctx);
 				break;
 			}
@@ -114,7 +114,7 @@ where
 			let _ = cell.done_tx.send(());
 		}
 		Directive::Park => {
-			// Go idle — consume zero pool resources until next send()
+			// Go idle - consume zero pool resources until next send()
 			cell.schedule_state.store(IDLE, Ordering::Release);
 			drop(guard);
 
@@ -127,7 +127,7 @@ where
 			}
 		}
 		Directive::Yield | Directive::Continue => {
-			// End of batch or explicit yield — check if we should reschedule
+			// End of batch or explicit yield - check if we should reschedule
 			drop(guard);
 
 			// Try NOTIFIED → SCHEDULED (new messages arrived during batch)
@@ -147,7 +147,7 @@ where
 					pool.spawn(move || run_batch(cell2));
 				}
 				Err(SCHEDULED) => {
-					// No new notifications — check if there are still messages
+					// No new notifications - check if there are still messages
 					if !cell.rx.is_empty() || cell.cancel.is_cancelled() {
 						// Messages still pending, resubmit
 						let pool = Arc::clone(&cell.pool);
@@ -163,7 +163,7 @@ where
 					}
 				}
 				Err(_) => {
-					// IDLE — shouldn't happen during a running batch, but be safe
+					// IDLE - shouldn't happen during a running batch, but be safe
 				}
 			}
 		}

@@ -150,7 +150,7 @@ impl QueryNode for UdfEvalNode {
 					func_symbols.set(param_name, col_var, true)?;
 				}
 
-				// Execute via columnar VM — one invocation for all rows
+				// Execute via columnar VM - one invocation for all rows
 				let mut vm = Vm::with_batch_size_from_services(
 					func_symbols,
 					row_count,

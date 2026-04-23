@@ -31,16 +31,16 @@ pub enum RowTtlAnchor {
 	#[default]
 	Created,
 
-	/// Measure from `updated_at` — updates extend the row's lifetime
+	/// Measure from `updated_at` - updates extend the row's lifetime
 	Updated,
 }
 
 /// How expired rows are cleaned up
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RowTtlCleanupMode {
-	/// Create tombstones and CDC entries — maintains audit trail
+	/// Create tombstones and CDC entries - maintains audit trail
 	Delete,
 
-	/// Silent removal from storage — no CDC entries, no tombstones
+	/// Silent removal from storage - no CDC entries, no tombstones
 	Drop,
 }

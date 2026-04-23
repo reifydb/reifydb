@@ -17,7 +17,7 @@ fn main() {
 	let webapp_dist = Path::new("webapp/dist");
 	let dest_path = Path::new(&out_dir).join("webapp");
 
-	// Only watch webapp/dist when it exists — watching a non-existent path
+	// Only watch webapp/dist when it exists - watching a non-existent path
 	// causes Cargo to re-run the build script on every build.
 	if webapp_dist.exists() {
 		println!("cargo:rerun-if-changed=webapp/dist");

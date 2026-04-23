@@ -145,10 +145,10 @@ struct DstActorSystemInner {
 	/// Number of currently alive actors.
 	alive_count: Cell<usize>,
 
-	/// Panics captured during init() — drained by step() as StepResult::Panicked.
+	/// Panics captured during init() - drained by step() as StepResult::Panicked.
 	init_panics: RefCell<Vec<(usize, Box<dyn Any + Send>)>>,
 
-	/// Panics captured during post_stop() — drained by step() as StepResult::Panicked.
+	/// Panics captured during post_stop() - drained by step() as StepResult::Panicked.
 	post_stop_panics: RefCell<Vec<(usize, Box<dyn Any + Send>)>>,
 
 	/// Child scopes for hierarchical shutdown and clock propagation.
@@ -352,7 +352,7 @@ impl ActorSystem {
 				self.inner.alive_count.set(self.inner.alive_count.get() + 1);
 			}
 			Err(payload) => {
-				// Init panicked — mark actor dead immediately and stash
+				// Init panicked - mark actor dead immediately and stash
 				// the panic so step() can report it as StepResult::Panicked.
 				cell.mark_dead();
 				self.inner.init_panics.borrow_mut().push((actor_id, payload));
@@ -371,7 +371,7 @@ impl ActorSystem {
 
 	/// Process one message from the actor with the smallest logical timestamp.
 	///
-	/// Returns immediately — either processes one message or reports idle.
+	/// Returns immediately - either processes one message or reports idle.
 	pub fn step(&self) -> StepResult {
 		// Drain any init panics first (from spawn() calls that caught a panic).
 		{
@@ -820,7 +820,7 @@ mod tests {
 		let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 		ctx.schedule_repeat(Duration::from_millis(100), "tick".to_string());
 
-		// Advance 350ms — should fire at 100, 200, 300.
+		// Advance 350ms - should fire at 100, 200, 300.
 		system.advance_time(Duration::from_millis(350));
 		system.run_until_idle();
 

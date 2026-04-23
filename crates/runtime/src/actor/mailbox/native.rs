@@ -16,7 +16,7 @@ use super::{ActorRef, RecvError, RecvTimeoutError, SendError, TryRecvError};
 ///
 /// Uses `crossbeam-channel` for lock-free message passing.
 /// The notify callback is shared (via Arc) so that all clones of an ActorRef
-/// see the callback once it is set — even clones created before `set_notify`.
+/// see the callback once it is set - even clones created before `set_notify`.
 pub struct ActorRefInner<M> {
 	pub(crate) tx: Sender<M>,
 	notify: Arc<sync::OnceLock<Arc<dyn Fn() + Send + Sync>>>,

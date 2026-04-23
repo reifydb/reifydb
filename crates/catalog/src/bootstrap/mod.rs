@@ -3,7 +3,7 @@
 
 //! Bootstrap the catalog: load materialized state from storage, then ensure
 //! system-owned objects (root identity, system procedures, metric ring buffers)
-//! exist. Skipped on replicas — they receive these via replication.
+//! exist. Skipped on replicas - they receive these via replication.
 
 use reifydb_core::{event::EventBus, interface::catalog::id::NamespaceId};
 use reifydb_transaction::{

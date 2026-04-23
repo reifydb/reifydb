@@ -84,7 +84,7 @@ impl CdcConsume for FlowConsumeDispatcher {
 						match self.registrar.try_register(flow) {
 							Ok(true) => { /* transactional, leave cached */ }
 							Ok(false) => {
-								// NOT transactional — remove from cache so
+								// NOT transactional - remove from cache so
 								// the coordinator discovers it as new.
 								self.flow_catalog.remove(flow_id);
 							}
@@ -99,7 +99,7 @@ impl CdcConsume for FlowConsumeDispatcher {
 						}
 					}
 					Ok((_, false)) => {
-						// Already cached — nothing to do.
+						// Already cached - nothing to do.
 					}
 					Err(e) => {
 						warn!(
@@ -216,7 +216,7 @@ impl FlowSubsystem {
 			consumer_key,
 		};
 
-		// Transactional flow engine — a separate FlowEngine for transactional views only.
+		// Transactional flow engine - a separate FlowEngine for transactional views only.
 		let transactional_flow_engine = Arc::new(RwLock::new(FlowEngine::new(
 			engine.catalog(),
 			engine.executor(),

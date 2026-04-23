@@ -79,7 +79,7 @@ pub fn load_ephemeral_procedures(
 	descriptors: Vec<EphemeralProcedureDescriptor>,
 	version: CommitVersion,
 ) -> Result<()> {
-	// Reset the per-boot counter on every refresh — ids are explicitly volatile.
+	// Reset the per-boot counter on every refresh - ids are explicitly volatile.
 	EPHEMERAL_ID.store(ProcedureId::SYSTEM_RESERVED_START, Ordering::SeqCst);
 
 	// Sweep existing ephemeral entries.
@@ -159,7 +159,7 @@ pub fn load_ephemeral_procedures(
 ///
 /// User RQL/Test procedures are persisted via `Catalog::create_procedure` and loaded
 /// from storage by `MaterializedCatalogLoader::load_procedures`. This routine only
-/// owns the ephemeral side — entries that are rebuilt on every boot.
+/// owns the ephemeral side - entries that are rebuilt on every boot.
 pub fn bootstrap_system_procedures(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,

@@ -127,7 +127,7 @@ fn single_chunk(ch: &ChunkedArray) -> Result<&Array> {
 }
 
 // Convert a bool canonical `Array` to a `RowMask`. None-valued rows count as
-// "not selected" — three-valued-logic collapses to a two-valued mask at the
+// "not selected" - three-valued-logic collapses to a two-valued mask at the
 // `Selection` boundary.
 fn bool_array_to_mask(array: &Array) -> Result<RowMask> {
 	let canon = array.to_canonical()?;

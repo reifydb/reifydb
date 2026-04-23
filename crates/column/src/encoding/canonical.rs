@@ -10,7 +10,7 @@ use crate::{
 	stats::{Stat, StatsSet},
 };
 
-// Canonical encoding for one storage family — identity round-trip plus the
+// Canonical encoding for one storage family - identity round-trip plus the
 // cheap stats that can be derived without decoding (currently `NoneCount`).
 // Four constants (`BOOL`/`FIXED`/`VARLEN`/`BIGNUM`) cover the four families;
 // the `EncodingRegistry::builtins()` registers each one so the dispatch model

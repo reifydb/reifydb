@@ -149,7 +149,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 						*state = PollState::Ready;
 						self.start_consume(state, ctx);
 					} else if retries_remaining == 0 {
-						// Timeout — proceed anyway (matches original 200ms behavior)
+						// Timeout - proceed anyway (matches original 200ms behavior)
 						*state = PollState::Ready;
 						self.start_consume(state, ctx);
 					} else {
@@ -210,7 +210,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			}
 		};
 
-		// Drop the query — we no longer hold any transaction
+		// Drop the query - we no longer hold any transaction
 		drop(query);
 
 		if safe_version <= checkpoint {
@@ -273,7 +273,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			.collect::<Vec<_>>();
 
 		if relevant_cdcs.is_empty() {
-			// No relevant CDCs — persist checkpoint and commit directly
+			// No relevant CDCs - persist checkpoint and commit directly
 			match self.host.begin_command() {
 				Ok(mut transaction) => {
 					match CdcCheckpoint::persist(

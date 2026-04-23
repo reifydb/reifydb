@@ -50,9 +50,9 @@ pub(crate) fn value_is_truthy(value: &Value) -> bool {
 pub(crate) struct MaskFrame {
 	/// Mask active before this conditional (restored on merge).
 	pub parent_mask: BitVec,
-	/// Rows where condition was true — active during then-branch.
+	/// Rows where condition was true - active during then-branch.
 	pub then_mask: BitVec,
-	/// Rows where condition was false — active during else-branch.
+	/// Rows where condition was false - active during else-branch.
 	pub else_mask: BitVec,
 	/// IP of the else branch start (the JumpIfFalsePop target).
 	pub else_addr: usize,
@@ -60,7 +60,7 @@ pub(crate) struct MaskFrame {
 	pub end_addr: usize,
 	/// Current execution phase.
 	pub phase: MaskPhase,
-	/// Stack depth at mask entry — for knowing how many values the branch produced.
+	/// Stack depth at mask entry - for knowing how many values the branch produced.
 	pub stack_depth: usize,
 	/// Stack value(s) produced by then-branch, saved at phase transition.
 	pub then_stack_delta: Vec<Variable>,
@@ -262,7 +262,7 @@ impl<'a> Vm<'a> {
 			let candidate = loop_state.active_mask.and(&bool_bv);
 
 			if candidate.none() {
-				// All remaining rows are done — exit the loop
+				// All remaining rows are done - exit the loop
 				let state = self.loop_mask_stack.pop().unwrap();
 				self.active_mask = if self.loop_mask_stack.is_empty() && self.mask_stack.is_empty() {
 					None
@@ -279,7 +279,7 @@ impl<'a> Vm<'a> {
 			return Ok(false); // continue into loop body
 		}
 
-		// Not a loop re-entry — standard IF/ELSE or first WHILE entry
+		// Not a loop re-entry - standard IF/ELSE or first WHILE entry
 		let parent = self.effective_mask();
 		let candidate = self.intersect_condition(&bool_bv);
 
@@ -327,7 +327,7 @@ impl<'a> Vm<'a> {
 		// "Jumping rows" = rows where condition is true (within parent mask).
 		let jumping = self.intersect_condition(&bool_bv);
 
-		// Fast path: no rows jump (all false) — continue normally.
+		// Fast path: no rows jump (all false) - continue normally.
 		if jumping.none() {
 			return Ok(false);
 		}
@@ -385,7 +385,7 @@ impl<'a> Vm<'a> {
 			loop_state.active_mask = remaining.clone();
 
 			if remaining.none() {
-				// All rows have broken — actually exit the loop
+				// All rows have broken - actually exit the loop
 				for _ in 0..exit_scopes {
 					self.symbols.exit_scope()?;
 				}
@@ -400,7 +400,7 @@ impl<'a> Vm<'a> {
 				self.active_mask = Some(remaining);
 			}
 		} else {
-			// Not in a loop mask — use normal break
+			// Not in a loop mask - use normal break
 			for _ in 0..exit_scopes {
 				self.symbols.exit_scope()?;
 			}
@@ -417,7 +417,7 @@ impl<'a> Vm<'a> {
 			let remaining = loop_state.active_mask.and(&continuing_rows.not());
 
 			if remaining.none() {
-				// All remaining rows have continued — jump to condition
+				// All remaining rows have continued - jump to condition
 				for _ in 0..exit_scopes {
 					self.symbols.exit_scope()?;
 				}
@@ -561,7 +561,7 @@ impl<'a> Vm<'a> {
 				self.symbols.reassign(name.to_string(), Variable::columns(merged))?;
 			}
 			None => {
-				// Variable doesn't exist yet — store directly
+				// Variable doesn't exist yet - store directly
 				self.symbols.reassign(name.to_string(), new_value)?;
 			}
 		}

@@ -121,7 +121,7 @@ pub struct ReplicaConfig {
 	pub reconnect_interval: Duration,
 }
 
-/// Resolved replication configuration — either primary or replica.
+/// Resolved replication configuration - either primary or replica.
 pub enum ReplicationConfig {
 	Primary(PrimaryConfig),
 	Replica(ReplicaConfig),
@@ -129,7 +129,7 @@ pub enum ReplicationConfig {
 
 /// Entry-point configurator for replication.
 ///
-/// An instance is either a primary or a replica — never both.
+/// An instance is either a primary or a replica - never both.
 ///
 /// ```ignore
 /// .with_replication(|c| c.primary().bind_addr("127.0.0.1:0"))

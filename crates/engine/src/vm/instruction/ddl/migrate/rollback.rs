@@ -50,7 +50,7 @@ pub(crate) fn execute_rollback_migration(
 
 	// Determine which to rollback
 	let to_rollback: Vec<Migration> = if let Some(ref target) = plan.target {
-		// Rollback until we reach the target (exclusive — the target stays applied)
+		// Rollback until we reach the target (exclusive - the target stays applied)
 		let mut result = Vec::new();
 		for m in applied {
 			if m.name == *target {

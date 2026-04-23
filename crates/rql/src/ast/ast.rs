@@ -1935,7 +1935,7 @@ pub struct AstClosure<'bump> {
 	pub body: AstBlock<'bump>,
 }
 
-/// CREATE EVENT — declares a typed event type (a sum type with is_event: true)
+/// CREATE EVENT - declares a typed event type (a sum type with is_event: true)
 #[derive(Debug)]
 pub struct AstCreateEvent<'bump> {
 	pub token: Token<'bump>,
@@ -1943,7 +1943,7 @@ pub struct AstCreateEvent<'bump> {
 	pub variants: Vec<AstVariant<'bump>>,
 }
 
-/// CREATE TAG — declares a tag type (a sum type with SumTypeKind::Tag)
+/// CREATE TAG - declares a tag type (a sum type with SumTypeKind::Tag)
 #[derive(Debug)]
 pub struct AstCreateTag<'bump> {
 	pub token: Token<'bump>,
@@ -1951,7 +1951,7 @@ pub struct AstCreateTag<'bump> {
 	pub variants: Vec<AstVariant<'bump>>,
 }
 
-/// CREATE HANDLER — registers a computation handler for a specific event variant
+/// CREATE HANDLER - registers a computation handler for a specific event variant
 #[derive(Debug)]
 pub struct AstCreateHandler<'bump> {
 	pub token: Token<'bump>,
@@ -1962,7 +1962,7 @@ pub struct AstCreateHandler<'bump> {
 	pub body_source: String,
 }
 
-/// CREATE MIGRATION — stores a named migration script in the database
+/// CREATE MIGRATION - stores a named migration script in the database
 #[derive(Debug)]
 pub struct AstCreateMigration<'bump> {
 	pub token: Token<'bump>,
@@ -1971,21 +1971,21 @@ pub struct AstCreateMigration<'bump> {
 	pub rollback_body_source: Option<String>,
 }
 
-/// MIGRATE — applies pending migrations
+/// MIGRATE - applies pending migrations
 #[derive(Debug)]
 pub struct AstMigrate<'bump> {
 	pub token: Token<'bump>,
 	pub target: Option<String>,
 }
 
-/// ROLLBACK MIGRATION — rolls back applied migrations
+/// ROLLBACK MIGRATION - rolls back applied migrations
 #[derive(Debug)]
 pub struct AstRollbackMigration<'bump> {
 	pub token: Token<'bump>,
 	pub target: Option<String>,
 }
 
-/// DISPATCH — fires all handlers registered for the specified event variant
+/// DISPATCH - fires all handlers registered for the specified event variant
 #[derive(Debug)]
 pub struct AstDispatch<'bump> {
 	pub token: Token<'bump>,

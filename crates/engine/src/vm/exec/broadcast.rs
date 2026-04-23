@@ -32,7 +32,7 @@ pub(crate) fn broadcast_to_match(left: Column, right: Column) -> (Column, Column
 	} else if rl == 1 && ll > 1 {
 		(left, broadcast_column(&right, ll))
 	} else {
-		// Mismatched lengths that aren't broadcastable — let the kernel error
+		// Mismatched lengths that aren't broadcastable - let the kernel error
 		(left, right)
 	}
 }

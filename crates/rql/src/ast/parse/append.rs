@@ -16,7 +16,7 @@ impl<'bump> Parser<'bump> {
 		// Consume APPEND keyword
 		self.advance()?;
 
-		// Check if next token is '{' — if so, this is the query form (APPEND { subquery })
+		// Check if next token is '{' - if so, this is the query form (APPEND { subquery })
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
 			let with = self.parse_sub_query()?;
 			return Ok(AstAppend::Query {

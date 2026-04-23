@@ -68,7 +68,7 @@ impl CdcConsume for SubscriptionCdcConsumer {
 			}
 		};
 
-		// No subscription flows registered — skip processing
+		// No subscription flows registered - skip processing
 		if flow_engine.sources.is_empty() {
 			reply(Ok(()));
 			return;

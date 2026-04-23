@@ -188,10 +188,10 @@ impl WsClient {
 						}
 						Ok(Message::Binary(data)) => {
 							// Binary envelope layouts:
-							// kind=0x00: [u8 0x00][u32 id_len][id][u32 meta_len][meta][RBCF payload]  — one-shot response
-							// kind=0x01: [u8 0x01][u32 id_len][id][u32 meta_len][meta][RBCF payload]  — subscription change
+							// kind=0x00: [u8 0x00][u32 id_len][id][u32 meta_len][meta][RBCF payload]  - one-shot response
+							// kind=0x01: [u8 0x01][u32 id_len][id][u32 meta_len][meta][RBCF payload]  - subscription change
 							// kind=0x02: [u8 0x02][u32 batch_id_len][batch_id][u32 num_entries]
-							//            then N * [u32 sub_id_len][sub_id][u32 rbcf_len][rbcf_bytes] — batch change
+							//            then N * [u32 sub_id_len][sub_id][u32 rbcf_len][rbcf_bytes] - batch change
 							if data.is_empty() { continue; }
 							let kind = data[0];
 							if kind == 0x02 {

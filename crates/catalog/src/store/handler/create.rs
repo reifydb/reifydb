@@ -64,7 +64,7 @@ impl CatalogStore {
 
 		txn.set(&NamespaceHandlerKey::encoded(namespace_id, handler_id), ns_row)?;
 
-		// Write variant index row (empty value — key encodes all needed info)
+		// Write variant index row (empty value - key encodes all needed info)
 		let mut var_row = handler_namespace::SHAPE.allocate();
 		handler_namespace::SHAPE.set_u64(&mut var_row, handler_namespace::ID, handler_id);
 		handler_namespace::SHAPE.set_utf8(&mut var_row, handler_namespace::NAME, to_create.name.text());

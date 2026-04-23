@@ -579,7 +579,7 @@ mod tests {
 
 	use super::*;
 
-	// Happy path — one per numeric type
+	// Happy path - one per numeric type
 
 	#[test]
 	fn to_usize_uint1() {
@@ -656,7 +656,7 @@ mod tests {
 		assert_eq!(Value::Decimal(Decimal::from_i64(42)).to_usize(), Some(42));
 	}
 
-	// Edge cases & errors — negative numbers
+	// Edge cases & errors - negative numbers
 
 	#[test]
 	fn to_usize_int1_negative() {
@@ -698,7 +698,7 @@ mod tests {
 		assert_eq!(Value::Int(Int::from_i64(-5)).to_usize(), None);
 	}
 
-	// Edge cases — zero boundary
+	// Edge cases - zero boundary
 
 	#[test]
 	fn to_usize_zero() {
@@ -715,7 +715,7 @@ mod tests {
 		assert_eq!(Value::float4(0.0f32).to_usize(), Some(0));
 	}
 
-	// Edge cases — non-numeric types return None
+	// Edge cases - non-numeric types return None
 
 	#[test]
 	fn to_usize_boolean_none() {
@@ -767,7 +767,7 @@ mod tests {
 		assert_eq!(Value::none().to_usize(), None);
 	}
 
-	// Edge cases — fractional truncation
+	// Edge cases - fractional truncation
 
 	#[test]
 	fn to_usize_float8_fractional() {

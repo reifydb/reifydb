@@ -17,7 +17,7 @@ use reifydb_type::value::datetime::DateTime;
 ///
 /// During DML operations, each row modification pushes a `(ShapeId, Diff)`
 /// entry. At commit time, `take_changes()` groups entries by origin and produces
-/// one `Change` per shape — eliminating the need for a separate merge pass.
+/// one `Change` per shape - eliminating the need for a separate merge pass.
 ///
 /// Supports savepoint/restore via `len()` / `truncate()`.
 #[derive(Debug, Default)]

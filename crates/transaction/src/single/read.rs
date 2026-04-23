@@ -11,7 +11,7 @@ use super::*;
 use crate::error::TransactionError;
 
 /// Holds both the Arc and the guard to keep the lock alive.
-/// IMPORTANT: _guard must be declared before _arc so it is dropped first —
+/// IMPORTANT: _guard must be declared before _arc so it is dropped first -
 /// the guard borrows from the RwLock inside the Arc.
 pub struct KeyReadLock {
 	pub(super) _guard: RwLockReadGuard<'static, ()>,

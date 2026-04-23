@@ -330,7 +330,7 @@ fn compile_tick_duration(std_dur: time::Duration) -> Duration {
 /// Panics if the plan contains non-query nodes (DDL, DML, control flow, etc.).
 fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 	match plan {
-		// Leaf nodes — reuse directly (already owned types from nodes.rs)
+		// Leaf nodes - reuse directly (already owned types from nodes.rs)
 		PhysicalPlan::TableScan(node) => QueryPlan::TableScan(node),
 		PhysicalPlan::TableVirtualScan(node) => QueryPlan::TableVirtualScan(node),
 		PhysicalPlan::ViewScan(node) => QueryPlan::ViewScan(node),
@@ -347,7 +347,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		PhysicalPlan::Variable(node) => QueryPlan::Variable(node),
 		PhysicalPlan::Environment(node) => QueryPlan::Environment(node),
 
-		// Nodes with recursive children — materialize BumpBox to Box
+		// Nodes with recursive children - materialize BumpBox to Box
 		PhysicalPlan::Aggregate(node) => QueryPlan::Aggregate(nodes::AggregateNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 			by: node.by,
@@ -822,7 +822,7 @@ impl InstructionCompiler {
 			}
 			Expression::Column(col) => {
 				// Bare identifiers (e.g., `event_x`) in bytecode context
-				// should resolve as variable lookups — mirrors the runtime
+				// should resolve as variable lookups - mirrors the runtime
 				// evaluator's column_lookup() which falls back to the symbol table.
 				self.emit(Instruction::LoadVar(col.0.name.clone()));
 			}
@@ -839,7 +839,7 @@ impl InstructionCompiler {
 
 	fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
 		match plan {
-			// DDL — leaf instructions (no query children to materialize)
+			// DDL - leaf instructions (no query children to materialize)
 			PhysicalPlan::CreateNamespace(node) => {
 				self.emit(Instruction::CreateNamespace(node));
 				self.emit(Instruction::Emit);
@@ -930,7 +930,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
-			// DDL (Drop) — leaf instructions
+			// DDL (Drop) - leaf instructions
 			PhysicalPlan::DropNamespace(node) => {
 				self.emit(Instruction::DropNamespace(node));
 				self.emit(Instruction::Emit);
@@ -988,7 +988,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
-			// Auth/Permissions — leaf instructions
+			// Auth/Permissions - leaf instructions
 			PhysicalPlan::CreateIdentity(node) => {
 				self.emit(Instruction::CreateIdentity(node));
 				self.emit(Instruction::Emit);
@@ -1034,7 +1034,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
-			// DDL — nodes with query subtrees that need materialization
+			// DDL - nodes with query subtrees that need materialization
 			PhysicalPlan::CreateDeferredView(node) => {
 				self.emit(Instruction::CreateDeferredView(nodes::CreateDeferredViewNode {
 					namespace: node.namespace,
@@ -1105,7 +1105,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
-			// DML — materialize query subtrees inline
+			// DML - materialize query subtrees inline
 			PhysicalPlan::Delete(node) => {
 				self.emit(Instruction::Delete(nodes::DeleteTableNode {
 					input: node
@@ -1325,7 +1325,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::DefineClosure(compiled_closure));
 			}
 
-			// Query operations — materialize to QueryPlan and emit
+			// Query operations - materialize to QueryPlan and emit
 			PhysicalPlan::TableScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::TableScan(node)));
 				self.emit(Instruction::Emit);
@@ -1622,7 +1622,7 @@ impl InstructionCompiler {
 	/// Query plans emit a Query instruction (no Emit); non-query plans delegate to compile_plan.
 	fn compile_plan_for_iterable(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
 		match plan {
-			// Query leaf nodes — emit directly without Emit
+			// Query leaf nodes - emit directly without Emit
 			PhysicalPlan::TableScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::TableScan(node)));
 			}
@@ -1668,7 +1668,7 @@ impl InstructionCompiler {
 			PhysicalPlan::Environment(node) => {
 				self.emit(Instruction::Query(QueryPlan::Environment(node)));
 			}
-			// Query recursive nodes — materialize then emit
+			// Query recursive nodes - materialize then emit
 			PhysicalPlan::Aggregate(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Aggregate(node))));
 			}
@@ -1724,7 +1724,7 @@ impl InstructionCompiler {
 			PhysicalPlan::Scalarize(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Scalarize(node))));
 			}
-			// Non-query plans (DDL, DML, control flow) — delegate to full compile_plan
+			// Non-query plans (DDL, DML, control flow) - delegate to full compile_plan
 			other => {
 				self.compile_plan(other)?;
 			}

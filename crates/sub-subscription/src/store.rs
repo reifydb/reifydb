@@ -173,7 +173,7 @@ mod tests {
 		store.register(id, vec!["test".to_string()]);
 
 		// Three separate commits so each push evaluates buffer capacity
-		// against the already-committed tail — mirrors how the subscription
+		// against the already-committed tail - mirrors how the subscription
 		// CDC consumer drives the store one batch at a time.
 		store.commit_staged(stage(id, &[1]));
 		store.commit_staged(stage(id, &[2]));

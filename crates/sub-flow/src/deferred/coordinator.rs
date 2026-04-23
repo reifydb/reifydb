@@ -227,7 +227,7 @@ impl Actor for CoordinatorActor {
 }
 
 impl CoordinatorActor {
-	/// Handle Consume message — start of the multi-phase pipeline.
+	/// Handle Consume message - start of the multi-phase pipeline.
 	#[instrument(name = "flow::coordinator::consume", level = "debug", skip(self, state, ctx, cdcs, reply), fields(
 		cdc_count = cdcs.len(),
 		version_start = field::Empty,
@@ -319,7 +319,7 @@ impl CoordinatorActor {
 						} else {
 							// Flow was already cached (e.g. by the dispatcher for
 							// transactional views). Add it to the analyzer so the
-							// dependency graph includes its source/sink info — this
+							// dependency graph includes its source/sink info - this
 							// lets filter_cdc_for_flow resolve transitive dependencies
 							// through transactional views.
 							state.analyzer.add(flow);
@@ -624,7 +624,7 @@ impl CoordinatorActor {
 		mut consume_ctx: ConsumeContext,
 	) {
 		if consume_ctx.latest_version.is_none() {
-			// No CDC data — finish immediately
+			// No CDC data - finish immediately
 			self.finish_consume(state, consume_ctx);
 			return;
 		}
@@ -666,7 +666,7 @@ impl CoordinatorActor {
 		while let Some(flow_id) = flows.first().copied() {
 			flows.remove(0);
 
-			// Skip downstream flows — they'll backfill in the next cycle
+			// Skip downstream flows - they'll backfill in the next cycle
 			// with committed upstream view data.
 			if consume_ctx.downstream_flows.contains(&flow_id) {
 				continue;
@@ -806,7 +806,7 @@ impl CoordinatorActor {
 			return;
 		}
 
-		// No more backfill flows to process — finish
+		// No more backfill flows to process - finish
 		self.finish_consume(state, consume_ctx);
 	}
 

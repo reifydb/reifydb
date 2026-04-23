@@ -411,7 +411,7 @@ impl PoolActor {
 						pending_count -= 1;
 
 						if pending_count == 0 {
-							// All workers done — aggregate and reply
+							// All workers done - aggregate and reply
 							match self.aggregate_pending_writes(results) {
 								Ok(combined) => {
 									Span::current().record(
@@ -447,13 +447,13 @@ impl PoolActor {
 							"Worker {} error: {}",
 							worker_id, e
 						)));
-						// state.phase is already Idle — remaining replies will hit the Idle
+						// state.phase is already Idle - remaining replies will hit the Idle
 						// branch below
 					}
 				}
 			}
 			Phase::Idle => {
-				// Stale reply from a previous errored batch — ignore
+				// Stale reply from a previous errored batch - ignore
 			}
 		}
 	}

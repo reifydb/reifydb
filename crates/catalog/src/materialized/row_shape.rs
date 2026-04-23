@@ -8,7 +8,7 @@ use super::MaterializedCatalog;
 impl MaterializedCatalog {
 	/// Insert a shape into the cache.
 	///
-	/// This does NOT persist the shape — it assumes it already exists in storage.
+	/// This does NOT persist the shape - it assumes it already exists in storage.
 	pub fn set_row_shape(&self, shape: RowShape) {
 		self.0.row_shapes.insert(shape.fingerprint(), shape);
 	}

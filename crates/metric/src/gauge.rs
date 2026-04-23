@@ -7,7 +7,7 @@ use crate::snapshot::GaugeSnapshot;
 
 /// A value that can go up and down, stored as f64.
 ///
-/// Safe to use from any thread — backed by a single `AtomicU64` storing
+/// Safe to use from any thread - backed by a single `AtomicU64` storing
 /// `f64` bits. Constructable in `const` context so it can live in a `static`.
 pub struct Gauge {
 	pub name: &'static str,

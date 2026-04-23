@@ -58,7 +58,7 @@ fn parent_shutdown_cancels_child_scope() {
 	let _pa = parent.spawn("pa", CounterActor);
 	let ch = child.spawn("ca", CounterActor);
 
-	// Shut down parent — should propagate to child.
+	// Shut down parent - should propagate to child.
 	parent.shutdown();
 
 	assert!(parent.is_cancelled());
@@ -87,10 +87,10 @@ fn scope_shares_timer_heap() {
 	let ctx = Context::new(handle.actor_ref.clone(), parent.clone(), parent.cancellation_token());
 	ctx.schedule_once(Duration::from_millis(100), || "from_parent_timer".to_string());
 
-	// Advance time on parent — timers are shared.
+	// Advance time on parent - timers are shared.
 	parent.advance_time(Duration::from_millis(100));
 
-	// Process on child — the message should be there.
+	// Process on child - the message should be there.
 	child.run_until_idle();
 
 	assert_eq!(log_contents(&log), vec!["from_parent_timer"]);
@@ -149,12 +149,12 @@ fn clock_advancement_is_asymmetric() {
 	let parent = test_system();
 	let child = parent.scope();
 
-	// 1. Advance child clock — parent MUST NOT be affected.
+	// 1. Advance child clock - parent MUST NOT be affected.
 	child.advance_time(std::time::Duration::from_millis(100));
 	assert_eq!(child.clock().now_millis(), 100);
 	assert_eq!(parent.clock().now_millis(), 0, "Child clock advancement leaked to parent!");
 
-	// 2. Advance parent clock — child MUST be affected.
+	// 2. Advance parent clock - child MUST be affected.
 	parent.advance_time(std::time::Duration::from_millis(200));
 	assert_eq!(parent.clock().now_millis(), 200);
 	// Child clock was at 100, we advanced parent by 200. Does child become 300 or 200?

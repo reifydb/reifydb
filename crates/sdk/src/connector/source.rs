@@ -27,7 +27,7 @@ pub enum SourceMode {
 pub struct SourceBatch {
 	/// The columnar data
 	pub columns: Columns,
-	/// Opaque checkpoint for resumption — format is connector-defined
+	/// Opaque checkpoint for resumption - format is connector-defined
 	pub checkpoint: Option<Vec<u8>>,
 }
 

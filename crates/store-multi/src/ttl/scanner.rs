@@ -137,7 +137,7 @@ fn bound_as_ref(bound: &Bound<impl AsRef<[u8]>>) -> Bound<&[u8]> {
 ///
 /// For each expired row key, fetches all stored versions and physically
 /// removes them. Returns stats about the operation.
-// TODO: batch version lookups — currently O(N) individual get_all_versions
+// TODO: batch version lookups - currently O(N) individual get_all_versions
 // calls for N expired rows. Consider a bulk API when large TTL bursts occur.
 pub(crate) fn drop_expired_keys(storage: &HotStorage, expired: &[ExpiredRow], stats: &mut ScanStats) -> Result<()> {
 	if expired.is_empty() {

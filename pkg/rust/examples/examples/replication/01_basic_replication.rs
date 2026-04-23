@@ -76,7 +76,7 @@ fn main() {
 	}
 
 	// The replica connects to the primary's replication endpoint.
-	// Schema and data replicate automatically — no need to create
+	// Schema and data replicate automatically - no need to create
 	// tables on the replica.
 	info!("Starting replica instance...");
 	let mut replica = server::memory()

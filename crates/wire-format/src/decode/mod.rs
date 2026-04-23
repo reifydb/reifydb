@@ -253,7 +253,7 @@ fn decode_column_dispatch(
 	offsets: &[u8],
 	extra: &[u8],
 ) -> Result<FrameColumnData, DecodeError> {
-	// Strip the option bit — the option-ness is represented separately via the nones bitmap
+	// Strip the option bit - the option-ness is represented separately via the nones bitmap
 	// and handled in the caller; the encoding strategies only know about the inner concrete type.
 	let type_code = type_code & 0x7F;
 	let ty = Type::from_u8(type_code);
