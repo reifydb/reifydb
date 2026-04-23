@@ -16,7 +16,9 @@ reifydb-runtime = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
+serde = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 reifydb = { workspace = true }
+tracing-subscriber = { workspace = true }

@@ -26,7 +26,7 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-pub(crate) struct TableScanNode {
+pub struct TableScanNode {
 	table: ResolvedTable,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,

@@ -9,6 +9,11 @@ use std::{
 	sync::{Arc, OnceLock},
 };
 
+use canonical::CanonicalEncoding;
+use compressed::{
+	AllNoneEncoding, BitPackEncoding, ConstantEncoding, DeltaEncoding, DeltaRleEncoding, DictEncoding, ForEncoding,
+	RleEncoding, SparseEncoding,
+};
 use reifydb_type::Result;
 
 use crate::{
@@ -79,11 +84,6 @@ impl EncodingRegistry {
 	}
 
 	pub fn builtins() -> Self {
-		use canonical::CanonicalEncoding;
-		use compressed::{
-			AllNoneEncoding, BitPackEncoding, ConstantEncoding, DeltaEncoding, DeltaRleEncoding,
-			DictEncoding, ForEncoding, RleEncoding, SparseEncoding,
-		};
 		let mut r = Self::empty();
 		r.register(Arc::new(CanonicalEncoding::BOOL));
 		r.register(Arc::new(CanonicalEncoding::FIXED));

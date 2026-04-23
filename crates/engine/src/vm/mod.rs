@@ -40,4 +40,4 @@ pub mod services;
 pub mod stack;
 #[allow(clippy::module_inception)]
 pub mod vm;
-pub(crate) mod volcano;
+pub mod volcano;

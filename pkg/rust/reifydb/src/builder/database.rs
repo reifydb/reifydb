@@ -45,6 +45,7 @@ use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, context::Runtim
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
+use reifydb_sub_column::factory::StorageSubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowConfigurator, subsystem::factory::FlowSubsystemFactory};
 #[cfg(feature = "sub_replication")]
@@ -485,6 +486,16 @@ impl DatabaseBuilder {
 			let factory = self.task_factory.unwrap_or_else(|| {
 				Box::new(TaskSubsystemFactory::with_config(TaskConfig::new(create_system_tasks())))
 			});
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
+		// Columnar storage materialization — always-on, no feature gate. Produces
+		// read-optimised `Snapshot`s in an in-memory `SnapshotRegistry`; safe
+		// even on empty catalogs (the Tick is a no-op until tables/series exist).
+		{
+			let factory: Box<dyn SubsystemFactory> = Box::new(StorageSubsystemFactory::default());
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);

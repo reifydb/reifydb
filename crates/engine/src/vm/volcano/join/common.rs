@@ -138,6 +138,12 @@ pub struct JoinContext {
 	pub compiled: Vec<CompiledExpr>,
 }
 
+impl Default for JoinContext {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl JoinContext {
 	pub fn new() -> Self {
 		Self {

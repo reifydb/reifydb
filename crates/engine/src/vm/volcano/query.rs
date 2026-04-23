@@ -19,7 +19,7 @@ use crate::{
 };
 
 /// Unified trait for query execution nodes following the volcano iterator pattern
-pub(crate) trait QueryNode: Send + Sync {
+pub trait QueryNode: Send + Sync {
 	/// Initialize the operator with execution context
 	/// Called once before iteration begins
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()>;

@@ -16,6 +16,3 @@ pub mod scan_source;
 pub mod selection;
 pub mod snapshot;
 pub mod stats;
-
-pub use compute::{CompareOp, SearchResult, compare, filter, min_max, search_sorted, slice, sum, take};
-pub use predicate::{ColRef, Predicate, evaluate};

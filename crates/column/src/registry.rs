@@ -145,9 +145,10 @@ impl Default for SnapshotRegistry {
 
 #[cfg(test)]
 mod tests {
-	use std::{sync::Arc, time::Instant};
+	use std::sync::Arc;
 
 	use reifydb_core::interface::catalog::id::{SeriesId, TableId};
+	use reifydb_runtime::context::clock::Clock;
 
 	use super::*;
 	use crate::{bucket::Bucket, column_block::ColumnBlock, snapshot::Snapshot};
@@ -167,8 +168,8 @@ mod tests {
 				commit_version: cv,
 			},
 			namespace: "test".into(),
-			object_name: "t".into(),
-			created_at: Instant::now(),
+			name: "t".into(),
+			created_at: Clock::Real.instant(),
 			block: empty_block(),
 		}
 	}
@@ -185,8 +186,8 @@ mod tests {
 				sequence_counter: seq,
 			},
 			namespace: "test".into(),
-			object_name: "s".into(),
-			created_at: Instant::now(),
+			name: "s".into(),
+			created_at: Clock::Real.instant(),
 			block: empty_block(),
 		}
 	}

@@ -104,12 +104,12 @@ fn is_none_mask(ch: &ChunkedArray) -> RowMask {
 	let len = ch.len();
 	let mut mask = RowMask::none_set(len);
 	// v1: single-chunk assumption checked by evaluate().
-	if let Some(array) = ch.chunks.first() {
-		if let Some(nones) = array.nones() {
-			for i in 0..array.len() {
-				if nones.is_none(i) {
-					mask.set(i, true);
-				}
+	if let Some(array) = ch.chunks.first()
+		&& let Some(nones) = array.nones()
+	{
+		for i in 0..array.len() {
+			if nones.is_none(i) {
+				mask.set(i, true);
 			}
 		}
 	}

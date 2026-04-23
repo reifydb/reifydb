@@ -62,6 +62,7 @@ mod tests {
 	use reifydb_core::value::column::data::ColumnData;
 
 	use super::*;
+	use crate::encoding::EncodingRegistry;
 
 	#[test]
 	fn canonical_fixed_round_trips_via_try_compress_then_canonicalize() {
@@ -91,7 +92,7 @@ mod tests {
 
 	#[test]
 	fn registry_builtins_registers_all_canonical_and_compressed_encodings() {
-		let r = crate::encoding::EncodingRegistry::builtins();
+		let r = EncodingRegistry::builtins();
 		// 4 canonical + 9 compressed stubs = 13
 		assert_eq!(r.len(), 13);
 		for id in [

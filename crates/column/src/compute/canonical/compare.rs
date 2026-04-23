@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{Result, error::Error, value::Value};
+use std::cmp::{Ordering, Ordering::*};
+
+use reifydb_type::{
+	Result,
+	error::Error,
+	value::{Value, r#type::Type},
+};
 use serde::de::Error as _;
 
 use crate::{
@@ -18,8 +24,6 @@ use crate::{
 // output (RQL three-valued logic). Returns a `CanonicalArray` whose
 // storage is `CanonicalStorage::Bool` and whose `ty` is `Type::Boolean`.
 pub fn compare(array: &CanonicalArray, rhs: &Value, op: CompareOp) -> Result<CanonicalArray> {
-	use reifydb_type::value::r#type::Type;
-
 	let len = array.len();
 	let mut out = BoolArray::new(len);
 
@@ -112,12 +116,11 @@ fn compare_fixed(storage: &FixedStorage, rhs: &Value, op: CompareOp, out: &mut B
 	Ok(())
 }
 
-fn cmp_bool(lhs: bool, rhs: bool) -> std::cmp::Ordering {
+fn cmp_bool(lhs: bool, rhs: bool) -> Ordering {
 	(lhs as u8).cmp(&(rhs as u8))
 }
 
-fn apply_cmp_order(op: CompareOp, order: std::cmp::Ordering) -> bool {
-	use std::cmp::Ordering::*;
+fn apply_cmp_order(op: CompareOp, order: Ordering) -> bool {
 	match op {
 		CompareOp::Eq => matches!(order, Equal),
 		CompareOp::Ne => !matches!(order, Equal),

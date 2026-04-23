@@ -62,8 +62,6 @@ pub struct DefaultCompute;
 
 impl Compute for DefaultCompute {}
 
-// ----- Free-function dispatch -------------------------------------------------
-
 // Each free function first asks the array's encoding for a specialization; if
 // the encoding returns `None`, the caller canonicalizes and runs the canonical
 // kernel. This preserves the "compressed encodings can always fall back
@@ -74,7 +72,7 @@ pub fn filter(array: &Array, mask: &RowMask) -> Result<Array> {
 		return result;
 	}
 	let canon = array.to_canonical()?;
-	Ok(Array::from_canonical(canonical::filter(&canon, mask)?))
+	Ok(Array::from_canonical(canonical::filter::filter(&canon, mask)?))
 }
 
 pub fn take(array: &Array, indices: &Array) -> Result<Array> {
@@ -83,7 +81,7 @@ pub fn take(array: &Array, indices: &Array) -> Result<Array> {
 	}
 	let canon = array.to_canonical()?;
 	let idx = indices.to_canonical()?;
-	Ok(Array::from_canonical(canonical::take(&canon, &idx)?))
+	Ok(Array::from_canonical(canonical::take::take(&canon, &idx)?))
 }
 
 pub fn slice(array: &Array, start: usize, end: usize) -> Result<Array> {
@@ -91,7 +89,7 @@ pub fn slice(array: &Array, start: usize, end: usize) -> Result<Array> {
 		return result;
 	}
 	let canon = array.to_canonical()?;
-	Ok(Array::from_canonical(canonical::slice(&canon, start, end)?))
+	Ok(Array::from_canonical(canonical::slice::slice(&canon, start, end)?))
 }
 
 pub fn compare(array: &Array, rhs: &Value, op: CompareOp) -> Result<Array> {
@@ -99,7 +97,7 @@ pub fn compare(array: &Array, rhs: &Value, op: CompareOp) -> Result<Array> {
 		return result;
 	}
 	let canon = array.to_canonical()?;
-	Ok(Array::from_canonical(canonical::compare(&canon, rhs, op)?))
+	Ok(Array::from_canonical(canonical::compare::compare(&canon, rhs, op)?))
 }
 
 pub fn search_sorted(array: &Array, needle: &Value) -> Result<SearchResult> {
@@ -107,7 +105,7 @@ pub fn search_sorted(array: &Array, needle: &Value) -> Result<SearchResult> {
 		return result;
 	}
 	let canon = array.to_canonical()?;
-	canonical::search_sorted(&canon, needle)
+	canonical::search_sorted::search_sorted(&canon, needle)
 }
 
 pub fn min_max(array: &Array) -> Result<(Value, Value)> {
@@ -115,7 +113,7 @@ pub fn min_max(array: &Array) -> Result<(Value, Value)> {
 		return result;
 	}
 	let canon = array.to_canonical()?;
-	canonical::min_max(&canon)
+	canonical::min_max::min_max(&canon)
 }
 
 pub fn sum(array: &Array) -> Result<Value> {
@@ -123,7 +121,7 @@ pub fn sum(array: &Array) -> Result<Value> {
 		return result;
 	}
 	let canon = array.to_canonical()?;
-	canonical::sum(&canon)
+	canonical::sum::sum(&canon)
 }
 
 fn specialized<T>(array: &Array, hook: impl FnOnce(&dyn Compute) -> Option<Result<T>>) -> Option<Result<T>> {

@@ -60,7 +60,11 @@ use crate::{
 	Result,
 	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
 	interceptor::catalog::MaterializedCatalogInterceptor,
-	vm::{Admin, Command, Query, Subscription, executor::Executor, services::EngineConfig},
+	vm::{
+		Admin, Command, Query, Subscription,
+		executor::Executor,
+		services::{EngineConfig, Services},
+	},
 };
 
 pub struct StandardEngine(Arc<Inner>);
@@ -528,6 +532,16 @@ impl StandardEngine {
 	#[inline]
 	pub fn catalog(&self) -> Catalog {
 		self.catalog.clone()
+	}
+
+	/// Returns the shared `Services` instance used by this engine's executor.
+	/// External consumers that want to drive volcano operators directly (e.g.
+	/// subsystems that build a `QueryContext`) read from the same `Services`
+	/// the engine already initialised — avoids duplicating the `Services::new`
+	/// wiring path.
+	#[inline]
+	pub fn services(&self) -> Arc<Services> {
+		self.executor.services().clone()
 	}
 
 	#[inline]

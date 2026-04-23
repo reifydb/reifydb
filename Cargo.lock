@@ -2531,6 +2531,7 @@ dependencies = [
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-sub-api",
+ "reifydb-sub-column",
  "reifydb-sub-flow",
  "reifydb-sub-metric",
  "reifydb-sub-replication",
@@ -2664,6 +2665,7 @@ version = "0.4.12"
 dependencies = [
  "dashmap",
  "reifydb-core",
+ "reifydb-runtime",
  "reifydb-type",
  "serde",
  "tracing",
@@ -2952,7 +2954,9 @@ dependencies = [
  "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-type",
+ "serde",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

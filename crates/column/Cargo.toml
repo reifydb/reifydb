@@ -9,6 +9,7 @@ description = "Columnar storage engine for ReifyDB."
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
 dashmap = { workspace = true }
 serde = { workspace = true }

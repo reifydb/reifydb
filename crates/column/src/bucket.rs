@@ -33,6 +33,10 @@ impl Bucket {
 	pub fn len(&self) -> u64 {
 		self.end - self.start
 	}
+
+	pub fn is_empty(&self) -> bool {
+		self.end == self.start
+	}
 }
 
 // Compute the bucket that contains `key` given a fixed bucket `width`. Buckets

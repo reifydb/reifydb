@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::time::Instant;
-
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::id::{SeriesId, TableId},
 };
+use reifydb_runtime::context::clock::Instant;
 
 use crate::{
 	bucket::{Bucket, BucketId},
@@ -54,7 +53,7 @@ pub struct Snapshot {
 	pub id: SnapshotId,
 	pub source: SnapshotSource,
 	pub namespace: String,
-	pub object_name: String,
+	pub name: String,
 	pub created_at: Instant,
 	pub block: ColumnBlock,
 }
@@ -64,8 +63,8 @@ impl Snapshot {
 		SnapshotMeta {
 			id: self.id,
 			namespace: self.namespace.clone(),
-			object_name: self.object_name.clone(),
-			created_at: self.created_at,
+			name: self.name.clone(),
+			created_at: self.created_at.clone(),
 			row_count: self.block.len(),
 		}
 	}
@@ -77,7 +76,7 @@ impl Snapshot {
 pub struct SnapshotMeta {
 	pub id: SnapshotId,
 	pub namespace: String,
-	pub object_name: String,
+	pub name: String,
 	pub created_at: Instant,
 	pub row_count: usize,
 }
