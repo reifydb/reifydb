@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use core::mem;
 
-use crate::endian::Endian;
+use crate::endian::{Endian, U32};
 use crate::macho;
 use crate::pod::Pod;
 use crate::read::macho::{ExportsTrieIterator, FunctionStartsIterator, MachHeader, SymbolTable};
@@ -153,6 +153,7 @@ impl<'data, E: Endian> LoadCommandData<'data, E> {
             macho::LC_ROUTINES_64 => LoadCommandVariant::Routines64(self.data()?),
             macho::LC_UUID => LoadCommandVariant::Uuid(self.data()?),
             macho::LC_RPATH => LoadCommandVariant::Rpath(self.data()?),
+            macho::LC_TARGET_TRIPLE => LoadCommandVariant::TargetTriple(self.data()?),
             macho::LC_CODE_SIGNATURE
             | macho::LC_SEGMENT_SPLIT_INFO
             | macho::LC_FUNCTION_STARTS
@@ -213,6 +214,8 @@ impl<'data, E: Endian> LoadCommandData<'data, E> {
     }
 
     /// Try to parse this command as a [`macho::DylibCommand`].
+    ///
+    /// See also [`Self::dylib_use_flags`] to read the optional flags field.
     pub fn dylib(self) -> Result<Option<&'data macho::DylibCommand<E>>> {
         if self.cmd == macho::LC_LOAD_DYLIB
             || self.cmd == macho::LC_LOAD_WEAK_DYLIB
@@ -224,6 +227,29 @@ impl<'data, E: Endian> LoadCommandData<'data, E> {
         } else {
             Ok(None)
         }
+    }
+
+    /// Parse the optional flags field for a dylib load command.
+    ///
+    /// [`macho::DylibCommand`] traditionally uses the load command type to distinguish
+    /// between dylib kinds. [`macho::DylibUseCommand`] replaces this by encoding the
+    /// kinds in a bitfield appended after the standard `DylibCommand` fields. Its
+    /// presence is signalled using sentinel values in some `DylibCommand` fields.
+    ///
+    /// Returns `None` if the sentinels are absent. If `Some` is returned, the value of
+    /// [`macho::Dylib::timestamp`] should be ignored.
+    pub fn dylib_use_flags(self, endian: E, dylib: &macho::DylibCommand<E>) -> Result<Option<u32>> {
+        if dylib.dylib.name.offset.get(endian) != 28 // size of DylibUseCommand
+            || dylib.dylib.timestamp.get(endian) != macho::DYLIB_USE_MARKER
+        {
+            return Ok(None);
+        }
+        Ok(Some(
+            self.data
+                .read_at::<U32<_>>(24) // offset of DylibUseCommand::flags
+                .read_error("Invalid dylib load command size")?
+                .get(endian),
+        ))
     }
 
     /// Try to parse this command as a [`macho::UuidCommand`].
@@ -264,6 +290,19 @@ impl<'data, E: Endian> LoadCommandData<'data, E> {
         }
     }
 
+    /// Try to parse this command as an `LC_UNIXTHREAD` [`macho::ThreadCommand`].
+    ///
+    /// Returns the thread command and the thread state data that follows it.
+    pub fn unix_thread(self) -> Result<Option<(&'data macho::ThreadCommand<E>, &'data [u8])>> {
+        if self.cmd == macho::LC_UNIXTHREAD {
+            let mut data = self.data;
+            let thread = data.read().read_error("Invalid Mach-O command size")?;
+            Ok(Some((thread, data.0)))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Try to parse this command as a [`macho::BuildVersionCommand`].
     pub fn build_version(self) -> Result<Option<&'data macho::BuildVersionCommand<E>>> {
         if self.cmd == macho::LC_BUILD_VERSION {
@@ -297,6 +336,8 @@ pub enum LoadCommandVariant<'data, E: Endian> {
     Dysymtab(&'data macho::DysymtabCommand<E>),
     /// `LC_LOAD_DYLIB`, `LC_LOAD_WEAK_DYLIB`, `LC_REEXPORT_DYLIB`,
     /// `LC_LAZY_LOAD_DYLIB`, or `LC_LOAD_UPWARD_DYLIB`
+    ///
+    /// See also [`LoadCommandData::dylib_use_flags`] to read the optional flags field.
     Dylib(&'data macho::DylibCommand<E>),
     /// `LC_ID_DYLIB`
     IdDylib(&'data macho::DylibCommand<E>),
@@ -328,6 +369,8 @@ pub enum LoadCommandVariant<'data, E: Endian> {
     Uuid(&'data macho::UuidCommand<E>),
     /// `LC_RPATH`
     Rpath(&'data macho::RpathCommand<E>),
+    /// `LC_TARGET_TRIPLE`
+    TargetTriple(&'data macho::TargetTripleCommand<E>),
     /// `LC_CODE_SIGNATURE`, `LC_SEGMENT_SPLIT_INFO`, `LC_FUNCTION_STARTS`,
     /// `LC_DATA_IN_CODE`, `LC_DYLIB_CODE_SIGN_DRS`, `LC_LINKER_OPTIMIZATION_HINT`,
     /// `LC_DYLD_EXPORTS_TRIE`, or `LC_DYLD_CHAINED_FIXUPS`.
@@ -378,6 +421,26 @@ impl<E: Endian> macho::SymtabCommand<E> {
             .read_error("Invalid Mach-O string table length")?;
         let strings = StringTable::new(data, str_start, str_end);
         Ok(SymbolTable::new(symbols, strings))
+    }
+}
+
+impl<E: Endian> macho::DysymtabCommand<E> {
+    /// Return the table of indirect symbol indexes.
+    ///
+    /// Entries in this table are referenced by the `reserved1` field
+    /// in sections that contain symbol pointers or stubs.
+    ///
+    /// Each entry is an index into the symbol table.
+    pub fn indirect_symbols<'data, R: ReadRef<'data>>(
+        &self,
+        endian: E,
+        data: R,
+    ) -> Result<&'data [U32<E>]> {
+        data.read_slice_at(
+            self.indirectsymoff.get(endian).into(),
+            self.nindirectsyms.get(endian) as usize,
+        )
+        .read_error("Invalid Mach-O indirect symbol offset or count")
     }
 }
 
@@ -448,17 +511,16 @@ mod tests {
 
     #[test]
     fn function_starts_invalid_uleb128() {
-        use crate::endian::U32;
         use crate::macho;
 
         // Invalid ULEB128: continuation bit set but no following byte
         let data = [0x80];
 
         let cmd = macho::LinkeditDataCommand {
-            cmd: U32::new(LittleEndian, macho::LC_FUNCTION_STARTS),
-            cmdsize: U32::new(LittleEndian, 16),
-            dataoff: U32::new(LittleEndian, 0),
-            datasize: U32::new(LittleEndian, data.len() as u32),
+            cmd: macho::LC_FUNCTION_STARTS.into(),
+            cmdsize: 16.into(),
+            dataoff: 0.into(),
+            datasize: (data.len() as u32).into(),
         };
 
         let mut iter = cmd.function_starts(LittleEndian, &data[..], 0).unwrap();

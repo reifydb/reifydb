@@ -10,6 +10,19 @@ const LOOPBACK: &[u8] = b"lo0";
 const LOOPBACK: &[u8] = b"loop";
 
 #[test]
+#[cfg_attr(target_os = "cygwin", ignore)]
 fn test_if_nametoindex() {
     if_nametoindex(LOOPBACK).expect("assertion failed");
+}
+
+#[test]
+#[cfg_attr(target_os = "cygwin", ignore)]
+fn test_if_indextoname() {
+    let loopback_index = if_nametoindex(LOOPBACK).expect("assertion failed");
+    assert_eq!(
+        if_indextoname(loopback_index)
+            .expect("assertion failed")
+            .as_bytes(),
+        LOOPBACK
+    );
 }

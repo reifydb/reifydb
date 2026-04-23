@@ -1,13 +1,14 @@
 //! This module implements and describes common TTY methods & traits
 
-use unicode_width::UnicodeWidthStr;
+/// Unsupported Terminals that don't support RAW mode
+const UNSUPPORTED_TERM: [&str; 3] = ["dumb", "cons25", "emacs"];
 
-use crate::config::{Behavior, BellStyle, ColorMode, Config};
+use crate::config::Config;
 use crate::highlight::Highlighter;
 use crate::keys::KeyEvent;
-use crate::layout::{Layout, Position};
+use crate::layout::{GraphemeClusterMode, Layout, Position, Unit};
 use crate::line_buffer::LineBuffer;
-use crate::{Cmd, Result};
+use crate::{Cmd, Prompt, Result};
 
 /// Terminal state
 pub trait RawMode: Sized {
@@ -19,6 +20,8 @@ pub trait RawMode: Sized {
 pub enum Event {
     KeyPress(KeyEvent),
     ExternalPrint(String),
+    #[cfg(target_os = "macos")]
+    Timeout(bool),
 }
 
 /// Translate bytes read from stdin to keys.
@@ -46,13 +49,12 @@ pub trait Renderer {
     fn move_cursor(&mut self, old: Position, new: Position) -> Result<()>;
 
     /// Display `prompt`, line and cursor in terminal output
-    #[allow(clippy::too_many_arguments)]
-    fn refresh_line(
+    fn refresh_line<P: Prompt + ?Sized>(
         &mut self,
-        prompt: &str,
+        prompt: &P,
         line: &LineBuffer,
         hint: Option<&str>,
-        old_layout: &Layout,
+        old_layout: Option<&Layout>, // used to clear old rows
         new_layout: &Layout,
         highlighter: Option<&dyn Highlighter>,
     ) -> Result<()>;
@@ -81,10 +83,12 @@ pub trait Renderer {
         }
 
         let new_layout = Layout {
+            grapheme_cluster_mode: self.grapheme_cluster_mode(),
             prompt_size,
             default_prompt,
             cursor,
             end,
+            has_info: info.is_some(),
         };
         debug_assert!(new_layout.prompt_size <= new_layout.cursor);
         debug_assert!(new_layout.cursor <= new_layout.end);
@@ -105,82 +109,34 @@ pub trait Renderer {
     fn clear_screen(&mut self) -> Result<()>;
     /// Clear rows used by prompt and edited line
     fn clear_rows(&mut self, layout: &Layout) -> Result<()>;
+    /// Clear from cursor to the end of line
+    fn clear_to_eol(&mut self) -> Result<()>;
 
     /// Update the number of columns/rows in the current terminal.
     fn update_size(&mut self);
     /// Get the number of columns in the current terminal.
-    fn get_columns(&self) -> usize;
+    fn get_columns(&self) -> Unit;
     /// Get the number of rows in the current terminal.
-    fn get_rows(&self) -> usize;
+    fn get_rows(&self) -> Unit;
     /// Check if output supports colors.
     fn colors_enabled(&self) -> bool;
+    /// Tell how grapheme clusters are rendered.
+    fn grapheme_cluster_mode(&self) -> GraphemeClusterMode;
 
     /// Make sure prompt is at the leftmost edge of the screen
     fn move_cursor_at_leftmost(&mut self, rdr: &mut Self::Reader) -> Result<()>;
-}
-
-impl<'a, R: Renderer + ?Sized> Renderer for &'a mut R {
-    type Reader = R::Reader;
-
-    fn move_cursor(&mut self, old: Position, new: Position) -> Result<()> {
-        (**self).move_cursor(old, new)
+    /// Begin synchronized update on unix platform
+    fn begin_synchronized_update(&mut self) -> Result<()> {
+        Ok(())
     }
-
-    fn refresh_line(
-        &mut self,
-        prompt: &str,
-        line: &LineBuffer,
-        hint: Option<&str>,
-        old_layout: &Layout,
-        new_layout: &Layout,
-        highlighter: Option<&dyn Highlighter>,
-    ) -> Result<()> {
-        (**self).refresh_line(prompt, line, hint, old_layout, new_layout, highlighter)
-    }
-
-    fn calculate_position(&self, s: &str, orig: Position) -> Position {
-        (**self).calculate_position(s, orig)
-    }
-
-    fn write_and_flush(&mut self, buf: &str) -> Result<()> {
-        (**self).write_and_flush(buf)
-    }
-
-    fn beep(&mut self) -> Result<()> {
-        (**self).beep()
-    }
-
-    fn clear_screen(&mut self) -> Result<()> {
-        (**self).clear_screen()
-    }
-
-    fn clear_rows(&mut self, layout: &Layout) -> Result<()> {
-        (**self).clear_rows(layout)
-    }
-
-    fn update_size(&mut self) {
-        (**self).update_size();
-    }
-
-    fn get_columns(&self) -> usize {
-        (**self).get_columns()
-    }
-
-    fn get_rows(&self) -> usize {
-        (**self).get_rows()
-    }
-
-    fn colors_enabled(&self) -> bool {
-        (**self).colors_enabled()
-    }
-
-    fn move_cursor_at_leftmost(&mut self, rdr: &mut R::Reader) -> Result<()> {
-        (**self).move_cursor_at_leftmost(rdr)
+    /// End synchronized update on unix platform
+    fn end_synchronized_update(&mut self) -> Result<()> {
+        Ok(())
     }
 }
 
 // ignore ANSI escape sequence
-fn width(s: &str, esc_seq: &mut u8) -> usize {
+fn width(gcm: GraphemeClusterMode, s: &str, esc_seq: &mut u8) -> Unit {
     if *esc_seq == 1 {
         if s == "[" {
             // CSI
@@ -206,7 +162,7 @@ fn width(s: &str, esc_seq: &mut u8) -> usize {
     } else if s == "\n" {
         0
     } else {
-        s.width()
+        gcm.width(s)
     }
 }
 
@@ -226,14 +182,7 @@ pub trait Term {
     type ExternalPrinter: ExternalPrinter;
     type CursorGuard;
 
-    fn new(
-        color_mode: ColorMode,
-        behavior: Behavior,
-        tab_stop: usize,
-        bell_style: BellStyle,
-        enable_bracketed_paste: bool,
-        enable_signals: bool,
-    ) -> Result<Self>
+    fn new(config: &Config) -> Result<Self>
     where
         Self: Sized;
     /// Check if current terminal can provide a rich line-editing user
@@ -244,21 +193,37 @@ pub trait Term {
     /// check if output stream is connected to a terminal.
     fn is_output_tty(&self) -> bool;
     /// Enable RAW mode for the terminal.
-    fn enable_raw_mode(&mut self) -> Result<(Self::Mode, Self::KeyMap)>;
+    fn enable_raw_mode(&mut self, config: &Config) -> Result<(Self::Mode, Self::KeyMap)>;
     /// Create a RAW reader
     fn create_reader(
         &self,
         buffer: Option<Self::Buffer>,
         config: &Config,
         key_map: Self::KeyMap,
-    ) -> Self::Reader;
+    ) -> Result<Self::Reader>;
     /// Create a writer
-    fn create_writer(&self) -> Self::Writer;
+    fn create_writer(&self, config: &Config) -> Self::Writer;
     fn writeln(&self) -> Result<()>;
     /// Create an external printer
     fn create_external_printer(&mut self) -> Result<Self::ExternalPrinter>;
     /// Change cursor visibility
     fn set_cursor_visibility(&mut self, visible: bool) -> Result<Option<Self::CursorGuard>>;
+}
+
+/// Check TERM environment variable to see if current term is in our
+/// unsupported list
+fn is_unsupported_term() -> bool {
+    match std::env::var("TERM") {
+        Ok(term) => {
+            for iter in &UNSUPPORTED_TERM {
+                if (*iter).eq_ignore_ascii_case(&term) {
+                    return true;
+                }
+            }
+            false
+        }
+        Err(_) => false,
+    }
 }
 
 // If on Windows platform import Windows TTY module
@@ -279,3 +244,15 @@ pub use self::unix::*;
 mod test;
 #[cfg(any(test, target_arch = "wasm32"))]
 pub use self::test::*;
+
+#[cfg(test)]
+mod test_ {
+    #[test]
+    fn test_unsupported_term() {
+        std::env::set_var("TERM", "xterm");
+        assert!(!super::is_unsupported_term());
+
+        std::env::set_var("TERM", "dumb");
+        assert!(super::is_unsupported_term());
+    }
+}

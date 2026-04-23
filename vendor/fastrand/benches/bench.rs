@@ -8,7 +8,7 @@ use wyhash::WyRng;
 
 #[bench]
 fn shuffle_wyhash(b: &mut Bencher) {
-    let mut rng = WyRng::from_rng(thread_rng()).unwrap();
+    let mut rng = WyRng::from_rng(&mut rand::rng());
     let mut x = (0..100).collect::<Vec<usize>>();
     b.iter(|| {
         x.shuffle(&mut rng);
@@ -28,11 +28,11 @@ fn shuffle_fastrand(b: &mut Bencher) {
 
 #[bench]
 fn u8_wyhash(b: &mut Bencher) {
-    let mut rng = WyRng::from_rng(thread_rng()).unwrap();
+    let mut rng = WyRng::from_rng(&mut rand::rng());
     b.iter(|| {
         let mut sum = 0u8;
         for _ in 0..10_000 {
-            sum = sum.wrapping_add(rng.gen::<u8>());
+            sum = sum.wrapping_add(rng.random::<u8>());
         }
         sum
     })
@@ -52,11 +52,11 @@ fn u8_fastrand(b: &mut Bencher) {
 
 #[bench]
 fn u32_wyhash(b: &mut Bencher) {
-    let mut rng = WyRng::from_rng(thread_rng()).unwrap();
+    let mut rng = WyRng::from_rng(&mut rand::rng());
     b.iter(|| {
         let mut sum = 0u32;
         for _ in 0..10_000 {
-            sum = sum.wrapping_add(rng.gen::<u32>());
+            sum = sum.wrapping_add(rng.random::<u32>());
         }
         sum
     })
@@ -69,6 +69,23 @@ fn u32_fastrand(b: &mut Bencher) {
         let mut sum = 0u32;
         for _ in 0..10_000 {
             sum = sum.wrapping_add(rng.u32(..));
+        }
+        sum
+    })
+}
+
+#[bench]
+fn f32_fastrand(b: &mut Bencher) {
+    let mut rng = fastrand::Rng::new();
+    b.iter(|| {
+        // f32 sum unrolled 2x to hide f32-add latency.
+        //
+        // Optimal amount of unrolling is somewhat sensitive to CPU and algorithm.
+        // Variously could be 2x, 3x, or 4x unrolling. On AArch64 and x86-64 on the
+        // current algorithm, 2x seems to be optimal on this benchmark.
+        let mut sum = 0.0;
+        for _ in 0..5_000 {
+            sum += rng.f32() + rng.f32();
         }
         sum
     })

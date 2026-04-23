@@ -48,7 +48,7 @@ pub enum MemoryInitialization {
     /// data segments when the module is instantiated.
     ///
     /// This is the default memory initialization type.
-    Segmented(collections::Vec<MemoryInitializer>),
+    Segmented(TryVec<MemoryInitializer>),
 
     /// Memory initialization is statically known and involves a single `memcpy`
     /// or otherwise simply making the defined data visible.
@@ -82,13 +82,13 @@ pub enum MemoryInitialization {
         ///
         /// The offset, range base, and range end are all guaranteed to be page
         /// aligned to the page size passed in to `try_static_init`.
-        map: collections::PrimaryMap<MemoryIndex, Option<StaticMemoryInitializer>>,
+        map: TryPrimaryMap<MemoryIndex, Option<StaticMemoryInitializer>>,
     },
 }
 
 impl Default for MemoryInitialization {
     fn default() -> Self {
-        Self::Segmented(collections::Vec::new())
+        Self::Segmented(TryVec::new())
     }
 }
 
@@ -226,14 +226,14 @@ pub struct TableInitialization {
     /// initialization. For example table initializers to a table that are all
     /// in-bounds will get removed from `segment` and moved into
     /// `initial_values` here.
-    pub initial_values: collections::PrimaryMap<DefinedTableIndex, TableInitialValue>,
+    pub initial_values: TryPrimaryMap<DefinedTableIndex, TableInitialValue>,
 
     /// Element segments present in the initial wasm module which are executed
     /// at instantiation time.
     ///
     /// These element segments are iterated over during instantiation to apply
     /// any segments that weren't already moved into `initial_values` above.
-    pub segments: collections::Vec<TableSegment>,
+    pub segments: TryVec<TableSegment>,
 }
 
 /// Initial value for all elements in a table.
@@ -249,7 +249,7 @@ pub enum TableInitialValue {
         /// `FuncIndex::reserved_value()`. Note that this image is empty by
         /// default and may not encompass the entire span of the table in which
         /// case the elements are initialized to null.
-        precomputed: collections::Vec<FuncIndex>,
+        precomputed: TryVec<FuncIndex>,
     },
     /// An arbitrary const expression.
     Expr(ConstExpr),
@@ -301,10 +301,10 @@ pub struct Module {
     pub name: Option<Atom>,
 
     /// All import records, in the order they are declared in the module.
-    pub initializers: collections::Vec<Initializer>,
+    pub initializers: TryVec<Initializer>,
 
     /// Exported entities.
-    pub exports: collections::IndexMap<Atom, EntityIndex>,
+    pub exports: TryIndexMap<Atom, EntityIndex>,
 
     /// The module "start" function, if present.
     pub start_func: Option<FuncIndex>,
@@ -316,7 +316,7 @@ pub struct Module {
     pub memory_initialization: MemoryInitialization,
 
     /// WebAssembly passive elements.
-    pub passive_elements: collections::Vec<TableSegmentElements>,
+    pub passive_elements: TryVec<TableSegmentElements>,
 
     /// The map from passive element index (element segment index space) to index in `passive_elements`.
     pub passive_elements_map: BTreeMap<ElemIndex, usize>,
@@ -325,7 +325,7 @@ pub struct Module {
     pub passive_data_map: BTreeMap<DataIndex, Range<u32>>,
 
     /// Types declared in the wasm module.
-    pub types: collections::PrimaryMap<TypeIndex, EngineOrModuleTypeIndex>,
+    pub types: TryPrimaryMap<TypeIndex, EngineOrModuleTypeIndex>,
 
     /// Number of imported or aliased functions in the module.
     pub num_imported_funcs: usize,
@@ -353,22 +353,22 @@ pub struct Module {
     pub num_escaped_funcs: usize,
 
     /// Types of functions, imported and local.
-    pub functions: collections::PrimaryMap<FuncIndex, FunctionType>,
+    pub functions: TryPrimaryMap<FuncIndex, FunctionType>,
 
     /// WebAssembly tables.
-    pub tables: collections::PrimaryMap<TableIndex, Table>,
+    pub tables: TryPrimaryMap<TableIndex, Table>,
 
     /// WebAssembly linear memory plans.
-    pub memories: collections::PrimaryMap<MemoryIndex, Memory>,
+    pub memories: TryPrimaryMap<MemoryIndex, Memory>,
 
     /// WebAssembly global variables.
-    pub globals: collections::PrimaryMap<GlobalIndex, Global>,
+    pub globals: TryPrimaryMap<GlobalIndex, Global>,
 
     /// WebAssembly global initializers for locally-defined globals.
-    pub global_initializers: collections::PrimaryMap<DefinedGlobalIndex, ConstExpr>,
+    pub global_initializers: TryPrimaryMap<DefinedGlobalIndex, ConstExpr>,
 
     /// WebAssembly exception and control tags.
-    pub tags: collections::PrimaryMap<TagIndex, Tag>,
+    pub tags: TryPrimaryMap<TagIndex, Tag>,
 }
 
 /// Initialization routines for creating an instance, encompassing imports,

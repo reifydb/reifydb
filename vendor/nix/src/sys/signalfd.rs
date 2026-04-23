@@ -18,6 +18,8 @@
 use crate::errno::Errno;
 pub use crate::sys::signal::{self, SigSet};
 use crate::Result;
+
+/// Information of a received signal, the return type of [`SignalFd::read_signal()`].
 pub use libc::signalfd_siginfo as siginfo;
 
 use std::mem;
@@ -105,11 +107,11 @@ impl SignalFd {
         Ok(SignalFd(fd))
     }
 
-    pub fn set_mask(&mut self, mask: &SigSet) -> Result<()> {
+    pub fn set_mask(&self, mask: &SigSet) -> Result<()> {
         self.update(mask, SfdFlags::empty())
     }
 
-    pub fn read_signal(&mut self) -> Result<Option<siginfo>> {
+    pub fn read_signal(&self) -> Result<Option<siginfo>> {
         let mut buffer = mem::MaybeUninit::<siginfo>::uninit();
 
         let size = mem::size_of_val(&buffer);
@@ -125,6 +127,15 @@ impl SignalFd {
         }
     }
 
+    /// Constructs a `SignalFd` wrapping an existing `OwnedFd`.
+    ///
+    /// # Safety
+    ///
+    /// `OwnedFd` is a valid `SignalFd`.
+    pub unsafe fn from_owned_fd(fd: OwnedFd) -> Self {
+        Self(fd)
+    }
+
     fn update(&self, mask: &SigSet, flags: SfdFlags) -> Result<()> {
         let raw_fd = self.0.as_raw_fd();
         unsafe {
@@ -135,13 +146,19 @@ impl SignalFd {
 }
 
 impl AsFd for SignalFd {
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         self.0.as_fd()
     }
 }
 impl AsRawFd for SignalFd {
     fn as_raw_fd(&self) -> RawFd {
         self.0.as_raw_fd()
+    }
+}
+
+impl From<SignalFd> for OwnedFd {
+    fn from(value: SignalFd) -> Self {
+        value.0 
     }
 }
 

@@ -37,7 +37,7 @@ fn main() -> Result<()> {
         let readline = rl.readline(">> ");
         match readline {
             Ok(line) => {
-                rl.add_history_entry(line.as_str());
+                rl.add_history_entry(line.as_str())?;
                 println!("Line: {}", line);
             },
             Err(ReadlineError::Interrupted) => {
@@ -67,7 +67,7 @@ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rustyline = "14.0.0"
+rustyline = "18.0.0"
 ```
 
 ## Features
@@ -98,7 +98,8 @@ For all modes:
 | Ctrl-R                | Reverse Search history (Ctrl-S forward, Ctrl-G cancel)                      |
 | Ctrl-T                | Transpose previous character with current character                         |
 | Ctrl-U                | Delete from start of line to cursor                                         |
-| Ctrl-V                | Insert any special character without performing its associated action (#65) |
+| Ctrl-V (unix)         | Insert any special character without performing its associated action (#65) |
+| Ctrl-V (windows)      | Paste from clipboard                                                        |
 | Ctrl-W                | Delete word leading up to cursor (using white space as a word boundary)     |
 | Ctrl-Y                | Paste from Yank buffer                                                      |
 | Ctrl-Z                | Suspend (Unix only)                                                         |
@@ -111,21 +112,29 @@ For all modes:
 | Ctrl-A, Home      | Move cursor to the beginning of line                                                             |
 | Ctrl-B, Left      | Move cursor one character left                                                                   |
 | Ctrl-E, End       | Move cursor to end of line                                                                       |
-| Ctrl-F, Right     | Move cursor one character right                                                                  |
+| Ctrl-F, Right     | Move cursor one character right (or complete hint if cursor is at the end of line)               |
 | Ctrl-H, Backspace | Delete character before cursor                                                                   |
+| Shift-Tab         | Previous completion                                                                              |
 | Ctrl-I, Tab       | Next completion                                                                                  |
 | Ctrl-K            | Delete from cursor to end of line                                                                |
 | Ctrl-L            | Clear screen                                                                                     |
 | Ctrl-N, Down      | Next match from history                                                                          |
 | Ctrl-P, Up        | Previous match from history                                                                      |
+| Ctrl-X Ctrl-G     | Abort                                                                                            |
+| Ctrl-X Esc        | Abort                                                                                            |
 | Ctrl-X Ctrl-U     | Undo                                                                                             |
+| Ctrl-X Backspace  | Delete from cursor to the beginning of line                                                      |
 | Ctrl-Y            | Paste from Yank buffer (Meta-Y to paste next yank instead)                                       |
+| Ctrl-] <char>     | Search character forward                                                                         |
+| Ctrl-Alt-] <char> | Search character backward                                                                        |
 | Meta-<            | Move to first entry in history                                                                   |
 | Meta->            | Move to last entry in history                                                                    |
 | Meta-B, Alt-Left  | Move cursor to previous word                                                                     |
+| Ctrl-Left         | See Alt-Left                                                                                     |
 | Meta-C            | Capitalize the current word                                                                      |
 | Meta-D            | Delete forwards one word                                                                         |
 | Meta-F, Alt-Right | Move cursor to next word                                                                         |
+| Ctrl-Right        | See Alt-Right                                                                                    |
 | Meta-L            | Lower-case the next word                                                                         |
 | Meta-T            | Transpose words                                                                                  |
 | Meta-U            | Upper-case the next word                                                                         |
@@ -167,6 +176,7 @@ For all modes:
 | p                    | Insert the yanked text at the cursor (paste)                                |
 | P                    | Insert the yanked text before the cursor                                    |
 | r                    | Replaces a single character under the cursor (without leaving command mode) |
+| R                    | Replaces a single character under the cursor (entering the replace mode)    |
 | s                    | Delete a single character under the cursor and enter input mode             |
 | S                    | Change current line (equivalent to 0c$)                                     |
 | t<char>              | Move right to the next occurrence of `char`, then one char backward         |
@@ -177,18 +187,23 @@ For all modes:
 | x                    | Delete a single character under the cursor                                  |
 | X                    | Delete a character before the cursor                                        |
 | y<movement>          | Yank a movement into buffer (copy)                                          |
+| <<movement>          | Dedent                                                                      |
+| ><movement>          | Indent                                                                      |
 
 ### vi insert mode
 
-| Keystroke         | Action                         |
-| ----------------- | ------------------------------ |
-| Ctrl-H, Backspace | Delete character before cursor |
-| Ctrl-I, Tab       | Next completion                |
-| Esc               | Switch to command mode         |
+| Keystroke         | Action                                        |
+| ----------------- | --------------------------------------------- |
+| Ctrl-H, Backspace | Delete character before cursor                |
+| Shift-Tab         | Previous completion                           |
+| Ctrl-I, Tab       | Next completion                               |
+| Right             | Complete hint if cursor is at the end of line |
+| Alt-<char>        | Fast command mode                             |
+| Esc               | Switch to command mode                        |
 
 [Readline vi Editing Mode Cheat Sheet](http://www.catonmat.net/download/bash-vi-editing-mode-cheat-sheet.pdf)
 
-[Terminal codes (ANSI/VT100)](http://wiki.bash-hackers.org/scripting/terminalcodes)
+[ANSI escape code](https://en.wikipedia.org/wiki/ANSI_escape_code)
 
 ## Wine
 
@@ -213,19 +228,21 @@ $ infocmp
 
 ## Similar projects
 
-| Library            | Lang    | OS     | Term | Unicode | History       | Completion | Keymap        | Kill Ring | Undo | Colors     | Hint/Auto suggest |
-| ------------------ | ------- | ------ | ---- | ------- | ------------- | ---------- | ------------- | --------- | ---- | ---------- | ----------------- |
-| [go-prompt][]      | Go      | Ux/win | ANSI | Yes     | Yes           | any        | Emacs/prog    | No        | No   | Yes        | Yes               |
-| [Haskeline][]      | Haskell | Ux/Win | Any  | Yes     | Yes           | any        | Emacs/vi/conf | Yes       | Yes  | ?          | ?                 |
-| [isocline][]       | C       | Ux/Win | ANSI | Yes     | Yes           | any        | Emacs         | No        | Yes  | Yes        | Yes               |
-| [linefeed][]       | Rust    | Ux/Win | Any  |         | Yes           | any        | Emacs/conf    | Yes       | No   | ?          | No                |
-| [linenoise][]      | C       | Ux     | ANSI | No      | Yes           | only line  | Emacs         | No        | No   | Ux         | Yes               |
-| [Liner][]          | Rust    | Ux     | ANSI |         | No inc search | only word  | Emacs/vi/prog | No        | Yes  | Ux         | History based     |
-| [prompt_toolkit][] | Python  | Ux/Win | ANSI | Yes     | Yes           | any        | Emacs/vi/conf | Yes       | Yes  | Ux/Win     | Yes               |
-| [reedline][]       | Rust    | Ux/Win | ANSI | Yes     | Yes           | any        | Emacs/vi/bind | No        | Yes  | Ux/Win     | Yes               |
-| [replxx][]         | C/C++   | Ux/Win | ANSI | Yes     | Yes           | only line  | Emacs         | Yes       | No   | Ux/Win     | Yes               |
-| Rustyline          | Rust    | Ux/Win | ANSI | Yes     | Yes           | any        | Emacs/vi/bind | Yes       | Yes  | Ux/Win 10+ | Yes               |
-| [termwiz][]        | Rust    | Ux/Win | Any  | ?       | Yes           | any        | Emacs         | No        | No   | Ux/Win     | No                |
+| Library            | Lang    | OS      | Term | Unicode | History       | Completion | Keymap        | Kill Ring | Undo | Colors     | Hint/Auto suggest |
+|--------------------|---------|---------|------|---------|---------------|------------|---------------|-----------|------|------------|-------------------|
+| [go-prompt][]      | Go      | Ux/win  | ANSI | Yes     | Yes           | any        | Emacs/prog    | No        | No   | Yes        | Yes               |
+| [Haskeline][]      | Haskell | Ux/Win  | Any  | Yes     | Yes           | any        | Emacs/vi/conf | Yes       | Yes  | ?          | ?                 |
+| [isocline][]       | C       | Ux/Win  | ANSI | Yes     | Yes           | any        | Emacs         | No        | Yes  | Yes        | Yes               |
+| [linefeed][]       | Rust    | Ux/Win  | Any  |         | Yes           | any        | Emacs/conf    | Yes       | No   | ?          | No                |
+| [linenoise][]      | C       | Ux      | ANSI | No      | Yes           | only line  | Emacs         | No        | No   | Ux         | Yes               |
+| [Liner][]          | Rust    | Ux      | ANSI |         | No inc search | only word  | Emacs/vi/prog | No        | Yes  | Ux         | History based     |
+| [noline][]         | Rust    | no\_std | ANSI | Yes     | Yes           | No         | Emacs         | No        | No   | Yes        | No                |
+| [prompt_toolkit][] | Python  | Ux/Win  | ANSI | Yes     | Yes           | any        | Emacs/vi/conf | Yes       | Yes  | Ux/Win     | Yes               |
+| [reedline][]       | Rust    | Ux/Win  | ANSI | Yes     | Yes           | any        | Emacs/vi/bind | No        | Yes  | Ux/Win     | Yes               |
+| [replxx][]         | C/C++   | Ux/Win  | ANSI | Yes     | Yes           | only line  | Emacs         | Yes       | No   | Ux/Win     | Yes               |
+| Rustyline          | Rust    | Ux/Win  | ANSI | Yes     | Yes           | any        | Emacs/vi/bind | Yes       | Yes  | Ux/Win 10+ | Yes               |
+| [termwiz][]        | Rust    | Ux/Win  | Any  | ?       | Yes           | any        | Emacs         | No        | No   | Ux/Win     | No                |
+
 
 [go-prompt]: https://github.com/c-bata/go-prompt
 [haskeline]: https://github.com/judah/haskeline
@@ -237,6 +254,7 @@ $ infocmp
 [reedline]: https://github.com/nushell/reedline
 [replxx]: https://github.com/AmokHuginnsson/replxx
 [termwiz]: https://github.com/wez/wezterm/tree/main/termwiz
+[noline]: https://github.com/rustne-kretser/noline
 
 ## Multi line support
 
@@ -252,3 +270,7 @@ literal newline to be added to the input buffer.
 
 The way to achieve multi-line editing is to implement the `Validator`
 trait.
+
+## Minimum supported Rust version (MSRV)
+
+Latest stable Rust version at the time of release. It might compile with older versions.

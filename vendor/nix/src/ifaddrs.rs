@@ -33,7 +33,7 @@ pub struct InterfaceAddress {
 }
 
 cfg_if! {
-    if #[cfg(any(linux_android, target_os = "emscripten", target_os = "fuchsia"))] {
+    if #[cfg(any(linux_android, target_os = "emscripten", target_os = "fuchsia", target_os = "hurd"))] {
         fn get_ifu_from_sockaddr(info: &libc::ifaddrs) -> *const libc::sockaddr {
             info.ifa_ifu
         }
@@ -93,7 +93,7 @@ impl InterfaceAddress {
         let netmask =
             unsafe { SockaddrStorage::from_raw(info.ifa_netmask, None) };
         let mut addr = InterfaceAddress {
-            interface_name: ifname.to_string_lossy().to_string(),
+            interface_name: ifname.to_string_lossy().into_owned(),
             flags: InterfaceFlags::from_bits_truncate(
                 info.ifa_flags as IflagsType,
             ),

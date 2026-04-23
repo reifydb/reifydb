@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "blake2"
-version = "0.11.0-rc.5"
+version = "0.11.0-rc.6"
 authors = ["RustCrypto Developers"]
 build = false
 autolib = false
@@ -71,15 +71,11 @@ name = "mod"
 path = "benches/mod.rs"
 
 [dependencies.digest]
-version = "0.11.0-rc.11"
+version = "0.11"
 features = ["mac"]
 
-[dev-dependencies.base16ct]
-version = "1"
-features = ["alloc"]
-
 [dev-dependencies.digest]
-version = "0.11.0-rc.11"
+version = "0.11"
 features = ["dev"]
 
 [dev-dependencies.hex-literal]

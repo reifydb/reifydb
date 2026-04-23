@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.91.0"
+rust-version = "1.92.0"
 name = "wasmtime-internal-component-util"
-version = "43.0.0"
+version = "44.0.0"
 authors = ["The Wasmtime Project Developers"]
 build = false
 autolib = false

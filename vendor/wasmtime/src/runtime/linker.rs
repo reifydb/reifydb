@@ -13,10 +13,7 @@ use core::future::Future;
 use core::marker;
 use core::mem::MaybeUninit;
 use log::warn;
-use wasmtime_environ::{
-    Atom, StringPool,
-    collections::{HashMap, Vec},
-};
+use wasmtime_environ::{Atom, PanicOnOom, StringPool};
 
 /// Structure used to link wasm modules/instances together.
 ///
@@ -87,7 +84,7 @@ use wasmtime_environ::{
 pub struct Linker<T> {
     engine: Engine,
     pool: StringPool,
-    map: HashMap<ImportKey, Definition>,
+    map: TryHashMap<ImportKey, Definition>,
     allow_shadowing: bool,
     allow_unknown_exports: bool,
     _marker: marker::PhantomData<fn() -> T>,
@@ -163,7 +160,7 @@ impl<T> Linker<T> {
     pub fn new(engine: &Engine) -> Linker<T> {
         Linker {
             engine: engine.clone(),
-            map: HashMap::new(),
+            map: TryHashMap::new(),
             pool: StringPool::new(),
             allow_shadowing: false,
             allow_unknown_exports: false,
@@ -636,7 +633,7 @@ impl<T> Linker<T> {
         T: 'static,
     {
         let mut store = store.as_context_mut();
-        let exports: Vec<_> = instance
+        let exports: TryVec<_> = instance
             .exports(&mut store)
             .map(|e| {
                 Ok((
@@ -991,7 +988,7 @@ impl<T> Linker<T> {
     pub fn alias_module(&mut self, module: &str, as_module: &str) -> Result<()> {
         let module = self.pool.insert(module)?;
         let as_module = self.pool.insert(as_module)?;
-        let items: Vec<_> = self
+        let items: TryVec<_> = self
             .map
             .iter()
             .filter(|(key, _def)| key.module == module)
@@ -1180,7 +1177,7 @@ impl<T> Linker<T> {
     where
         T: 'static,
     {
-        let mut imports: Vec<_> = module
+        let mut imports: TryVec<_> = module
             .imports()
             .map(|import| Ok(self._get_by_import(&import)?))
             .try_collect::<_, Error>()?;
@@ -1219,7 +1216,7 @@ impl<T> Linker<T> {
                 &self.pool[key.module],
                 &self.pool[key.name.unwrap()],
                 // Should be safe since `T` is connecting the linker and store
-                unsafe { item.to_extern(store.0) },
+                unsafe { item.to_extern(store.0).panic_on_oom() },
             )
         })
     }
@@ -1227,7 +1224,7 @@ impl<T> Linker<T> {
     /// Looks up a previously defined value in this [`Linker`], identified by
     /// the names provided.
     ///
-    /// Returns `None` if this name was not previously defined in this
+    /// Returns an error if this name was not previously defined in this
     /// [`Linker`].
     ///
     /// # Panics
@@ -1239,13 +1236,16 @@ impl<T> Linker<T> {
         mut store: impl AsContextMut<Data = T>,
         module: &str,
         name: &str,
-    ) -> Option<Extern>
+    ) -> Result<Extern>
     where
         T: 'static,
     {
         let store = store.as_context_mut().0;
-        // Should be safe since `T` is connecting the linker and store
-        Some(unsafe { self._get(module, name)?.to_extern(store) })
+        match self._get(module, name) {
+            // Safety: `T` is connecting the linker and store.
+            Some(def) => Ok(unsafe { def.to_extern(store)? }),
+            None => bail!("missing definition for `{module}::{name}`"),
+        }
     }
 
     fn _get(&self, module: &str, name: &str) -> Option<&Definition> {
@@ -1267,15 +1267,32 @@ impl<T> Linker<T> {
     /// same [`Engine`] that this linker was created with.
     pub fn get_by_import(
         &self,
-        mut store: impl AsContextMut<Data = T>,
+        store: impl AsContextMut<Data = T>,
         import: &ImportType,
     ) -> Option<Extern>
     where
         T: 'static,
     {
+        self.try_get_by_import(store, import)
+            .expect("out of memory")
+    }
+
+    /// Same as [`Linker::get_by_import`] but returns an error instead of
+    /// panicking on allocation failure.
+    pub fn try_get_by_import(
+        &self,
+        mut store: impl AsContextMut<Data = T>,
+        import: &ImportType,
+    ) -> Result<Option<Extern>>
+    where
+        T: 'static,
+    {
         let store = store.as_context_mut().0;
-        // Should be safe since `T` is connecting the linker and store
-        Some(unsafe { self._get_by_import(import).ok()?.to_extern(store) })
+        match self._get_by_import(import) {
+            // Should be safe since `T` is connecting the linker and store
+            Ok(def) => Ok(Some(unsafe { def.to_extern(store)? })),
+            Err(_) => Ok(None),
+        }
     }
 
     fn _get_by_import(&self, import: &ImportType) -> Result<Definition, UnknownImportError> {
@@ -1299,7 +1316,13 @@ impl<T> Linker<T> {
     where
         T: 'static,
     {
-        if let Some(external) = self.get(&mut store, module, "") {
+        if let Some(external) = self.get(&mut store, module, "").map(Some).or_else(|e| {
+            if e.is::<OutOfMemory>() {
+                Err(e)
+            } else {
+                Ok(None)
+            }
+        })? {
             if let Extern::Func(func) = external {
                 return Ok(func);
             }
@@ -1307,7 +1330,17 @@ impl<T> Linker<T> {
         }
 
         // For compatibility, also recognize "_start".
-        if let Some(external) = self.get(&mut store, module, "_start") {
+        if let Some(external) = self
+            .get(&mut store, module, "_start")
+            .map(Some)
+            .or_else(|e| {
+                if e.is::<OutOfMemory>() {
+                    Err(e)
+                } else {
+                    Ok(None)
+                }
+            })?
+        {
             if let Extern::Func(func) = external {
                 return Ok(func);
             }
@@ -1345,13 +1378,13 @@ impl Definition {
     /// Note the unsafety here is due to calling `HostFunc::to_func`. The
     /// requirement here is that the `T` that was originally used to create the
     /// `HostFunc` matches the `T` on the store.
-    pub(crate) unsafe fn to_extern(&self, store: &mut StoreOpaque) -> Extern {
+    pub(crate) unsafe fn to_extern(&self, store: &mut StoreOpaque) -> Result<Extern, OutOfMemory> {
         match self {
-            Definition::Extern(e, _) => e.clone(),
+            Definition::Extern(e, _) => Ok(e.clone()),
             // SAFETY: the contract of this function is the same as what's
             // required of `to_func`, that `T` of the store matches the `T` of
             // this original definition.
-            Definition::HostFunc(func) => unsafe { func.to_func(store).into() },
+            Definition::HostFunc(func) => unsafe { Ok(func.to_func(store)?.into()) },
         }
     }
 

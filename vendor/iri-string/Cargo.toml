@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.60"
 name = "iri-string"
-version = "0.7.11"
+version = "0.7.12"
 authors = ["YOSHIOKA Takuma <nop_thread@nops.red>"]
 build = false
 autolib = false

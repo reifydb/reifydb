@@ -1269,6 +1269,16 @@ impl Config {
         self
     }
 
+    /// Configures whether the component model map type is enabled or not.
+    ///
+    /// This is part of the component model specification and enables the
+    /// `map<k, v>` type in WIT and the component binary format.
+    #[cfg(feature = "component-model")]
+    pub fn wasm_component_model_map(&mut self, enable: bool) -> &mut Self {
+        self.wasm_features(WasmFeatures::CM_MAP, enable);
+        self
+    }
+
     /// This corresponds to the 🔧 emoji in the component model specification.
     ///
     /// Please note that Wasmtime's support for this feature is _very_
@@ -1452,32 +1462,6 @@ impl Config {
         self.compiler_config_mut()
             .settings
             .insert("enable_nan_canonicalization".to_string(), val.to_string());
-        self
-    }
-
-    /// Controls whether proof-carrying code (PCC) is used to validate
-    /// lowering of Wasm sandbox checks.
-    ///
-    /// Proof-carrying code carries "facts" about program values from
-    /// the IR all the way to machine code, and checks those facts
-    /// against known machine-instruction semantics. This guards
-    /// against bugs in instruction lowering that might create holes
-    /// in the Wasm sandbox.
-    ///
-    /// PCC is designed to be fast: it does not require complex
-    /// solvers or logic engines to verify, but only a linear pass
-    /// over a trail of "breadcrumbs" or facts at each intermediate
-    /// value. Thus, it is appropriate to enable in production.
-    ///
-    /// # Panics
-    ///
-    /// Panics if this configuration's compiler was [disabled][Config::enable_compiler].
-    #[cfg(any(feature = "cranelift", feature = "winch"))]
-    pub fn cranelift_pcc(&mut self, enable: bool) -> &mut Self {
-        let val = if enable { "true" } else { "false" };
-        self.compiler_config_mut()
-            .settings
-            .insert("enable_pcc".to_string(), val.to_string());
         self
     }
 
@@ -2248,6 +2232,7 @@ impl Config {
             | WasmFeatures::CM_THREADING
             | WasmFeatures::CM_ERROR_CONTEXT
             | WasmFeatures::CM_GC
+            | WasmFeatures::CM_MAP
             | WasmFeatures::CM_FIXED_LENGTH_LISTS;
 
         #[allow(unused_mut, reason = "easier to avoid #[cfg]")]
@@ -3004,7 +2989,7 @@ impl Config {
     /// The WebAssembly threads proposal, configured by [`Config::wasm_threads`]
     /// is on-by-default but there are enough deficiencies in Wasmtime's
     /// implementation and API integration that creation of a shared memory is
-    /// disabled by default. This cofiguration knob can be used to enable this.
+    /// disabled by default. This configuration knob can be used to enable this.
     ///
     /// When enabling this method be aware that wasm threads are, at this time,
     /// a [tier 2
@@ -3639,7 +3624,8 @@ impl PoolingAllocationConfig {
     }
 
     /// The maximum size, in bytes, allocated for a component instance's
-    /// `VMComponentContext` metadata.
+    /// `VMComponentContext` metadata as well as the aggregate size of this
+    /// component's core instances `VMContext` metadata.
     ///
     /// The [`wasmtime::component::Instance`][crate::component::Instance] type
     /// has a static size but its internal `VMComponentContext` is dynamically
@@ -3656,10 +3642,17 @@ impl PoolingAllocationConfig {
     /// module will fail at runtime with an error indicating how many bytes were
     /// needed.
     ///
+    /// In addition to the memory in the runtime for the component itself,
+    /// components contain one or more core module instances. Each of these
+    /// require some memory in the runtime as described in
+    /// [`PoolingAllocationConfig::max_core_instance_size`]. The limit here
+    /// applies against the sum of all of these individual allocations.
+    ///
     /// The default value for this is 1MiB.
     ///
-    /// This provides an upper-bound on the total size of component
-    /// metadata-related allocations, along with
+    /// This provides an upper-bound on the total size of all component's
+    /// metadata-related allocations (for both the component and its embedded
+    /// core module instances), along with
     /// [`PoolingAllocationConfig::total_component_instances`]. The upper bound is
     ///
     /// ```text

@@ -799,10 +799,10 @@ pub mod tests {
 
 		#[test]
 		fn test_uuid7() {
-			let uuid1 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian(1, 1)));
-			let uuid2 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian(1, 2)));
-			let uuid3 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian(2, 1)));
-			let uuid4 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian(2, 2)));
+			let uuid1 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian_time(1, 1)));
+			let uuid2 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian_time(1, 2)));
+			let uuid3 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian_time(2, 1)));
+			let uuid4 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian_time(2, 2)));
 
 			let mut test_instance1 = Columns::new(vec![Column::uuid7("id", [uuid1, uuid2])]);
 

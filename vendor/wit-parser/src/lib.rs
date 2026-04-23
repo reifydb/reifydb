@@ -46,6 +46,7 @@ pub use metadata::PackageMetadata;
 pub mod abi;
 mod ast;
 pub use ast::SourceMap;
+pub use ast::error::*;
 pub use ast::lex::Span;
 pub use ast::{ParsedUsePath, parse_use_path};
 mod sizealign;
@@ -97,7 +98,7 @@ pub type TypeId = Id<TypeDef>;
 /// will connect the `foreign_deps` field of this structure to packages
 /// previously inserted within the [`Resolve`]. Embedders are responsible for
 /// performing this resolution themselves.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct UnresolvedPackage {
     /// The namespace, name, and version information for this package.
     pub name: PackageName,
@@ -175,7 +176,7 @@ impl UnresolvedPackage {
 }
 
 /// Tracks a set of packages, all pulled from the same group of WIT source files.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct UnresolvedPackageGroup {
     /// The "main" package in this package group which was found at the root of
     /// the WIT files.
@@ -190,7 +191,7 @@ pub struct UnresolvedPackageGroup {
     pub source_map: SourceMap,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum AstItem {
@@ -390,45 +391,10 @@ impl UnresolvedPackageGroup {
             .as_ref()
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("path is not valid utf-8: {:?}", path.as_ref()))?;
-        Self::parse_str(path, contents)
-    }
-
-    /// Parses the given string as a wit document.
-    ///
-    /// The `path` argument is used for error reporting. The `contents` provided
-    /// are considered to be the contents of `path`. This function does not read
-    /// the filesystem.
-    pub fn parse_str(path: &str, contents: &str) -> Result<UnresolvedPackageGroup> {
         let mut map = SourceMap::default();
         map.push_str(path, contents);
         map.parse()
-    }
-
-    /// Parse a WIT package at the provided path.
-    ///
-    /// The path provided is inferred whether it's a file or a directory. A file
-    /// is parsed with [`UnresolvedPackageGroup::parse_file`] and a directory is
-    /// parsed with [`UnresolvedPackageGroup::parse_dir`].
-    #[cfg(feature = "std")]
-    pub fn parse_path(path: impl AsRef<Path>) -> Result<UnresolvedPackageGroup> {
-        let path = path.as_ref();
-        if path.is_dir() {
-            UnresolvedPackageGroup::parse_dir(path)
-        } else {
-            UnresolvedPackageGroup::parse_file(path)
-        }
-    }
-
-    /// Parses a WIT package from the file provided.
-    ///
-    /// The return value represents all packages found in the WIT file which
-    /// might be either one or multiple depending on the syntax used.
-    #[cfg(feature = "std")]
-    pub fn parse_file(path: impl AsRef<Path>) -> Result<UnresolvedPackageGroup> {
-        let path = path.as_ref();
-        let contents = std::fs::read_to_string(path)
-            .with_context(|| format!("failed to read file {path:?}"))?;
-        Self::parse(path, &contents)
+            .map_err(|(map, e)| anyhow::anyhow!("{}", e.highlight(&map)))
     }
 
     /// Parses a WIT package from the directory provided.
@@ -464,10 +430,11 @@ impl UnresolvedPackageGroup {
             map.push_file(&path)?;
         }
         map.parse()
+            .map_err(|(map, e)| anyhow::anyhow!("{}", e.highlight(&map)))
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct World {
     /// The WIT identifier name of this world.
@@ -516,7 +483,7 @@ impl World {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IncludeName {
     /// The name of the item
     pub name: String,
@@ -527,7 +494,7 @@ pub struct IncludeName {
 
 /// An entry in the `includes` list of a world, representing an `include`
 /// statement in WIT.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorldInclude {
     /// The stability annotation on this include.
     pub stability: Stability,
@@ -600,7 +567,7 @@ impl WorldKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
 pub enum WorldItem {
@@ -654,7 +621,7 @@ impl WorldItem {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Interface {
     /// Optionally listed name of this interface.
@@ -714,7 +681,7 @@ impl Interface {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct TypeDef {
     pub name: Option<String>,

@@ -4,8 +4,8 @@ use crate::{Cmov, CmovEq, Condition};
 use core::{
     cmp,
     num::{
-        NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroU8, NonZeroU16,
-        NonZeroU32, NonZeroU64, NonZeroU128,
+        NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize, NonZeroU8,
+        NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize,
     },
     ops::{BitOrAssign, Shl},
     ptr, slice,
@@ -134,7 +134,7 @@ macro_rules! impl_cmov_with_loop {
 }
 
 // These types are large enough we don't need to use anything more complex than a simple loop
-impl_cmov_with_loop!(u32, u64, u128);
+impl_cmov_with_loop!(u32, u64, u128, usize);
 
 /// Ensure the two provided types have the same size and alignment.
 macro_rules! assert_size_and_alignment_eq {
@@ -183,16 +183,19 @@ impl_cmov_with_cast!(
     i32 => u32,
     i64 => u64,
     i128 => u128,
+    isize => usize,
     NonZeroI8 => i8,
     NonZeroI16 => i16,
     NonZeroI32 => i32,
     NonZeroI64 => i64,
     NonZeroI128 => i128,
+    NonZeroIsize => isize,
     NonZeroU8 => u8,
     NonZeroU16 => u16,
     NonZeroU32 => u32,
     NonZeroU64 => u64,
     NonZeroU128 => u128,
+    NonZeroUsize => usize,
     cmp::Ordering => i8 // #[repr(i8)]
 );
 
@@ -249,7 +252,7 @@ macro_rules! impl_cmoveq_with_loop {
 }
 
 // TODO(tarcieri): investigate word-coalescing impls
-impl_cmoveq_with_loop!(u16, u32, u64, u128);
+impl_cmoveq_with_loop!(u16, u32, u64, u128, usize);
 
 /// Implement [`CmovEq`] traits by casting to a different type that impls the traits.
 macro_rules! impl_cmoveq_with_cast {
@@ -280,16 +283,19 @@ impl_cmoveq_with_cast!(
     i32 => u32,
     i64 => u64,
     i128 => u128,
+    isize => usize,
     NonZeroI8 => i8,
     NonZeroI16 => i16,
     NonZeroI32 => i32,
     NonZeroI64 => i64,
     NonZeroI128 => i128,
+    NonZeroIsize => isize,
     NonZeroU8 => u8,
     NonZeroU16 => u16,
     NonZeroU32 => u32,
     NonZeroU64 => u64,
     NonZeroU128 => u128,
+    NonZeroUsize => usize,
     cmp::Ordering => i8 // #[repr(i8)]
 );
 
@@ -374,15 +380,14 @@ where
     Word: From<T>,
 {
     debug_assert!(size_of_val(slice) <= WORD_SIZE, "slice too large");
-    slice
-        .iter()
-        .rev()
-        .copied()
-        .fold(0, |acc, n| (acc << (size_of::<T>() * 8)) | Word::from(n))
+    slice.iter().rev().copied().fold(0, |acc, n| {
+        (acc << (const { size_of::<T>() * 8 })) | Word::from(n)
+    })
 }
 
 /// Serialize [`Word`] as bytes using the same byte ordering as `slice_to_word`.
 #[inline]
+#[allow(clippy::arithmetic_side_effects)]
 fn word_to_slice<T>(word: Word, out: &mut [T])
 where
     T: BitOrAssign + Copy + From<u8> + Shl<usize, Output = T>,
@@ -408,7 +413,10 @@ where
 #[inline]
 #[track_caller]
 #[must_use]
-#[allow(clippy::integer_division_remainder_used)]
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used
+)]
 fn slice_as_chunks<T, const N: usize>(slice: &[T]) -> (&[[T; N]], &[T]) {
     assert!(N != 0, "chunk size must be non-zero");
     let len_rounded_down = slice.len() / N * N;
@@ -426,7 +434,10 @@ fn slice_as_chunks<T, const N: usize>(slice: &[T]) -> (&[[T; N]], &[T]) {
 #[inline]
 #[track_caller]
 #[must_use]
-#[allow(clippy::integer_division_remainder_used)]
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used
+)]
 fn slice_as_chunks_mut<T, const N: usize>(slice: &mut [T]) -> (&mut [[T; N]], &mut [T]) {
     assert!(N != 0, "chunk size must be non-zero");
     let len_rounded_down = slice.len() / N * N;
@@ -444,9 +455,12 @@ fn slice_as_chunks_mut<T, const N: usize>(slice: &mut [T]) -> (&mut [[T; N]], &m
 #[inline]
 #[must_use]
 #[track_caller]
-#[allow(clippy::integer_division_remainder_used)]
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used
+)]
 unsafe fn slice_as_chunks_unchecked<T, const N: usize>(slice: &[T]) -> &[[T; N]] {
-    // SAFETY: Caller must guarantee that `N` is nonzero and exactly divides the slice length
+    // Caller must guarantee that `N` is nonzero and exactly divides the slice length
     const { debug_assert!(N != 0) };
     debug_assert_eq!(slice.len() % N, 0);
     let new_len = slice.len() / N;
@@ -461,9 +475,12 @@ unsafe fn slice_as_chunks_unchecked<T, const N: usize>(slice: &[T]) -> &[[T; N]]
 #[inline]
 #[must_use]
 #[track_caller]
-#[allow(clippy::integer_division_remainder_used)]
+#[allow(
+    clippy::arithmetic_side_effects,
+    clippy::integer_division_remainder_used
+)]
 unsafe fn slice_as_chunks_unchecked_mut<T, const N: usize>(slice: &mut [T]) -> &mut [[T; N]] {
-    // SAFETY: Caller must guarantee that `N` is nonzero and exactly divides the slice length
+    // Caller must guarantee that `N` is nonzero and exactly divides the slice length
     const { debug_assert!(N != 0) };
     debug_assert_eq!(slice.len() % N, 0);
     let new_len = slice.len() / N;

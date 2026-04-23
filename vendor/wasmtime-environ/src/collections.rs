@@ -8,19 +8,19 @@ mod index_map;
 mod primary_map;
 mod secondary_map;
 
-pub use btree_map::BTreeMap;
-pub use entity_set::EntitySet;
-pub use hash_map::HashMap;
-pub use hash_set::HashSet;
-pub use index_map::IndexMap;
-pub use primary_map::PrimaryMap;
-pub use secondary_map::SecondaryMap;
+pub use btree_map::TryBTreeMap;
+pub use entity_set::TryEntitySet;
+pub use hash_map::TryHashMap;
+pub use hash_set::TryHashSet;
+pub use index_map::TryIndexMap;
+pub use primary_map::TryPrimaryMap;
+pub use secondary_map::TrySecondaryMap;
 pub use wasmtime_core::{
     alloc::{
         TryClone, TryCollect, TryCow, TryExtend, TryFromIterator, TryNew, TryString, TryToOwned,
-        Vec, try_new,
+        TryVec, try_new,
     },
-    vec,
+    try_vec,
 };
 
 /// Collections which abort on OOM.

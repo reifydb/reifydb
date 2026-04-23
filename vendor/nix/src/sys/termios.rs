@@ -178,7 +178,7 @@ impl Termios {
     ///
     /// This is not part of `nix`'s public API because it requires additional work to maintain type
     /// safety.
-    pub(crate) fn get_libc_termios(&self) -> Ref<libc::termios> {
+    pub(crate) fn get_libc_termios(&self) -> Ref<'_, libc::termios> {
         {
             let mut termios = self.inner.borrow_mut();
             termios.c_iflag = self.input_flags.bits();
@@ -418,7 +418,7 @@ libc_enum! {
         VEOL,
         VEOL2,
         VERASE,
-        #[cfg(any(freebsdlike, solarish))]
+        #[cfg(any(freebsdlike, target_os = "illumos"))]
         VERASE2,
         VINTR,
         VKILL,
@@ -431,7 +431,7 @@ libc_enum! {
         #[cfg(not(target_os = "haiku"))]
         VREPRINT,
         VSTART,
-        #[cfg(any(bsd, solarish))]
+        #[cfg(any(bsd, target_os = "illumos"))]
         VSTATUS,
         VSTOP,
         VSUSP,
@@ -461,7 +461,7 @@ impl SpecialCharacterIndices {
 }
 
 pub use libc::NCCS;
-#[cfg(any(linux_android, target_os = "aix", bsd))]
+#[cfg(any(bsd, linux_android, target_os = "aix", target_os = "solaris"))]
 pub use libc::_POSIX_VDISABLE;
 
 libc_bitflags! {
@@ -478,6 +478,14 @@ libc_bitflags! {
         ICRNL;
         IXON;
         IXOFF;
+        #[cfg(any(linux_android,
+                  target_os = "aix",
+                  target_os = "cygwin",
+                  target_os = "haiku",
+                  target_os = "hurd",
+                  target_os = "nto",
+                  solarish))]
+        IUCLC;
         #[cfg(not(target_os = "redox"))]
         IXANY;
         #[cfg(not(any(target_os = "redox", target_os = "haiku")))]
@@ -503,6 +511,17 @@ libc_bitflags! {
                   target_os = "haiku",
                   apple_targets))]
         OFDEL as tcflag_t;
+        #[cfg(any(linux_android,
+                  target_os = "aix",
+                  target_os = "cygwin",
+                  target_os = "fuchsia",
+                  target_os = "haiku",
+                  target_os = "hurd",
+                  target_os = "nto",
+                  target_os = "redox",
+                  solarish,
+                  apple_targets))]
+        OFILL as tcflag_t;
         #[cfg(any(linux_android,
                   target_os = "haiku",
                   apple_targets))]
@@ -667,7 +686,7 @@ libc_bitflags! {
         ECHOK;
         ECHO;
         ECHONL;
-        #[cfg(not(target_os = "redox"))]
+        #[cfg(not(any(target_os = "redox", target_os = "cygwin")))]
         ECHOPRT;
         #[cfg(not(target_os = "redox"))]
         ECHOCTL;
@@ -676,16 +695,21 @@ libc_bitflags! {
         #[cfg(bsd)]
         ALTWERASE;
         IEXTEN;
-        #[cfg(not(any(target_os = "redox", target_os = "haiku", target_os = "aix")))]
+        #[cfg(not(any(target_os = "redox", target_os = "haiku", target_os = "aix", target_os = "cygwin")))]
         EXTPROC;
         TOSTOP;
         #[cfg(not(target_os = "redox"))]
         FLUSHO;
         #[cfg(bsd)]
         NOKERNINFO;
-        #[cfg(not(target_os = "redox"))]
+        #[cfg(not(any(target_os = "redox", target_os = "cygwin")))]
         PENDIN;
         NOFLSH;
+        #[cfg(any(linux_android,
+                  target_os = "aix",
+                  target_os = "haiku",
+                  target_os = "nto"))]
+        XCASE;
     }
 }
 

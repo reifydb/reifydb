@@ -10,7 +10,7 @@ use crate::{
     ModuleInternedTypeIndex, ModuleTypesBuilder, PanicOnOom as _, PrimaryMap, SizeOverflow,
     StaticMemoryInitializer, StaticModuleIndex, TableIndex, TableInitialValue, Tag, TagIndex,
     Tunables, TypeConvert, TypeIndex, WasmError, WasmHeapTopType, WasmHeapType, WasmResult,
-    WasmValType, WasmparserTypeConverter, collections,
+    WasmValType, WasmparserTypeConverter,
 };
 use cranelift_entity::SecondaryMap;
 use cranelift_entity::packed_option::ReservedValue;
@@ -52,6 +52,12 @@ pub struct ModuleTranslation<'data> {
     /// component and the embedder wants access to the raw wasm modules
     /// themselves.
     pub wasm: &'data [u8],
+
+    /// The byte offset of this module's Wasm binary within the outer
+    /// binary (e.g. a component). For standalone modules this is 0.
+    /// This is used to convert component-relative source locations to
+    /// module-relative source locations.
+    pub wasm_module_offset: u64,
 
     /// References to the function bodies.
     pub function_body_inputs: PrimaryMap<DefinedFuncIndex, FunctionBodyData<'data>>,
@@ -118,6 +124,7 @@ impl<'data> ModuleTranslation<'data> {
         Self {
             module: Module::new(module_index),
             wasm: &[],
+            wasm_module_offset: 0,
             function_body_inputs: PrimaryMap::default(),
             known_imported_functions: SecondaryMap::default(),
             exported_signatures: Vec::default(),
@@ -403,7 +410,7 @@ impl<'a, 'data> ModuleEnvironment<'a, 'data> {
                     self.result.module.tables.push(table)?;
                     let init = match init {
                         wasmparser::TableInit::RefNull => TableInitialValue::Null {
-                            precomputed: collections::Vec::new(),
+                            precomputed: TryVec::new(),
                         },
                         wasmparser::TableInit::Expr(expr) => {
                             let (init, escaped) = ConstExpr::from_wasmparser(self, expr)?;
@@ -1107,7 +1114,7 @@ impl ModuleTranslation<'_> {
         // memory initialization image is built here from the page data and then
         // it's converted to a single initializer.
         let data = mem::replace(&mut self.data, Vec::new());
-        let mut map = collections::PrimaryMap::with_capacity(info.len()).panic_on_oom();
+        let mut map = TryPrimaryMap::with_capacity(info.len()).panic_on_oom();
         let mut module_data_size = 0u32;
         for (memory, info) in info.iter() {
             // Create the in-memory `image` which is the initialized contents of
@@ -1230,7 +1237,7 @@ impl ModuleTranslation<'_> {
             if let TableInitialValue::Expr(expr) = init {
                 if let [ConstOp::RefFunc(f)] = expr.ops() {
                     *init = TableInitialValue::Null {
-                        precomputed: collections::vec![*f; table_size as usize].panic_on_oom(),
+                        precomputed: try_vec![*f; table_size as usize].panic_on_oom(),
                     };
                 }
             }

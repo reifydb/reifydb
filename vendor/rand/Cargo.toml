@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "rand"
-version = "0.10.0"
+version = "0.10.1"
 authors = [
     "The Rand Project Developers",
     "The Rust Project Developers",
@@ -64,7 +64,7 @@ default = [
     "sys_rng",
     "thread_rng",
 ]
-log = ["dep:log"]
+log = []
 serde = ["dep:serde"]
 simd_support = []
 std = [
@@ -97,10 +97,6 @@ default-features = false
 version = "0.4.0"
 optional = true
 
-[dependencies.log]
-version = "0.4.4"
-optional = true
-
 [dependencies.rand_core]
 version = "0.10.0"
 default-features = false
@@ -116,7 +112,7 @@ features = ["alloc"]
 default-features = false
 
 [dev-dependencies.rand_pcg]
-version = "0.10.0"
+version = "0.10"
 
 [dev-dependencies.rayon]
 version = "1.7"

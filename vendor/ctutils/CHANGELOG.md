@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.2 (2026-04-02)
+### Fixed
+- `cmov` v0.5.3 version requirement ([#1467])
+
+[#1467]: https://github.com/RustCrypto/utils/pull/1467
+
+## 0.4.1 (2026-04-02)
+### Added
+- `isize`/`usize` and `NonZero*` trait impls ([#1416])
+- `subtle` migration guide ([#1465])
+
+[#1416]: https://github.com/RustCrypto/utils/pull/1416
+[#1465]: https://github.com/RustCrypto/utils/pull/1465
+
 ## 0.4.0 (2026-01-19)
 ### Added
 - `core::num::NonZero<T>` support ([#1368])

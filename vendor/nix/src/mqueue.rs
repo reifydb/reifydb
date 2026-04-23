@@ -260,9 +260,11 @@ pub fn mq_getattr(mqd: &MqdT) -> Result<MqAttr> {
     })
 }
 
-/// Set the attributes of the message queue. Only `O_NONBLOCK` can be set, everything else will be ignored
-/// Returns the old attributes
-/// It is recommend to use the `mq_set_nonblock()` and `mq_remove_nonblock()` convenience functions as they are easier to use
+/// Set the attributes of the message queue. Only `O_NONBLOCK` can be set,
+/// everything else will be ignored. Returns the old attributes.
+///
+/// It is recommend to use the `mq_set_nonblock()` and `mq_remove_nonblock()`
+/// convenience functions as they are easier to use.
 ///
 /// [Further reading](https://pubs.opengroup.org/onlinepubs/9699919799/functions/mq_setattr.html)
 pub fn mq_setattr(mqd: &MqdT, newattr: &MqAttr) -> Result<MqAttr> {
@@ -313,7 +315,7 @@ pub fn mq_remove_nonblock(mqd: &MqdT) -> Result<MqAttr> {
 #[cfg(any(target_os = "linux", target_os = "netbsd", target_os = "dragonfly"))]
 impl AsFd for MqdT {
     /// Borrow the underlying message queue descriptor.
-    fn as_fd(&self) -> BorrowedFd {
+    fn as_fd(&self) -> BorrowedFd<'_> {
         // SAFETY: [MqdT] will only contain a valid fd by construction.
         unsafe { BorrowedFd::borrow_raw(self.0) }
     }

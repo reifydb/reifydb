@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.63"
 name = "hyper"
-version = "1.8.1"
+version = "1.9.0"
 authors = ["Sean McArthur <sean@seanmonstar.com>"]
 build = false
 include = [
@@ -90,7 +90,6 @@ http1 = [
     "dep:futures-core",
     "dep:httparse",
     "dep:itoa",
-    "dep:pin-utils",
 ]
 http2 = [
     "dep:futures-channel",
@@ -131,7 +130,7 @@ optional = true
 default-features = false
 
 [dependencies.h2]
-version = "0.4.2"
+version = "0.4.6"
 optional = true
 
 [dependencies.http]
@@ -158,10 +157,6 @@ optional = true
 
 [dependencies.pin-project-lite]
 version = "0.2.4"
-optional = true
-
-[dependencies.pin-utils]
-version = "0.1"
 optional = true
 
 [dependencies.smallvec]

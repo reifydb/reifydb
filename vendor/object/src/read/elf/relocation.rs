@@ -159,13 +159,13 @@ where
 
             match section.sh_type(endian) {
                 elf::SHT_REL => {
-                    if let Ok(relocations) = section.data_as_array(endian, self.file.data) {
+                    if let Ok(relocations) = section.data_as_array(endian, self.file.data.0) {
                         self.relocations =
                             Some(ElfRelocationIterator::Rel(relocations.iter(), endian));
                     }
                 }
                 elf::SHT_RELA => {
-                    if let Ok(relocations) = section.data_as_array(endian, self.file.data) {
+                    if let Ok(relocations) = section.data_as_array(endian, self.file.data.0) {
                         self.relocations = Some(ElfRelocationIterator::Rela(
                             relocations.iter(),
                             endian,
@@ -174,7 +174,7 @@ where
                     }
                 }
                 elf::SHT_CREL => {
-                    if let Ok(data) = section.data(endian, self.file.data) {
+                    if let Ok(data) = section.data(endian, self.file.data.0) {
                         if let Ok(relocations) = CrelIterator::new(data) {
                             self.relocations = Some(ElfRelocationIterator::Crel(relocations));
                         }
@@ -238,13 +238,13 @@ where
             let section = self.file.sections.section(self.section_index).unwrap();
             match section.sh_type(endian) {
                 elf::SHT_REL => {
-                    if let Ok(relocations) = section.data_as_array(endian, self.file.data) {
+                    if let Ok(relocations) = section.data_as_array(endian, self.file.data.0) {
                         self.relocations =
                             Some(ElfRelocationIterator::Rel(relocations.iter(), endian));
                     }
                 }
                 elf::SHT_RELA => {
-                    if let Ok(relocations) = section.data_as_array(endian, self.file.data) {
+                    if let Ok(relocations) = section.data_as_array(endian, self.file.data.0) {
                         self.relocations = Some(ElfRelocationIterator::Rela(
                             relocations.iter(),
                             endian,
@@ -253,7 +253,7 @@ where
                     }
                 }
                 elf::SHT_CREL => {
-                    if let Ok(data) = section.data(endian, self.file.data) {
+                    if let Ok(data) = section.data(endian, self.file.data.0) {
                         if let Ok(relocations) = CrelIterator::new(data) {
                             self.relocations = Some(ElfRelocationIterator::Crel(relocations));
                         }
@@ -287,7 +287,7 @@ fn parse_relocation<Elf: FileHeader>(
     let r_type = reloc.r_type;
     let flags = RelocationFlags::Elf { r_type };
     let g = E::Generic;
-    let unknown = (K::Unknown, E::Generic, 0);
+    let unknown = (K::Unknown, E::Unknown, 0);
     let (kind, encoding, size) = match header.e_machine(endian) {
         elf::EM_AARCH64 => {
             if header.is_type_64() {
@@ -372,8 +372,10 @@ fn parse_relocation<Elf: FileHeader>(
             elf::R_X86_64_64 => (K::Absolute, g, 64),
             elf::R_X86_64_PC32 => (K::Relative, g, 32),
             elf::R_X86_64_GOT32 => (K::Got, g, 32),
-            elf::R_X86_64_PLT32 => (K::PltRelative, g, 32),
+            elf::R_X86_64_PLT32 => (K::PltRelative, E::X86Branch, 32),
             elf::R_X86_64_GOTPCREL => (K::GotRelative, g, 32),
+            elf::R_X86_64_GOTPCRELX => (K::GotRelative, E::Unknown, 32),
+            elf::R_X86_64_REX_GOTPCRELX => (K::GotRelative, E::Unknown, 32),
             elf::R_X86_64_32 => (K::Absolute, g, 32),
             elf::R_X86_64_32S => (K::Absolute, E::X86Signed, 32),
             elf::R_X86_64_16 => (K::Absolute, g, 16),
@@ -527,6 +529,7 @@ fn parse_relocation<Elf: FileHeader>(
         encoding,
         size,
         target,
+        subtractor: None,
         addend: reloc.r_addend,
         implicit_addend,
         flags,
@@ -812,7 +815,7 @@ impl<Endian: endian::Endian> Relr for elf::Relr64<Endian> {
 /// Compact relocation
 ///
 /// The specification has been submited here: <https://groups.google.com/g/generic-abi/c/ppkaxtLb0P0/m/awgqZ_1CBAAJ>.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Crel {
     /// Relocation offset.
     pub r_offset: u64,
@@ -861,28 +864,14 @@ impl Crel {
 
 #[derive(Debug, Clone)]
 struct CrelIteratorHeader {
-    /// The number of encoded relocations.
+    /// The number of remaining encoded relocations.
     count: usize,
     /// The number of flag bits each relocation uses.
-    flag_bits: u64,
+    flag_bits: u8,
     /// Shift of the relocation value.
-    shift: u64,
+    shift: u8,
     /// True if the relocation format encodes addend.
     is_rela: bool,
-}
-
-#[derive(Default, Debug, Clone)]
-struct CrelIteratorState {
-    /// Index of the current relocation.
-    index: usize,
-    /// Offset of the latest relocation.
-    offset: u64,
-    /// Addend of the latest relocation.
-    addend: i64,
-    /// Symbol index of the latest relocation.
-    symidx: u32,
-    /// Type of the latest relocation.
-    typ: u32,
 }
 
 /// Compact relocation iterator.
@@ -893,7 +882,7 @@ pub struct CrelIterator<'data> {
     /// Parsed header information.
     header: CrelIteratorHeader,
     /// State of the iterator.
-    state: CrelIteratorState,
+    state: Crel,
 }
 
 impl<'data> CrelIterator<'data> {
@@ -910,7 +899,7 @@ impl<'data> CrelIterator<'data> {
         } else {
             2
         };
-        let shift = header & HEADER_SHIFT_MASK;
+        let shift = (header & HEADER_SHIFT_MASK) as u8;
         let is_rela = header & HEADER_ADDEND_BIT_MASK != 0;
 
         Ok(CrelIterator {
@@ -930,14 +919,14 @@ impl<'data> CrelIterator<'data> {
         self.header.is_rela
     }
 
-    /// Return the number of encoded relocations.
+    /// Return the number of remaining encoded relocations.
     pub fn len(&self) -> usize {
-        self.header.count - self.state.index
+        self.header.count
     }
 
     /// Return true if there are no more relocations to parse.
     pub fn is_empty(&self) -> bool {
-        self.header.count == self.state.index
+        self.header.count == 0
     }
 
     fn parse(&mut self) -> read::Result<Crel> {
@@ -961,36 +950,34 @@ impl<'data> CrelIterator<'data> {
                 .read_error("Cannot read offset and flags of CREL relocation")?
                 << (7 - self.header.flag_bits);
         }
-        self.state.offset = self.state.offset.wrapping_add(delta_offset);
+        self.state.r_offset = self
+            .state
+            .r_offset
+            .wrapping_add(delta_offset << self.header.shift);
 
         if flags & DELTA_SYMBOL_INDEX_MASK != 0 {
             let delta_symidx = self
                 .data
                 .read_sleb128()
                 .read_error("Cannot read symidx of CREL relocation")?;
-            self.state.symidx = self.state.symidx.wrapping_add(delta_symidx as u32);
+            self.state.r_sym = self.state.r_sym.wrapping_add(delta_symidx as u32);
         }
         if flags & DELTA_TYPE_MASK != 0 {
             let delta_typ = self
                 .data
                 .read_sleb128()
                 .read_error("Cannot read type of CREL relocation")?;
-            self.state.typ = self.state.typ.wrapping_add(delta_typ as u32);
+            self.state.r_type = self.state.r_type.wrapping_add(delta_typ as u32);
         }
         if self.header.is_rela && flags & DELTA_ADDEND_MASK != 0 {
             let delta_addend = self
                 .data
                 .read_sleb128()
                 .read_error("Cannot read addend of CREL relocation")?;
-            self.state.addend = self.state.addend.wrapping_add(delta_addend);
+            self.state.r_addend = self.state.r_addend.wrapping_add(delta_addend);
         }
-        self.state.index += 1;
-        Ok(Crel {
-            r_offset: self.state.offset << self.header.shift,
-            r_sym: self.state.symidx,
-            r_type: self.state.typ,
-            r_addend: self.state.addend,
-        })
+        self.header.count -= 1;
+        Ok(self.state)
     }
 }
 
@@ -998,13 +985,13 @@ impl<'data> Iterator for CrelIterator<'data> {
     type Item = read::Result<Crel>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.state.index >= self.header.count {
+        if self.is_empty() {
             return None;
         }
 
         let result = self.parse();
         if result.is_err() {
-            self.state.index = self.header.count;
+            self.header.count = 0;
         }
         Some(result)
     }

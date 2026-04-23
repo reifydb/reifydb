@@ -23,12 +23,13 @@ use crate::{Result, bail, ensure, format_err};
 use regalloc2::RegClass;
 use smallvec::{SmallVec, smallvec};
 use wasmparser::{
-    BlockType, BrTable, Ieee32, Ieee64, MemArg, V128, VisitOperator, VisitSimdOperator,
+    BlockType, BrTable, HeapType, Ieee32, Ieee64, MemArg, V128, ValType, VisitOperator,
+    VisitSimdOperator,
 };
 use wasmtime_cranelift::TRAP_INDIRECT_CALL_TO_NULL;
 use wasmtime_environ::{
-    FUNCREF_INIT_BIT, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TypeIndex, WasmHeapType,
-    WasmValType,
+    FUNCREF_INIT_BIT, FuncIndex, GlobalIndex, IndexType, MemoryIndex, TableIndex, TypeIndex,
+    WasmHeapType, WasmValType,
 };
 
 /// A macro to define unsupported WebAssembly operators.
@@ -203,6 +204,10 @@ macro_rules! def_unsupported {
     (emit GlobalGet $($rest:tt)*) => {};
     (emit GlobalSet $($rest:tt)*) => {};
     (emit Select $($rest:tt)*) => {};
+    (emit TypedSelect $($rest:tt)*) => {};
+    (emit RefNull $($rest:tt)*) => {};
+    (emit RefIsNull $($rest:tt)*) => {};
+    (emit RefFunc $($rest:tt)*) => {};
     (emit Drop $($rest:tt)*) => {};
     (emit BrTable $($rest:tt)*) => {};
     (emit CallIndirect $($rest:tt)*) => {};
@@ -1700,8 +1705,12 @@ where
 
     fn visit_table_grow(&mut self, table: u32) -> Self::Output {
         let table_index = TableIndex::from_u32(table);
-        let table_ty = self.env.table(table_index);
-        let builtin = match table_ty.ref_type.heap_type {
+        let ptr_type = self.env.ptr_type();
+        let (heap_type, idx_type) = {
+            let table_ty = self.env.table(table_index);
+            (table_ty.ref_type.heap_type, table_ty.idx_type)
+        };
+        let builtin = match heap_type {
             WasmHeapType::Func => self.env.builtins.table_grow_func_ref::<M::ABI>()?,
             _ => bail!(CodeGenError::unsupported_wasm_type()),
         };
@@ -1722,7 +1731,20 @@ where
 
         FnCall::emit::<M>(&mut self.env, self.masm, &mut self.context, builtin)?;
 
-        Ok(())
+        // Similar to the memory.grow builtin, `table.grow` returns a
+        // pointer, however, we need to ensure that the returned index
+        // is representative of the address space for tables.
+        match (ptr_type, idx_type) {
+            (WasmValType::I64, IndexType::I64) => Ok(()),
+            (WasmValType::I64, IndexType::I32) => {
+                let top: Reg = self.context.pop_to_reg(self.masm, None)?.into();
+                self.masm.wrap(writable!(top), top)?;
+                self.context.stack.push(TypedReg::i32(top).into());
+                Ok(())
+            }
+
+            _ => Err(format_err!(CodeGenError::unsupported_32_bit_platform())),
+        }
     }
 
     fn visit_table_size(&mut self, table: u32) -> Self::Output {
@@ -1744,13 +1766,9 @@ where
 
         let at = self.context.stack.ensure_index_at(3)?;
 
-        self.context.stack.insert_many(at, &[table.try_into()?]);
-        FnCall::emit::<M>(
-            &mut self.env,
-            self.masm,
-            &mut self.context,
-            Callee::Builtin(builtin.clone()),
-        )?;
+        let callee = self.prepare_builtin_defined_table_arg(table_index, at, builtin)?;
+        FnCall::emit::<M>(&mut self.env, self.masm, &mut self.context, callee)?;
+
         self.context.pop_and_free(self.masm)
     }
 
@@ -2205,6 +2223,48 @@ where
         self.context.free_reg(cond);
 
         Ok(())
+    }
+
+    fn visit_typed_select(&mut self, _ty: ValType) -> Self::Output {
+        self.visit_select()
+    }
+
+    fn visit_ref_null(&mut self, hty: HeapType) -> Self::Output {
+        match hty {
+            HeapType::FUNC => {
+                let ptr_type = self.env.ptr_type();
+                match ptr_type {
+                    WasmValType::I64 => self.context.stack.push(Val::i64(0)),
+                    WasmValType::I32 => self.context.stack.push(Val::i32(0)),
+                    _ => bail!(CodeGenError::unsupported_wasm_type()),
+                }
+                Ok(())
+            }
+            _ => Err(format_err!(CodeGenError::unsupported_wasm_type())),
+        }
+    }
+
+    fn visit_ref_is_null(&mut self) -> Self::Output {
+        let (zero, size) = match self.env.ptr_type() {
+            WasmValType::I64 => (RegImm::i64(0), OperandSize::S64),
+            WasmValType::I32 => (RegImm::i32(0), OperandSize::S32),
+            _ => bail!(CodeGenError::unsupported_wasm_type()),
+        };
+        self.context.unop(self.masm, |masm, reg| {
+            masm.cmp_with_set(writable!(reg), zero, IntCmpKind::Eq, size)?;
+            Ok(TypedReg::i32(reg))
+        })
+    }
+
+    fn visit_ref_func(&mut self, function_index: u32) -> Self::Output {
+        let ref_func = self.env.builtins.ref_func::<M::ABI>()?;
+        self.context.stack.extend([function_index.try_into()?]);
+        FnCall::emit::<M>(
+            &mut self.env,
+            self.masm,
+            &mut self.context,
+            Callee::Builtin(ref_func),
+        )
     }
 
     fn visit_i32_load(&mut self, memarg: MemArg) -> Self::Output {

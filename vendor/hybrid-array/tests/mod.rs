@@ -10,6 +10,89 @@ const EXAMPLE_SLICE: &[u8] = &[1, 2, 3, 4, 5, 6];
 const _FOO: ArrayN<u8, 4> = Array([1, 2, 3, 4]);
 
 #[test]
+fn as_ref_core_array() {
+    type A = Array<u8, U2>;
+    let array: A = Array([1, 2]);
+    let array_ref: &[u8; 2] = array.as_ref();
+    assert_eq!(&array, array_ref);
+}
+
+#[test]
+fn as_ref_identity() {
+    type A = Array<u8, U2>;
+    let array: A = Array([1, 2]);
+    let array_ref: &A = array.as_ref();
+    assert_eq!(&array, array_ref);
+}
+
+#[test]
+fn as_ref_slice() {
+    type A = Array<u8, U2>;
+    let array: A = Array([1, 2]);
+    let slice: &[u8] = array.as_ref();
+    assert_eq!(array.as_slice(), slice);
+}
+
+#[test]
+fn as_mut_core_array() {
+    type A = Array<u8, U2>;
+    let mut array: A = Array([1, 2]);
+    let array_ref: &mut [u8; 2] = array.as_mut();
+    assert_eq!(&[1, 2], array_ref);
+}
+
+#[test]
+fn as_mut_identity() {
+    type A = Array<u8, U2>;
+    let mut array: A = Array([1, 2]);
+    let array_ref: &mut A = array.as_mut();
+    assert_eq!(&[1, 2], array_ref);
+}
+
+#[test]
+fn as_mut_slice() {
+    type A = Array<u8, U2>;
+    let mut array: A = Array([1, 2]);
+    let slice: &mut [u8] = array.as_mut();
+    assert_eq!(&[1, 2], slice);
+}
+
+#[test]
+fn cast_slice_from_core() {
+    type A = Array<u8, U2>;
+    let slice = A::cast_slice_from_core(&[[1, 2], [3, 4]]);
+    assert_eq!(slice[0], Array([1, 2]));
+    assert_eq!(slice[1], Array([3, 4]));
+}
+
+#[test]
+fn cast_slice_from_core_mut() {
+    type A = Array<u8, U2>;
+    let mut arr = [[1, 2], [3, 4]];
+    let slice = A::cast_slice_from_core_mut(&mut arr);
+    assert_eq!(slice[0], Array([1, 2]));
+    assert_eq!(slice[1], Array([3, 4]));
+}
+
+#[test]
+fn cast_slice_to_core() {
+    type A = Array<u8, U2>;
+    let arr = [Array([1, 2]), Array([3, 4])];
+    let slice = A::cast_slice_to_core(&arr);
+    assert_eq!(slice[0], [1, 2]);
+    assert_eq!(slice[1], [3, 4]);
+}
+
+#[test]
+fn cast_slice_to_core_mut() {
+    type A = Array<u8, U2>;
+    let mut arr = [Array([1, 2]), Array([3, 4])];
+    let slice = A::cast_slice_to_core_mut(&mut arr);
+    assert_eq!(slice[0], [1, 2]);
+    assert_eq!(slice[1], [3, 4]);
+}
+
+#[test]
 fn tryfrom_slice_for_clonable_array() {
     assert!(Array::<u8, U0>::try_from(EXAMPLE_SLICE).is_err());
     assert!(Array::<u8, U3>::try_from(EXAMPLE_SLICE).is_err());
@@ -50,6 +133,49 @@ fn slice_as_mut_array() {
 }
 
 #[test]
+fn slice_as_chunks() {
+    type A = Array<u8, U2>;
+
+    let (slice_empty, rem_empty) = A::slice_as_chunks(&[]);
+    assert!(slice_empty.is_empty());
+    assert!(rem_empty.is_empty());
+
+    let (slice_one, rem_one) = A::slice_as_chunks(&[1]);
+    assert!(slice_one.is_empty());
+    assert_eq!(rem_one, &[1]);
+
+    let (slice_aligned, rem_aligned) = A::slice_as_chunks(&[1u8, 2]);
+    assert_eq!(slice_aligned, &[Array([1u8, 2])]);
+    assert_eq!(rem_aligned, &[]);
+
+    let (slice_unaligned, rem_unaligned) = A::slice_as_chunks(&[1u8, 2, 3]);
+    assert_eq!(slice_unaligned, &[Array([1u8, 2])]);
+    assert_eq!(rem_unaligned, &[3]);
+}
+
+#[test]
+fn slice_as_chunks_mut() {
+    type A = Array<u8, U2>;
+    let mut input = [1u8, 2, 3];
+
+    let (slice_empty, rem_empty) = A::slice_as_chunks_mut(&mut []);
+    assert!(slice_empty.is_empty());
+    assert!(rem_empty.is_empty());
+
+    let (slice_one, rem_one) = A::slice_as_chunks_mut(&mut input[..1]);
+    assert!(slice_one.is_empty());
+    assert_eq!(rem_one, &[1]);
+
+    let (slice_aligned, rem_aligned) = A::slice_as_chunks_mut(&mut input[..2]);
+    assert_eq!(slice_aligned, &[Array([1u8, 2])]);
+    assert_eq!(rem_aligned, &[]);
+
+    let (slice_unaligned, rem_unaligned) = A::slice_as_chunks_mut(&mut input);
+    assert_eq!(slice_unaligned, &[Array([1u8, 2])]);
+    assert_eq!(rem_unaligned, &[3]);
+}
+
+#[test]
 fn concat() {
     let prefix = Array::<u8, U2>::try_from(&EXAMPLE_SLICE[..2]).unwrap();
     let suffix = Array::<u8, U4>::try_from(&EXAMPLE_SLICE[2..]).unwrap();
@@ -83,6 +209,21 @@ fn split_ref_mut() {
 
     assert_eq!(prefix.as_slice(), &EXAMPLE_SLICE[..4]);
     assert_eq!(suffix.as_slice(), &EXAMPLE_SLICE[4..]);
+}
+
+#[test]
+fn from_ref() {
+    let n = 42u64;
+    let array = Array::from_ref(&n);
+    assert_eq!(array[0], n);
+}
+
+#[test]
+fn from_mut() {
+    let mut n = 42u64;
+    let array = Array::from_mut(&mut n);
+    array[0] = 43;
+    assert_eq!(n, 43);
 }
 
 #[test]

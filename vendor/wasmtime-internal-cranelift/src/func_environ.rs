@@ -11,7 +11,6 @@ use crate::trap::TranslateTrap;
 use cranelift_codegen::cursor::FuncCursor;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::{Imm64, Offset32, V128Imm};
-use cranelift_codegen::ir::pcc::Fact;
 use cranelift_codegen::ir::{
     self, BlockArg, Endianness, ExceptionTableData, ExceptionTableItem, types,
 };
@@ -27,12 +26,12 @@ use std::mem;
 use wasmparser::{FuncValidator, Operator, WasmFeatures, WasmModuleResources};
 use wasmtime_core::math::f64_cvt_to_int_bounds;
 use wasmtime_environ::{
-    BuiltinFunctionIndex, DataIndex, DefinedFuncIndex, ElemIndex, EngineOrModuleTypeIndex,
-    FrameStateSlotBuilder, FrameValType, FuncIndex, FuncKey, GlobalConstValue, GlobalIndex,
-    IndexType, Memory, MemoryIndex, Module, ModuleInternedTypeIndex, ModuleTranslation,
-    ModuleTypesBuilder, PtrSize, Table, TableIndex, TagIndex, Tunables, TypeConvert, TypeIndex,
-    VMOffsets, WasmCompositeInnerType, WasmFuncType, WasmHeapTopType, WasmHeapType, WasmRefType,
-    WasmResult, WasmValType,
+    BuiltinFunctionIndex, ComponentPC, DataIndex, DefinedFuncIndex, ElemIndex,
+    EngineOrModuleTypeIndex, FrameStateSlotBuilder, FrameValType, FuncIndex, FuncKey,
+    GlobalConstValue, GlobalIndex, IndexType, Memory, MemoryIndex, Module, ModuleInternedTypeIndex,
+    ModuleTranslation, ModuleTypesBuilder, PtrSize, Table, TableIndex, TagIndex, Tunables,
+    TypeConvert, TypeIndex, VMOffsets, WasmCompositeInnerType, WasmFuncType, WasmHeapTopType,
+    WasmHeapType, WasmRefType, WasmResult, WasmValType,
 };
 use wasmtime_environ::{FUNCREF_INIT_BIT, FUNCREF_MASK};
 
@@ -137,6 +136,11 @@ pub struct FuncEnvironment<'module_environment> {
     needs_gc_heap: bool,
     entities: WasmEntities,
 
+    /// The byte offset of the module's wasm binary within the outer
+    /// binary (e.g. a component). Used to make source locations in
+    /// guest-debug frame tables module-relative.
+    pub(crate) wasm_module_offset: u64,
+
     /// Translation state at the given point.
     pub(crate) stacks: FuncTranslationStacks,
 
@@ -167,10 +171,6 @@ pub struct FuncEnvironment<'module_environment> {
 
     /// The Cranelift global for our vmctx's `*mut VMStoreContext`.
     vm_store_context: Option<ir::GlobalValue>,
-
-    /// The PCC memory type describing the vmctx layout, if we're
-    /// using PCC.
-    pcc_vmctx_memtype: Option<ir::MemoryType>,
 
     /// Caches of signatures for builtin functions.
     builtin_functions: BuiltinFunctions,
@@ -223,6 +223,12 @@ pub struct FuncEnvironment<'module_environment> {
     /// The stack-slot used for exposing Wasm state via debug
     /// instrumentation, if any, and the builder containing its metadata.
     pub(crate) state_slot: Option<(ir::StackSlot, FrameStateSlotBuilder)>,
+
+    /// The next-srcloc: the location of the operator *after* this one
+    /// (in original bytecode order, i.e., not accounting for
+    /// nonlinear control flow). This is useful in cases where we need
+    /// to e.g. record the return-address of a callsite for debuginfo.
+    pub(crate) next_srcloc: ir::SourceLoc,
 }
 
 impl<'module_environment> FuncEnvironment<'module_environment> {
@@ -264,7 +270,6 @@ impl<'module_environment> FuncEnvironment<'module_environment> {
             heaps: PrimaryMap::default(),
             vmctx: None,
             vm_store_context: None,
-            pcc_vmctx_memtype: None,
             builtin_functions,
             offsets: VMOffsets::new(compiler.isa().pointer_bytes(), &translation.module),
             tunables,
@@ -284,6 +289,8 @@ impl<'module_environment> FuncEnvironment<'module_environment> {
             stack_switching_values_buffer: None,
 
             state_slot: None,
+            next_srcloc: ir::SourceLoc::default(),
+            wasm_module_offset: translation.wasm_module_offset,
         }
     }
 
@@ -294,24 +301,6 @@ impl<'module_environment> FuncEnvironment<'module_environment> {
     pub(crate) fn vmctx(&mut self, func: &mut Function) -> ir::GlobalValue {
         self.vmctx.unwrap_or_else(|| {
             let vmctx = func.create_global_value(ir::GlobalValueData::VMContext);
-            if self.isa.flags().enable_pcc() {
-                // Create a placeholder memtype for the vmctx; we'll
-                // add fields to it as we lazily create HeapData
-                // structs and global values.
-                let vmctx_memtype = func.create_memory_type(ir::MemoryTypeData::Struct {
-                    size: 0,
-                    fields: vec![],
-                });
-
-                self.pcc_vmctx_memtype = Some(vmctx_memtype);
-                func.global_value_facts[vmctx] = Some(Fact::Mem {
-                    ty: vmctx_memtype,
-                    min_offset: 0,
-                    max_offset: 0,
-                    nullable: false,
-                });
-            }
-
             self.vmctx = Some(vmctx);
             vmctx
         })
@@ -940,97 +929,32 @@ impl<'module_environment> FuncEnvironment<'module_environment> {
             .copied()
     }
 
-    /// Proof-carrying code: create a memtype describing an empty
-    /// runtime struct (to be updated later).
-    fn create_empty_struct_memtype(&self, func: &mut ir::Function) -> ir::MemoryType {
-        func.create_memory_type(ir::MemoryTypeData::Struct {
-            size: 0,
-            fields: vec![],
-        })
-    }
-
-    /// Proof-carrying code: add a new field to a memtype used to
-    /// describe a runtime struct. A memory region of type `memtype`
-    /// will have a pointer at `offset` pointing to another memory
-    /// region of type `pointee`. `readonly` indicates whether the
-    /// PCC-checked code is expected to update this field or not.
-    fn add_field_to_memtype(
-        &self,
-        func: &mut ir::Function,
-        memtype: ir::MemoryType,
-        offset: u32,
-        pointee: ir::MemoryType,
-        readonly: bool,
-    ) {
-        let ptr_size = self.pointer_type().bytes();
-        match &mut func.memory_types[memtype] {
-            ir::MemoryTypeData::Struct { size, fields } => {
-                *size = std::cmp::max(*size, offset.checked_add(ptr_size).unwrap().into());
-                fields.push(ir::MemoryTypeField {
-                    ty: self.pointer_type(),
-                    offset: offset.into(),
-                    readonly,
-                    fact: Some(ir::Fact::Mem {
-                        ty: pointee,
-                        min_offset: 0,
-                        max_offset: 0,
-                        nullable: false,
-                    }),
-                });
-
-                // Sort fields by offset -- we need to do this now
-                // because we may create an arbitrary number of
-                // memtypes for imported memories and we don't
-                // otherwise track them.
-                fields.sort_by_key(|f| f.offset);
-            }
-            _ => panic!("Cannot add field to non-struct memtype"),
-        }
-    }
-
-    /// Create an `ir::Global` that does `load(ptr + offset)` and, when PCC and
-    /// memory types are enabled, adds a field to the pointer's memory type for
-    /// this value we are loading.
-    pub(crate) fn global_load_with_memory_type(
+    /// Create an `ir::Global` that does `load(ptr + offset)`.
+    pub(crate) fn global_load(
         &mut self,
         func: &mut ir::Function,
         ptr: ir::GlobalValue,
         offset: u32,
         flags: ir::MemFlags,
-        ptr_mem_ty: Option<ir::MemoryType>,
-    ) -> (ir::GlobalValue, Option<ir::MemoryType>) {
-        let pointee = func.create_global_value(ir::GlobalValueData::Load {
+    ) -> ir::GlobalValue {
+        func.create_global_value(ir::GlobalValueData::Load {
             base: ptr,
             offset: Offset32::new(i32::try_from(offset).unwrap()),
             global_type: self.pointer_type(),
             flags,
-        });
-
-        let pointee_mem_ty = ptr_mem_ty.map(|ptr_mem_ty| {
-            let pointee_mem_ty = self.create_empty_struct_memtype(func);
-            self.add_field_to_memtype(func, ptr_mem_ty, offset, pointee_mem_ty, flags.readonly());
-            func.global_value_facts[pointee] = Some(Fact::Mem {
-                ty: pointee_mem_ty,
-                min_offset: 0,
-                max_offset: 0,
-                nullable: false,
-            });
-            pointee_mem_ty
-        });
-
-        (pointee, pointee_mem_ty)
+        })
     }
 
-    /// Like `global_load_with_memory_type` but specialized for loads out of the
+    /// Like `global_load` but specialized for loads out of the
     /// `vmctx`.
-    pub(crate) fn global_load_from_vmctx_with_memory_type(
+    pub(crate) fn global_load_from_vmctx(
         &mut self,
         func: &mut ir::Function,
         offset: u32,
         flags: ir::MemFlags,
-    ) -> (ir::GlobalValue, Option<ir::MemoryType>) {
+    ) -> ir::GlobalValue {
         let vmctx = self.vmctx(func);
-        self.global_load_with_memory_type(func, vmctx, offset, flags, self.pcc_vmctx_memtype)
+        self.global_load(func, vmctx, offset, flags)
     }
 
     /// Helper used when `!self.clif_instruction_traps_enabled()` is enabled to
@@ -1311,10 +1235,18 @@ impl<'module_environment> FuncEnvironment<'module_environment> {
                 .last()
                 .map(|s| s.raw())
                 .unwrap_or(u32::MAX);
-            let pc = srcloc.bits();
+            // Convert component-relative srcloc to module-relative
+            // Wasm PC for the frame table. The srcloc on the builder
+            // remains component-relative for native DWARF and other
+            // purposes, but the frame table must be module-relative
+            // because the guest-debug API presents a purely core-Wasm
+            // view of the world where components are deconstructed
+            // into core Wasm modules.
+            let component_pc = ComponentPC::new(srcloc.bits());
+            let module_pc = component_pc.to_module_pc(self.wasm_module_offset);
             vec![
                 ir::DebugTag::StackSlot(*slot),
-                ir::DebugTag::User(pc),
+                ir::DebugTag::User(module_pc.raw()),
                 ir::DebugTag::User(stack_shape),
             ]
         } else {
@@ -1364,6 +1296,17 @@ impl<'module_environment> FuncEnvironment<'module_environment> {
             builder.ins().stack_store(vmctx, slot, 0);
         }
     }
+
+    pub(crate) fn val_ty_needs_stack_map(&self, ty: WasmValType) -> bool {
+        match ty {
+            WasmValType::Ref(r) => self.heap_ty_needs_stack_map(r.heap_type),
+            _ => false,
+        }
+    }
+
+    pub(crate) fn heap_ty_needs_stack_map(&self, ty: WasmHeapType) -> bool {
+        ty.is_vmgcref_type_and_not_i31() && !ty.is_bottom()
+    }
 }
 
 impl TranslateTrap for FuncEnvironment<'_> {
@@ -1383,6 +1326,10 @@ impl TranslateTrap for FuncEnvironment<'_> {
         index: BuiltinFunctionIndex,
     ) -> ir::FuncRef {
         self.builtin_functions.load_builtin(builder.func, index)
+    }
+
+    fn debug_tags(&self, srcloc: ir::SourceLoc) -> Vec<ir::DebugTag> {
+        FuncEnvironment::debug_tags(self, srcloc)
     }
 }
 
@@ -1564,7 +1511,7 @@ impl FuncEnvironment<'_> {
         let memory = self.module.memories[index];
         let is_shared = memory.shared;
 
-        let (base_ptr, base_offset, current_length_offset, ptr_memtype) = {
+        let (base_ptr, base_offset, current_length_offset) = {
             let vmctx = self.vmctx(func);
             if let Some(def_index) = self.module.defined_memory_index(index) {
                 if is_shared {
@@ -1573,7 +1520,7 @@ impl FuncEnvironment<'_> {
                     // VMMemoryDefinition` to it and dereference that when
                     // atomically growing it.
                     let from_offset = self.offsets.vmctx_vmmemory_pointer(def_index);
-                    let (memory, def_mt) = self.global_load_from_vmctx_with_memory_type(
+                    let memory = self.global_load_from_vmctx(
                         func,
                         from_offset,
                         ir::MemFlags::trusted().with_readonly().with_can_move(),
@@ -1581,7 +1528,7 @@ impl FuncEnvironment<'_> {
                     let base_offset = i32::from(self.offsets.ptr.vmmemory_definition_base());
                     let current_length_offset =
                         i32::from(self.offsets.ptr.vmmemory_definition_current_length());
-                    (memory, base_offset, current_length_offset, def_mt)
+                    (memory, base_offset, current_length_offset)
                 } else {
                     let owned_index = self.module.owned_memory_index(def_index);
                     let owned_base_offset =
@@ -1591,16 +1538,11 @@ impl FuncEnvironment<'_> {
                         .vmctx_vmmemory_definition_current_length(owned_index);
                     let current_base_offset = i32::try_from(owned_base_offset).unwrap();
                     let current_length_offset = i32::try_from(owned_length_offset).unwrap();
-                    (
-                        vmctx,
-                        current_base_offset,
-                        current_length_offset,
-                        self.pcc_vmctx_memtype,
-                    )
+                    (vmctx, current_base_offset, current_length_offset)
                 }
             } else {
                 let from_offset = self.offsets.vmctx_vmmemory_import_from(index);
-                let (memory, def_mt) = self.global_load_from_vmctx_with_memory_type(
+                let memory = self.global_load_from_vmctx(
                     func,
                     from_offset,
                     ir::MemFlags::trusted().with_readonly().with_can_move(),
@@ -1608,7 +1550,7 @@ impl FuncEnvironment<'_> {
                 let base_offset = i32::from(self.offsets.ptr.vmmemory_definition_base());
                 let current_length_offset =
                     i32::from(self.offsets.ptr.vmmemory_definition_current_length());
-                (memory, base_offset, current_length_offset, def_mt)
+                (memory, base_offset, current_length_offset)
             }
         };
 
@@ -1619,21 +1561,11 @@ impl FuncEnvironment<'_> {
             flags: MemFlags::trusted(),
         });
 
-        let (base_fact, pcc_memory_type) = self.make_pcc_base_fact_and_type_for_memory(
-            func,
-            memory,
-            base_offset,
-            current_length_offset,
-            ptr_memtype,
-            bound,
-        );
-
-        let base = self.make_heap_base(func, memory, base_ptr, base_offset, base_fact);
+        let base = self.make_heap_base(func, memory, base_ptr, base_offset);
 
         self.heaps.push(HeapData {
             base,
             bound,
-            pcc_memory_type,
             memory,
         })
     }
@@ -1644,11 +1576,10 @@ impl FuncEnvironment<'_> {
         memory: Memory,
         ptr: ir::GlobalValue,
         offset: i32,
-        fact: Option<Fact>,
     ) -> ir::GlobalValue {
         let pointer_type = self.pointer_type();
 
-        let mut flags = ir::MemFlags::trusted().with_checked().with_can_move();
+        let mut flags = ir::MemFlags::trusted().with_can_move();
         if !memory.memory_may_move(self.tunables) {
             flags.set_readonly();
         }
@@ -1659,126 +1590,7 @@ impl FuncEnvironment<'_> {
             global_type: pointer_type,
             flags,
         });
-        func.global_value_facts[heap_base] = fact;
         heap_base
-    }
-
-    pub(crate) fn make_pcc_base_fact_and_type_for_memory(
-        &mut self,
-        func: &mut Function,
-        memory: Memory,
-        base_offset: i32,
-        current_length_offset: i32,
-        ptr_memtype: Option<ir::MemoryType>,
-        heap_bound: ir::GlobalValue,
-    ) -> (Option<Fact>, Option<ir::MemoryType>) {
-        // If we have a declared maximum, we can make this a "static" heap, which is
-        // allocated up front and never moved.
-        let host_page_size_log2 = self.target_config().page_size_align_log2;
-        let (base_fact, memory_type) = if !memory
-            .can_elide_bounds_check(self.tunables, host_page_size_log2)
-        {
-            if let Some(ptr_memtype) = ptr_memtype {
-                // Create a memtype representing the untyped memory region.
-                let data_mt = func.create_memory_type(ir::MemoryTypeData::DynamicMemory {
-                    gv: heap_bound,
-                    size: self.tunables.memory_guard_size,
-                });
-                // This fact applies to any pointer to the start of the memory.
-                let base_fact = ir::Fact::dynamic_base_ptr(data_mt);
-                // This fact applies to the length.
-                let length_fact = ir::Fact::global_value(
-                    u16::try_from(self.isa.pointer_type().bits()).unwrap(),
-                    heap_bound,
-                );
-                // Create a field in the vmctx for the base pointer.
-                match &mut func.memory_types[ptr_memtype] {
-                    ir::MemoryTypeData::Struct { size, fields } => {
-                        let base_offset = u64::try_from(base_offset).unwrap();
-                        fields.push(ir::MemoryTypeField {
-                            offset: base_offset,
-                            ty: self.isa.pointer_type(),
-                            // Read-only field from the PoV of PCC checks:
-                            // don't allow stores to this field. (Even if
-                            // it is a dynamic memory whose base can
-                            // change, that update happens inside the
-                            // runtime, not in generated code.)
-                            readonly: true,
-                            fact: Some(base_fact.clone()),
-                        });
-                        let current_length_offset = u64::try_from(current_length_offset).unwrap();
-                        fields.push(ir::MemoryTypeField {
-                            offset: current_length_offset,
-                            ty: self.isa.pointer_type(),
-                            // As above, read-only; only the runtime modifies it.
-                            readonly: true,
-                            fact: Some(length_fact),
-                        });
-
-                        let pointer_size = u64::from(self.isa.pointer_type().bytes());
-                        let fields_end = std::cmp::max(
-                            base_offset + pointer_size,
-                            current_length_offset + pointer_size,
-                        );
-                        *size = std::cmp::max(*size, fields_end);
-                    }
-                    _ => {
-                        panic!("Bad memtype");
-                    }
-                }
-                // Apply a fact to the base pointer.
-                (Some(base_fact), Some(data_mt))
-            } else {
-                (None, None)
-            }
-        } else {
-            if let Some(ptr_memtype) = ptr_memtype {
-                // Create a memtype representing the untyped memory region.
-                let data_mt = func.create_memory_type(ir::MemoryTypeData::Memory {
-                    size: self
-                        .tunables
-                        .memory_reservation
-                        .checked_add(self.tunables.memory_guard_size)
-                        .expect("Memory plan has overflowing size plus guard"),
-                });
-                // This fact applies to any pointer to the start of the memory.
-                let base_fact = Fact::Mem {
-                    ty: data_mt,
-                    min_offset: 0,
-                    max_offset: 0,
-                    nullable: false,
-                };
-                // Create a field in the vmctx for the base pointer.
-                match &mut func.memory_types[ptr_memtype] {
-                    ir::MemoryTypeData::Struct { size, fields } => {
-                        let offset = u64::try_from(base_offset).unwrap();
-                        fields.push(ir::MemoryTypeField {
-                            offset,
-                            ty: self.isa.pointer_type(),
-                            // Read-only field from the PoV of PCC checks:
-                            // don't allow stores to this field. (Even if
-                            // it is a dynamic memory whose base can
-                            // change, that update happens inside the
-                            // runtime, not in generated code.)
-                            readonly: true,
-                            fact: Some(base_fact.clone()),
-                        });
-                        *size = std::cmp::max(
-                            *size,
-                            offset + u64::from(self.isa.pointer_type().bytes()),
-                        );
-                    }
-                    _ => {
-                        panic!("Bad memtype");
-                    }
-                }
-                // Apply a fact to the base pointer.
-                (Some(base_fact), Some(data_mt))
-            } else {
-                (None, None)
-            }
-        };
-        (base_fact, memory_type)
     }
 
     fn make_table(&mut self, func: &mut ir::Function, index: TableIndex) -> TableData {
@@ -2541,22 +2353,12 @@ impl<'module_environment> TargetEnvironment for FuncEnvironment<'module_environm
 
     fn reference_type(&self, wasm_ty: WasmHeapType) -> (ir::Type, bool) {
         let ty = crate::reference_type(wasm_ty, self.pointer_type());
-        let needs_stack_map = match wasm_ty.top() {
-            WasmHeapTopType::Extern | WasmHeapTopType::Any | WasmHeapTopType::Exn => true,
-            WasmHeapTopType::Func => false,
-            // TODO(#10248) Once continuations can be stored on the GC heap, we
-            // will need stack maps for continuation objects.
-            WasmHeapTopType::Cont => false,
-        };
+        let needs_stack_map = self.heap_ty_needs_stack_map(wasm_ty);
         (ty, needs_stack_map)
     }
 
     fn heap_access_spectre_mitigation(&self) -> bool {
         self.isa.flags().enable_heap_access_spectre_mitigation()
-    }
-
-    fn proof_carrying_code(&self) -> bool {
-        self.isa.flags().enable_pcc()
     }
 
     fn tunables(&self) -> &Tunables {
@@ -2940,7 +2742,9 @@ impl FuncEnvironment<'_> {
             libcall,
             &[vmctx, interned_type_index, data_index, data_offset, len],
         );
-        Ok(builder.func.dfg.first_result(call_inst))
+        let array_ref = builder.func.dfg.first_result(call_inst);
+        builder.declare_value_needs_stack_map(array_ref);
+        Ok(array_ref)
     }
 
     pub fn translate_array_new_elem(
@@ -2962,7 +2766,9 @@ impl FuncEnvironment<'_> {
             libcall,
             &[vmctx, interned_type_index, elem_index, elem_offset, len],
         );
-        Ok(builder.func.dfg.first_result(call_inst))
+        let array_ref = builder.func.dfg.first_result(call_inst);
+        builder.declare_value_needs_stack_map(array_ref);
+        Ok(array_ref)
     }
 
     pub fn translate_array_copy(
