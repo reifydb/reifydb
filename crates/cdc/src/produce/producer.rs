@@ -12,7 +12,10 @@ use reifydb_core::{
 		transaction::PostCommitEvent,
 	},
 	interface::{
-		catalog::shape::ShapeId,
+		catalog::{
+			config::{ConfigKey, GetConfig},
+			shape::ShapeId,
+		},
 		cdc::{Cdc, SystemChange},
 		change::{Change, Diff},
 		store::MultiVersionGetPrevious,
@@ -32,7 +35,6 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	Result,
 	value::{datetime::DateTime, row_number::RowNumber},
@@ -40,10 +42,7 @@ use reifydb_type::{
 use tracing::{debug, error, trace};
 
 use super::decode::{build_insert_diff, build_remove_diff, build_update_diff};
-use crate::{
-	consume::{host::CdcHost, watermark::compute_watermark},
-	storage::CdcStorage,
-};
+use crate::{consume::host::CdcHost, storage::CdcStorage};
 
 /// Default interval between CDC cleanup attempts (30 seconds)
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
@@ -60,6 +59,7 @@ pub struct CdcProducerActor<S, T, H> {
 	transaction_store: Arc<T>,
 	host: H,
 	event_bus: EventBus,
+	clock: Clock,
 }
 
 impl<S, T, H> CdcProducerActor<S, T, H>
@@ -68,12 +68,13 @@ where
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
 	H: CdcHost,
 {
-	pub fn new(storage: S, transaction_store: T, host: H, event_bus: EventBus) -> Self {
+	pub fn new(storage: S, transaction_store: T, host: H, event_bus: EventBus, clock: Clock) -> Self {
 		Self {
 			storage: Arc::new(storage),
 			transaction_store: Arc::new(transaction_store),
 			host,
 			event_bus,
+			clock,
 		}
 	}
 
@@ -303,13 +304,25 @@ where
 
 	fn try_cleanup(&self) {
 		let result: Result<()> = (|| {
-			let mut txn = self.host.begin_command()?;
-			let watermark = compute_watermark(&mut Transaction::Command(&mut txn))?;
-			txn.rollback()?;
+			let Some(ttl) =
+				self.host.materialized_catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration)
+			else {
+				return Ok(());
+			};
 
-			let result = self.storage.drop_before(watermark)?;
+			let cutoff_nanos = self.clock.now_nanos().saturating_sub(ttl.as_nanos() as u64);
+			let cutoff = DateTime::from_nanos(cutoff_nanos);
+
+			let Some(cutoff_version) = self.storage.find_ttl_cutoff(cutoff)? else {
+				return Ok(());
+			};
+			if cutoff_version.0 == 0 {
+				return Ok(());
+			}
+
+			let result = self.storage.drop_before(cutoff_version)?;
 			if result.count > 0 {
-				debug!(watermark = watermark.0, deleted = result.count, "CDC cleanup completed");
+				debug!(cutoff = cutoff_version.0, deleted = result.count, "CDC TTL eviction completed");
 
 				let drop_entries: Vec<CdcEviction> = result
 					.entries
@@ -320,7 +333,7 @@ where
 					})
 					.collect();
 
-				self.event_bus.emit(CdcEvictedEvent::new(drop_entries, watermark));
+				self.event_bus.emit(CdcEvictedEvent::new(drop_entries, cutoff_version));
 			}
 			Ok(())
 		})();
@@ -549,13 +562,14 @@ pub fn spawn_cdc_producer<S, T, H>(
 	transaction_store: T,
 	host: H,
 	event_bus: EventBus,
+	clock: Clock,
 ) -> CdcProduceHandle
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
 	H: CdcHost,
 {
-	let actor = CdcProducerActor::new(storage, transaction_store, host, event_bus);
+	let actor = CdcProducerActor::new(storage, transaction_store, host, event_bus, clock);
 	system.spawn("cdc-producer", actor)
 }
 
@@ -563,110 +577,15 @@ where
 pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
-	use reifydb_catalog::materialized::MaterializedCatalog;
-	use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
-	use reifydb_runtime::{
-		actor::system::ActorSystem,
-		context::{
-			clock::{Clock, MockClock},
-			rng::Rng,
-		},
-		pool::Pools,
-	};
+	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_multi::MultiStore;
-	use reifydb_store_single::SingleStore;
-	use reifydb_transaction::{
-		interceptor::interceptors::Interceptors,
-		multi::transaction::MultiTransaction,
-		single::SingleTransaction,
-		transaction::{command::CommandTransaction, query::QueryTransaction},
-	};
-	use reifydb_type::{
-		util::cowvec::CowVec,
-		value::{datetime::DateTime, identity::IdentityId},
-	};
+	use reifydb_type::value::datetime::DateTime;
 
 	use super::*;
-	use crate::storage::memory::MemoryCdcStorage;
-
-	fn make_key(s: &str) -> EncodedKey {
-		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
-	}
-
-	fn make_row(s: &str) -> EncodedRow {
-		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
-	}
-
-	#[derive(Clone)]
-	struct TestCdcHost {
-		multi: MultiTransaction,
-		single: SingleTransaction,
-		event_bus: EventBus,
-		materialized_catalog: MaterializedCatalog,
-		clock: Clock,
-	}
-
-	impl TestCdcHost {
-		fn new() -> Self {
-			let multi_store = MultiStore::testing_memory();
-			let single_store = SingleStore::testing_memory();
-			let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
-			let event_bus = EventBus::new(&actor_system);
-			let single = SingleTransaction::new(single_store, event_bus.clone());
-			let materialized_catalog = MaterializedCatalog::new();
-			let clock = Clock::Mock(MockClock::from_millis(1000));
-			let multi = MultiTransaction::new(
-				multi_store,
-				single.clone(),
-				event_bus.clone(),
-				actor_system,
-				clock.clone(),
-				Rng::seeded(42),
-				Arc::new(materialized_catalog.clone()),
-			)
-			.unwrap();
-			Self {
-				multi,
-				single,
-				event_bus,
-				materialized_catalog,
-				clock,
-			}
-		}
-	}
-
-	impl CdcHost for TestCdcHost {
-		fn begin_command(&self) -> Result<CommandTransaction> {
-			CommandTransaction::new(
-				self.multi.clone(),
-				self.single.clone(),
-				self.event_bus.clone(),
-				Interceptors::new(),
-				IdentityId::system(),
-				self.clock.clone(),
-			)
-		}
-
-		fn begin_query(&self) -> Result<QueryTransaction> {
-			Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), IdentityId::system()))
-		}
-
-		fn current_version(&self) -> Result<CommitVersion> {
-			Ok(CommitVersion(1))
-		}
-
-		fn done_until(&self) -> CommitVersion {
-			CommitVersion(1)
-		}
-
-		fn wait_for_mark_timeout(&self, _version: CommitVersion, _timeout: Duration) -> bool {
-			true
-		}
-
-		fn materialized_catalog(&self) -> &MaterializedCatalog {
-			&self.materialized_catalog
-		}
-	}
+	use crate::{
+		storage::memory::MemoryCdcStorage,
+		testing::{TestCdcHost, make_key, make_row},
+	};
 
 	#[test]
 	fn test_producer_processes_insert() {
@@ -676,7 +595,8 @@ pub mod tests {
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::new();
-		let handle = spawn_cdc_producer(&actor_system, storage.clone(), resolver, host, event_bus);
+		let clock = host.clock.clone();
+		let handle = spawn_cdc_producer(&actor_system, storage.clone(), resolver, host, event_bus, clock);
 
 		let deltas = vec![Delta::Set {
 			key: make_key("test_key"),
@@ -720,7 +640,8 @@ pub mod tests {
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::new();
-		let handle = spawn_cdc_producer(&actor_system, storage.clone(), resolver, host, event_bus);
+		let clock = host.clock.clone();
+		let handle = spawn_cdc_producer(&actor_system, storage.clone(), resolver, host, event_bus, clock);
 
 		let deltas = vec![
 			Delta::Set {
@@ -747,3 +668,5 @@ pub mod tests {
 		assert_eq!(cdc.system_changes.len(), 1);
 	}
 }
+
+// TTL behaviour is exercised by the integration suite at `crates/cdc/tests/ttl.rs`.

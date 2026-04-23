@@ -282,6 +282,7 @@ impl WasmDB {
 			multi_store.clone(),
 			inner.clone(),
 			eventbus_clone.clone(),
+			runtime.clock().clone(),
 		);
 
 		// Register event listener to forward PostCommitEvent to CDC producer

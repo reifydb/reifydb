@@ -407,8 +407,14 @@ impl DatabaseBuilder {
 
 		// Spawn CDC producer and register PostCommitEvent listener BEFORE
 		// bootstrap so that bootstrap commits generate CDC entries.
-		let cdc_handle =
-			spawn_cdc_producer(&actor_system, cdc_store, multi_store, engine.clone(), eventbus.clone());
+		let cdc_handle = spawn_cdc_producer(
+			&actor_system,
+			cdc_store,
+			multi_store,
+			engine.clone(),
+			eventbus.clone(),
+			runtime.clock().clone(),
+		);
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 			cdc_handle.actor_ref().clone(),
 			runtime.clock().clone(),

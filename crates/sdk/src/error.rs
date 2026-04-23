@@ -46,7 +46,10 @@ impl fmt::Display for FFIError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			FFIError::Configuration(msg) => write!(f, "Configuration error: {}", msg),
-			FFIError::MissingConfiguration { operator, key } => {
+			FFIError::MissingConfiguration {
+				operator,
+				key,
+			} => {
 				write!(f, "{operator} requires '{key}' configuration")
 			}
 			FFIError::StateError(msg) => write!(f, "State error: {}", msg),

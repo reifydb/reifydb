@@ -9,19 +9,11 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
 use super::Catalog;
-use crate::{CatalogStore, Result, error::CatalogError};
+use crate::{CatalogStore, Result, materialized::check_config_value};
 
 impl Catalog {
 	pub fn set_config(&self, txn: &mut AdminTransaction, key: ConfigKey, value: Value) -> Result<()> {
-		let expected_types = key.expected_types();
-		if !expected_types.contains(&value.get_type()) {
-			return Err(CatalogError::ConfigTypeMismatch {
-				key: key.to_string(),
-				expected: expected_types.to_vec(),
-				actual: value.get_type(),
-			}
-			.into());
-		}
+		check_config_value(key, &value)?;
 
 		let pre_value = self.materialized.get_config(key);
 		let pre = Config {

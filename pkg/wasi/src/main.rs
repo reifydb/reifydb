@@ -146,6 +146,7 @@ impl Bridge {
 			multi_store.clone(),
 			engine.clone(),
 			eventbus_clone.clone(),
+			runtime.clock().clone(),
 		);
 
 		let cdc_listener =

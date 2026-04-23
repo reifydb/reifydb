@@ -11,6 +11,7 @@ pub mod consume;
 pub mod error;
 pub mod produce;
 pub mod storage;
+pub mod testing;
 
 pub struct CdcVersion;
 

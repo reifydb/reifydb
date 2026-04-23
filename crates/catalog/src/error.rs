@@ -215,6 +215,12 @@ pub enum CatalogError {
 		actual: Type,
 	},
 
+	#[error("config value for key `{key}` is invalid: {reason}")]
+	ConfigInvalidValue {
+		key: String,
+		reason: String,
+	},
+
 	#[error("unknown operation `{operation}` for {target_type} policy")]
 	PolicyInvalidOperation {
 		target_type: &'static str,
@@ -933,6 +939,22 @@ impl IntoDiagnostic for CatalogError {
 					operator_chain: None,
 				}
 			}
+
+			CatalogError::ConfigInvalidValue {
+				key,
+				reason,
+			} => Diagnostic {
+				code: "CA_053".to_string(),
+				rql: None,
+				message: format!("config value for key `{}` is invalid: {}", key, reason),
+				fragment: Fragment::None,
+				label: Some("invalid config value".to_string()),
+				help: None,
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 
 			CatalogError::InUse {
 				kind,

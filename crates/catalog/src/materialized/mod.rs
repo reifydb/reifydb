@@ -434,20 +434,38 @@ impl MaterializedCatalog {
 
 	/// Set a new value for a configuration at a given version.
 	pub fn set_config(&self, key: ConfigKey, version: CommitVersion, value: Value) -> Result<()> {
-		let expected_types = key.expected_types();
-		if !expected_types.contains(&value.get_type()) {
-			return Err(CatalogError::ConfigTypeMismatch {
-				key: key.to_string(),
-				expected: expected_types.to_vec(),
-				actual: value.get_type(),
-			}
-			.into());
-		}
+		check_config_value(key, &value)?;
 
 		let entry = self.0.configs.get_or_insert_with(key, MultiVersionContainer::new);
 		entry.value().insert(version, value);
 		Ok(())
 	}
+}
+
+/// Type and value checking shared by both `set_config` paths.
+pub(crate) fn check_config_value(key: ConfigKey, value: &Value) -> Result<()> {
+	let expected_types = key.expected_types();
+	let type_ok = match value {
+		// Typed null: accept if the key is optional and the inner type matches.
+		Value::None {
+			inner,
+		} => key.is_optional() && expected_types.contains(inner),
+		other => expected_types.contains(&other.get_type()),
+	};
+	if !type_ok {
+		return Err(CatalogError::ConfigTypeMismatch {
+			key: key.to_string(),
+			expected: expected_types.to_vec(),
+			actual: value.get_type(),
+		}
+		.into());
+	}
+
+	key.validate(value).map_err(|reason| CatalogError::ConfigInvalidValue {
+		key: key.to_string(),
+		reason,
+	})?;
+	Ok(())
 }
 
 impl GetConfig for MaterializedCatalog {
@@ -458,4 +476,95 @@ impl GetConfig for MaterializedCatalog {
 	fn get_config_at(&self, key: ConfigKey, version: CommitVersion) -> Value {
 		self.get_config_at(key, version)
 	}
+}
+
+#[cfg(test)]
+mod config_validation_tests {
+	use std::time::Duration as StdDuration;
+
+	use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
+	use reifydb_type::value::{Value, duration::Duration as TypeDuration, r#type::Type};
+
+	use super::{CatalogError, CommitVersion, MaterializedCatalog};
+
+	#[test]
+	fn test_set_cdc_ttl_zero_is_rejected() {
+		let catalog = MaterializedCatalog::new();
+		let zero = Value::Duration(TypeDuration::from_seconds(0).unwrap());
+
+		let err = catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), zero).unwrap_err();
+		let msg = format!("{err}");
+		assert!(msg.contains("CDC_TTL_DURATION"), "expected key in error: {msg}");
+		assert!(msg.contains("greater than zero"), "expected reason in error: {msg}");
+
+		// Default (typed-null) is preserved when set fails.
+		assert!(matches!(
+			catalog.get_config(ConfigKey::CdcTtlDuration),
+			Value::None {
+				inner: Type::Duration
+			}
+		));
+	}
+
+	#[test]
+	fn test_set_cdc_ttl_negative_is_rejected() {
+		let catalog = MaterializedCatalog::new();
+		let negative = Value::Duration(TypeDuration::from_seconds(-30).unwrap());
+		let err = catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), negative).unwrap_err();
+		assert_eq!(err.code, "CA_053");
+	}
+
+	#[test]
+	fn test_set_cdc_ttl_positive_is_accepted_and_visible() {
+		let catalog = MaterializedCatalog::new();
+		let ten_sec = Value::Duration(TypeDuration::from_seconds(10).unwrap());
+
+		catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), ten_sec.clone()).unwrap();
+		assert_eq!(catalog.get_config(ConfigKey::CdcTtlDuration), ten_sec);
+
+		let opt = catalog.get_config_duration_opt(ConfigKey::CdcTtlDuration);
+		assert_eq!(opt, Some(StdDuration::from_secs(10)));
+	}
+
+	#[test]
+	fn test_set_cdc_ttl_to_typed_null_is_accepted() {
+		// Operators can "unset" the TTL by writing Value::None — restoring forever-retention.
+		let catalog = MaterializedCatalog::new();
+		catalog.set_config(
+			ConfigKey::CdcTtlDuration,
+			CommitVersion(1),
+			Value::Duration(TypeDuration::from_seconds(30).unwrap()),
+		)
+		.unwrap();
+
+		catalog.set_config(
+			ConfigKey::CdcTtlDuration,
+			CommitVersion(2),
+			Value::None {
+				inner: Type::Duration,
+			},
+		)
+		.unwrap();
+
+		assert_eq!(catalog.get_config_duration_opt(ConfigKey::CdcTtlDuration), None);
+	}
+
+	#[test]
+	fn test_set_cdc_ttl_wrong_type_returns_type_mismatch_not_validate_error() {
+		let catalog = MaterializedCatalog::new();
+		let bad = Value::Uint8(5);
+		let err = catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), bad).unwrap_err();
+		assert_eq!(err.code, "CA_052", "expected ConfigTypeMismatch (CA_052)");
+	}
+
+	// Sanity: keys without bespoke validation still accept zero-Duration values.
+	#[test]
+	fn test_row_ttl_scan_interval_accepts_zero() {
+		let catalog = MaterializedCatalog::new();
+		let zero = Value::Duration(TypeDuration::from_seconds(0).unwrap());
+		assert!(catalog.set_config(ConfigKey::RowTtlScanInterval, CommitVersion(1), zero).is_ok());
+	}
+
+	#[allow(dead_code)]
+	fn _force_use(_: CatalogError) {}
 }

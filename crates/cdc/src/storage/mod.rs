@@ -17,6 +17,7 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::cdc::{Cdc, CdcBatch},
 };
+use reifydb_type::value::datetime::DateTime;
 
 use crate::error::CdcError;
 
@@ -91,6 +92,43 @@ pub trait CdcStorage: Send + Sync + Clone + 'static {
 	/// Returns the count and entry information for stats tracking.
 	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult>;
 
+	/// Find the smallest CDC version V such that `cdc[V].timestamp >= cutoff`.
+	///
+	/// Returns `Some(V)` if such an entry exists. If every stored entry has
+	/// `timestamp < cutoff`, returns `Some(max_version + 1)` so callers can pass it
+	/// straight to `drop_before` to evict everything older than the cutoff.
+	/// Returns `None` if storage is empty.
+	///
+	/// Default impl scans `read_range` from the smallest version upward in batches of
+	/// 256, stopping at the first entry whose timestamp is `>= cutoff`. Backends with
+	/// an indexed timestamp column should override.
+	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {
+		let Some(min) = self.min_version()? else {
+			return Ok(None);
+		};
+		let Some(max) = self.max_version()? else {
+			return Ok(None);
+		};
+
+		let mut next_start = Bound::Included(min);
+		loop {
+			let batch = self.read_range(next_start, Bound::Unbounded, 256)?;
+			if batch.items.is_empty() {
+				return Ok(Some(CommitVersion(max.0.saturating_add(1))));
+			}
+			for cdc in &batch.items {
+				if cdc.timestamp >= cutoff {
+					return Ok(Some(cdc.version));
+				}
+			}
+			if !batch.has_more {
+				return Ok(Some(CommitVersion(max.0.saturating_add(1))));
+			}
+			let last = batch.items.last().unwrap().version;
+			next_start = Bound::Excluded(last);
+		}
+	}
+
 	/// Convenience method with default batch size.
 	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> CdcStorageResult<CdcBatch> {
 		self.read_range(start, end, 1024)
@@ -135,6 +173,10 @@ impl<T: CdcStorage> CdcStorage for sync::Arc<T> {
 
 	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
 		(**self).drop_before(version)
+	}
+
+	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {
+		(**self).find_ttl_cutoff(cutoff)
 	}
 }
 
@@ -207,6 +249,13 @@ impl CdcStore {
 			Self::Memory(s) => s.drop_before(version),
 		}
 	}
+
+	/// Find the smallest CDC version V such that `cdc[V].timestamp >= cutoff`.
+	pub fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {
+		match self {
+			Self::Memory(s) => s.find_ttl_cutoff(cutoff),
+		}
+	}
 }
 
 impl CdcStorage for CdcStore {
@@ -241,6 +290,10 @@ impl CdcStorage for CdcStore {
 
 	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
 		CdcStore::delete_before(self, version)
+	}
+
+	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {
+		CdcStore::find_ttl_cutoff(self, cutoff)
 	}
 }
 

@@ -217,6 +217,7 @@ impl TestEngineBuilder {
 				multi_store.clone(),
 				engine.clone(),
 				eventbus.clone(),
+				runtime.clock().clone(),
 			);
 			eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 				cdc_handle.actor_ref().clone(),
