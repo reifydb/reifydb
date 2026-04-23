@@ -62,3 +62,20 @@ pub fn parse_query_response(response: Response) -> Result<QueryResult, Error> {
 		}
 	}
 }
+
+/// Parse the text-path Call response envelope into `CommandResult`.
+pub fn parse_call_response(response: Response) -> Result<CommandResult, Error> {
+	match response.payload {
+		ResponsePayload::Call(call_response) => Ok(CommandResult {
+			frames: convert_envelope_response(call_response.body),
+			meta: call_response.meta,
+		}),
+		ResponsePayload::Err(err) => {
+			err!(err.diagnostic)
+		}
+		other => {
+			println!("Unexpected call response: {:?}", other);
+			panic!("Unexpected call response type")
+		}
+	}
+}

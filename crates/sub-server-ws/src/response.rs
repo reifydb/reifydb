@@ -30,7 +30,7 @@ pub enum ResponsePayload {
 	Admin(AdminResponse),
 	Command(CommandResponse),
 	Query(QueryResponse),
-	CallOperation(CallOperationResponse),
+	Call(CallResponse),
 	Subscribed(SubscribedResponse),
 	Unsubscribed(UnsubscribedResponse),
 	BatchSubscribed(BatchSubscribedResponse),
@@ -90,7 +90,7 @@ pub struct QueryResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct CallOperationResponse {
+pub struct CallResponse {
 	pub content_type: String,
 	pub body: JsonValue,
 	pub meta: ResponseMeta,
@@ -262,7 +262,7 @@ impl Response {
 		}
 	}
 
-	pub fn call_operation(
+	pub fn call(
 		id: impl Into<String>,
 		content_type: impl Into<String>,
 		body: JsonValue,
@@ -270,7 +270,7 @@ impl Response {
 	) -> Self {
 		Self {
 			id: id.into(),
-			payload: ResponsePayload::CallOperation(CallOperationResponse {
+			payload: ResponsePayload::Call(CallResponse {
 				content_type: content_type.into(),
 				body,
 				meta,

@@ -658,10 +658,7 @@ impl ReifyDb for ReifyDbService {
 		}
 	}
 
-	async fn call_operation(
-		&self,
-		request: Request<OperationRequest>,
-	) -> Result<Response<OperationResponse>, Status> {
+	async fn call(&self, request: Request<OperationRequest>) -> Result<Response<OperationResponse>, Status> {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
@@ -719,7 +716,7 @@ impl ReifyDb for ReifyDbService {
 				}
 			}
 			Params::Positional(_) => {
-				return Err(Status::invalid_argument("CallOperation requires named params"));
+				return Err(Status::invalid_argument("Call requires named params"));
 			}
 		}
 

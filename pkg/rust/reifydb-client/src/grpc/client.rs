@@ -45,10 +45,11 @@ use super::generated::{
 	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
 	BatchSubscribeRequest as ProtoBatchSubscribeRequest, BatchSubscriptionEvent,
 	BatchUnsubscribeRequest as ProtoBatchUnsubscribeRequest, CommandRequest as ProtoCommandRequest, Format,
-	Frame as ProtoFrame, FramesPayload, LogoutRequest as ProtoLogoutRequest, NamedParams, Params as ProtoParams,
-	PositionalParams, QueryRequest as ProtoQueryRequest, SubscribeRequest as ProtoSubscribeRequest,
-	SubscriptionEvent, TypedValue, UnsubscribeRequest as ProtoUnsubscribeRequest, admin_response,
-	batch_subscription_event, change_event, command_response, params::Params as ProtoParamsOneof, query_response,
+	Frame as ProtoFrame, FramesPayload, LogoutRequest as ProtoLogoutRequest, NamedParams,
+	OperationRequest as ProtoOperationRequest, Params as ProtoParams, PositionalParams,
+	QueryRequest as ProtoQueryRequest, SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
+	UnsubscribeRequest as ProtoUnsubscribeRequest, admin_response, batch_subscription_event, change_event,
+	command_response, operation_response, params::Params as ProtoParamsOneof, query_response,
 	reify_db_client::ReifyDbClient, subscription_event,
 };
 use crate::{AdminResult, CommandResult, LoginResult, QueryResult, ResponseMeta, WireFormat};
@@ -251,6 +252,31 @@ impl GrpcClient {
 		let meta = extract_meta(response.metadata());
 		let frames = decode_query_payload(response.into_inner().payload)?;
 		Ok(QueryResult {
+			frames,
+			meta,
+		})
+	}
+
+	/// Invoke a gRPC binding by its globally-unique name.
+	pub async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.call_with_meta(name, params).await?.frames)
+	}
+
+	pub async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+		let request = ProtoOperationRequest {
+			name: name.to_string(),
+			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
+		};
+
+		let mut client = self.inner.clone();
+		let mut req = Request::new(request);
+		self.attach_auth(&mut req);
+
+		let response = client.call(req).await.map_err(status_to_error)?;
+		let meta = extract_meta(response.metadata());
+		let frames = decode_operation_payload(response.into_inner().payload)?;
+		Ok(CommandResult {
 			frames,
 			meta,
 		})
@@ -546,6 +572,14 @@ fn decode_query_payload(payload: Option<query_response::Payload>) -> Result<Vec<
 	match payload {
 		Some(query_response::Payload::Rbcf(bytes)) => decode_rbcf(&bytes),
 		Some(query_response::Payload::Frames(fp)) => Ok(proto_frames_to_frames(fp.frames)),
+		None => Ok(Vec::new()),
+	}
+}
+
+fn decode_operation_payload(payload: Option<operation_response::Payload>) -> Result<Vec<Frame>, Error> {
+	match payload {
+		Some(operation_response::Payload::Rbcf(bytes)) => decode_rbcf(&bytes),
+		Some(operation_response::Payload::Frames(fp)) => Ok(proto_frames_to_frames(fp.frames)),
 		None => Ok(Vec::new()),
 	}
 }

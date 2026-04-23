@@ -22,10 +22,11 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_conf
 
 use crate::{
 	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchClosedPayload,
-	BatchMemberClosedPayload, BatchMemberInfo, BatchSubscribeRequest, BatchUnsubscribeRequest, ChangePayload,
-	CommandRequest, CommandResult, LoginResult, QueryRequest, QueryResult, Request, RequestPayload, Response,
-	ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest, WireFormat, params_to_wire,
-	session::{parse_admin_response, parse_command_response, parse_query_response},
+	BatchMemberClosedPayload, BatchMemberInfo, BatchSubscribeRequest, BatchUnsubscribeRequest, CallRequest,
+	ChangePayload, CommandRequest, CommandResult, LoginResult, QueryRequest, QueryResult, Request, RequestPayload,
+	Response, ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest, WireFormat,
+	params_to_wire,
+	session::{parse_admin_response, parse_call_response, parse_command_response, parse_query_response},
 	utils::generate_request_id,
 };
 
@@ -478,6 +479,31 @@ impl WsClient {
 				meta,
 			}),
 			ClientResponse::Json(resp) => parse_query_response(*resp),
+		}
+	}
+
+	/// Invoke a WS binding by its globally-unique name.
+	pub async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.call_with_meta(name, params).await?.frames)
+	}
+
+	/// Invoke a WS binding and return frames together with server-reported metadata.
+	pub async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Call(CallRequest {
+				name: name.to_string(),
+				params: params.and_then(params_to_wire),
+			}),
+		};
+
+		match self.send_request(request).await? {
+			ClientResponse::Frames(frames, meta) => Ok(CommandResult {
+				frames,
+				meta,
+			}),
+			ClientResponse::Json(resp) => parse_call_response(*resp),
 		}
 	}
 

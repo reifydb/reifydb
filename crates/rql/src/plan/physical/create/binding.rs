@@ -59,101 +59,75 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		};
 
-		let (protocol, default_format) = match create.protocol.kind {
+		let protocol = match create.protocol.kind {
 			AstBindingProtocolKind::Http => {
-				let method_str = create
-					.protocol
-					.method
-					.as_ref()
-					.ok_or_else(|| CatalogError::NotFound {
-						kind: CatalogObjectKind::Procedure,
-						namespace: ns_segments.join("::"),
-						name: "HTTP binding requires `method`".to_string(),
+				let method_frag = create.protocol.method.as_ref().ok_or_else(|| {
+					CatalogError::InvalidBindingConfig {
+						reason: "HTTP binding requires `method`".to_string(),
 						fragment: Fragment::internal("method".to_string()),
-					})?
-					.text()
-					.to_ascii_uppercase();
-				let method = HttpMethod::parse(&method_str).ok_or_else(|| CatalogError::NotFound {
-					kind: CatalogObjectKind::Procedure,
-					namespace: ns_segments.join("::"),
-					name: format!(
-						"unknown HTTP method '{}': expected GET, POST, PUT, PATCH, or DELETE",
-						method_str
-					),
-					fragment: Fragment::internal(method_str.clone()),
+					}
 				})?;
-				let path = create
-					.protocol
-					.path
-					.as_ref()
-					.ok_or_else(|| CatalogError::NotFound {
-						kind: CatalogObjectKind::Procedure,
-						namespace: ns_segments.join("::"),
-						name: "HTTP binding requires `path`".to_string(),
+				let method_str = method_frag.text().to_ascii_uppercase();
+				let method = HttpMethod::parse(&method_str).ok_or_else(|| {
+					CatalogError::InvalidBindingConfig {
+						reason: format!(
+							"unknown HTTP method '{}': expected GET, POST, PUT, PATCH, or DELETE",
+							method_str
+						),
+						fragment: method_frag.to_owned(),
+					}
+				})?;
+				let path_frag = create.protocol.path.as_ref().ok_or_else(|| {
+					CatalogError::InvalidBindingConfig {
+						reason: "HTTP binding requires `path`".to_string(),
 						fragment: Fragment::internal("path".to_string()),
-					})?
-					.text()
-					.to_string();
-				(
-					BindingProtocol::Http {
-						method,
-						path,
-					},
-					BindingFormat::Json,
-				)
+					}
+				})?;
+				let path = path_frag.text().to_string();
+				if !path.starts_with('/') {
+					return Err(CatalogError::InvalidBindingConfig {
+						reason: format!("HTTP path must start with `/`, got `{}`", path),
+						fragment: path_frag.to_owned(),
+					}
+					.into());
+				}
+				BindingProtocol::Http {
+					method,
+					path,
+				}
 			}
 			AstBindingProtocolKind::Grpc => {
-				let rpc_name = create
-					.protocol
-					.rpc_name
-					.as_ref()
-					.ok_or_else(|| CatalogError::NotFound {
-						kind: CatalogObjectKind::Procedure,
-						namespace: ns_segments.join("::"),
-						name: "GRPC binding requires `name`".to_string(),
+				let rpc_name_frag = create.protocol.rpc_name.as_ref().ok_or_else(|| {
+					CatalogError::InvalidBindingConfig {
+						reason: "gRPC binding requires `name`".to_string(),
 						fragment: Fragment::internal("name".to_string()),
-					})?
-					.text()
-					.to_string();
-				(
-					BindingProtocol::Grpc {
-						name: rpc_name,
-					},
-					BindingFormat::Rbcf,
-				)
+					}
+				})?;
+				BindingProtocol::Grpc {
+					name: rpc_name_frag.text().to_string(),
+				}
 			}
 			AstBindingProtocolKind::Ws => {
-				let rpc_name = create
-					.protocol
-					.rpc_name
-					.as_ref()
-					.ok_or_else(|| CatalogError::NotFound {
-						kind: CatalogObjectKind::Procedure,
-						namespace: ns_segments.join("::"),
-						name: "WS binding requires `name`".to_string(),
+				let rpc_name_frag = create.protocol.rpc_name.as_ref().ok_or_else(|| {
+					CatalogError::InvalidBindingConfig {
+						reason: "WS binding requires `name`".to_string(),
 						fragment: Fragment::internal("name".to_string()),
-					})?
-					.text()
-					.to_string();
-				(
-					BindingProtocol::Ws {
-						name: rpc_name,
-					},
-					BindingFormat::Json,
-				)
+					}
+				})?;
+				BindingProtocol::Ws {
+					name: rpc_name_frag.text().to_string(),
+				}
 			}
 		};
 
 		let format = if let Some(fmt_frag) = create.protocol.format.as_ref() {
 			let fmt_str = fmt_frag.text().to_ascii_lowercase();
-			BindingFormat::parse(&fmt_str).ok_or_else(|| CatalogError::NotFound {
-				kind: CatalogObjectKind::Procedure,
-				namespace: ns_segments.join("::"),
-				name: format!("unknown binding format '{}': expected json, frames, or rbcf", fmt_str),
-				fragment: Fragment::internal(fmt_str.clone()),
+			BindingFormat::parse(&fmt_str).ok_or_else(|| CatalogError::InvalidBindingConfig {
+				reason: format!("unknown binding format '{}': expected json, frames, or rbcf", fmt_str),
+				fragment: fmt_frag.to_owned(),
 			})?
 		} else {
-			default_format
+			BindingFormat::Frames
 		};
 
 		Ok(PhysicalPlan::CreateBinding(CreateBindingNode {

@@ -207,6 +207,7 @@ pub enum RequestPayload {
 	Unsubscribe(UnsubscribeRequest),
 	BatchSubscribe(BatchSubscribeRequest),
 	BatchUnsubscribe(BatchUnsubscribeRequest),
+	Call(CallRequest),
 	Logout,
 }
 
@@ -278,6 +279,13 @@ pub struct BatchUnsubscribeRequest {
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
+pub struct CallRequest {
+	pub name: String,
+	pub params: Option<WireParams>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Response {
 	pub id: String,
 	#[serde(flatten)]
@@ -297,6 +305,7 @@ pub enum ResponsePayload {
 	Unsubscribed(UnsubscribedResponse),
 	BatchSubscribed(BatchSubscribedResponse),
 	BatchUnsubscribed(BatchUnsubscribedResponse),
+	Call(CallResponse),
 	Logout(LogoutResponsePayload),
 }
 
@@ -341,6 +350,15 @@ pub struct CommandResponse {
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryResponse {
+	pub content_type: String,
+	pub body: JsonValue,
+	#[serde(default)]
+	pub meta: Option<ResponseMeta>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CallResponse {
 	pub content_type: String,
 	pub body: JsonValue,
 	#[serde(default)]

@@ -36,6 +36,7 @@ pub enum CatalogObjectKind {
 	Sink,
 	Procedure,
 	TestProcedure,
+	Binding,
 }
 
 impl Display for CatalogObjectKind {
@@ -62,6 +63,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Sink => f.write_str("sink"),
 			CatalogObjectKind::Procedure => f.write_str("procedure"),
 			CatalogObjectKind::TestProcedure => f.write_str("test procedure"),
+			CatalogObjectKind::Binding => f.write_str("binding"),
 		}
 	}
 }
@@ -228,6 +230,12 @@ pub enum CatalogError {
 		valid: &'static [&'static str],
 		policy_name: Option<String>,
 	},
+
+	#[error("invalid binding config: {reason}")]
+	InvalidBindingConfig {
+		reason: String,
+		fragment: Fragment,
+	},
 }
 
 impl IntoDiagnostic for CatalogError {
@@ -340,6 +348,11 @@ impl IntoDiagnostic for CatalogError {
 						"CA_081",
 						"test procedure",
 						"choose a different name or drop the existing test procedure first",
+					),
+					CatalogObjectKind::Binding => (
+						"CA_087",
+						"binding",
+						"choose a different protocol key or drop the existing binding first",
 					),
 				};
 				let message = if matches!(
@@ -475,6 +488,11 @@ impl IntoDiagnostic for CatalogError {
 						"CA_083",
 						"test procedure",
 						"ensure the test procedure exists or create it first using `CREATE TEST PROCEDURE`".to_string(),
+					),
+					CatalogObjectKind::Binding => (
+						"CA_088",
+						"binding",
+						"ensure the binding exists or create it first using `CREATE <PROTOCOL> BINDING`".to_string(),
 					),
 				};
 				let message = match kind {
@@ -1119,6 +1137,22 @@ impl IntoDiagnostic for CatalogError {
 					operator_chain: None,
 				}
 			}
+
+			CatalogError::InvalidBindingConfig {
+				reason,
+				fragment,
+			} => Diagnostic {
+				code: "CA_089".to_string(),
+				rql: None,
+				message: format!("invalid binding config: {}", reason),
+				fragment,
+				label: Some("invalid binding config".to_string()),
+				help: Some("check the protocol's required WITH keys and value constraints".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 		}
 	}
 }

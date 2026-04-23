@@ -80,6 +80,30 @@ pub mod query_response {
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OperationRequest {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub params: ::core::option::Option<Params>,
+    #[prost(enumeration = "Format", tag = "3")]
+    pub format: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct OperationResponse {
+    #[prost(oneof = "operation_response::Payload", tags = "1, 2")]
+    pub payload: ::core::option::Option<operation_response::Payload>,
+}
+/// Nested message and enum types in `OperationResponse`.
+pub mod operation_response {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Payload {
+        #[prost(message, tag = "1")]
+        Frames(super::FramesPayload),
+        #[prost(bytes, tag = "2")]
+        Rbcf(::prost::alloc::vec::Vec<u8>),
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubscribeRequest {
     #[prost(string, tag = "1")]
     pub rql: ::prost::alloc::string::String,
@@ -596,6 +620,30 @@ pub mod reify_db_client {
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Logout"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn call(
+            &mut self,
+            request: impl tonic::IntoRequest<super::OperationRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::OperationResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/reifydb.v1.ReifyDB/Call",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Call"));
             self.inner.unary(req, path, codec).await
         }
     }

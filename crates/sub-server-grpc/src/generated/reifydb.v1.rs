@@ -685,7 +685,7 @@ pub mod reify_db_server {
             &self,
             request: tonic::Request<super::LogoutRequest>,
         ) -> std::result::Result<tonic::Response<super::LogoutResponse>, tonic::Status>;
-        async fn call_operation(
+        async fn call(
             &self,
             request: tonic::Request<super::OperationRequest>,
         ) -> std::result::Result<tonic::Response<super::OperationResponse>, tonic::Status>;
@@ -1159,11 +1159,11 @@ pub mod reify_db_server {
                     };
                     Box::pin(fut)
                 }
-                "/reifydb.v1.ReifyDB/CallOperation" => {
+                "/reifydb.v1.ReifyDB/Call" => {
                     #[allow(non_camel_case_types)]
-                    struct CallOperationSvc<T: ReifyDb>(pub Arc<T>);
+                    struct CallSvc<T: ReifyDb>(pub Arc<T>);
                     impl<T: ReifyDb> tonic::server::UnaryService<super::OperationRequest>
-                    for CallOperationSvc<T> {
+                    for CallSvc<T> {
                         type Response = super::OperationResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
@@ -1175,7 +1175,7 @@ pub mod reify_db_server {
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as ReifyDb>::call_operation(&inner, request).await
+                                <T as ReifyDb>::call(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -1186,7 +1186,7 @@ pub mod reify_db_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = CallOperationSvc(inner);
+                        let method = CallSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

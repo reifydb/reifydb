@@ -77,6 +77,25 @@ impl MaterializedCatalog {
 		self.bindings_by_ws_name.get(name).and_then(|entry| self.find_binding_at(*entry.value(), version))
 	}
 
+	/// Find the latest HTTP binding registered at `(method, path)`.
+	pub fn find_http_binding_by_method_path(&self, method: &str, path: &str) -> Option<Binding> {
+		self.bindings_by_http_method_path
+			.get(&(method.to_string(), path.to_string()))
+			.and_then(|entry| self.find_binding(*entry.value()))
+	}
+
+	/// Find the HTTP binding registered at `(method, path)` as of `version`.
+	pub fn find_http_binding_by_method_path_at(
+		&self,
+		method: &str,
+		path: &str,
+		version: CommitVersion,
+	) -> Option<Binding> {
+		self.bindings_by_http_method_path
+			.get(&(method.to_string(), path.to_string()))
+			.and_then(|entry| self.find_binding_at(*entry.value(), version))
+	}
+
 	/// List the latest version of all HTTP bindings.
 	pub fn list_http_bindings(&self) -> Vec<Binding> {
 		self.bindings_http.iter().filter_map(|entry| self.find_binding(*entry.key())).collect()
@@ -114,9 +133,12 @@ impl MaterializedCatalog {
 					self.bindings_by_ws_name.remove(name);
 				}
 				BindingProtocol::Http {
-					..
+					method,
+					path,
 				} => {
 					self.bindings_http.remove(&id);
+					self.bindings_by_http_method_path
+						.remove(&(method.as_str().to_string(), path.clone()));
 				}
 			}
 		}
@@ -147,9 +169,12 @@ impl MaterializedCatalog {
 					self.bindings_by_ws_name.insert(name.clone(), id);
 				}
 				BindingProtocol::Http {
-					..
+					method,
+					path,
 				} => {
 					self.bindings_http.insert(id, ());
+					self.bindings_by_http_method_path
+						.insert((method.as_str().to_string(), path.clone()), id);
 				}
 			}
 

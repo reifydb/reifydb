@@ -11,7 +11,7 @@ service ReifyDB {
   rpc BatchUnsubscribe(BatchUnsubscribeRequest) returns (BatchUnsubscribeResponse);
   rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
-  rpc CallOperation(OperationRequest) returns (OperationResponse);
+  rpc Call(OperationRequest) returns (OperationResponse);
 }
 
 // Wire format the server should use when emitting frames back to the client.

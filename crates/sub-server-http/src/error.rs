@@ -103,10 +103,15 @@ impl IntoResponse for AppError {
 			if diag.rql.is_none() && !rql.is_empty() {
 				diag.with_rql(rql);
 			}
+			let status = if diag.code.starts_with("POLICY_") {
+				StatusCode::FORBIDDEN
+			} else {
+				StatusCode::BAD_REQUEST
+			};
 			let body = Json(DiagnosticResponse {
 				diagnostic: diag,
 			});
-			return (StatusCode::BAD_REQUEST, body).into_response();
+			return (status, body).into_response();
 		}
 
 		let (status, code, message) = match &self {

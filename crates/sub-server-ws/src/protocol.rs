@@ -42,7 +42,7 @@ pub enum RequestPayload {
 	Unsubscribe(UnsubscribeRequest),
 	BatchSubscribe(BatchSubscribeRequest),
 	BatchUnsubscribe(BatchUnsubscribeRequest),
-	CallOperation(CallOperationRequest),
+	Call(CallRequest),
 	Logout,
 }
 
@@ -140,11 +140,11 @@ pub struct BatchUnsubscribeRequest {
 	pub batch_id: String,
 }
 
-/// CallOperation request payload.
+/// Call request payload.
 ///
 /// Invokes a bound procedure by its WS binding name.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CallOperationRequest {
+pub struct CallRequest {
 	/// Globally unique WS binding name.
 	pub name: String,
 	/// Named parameters to pass to the procedure.

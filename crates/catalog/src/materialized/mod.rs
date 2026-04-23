@@ -128,6 +128,8 @@ pub struct MaterializedCatalogInner {
 	pub(crate) bindings_by_ws_name: SkipMap<String, BindingId>,
 	/// Set of HTTP binding IDs (HTTP uses path-pattern matching, not hash lookup)
 	pub(crate) bindings_http: SkipMap<BindingId, ()>,
+	/// Index from (HTTP method, path) to binding ID for fast uniqueness checks
+	pub(crate) bindings_by_http_method_path: SkipMap<(String, String), BindingId>,
 	/// Runtime configuration registry (shared with the oracle)
 	pub(crate) configs: SkipMap<ConfigKey, MultiVersionConfig>,
 	/// MultiVersion namespace definitions indexed by namespace ID
@@ -269,6 +271,7 @@ impl MaterializedCatalog {
 			bindings_by_grpc_name: SkipMap::new(),
 			bindings_by_ws_name: SkipMap::new(),
 			bindings_http: SkipMap::new(),
+			bindings_by_http_method_path: SkipMap::new(),
 			configs: SkipMap::new(),
 			namespaces,
 			namespaces_by_name,

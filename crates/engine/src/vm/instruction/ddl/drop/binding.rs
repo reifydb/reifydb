@@ -25,7 +25,7 @@ pub(crate) fn drop_binding(services: &Services, txn: &mut AdminTransaction, plan
 			]));
 		}
 		return Err(CatalogError::NotFound {
-			kind: CatalogObjectKind::Procedure,
+			kind: CatalogObjectKind::Binding,
 			namespace: plan.namespace.name().to_string(),
 			name: plan.name.text().to_string(),
 			fragment: plan.name.clone(),

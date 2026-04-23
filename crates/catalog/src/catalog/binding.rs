@@ -10,9 +10,15 @@ use reifydb_transaction::{
 	change::TransactionalBindingChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
+use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
-use crate::{CatalogStore, Result, catalog::Catalog, store::binding::create::BindingToCreate as StoreBindingToCreate};
+use crate::{
+	CatalogStore, Result,
+	catalog::Catalog,
+	error::{CatalogError, CatalogObjectKind},
+	store::binding::create::BindingToCreate as StoreBindingToCreate,
+};
 
 pub struct BindingToCreate {
 	pub namespace: NamespaceId,
@@ -214,6 +220,62 @@ impl Catalog {
 
 	#[instrument(name = "catalog::binding::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_binding(&self, txn: &mut AdminTransaction, to_create: BindingToCreate) -> Result<Binding> {
+		// Namespace-local binding-name uniqueness.
+		if let Some(existing) = self.materialized.find_binding_by_name(to_create.namespace, &to_create.name) {
+			let _ = existing;
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::Binding,
+				namespace: to_create.namespace.to_string(),
+				name: to_create.name.clone(),
+				fragment: Fragment::internal(to_create.name.clone()),
+			}
+			.into());
+		}
+
+		// Protocol-scoped global uniqueness.
+		match &to_create.protocol {
+			BindingProtocol::Http {
+				method,
+				path,
+			} => {
+				if self.materialized.find_http_binding_by_method_path(method.as_str(), path).is_some() {
+					return Err(CatalogError::AlreadyExists {
+						kind: CatalogObjectKind::Binding,
+						namespace: to_create.namespace.to_string(),
+						name: format!("{} {}", method.as_str(), path),
+						fragment: Fragment::internal(format!("{} {}", method.as_str(), path)),
+					}
+					.into());
+				}
+			}
+			BindingProtocol::Grpc {
+				name,
+			} => {
+				if self.materialized.find_grpc_binding_by_name(name).is_some() {
+					return Err(CatalogError::AlreadyExists {
+						kind: CatalogObjectKind::Binding,
+						namespace: to_create.namespace.to_string(),
+						name: name.clone(),
+						fragment: Fragment::internal(name.clone()),
+					}
+					.into());
+				}
+			}
+			BindingProtocol::Ws {
+				name,
+			} => {
+				if self.materialized.find_ws_binding_by_name(name).is_some() {
+					return Err(CatalogError::AlreadyExists {
+						kind: CatalogObjectKind::Binding,
+						namespace: to_create.namespace.to_string(),
+						name: name.clone(),
+						fragment: Fragment::internal(name.clone()),
+					}
+					.into());
+				}
+			}
+		}
+
 		let binding = CatalogStore::create_binding(txn, to_create.into())?;
 		txn.track_binding_created(binding.clone())?;
 		Ok(binding)

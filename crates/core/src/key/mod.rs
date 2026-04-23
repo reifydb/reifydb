@@ -383,8 +383,9 @@ impl Key {
 			KeyKind::Procedure => ProcedureKey::decode(key).map(Self::Procedure),
 			KeyKind::NamespaceProcedure => NamespaceProcedureKey::decode(key).map(Self::NamespaceProcedure),
 			KeyKind::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
-			KeyKind::Binding | KeyKind::NamespaceBinding => {
-				// Binding keys are used directly via EncodableKey trait, not through Key enum
+			KeyKind::Binding => BindingKey::decode(key).map(Self::Binding),
+			KeyKind::NamespaceBinding => {
+				// NamespaceBinding keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
 		}

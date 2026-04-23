@@ -40,7 +40,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Builder;
 
 use crate::{
-	protocol::{CallOperationRequest, Request, RequestPayload},
+	protocol::{CallRequest, Request, RequestPayload},
 	response::{BatchChangeEntry, Response, ResponseMeta, ServerPush},
 	subscription::{
 		handler::{handle_batch_subscribe, handle_batch_unsubscribe, handle_subscribe},
@@ -529,9 +529,9 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 			.await
 		}
 
-		RequestPayload::CallOperation(co) => {
+		RequestPayload::Call(co) => {
 			let identity: IdentityId = conn.identity.unwrap_or(IdentityId::anonymous());
-			match handle_call_operation(&request.id, identity, co, conn).await {
+			match handle_call(&request.id, identity, co, conn).await {
 				Ok(resp) => Some(resp),
 				Err(msg) => Some(WsResponse::Text(msg)),
 			}
@@ -738,13 +738,13 @@ pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
 	Response::internal_error(id, code, message).to_json()
 }
 
-/// Dispatch a WebSocket `CallOperation` request through the binding layer.
-/// Mirrors the HTTP and gRPC call_operation paths: resolves the binding via
+/// Dispatch a WebSocket `Call` request through the binding layer.
+/// Mirrors the HTTP and gRPC call paths: resolves the binding via
 /// `list_bindings`, validates params, calls `dispatch_binding`, wraps per format.
-async fn handle_call_operation(
+async fn handle_call(
 	request_id: &str,
 	identity: IdentityId,
-	req: CallOperationRequest,
+	req: CallRequest,
 	conn: &mut ConnectionContext<'_>,
 ) -> Result<WsResponse, String> {
 	let binding =
@@ -796,7 +796,7 @@ async fn handle_call_operation(
 			}
 		}
 		Params::Positional(_) => {
-			return Err(build_error(request_id, "INVALID_PARAMS", "CallOperation requires named params"));
+			return Err(build_error(request_id, "INVALID_PARAMS", "Call requires named params"));
 		}
 	}
 
@@ -823,11 +823,11 @@ async fn handle_call_operation(
 		},
 		BindingFormat::Json => {
 			let (content_type, body) = build_response_body(frames, WireFormat::Json, false);
-			Ok(WsResponse::Text(Response::call_operation(request_id, content_type, body, meta).to_json()))
+			Ok(WsResponse::Text(Response::call(request_id, content_type, body, meta).to_json()))
 		}
 		BindingFormat::Frames => {
 			let (content_type, body) = build_response_body(frames, WireFormat::Frames, false);
-			Ok(WsResponse::Text(Response::call_operation(request_id, content_type, body, meta).to_json()))
+			Ok(WsResponse::Text(Response::call(request_id, content_type, body, meta).to_json()))
 		}
 	}
 }
