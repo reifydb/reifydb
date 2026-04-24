@@ -10,7 +10,7 @@ use reifydb_auth::{
 };
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{bootstrap_system_objects, load_materialized_catalog},
+	bootstrap::{apply_bootstrap_configs, bootstrap_system_objects, load_materialized_catalog},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
 	system::SystemCatalog,
@@ -24,7 +24,10 @@ use reifydb_core::{
 	CoreVersion,
 	actors::cdc::CdcProduceHandle,
 	event::{EventBus, transaction::PostCommitEvent},
-	interface::version::{ComponentType, HasVersion, SystemVersion},
+	interface::{
+		catalog::config::ConfigKey,
+		version::{ComponentType, HasVersion, SystemVersion},
+	},
 	util::ioc::IocContainer,
 };
 #[cfg(not(reifydb_single_threaded))]
@@ -66,6 +69,7 @@ use reifydb_transaction::{
 	TransactionVersion, interceptor::builder::InterceptorBuilder, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
+use reifydb_type::value::Value;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::system::tasks::create_system_tasks;
@@ -100,6 +104,7 @@ pub struct DatabaseBuilder {
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 	migrations: Vec<Migration>,
 	is_replica: bool,
+	bootstrap_configs: Vec<(ConfigKey, Value)>,
 }
 
 impl DatabaseBuilder {
@@ -141,6 +146,7 @@ impl DatabaseBuilder {
 			auth_configurator: None,
 			migrations: Vec::new(),
 			is_replica: false,
+			bootstrap_configs: Vec::new(),
 		}
 	}
 
@@ -267,6 +273,21 @@ impl DatabaseBuilder {
 
 	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
 		self.migrations = migrations;
+		self
+	}
+
+	/// Set a system configuration value to apply during bootstrap.
+	///
+	/// Applied on every `build()` after catalog load and system-object bootstrap,
+	/// overwriting any previously persisted override for this key. Skipped on replicas.
+	pub fn with_config(mut self, key: ConfigKey, value: Value) -> Self {
+		self.bootstrap_configs.push((key, value));
+		self
+	}
+
+	/// Set multiple system configuration values to apply during bootstrap.
+	pub fn with_configs(mut self, configs: impl IntoIterator<Item = (ConfigKey, Value)>) -> Self {
+		self.bootstrap_configs.extend(configs);
 		self
 	}
 
@@ -425,6 +446,7 @@ impl DatabaseBuilder {
 		// Bootstrap AFTER CDC producer is active so commits are captured.
 		if !self.is_replica {
 			bootstrap_system_objects(&multi, &single, &catalog, &eventbus)?;
+			apply_bootstrap_configs(&multi, &single, &catalog, &eventbus, &self.bootstrap_configs)?;
 		}
 
 		// Collect all versions

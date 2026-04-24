@@ -6,4 +6,5 @@
 
 mod auth;
 mod metric;
+mod system_config;
 mod virtual_table;

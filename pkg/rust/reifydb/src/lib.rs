@@ -29,7 +29,7 @@ pub use reifydb_cdc as cdc;
 pub use reifydb_core as core;
 #[cfg(feature = "sub_server")]
 pub use reifydb_core::actors::server::Operation;
-pub use reifydb_core::event::EventBus;
+pub use reifydb_core::{event::EventBus, interface::catalog::config::ConfigKey};
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;

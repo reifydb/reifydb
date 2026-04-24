@@ -5,6 +5,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::materialized::MaterializedCatalog;
+use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
@@ -18,6 +19,7 @@ use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
+use reifydb_type::value::Value;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::{
@@ -50,6 +52,7 @@ pub struct EmbeddedBuilder {
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 	migrations: Vec<Migration>,
+	bootstrap_configs: Vec<(ConfigKey, Value)>,
 }
 
 impl EmbeddedBuilder {
@@ -75,6 +78,7 @@ impl EmbeddedBuilder {
 			replication_factory: None,
 			auth_configurator: None,
 			migrations: Vec::new(),
+			bootstrap_configs: Vec::new(),
 		}
 	}
 
@@ -155,6 +159,20 @@ impl EmbeddedBuilder {
 		self
 	}
 
+	/// Set a system configuration value applied during bootstrap.
+	///
+	/// Applied on every `build()`, overwriting any previously persisted value.
+	pub fn with_config(mut self, key: ConfigKey, value: Value) -> Self {
+		self.bootstrap_configs.push((key, value));
+		self
+	}
+
+	/// Set multiple system configuration values applied during bootstrap.
+	pub fn with_configs(mut self, configs: impl IntoIterator<Item = (ConfigKey, Value)>) -> Self {
+		self.bootstrap_configs.extend(configs);
+		self
+	}
+
 	pub fn build(self) -> Result<Database> {
 		let runtime = match self.runtime {
 			Some(rt) => rt,
@@ -230,6 +248,10 @@ impl EmbeddedBuilder {
 
 		if !self.migrations.is_empty() {
 			builder = builder.with_migrations(self.migrations);
+		}
+
+		if !self.bootstrap_configs.is_empty() {
+			builder = builder.with_configs(self.bootstrap_configs);
 		}
 
 		builder.build()

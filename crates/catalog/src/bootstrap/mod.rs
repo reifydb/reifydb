@@ -5,19 +5,27 @@
 //! system-owned objects (root identity, system procedures, metric ring buffers)
 //! exist. Skipped on replicas - they receive these via replication.
 
-use reifydb_core::{event::EventBus, interface::catalog::id::NamespaceId};
+use reifydb_core::{
+	event::EventBus,
+	interface::catalog::{config::ConfigKey, id::NamespaceId},
+};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
+	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
-use reifydb_type::value::identity::IdentityId;
+use reifydb_type::value::{Value, identity::IdentityId};
 use tracing::info;
 
 use crate::{
 	Result,
 	catalog::{Catalog, namespace::NamespaceToCreate},
-	materialized::{MaterializedCatalog, load::MaterializedCatalogLoader},
+	materialized::{
+		MaterializedCatalog,
+		load::{MaterializedCatalogLoader, config::load_configs},
+	},
 };
 
 pub mod binding;
@@ -42,6 +50,45 @@ pub fn bootstrap_system_objects(
 	procedure::bootstrap_system_procedures(multi, single, catalog, eventbus)?;
 	binding::bootstrap_system_bindings(multi, single, catalog, eventbus)?;
 	metric::bootstrap_metric_ringbuffers(multi, single, catalog, eventbus)?;
+	Ok(())
+}
+
+/// Apply builder-supplied system configuration overrides.
+///
+/// Each `(key, value)` pair is persisted via `Catalog::set_config`, overwriting any
+/// existing override for that key. Reuses the existing validation and change-tracking
+/// paths, so invalid values fail here exactly as they would at runtime.
+///
+/// Callers should skip this on replicas; configs propagate via replication.
+pub fn apply_bootstrap_configs(
+	multi: &MultiTransaction,
+	single: &SingleTransaction,
+	catalog: &MaterializedCatalog,
+	eventbus: &EventBus,
+	configs: &[(ConfigKey, Value)],
+) -> Result<()> {
+	if configs.is_empty() {
+		return Ok(());
+	}
+
+	let mut admin = AdminTransaction::new(
+		multi.clone(),
+		single.clone(),
+		eventbus.clone(),
+		Interceptors::default(),
+		IdentityId::system(),
+		Clock::Real,
+	)?;
+
+	let catalog_api = Catalog::new(catalog.clone());
+	for (key, value) in configs {
+		catalog_api.set_config(&mut admin, *key, value.clone())?;
+	}
+	admin.commit()?;
+
+	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+	load_configs(&mut Transaction::Query(&mut qt), catalog)?;
+
 	Ok(())
 }
 
