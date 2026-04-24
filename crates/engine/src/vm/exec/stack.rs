@@ -69,7 +69,7 @@ impl<'a> Vm<'a> {
 				result.push(Frame::from(c));
 			}
 			Variable::Closure(_) => {
-				result.push(Frame::from(Columns::scalar(Value::none())));
+				result.push(Frame::from(Columns::single_row([("value", Value::none())])));
 			}
 		}
 	}
@@ -92,7 +92,7 @@ impl<'a> Vm<'a> {
 		if self.batch_size > 1 && (self.active_mask.is_some() || !self.mask_stack.is_empty()) {
 			let mask = self.effective_mask();
 			for col in columns.columns.make_mut().iter_mut() {
-				col.data_mut().filter(&mask)?;
+				col.filter(&mask)?;
 			}
 		}
 

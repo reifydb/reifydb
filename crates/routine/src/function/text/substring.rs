@@ -54,9 +54,9 @@ impl Function for TextSubstring {
 		let start_col = &args[1];
 		let length_col = &args[2];
 
-		let (text_data, text_bv) = text_col.data().unwrap_option();
-		let (start_data, start_bv) = start_col.data().unwrap_option();
-		let (length_data, length_bv) = length_col.data().unwrap_option();
+		let (text_data, text_bv) = text_col.unwrap_option();
+		let (start_data, start_bv) = start_col.unwrap_option();
+		let (length_data, length_bv) = length_col.unwrap_option();
 		let row_count = text_data.len();
 
 		match (text_data, start_data, length_data) {

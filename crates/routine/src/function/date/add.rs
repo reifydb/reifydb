@@ -48,8 +48,8 @@ impl Function for DateAdd {
 
 		let date_col = &args[0];
 		let dur_col = &args[1];
-		let (date_data, date_bitvec) = date_col.data().unwrap_option();
-		let (dur_data, dur_bitvec) = dur_col.data().unwrap_option();
+		let (date_data, date_bitvec) = date_col.unwrap_option();
+		let (dur_data, dur_bitvec) = dur_col.unwrap_option();
 		let row_count = date_data.len();
 
 		let result_data = match (date_data, dur_data) {

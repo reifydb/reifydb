@@ -113,8 +113,8 @@ impl QueryNode for TopKNode {
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
 			if let Some(existing_columns) = &mut columns_opt {
-				for (i, col) in columns.into_iter().enumerate() {
-					existing_columns[i].data_mut().extend(col.data().clone())?;
+				for (i, col) in columns.columns.iter().enumerate() {
+					existing_columns[i].extend(col.clone())?;
 				}
 			} else {
 				columns_opt = Some(columns);
@@ -198,7 +198,7 @@ impl QueryNode for TopKNode {
 		// Reorder columns
 		let cols = columns.columns.make_mut();
 		for col in cols.iter_mut() {
-			col.data_mut().reorder(&indices);
+			col.reorder(&indices);
 		}
 
 		Ok(Some(columns))
@@ -251,7 +251,7 @@ impl TopKNode {
 		// Reorder columns
 		let cols = columns.columns.make_mut();
 		for col in cols.iter_mut() {
-			col.data_mut().reorder(&indices);
+			col.reorder(&indices);
 		}
 
 		Ok(Some(columns.clone()))

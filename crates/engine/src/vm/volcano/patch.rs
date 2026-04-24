@@ -177,15 +177,15 @@ impl Transform for PatchNode {
 			patch_columns.push(column);
 		}
 
-		let mut result_columns = Vec::new();
+		let mut result_columns: Vec<ColumnWithName> = Vec::new();
 
-		for original_col in input.into_iter() {
-			let original_name = original_col.name().text();
+		for (original_name, original_data) in input.names.iter().zip(input.columns.iter()) {
+			let original_name_text = original_name.text();
 
-			if let Some(patch_idx) = patch_names.iter().position(|n| n.text() == original_name) {
+			if let Some(patch_idx) = patch_names.iter().position(|n| n.text() == original_name_text) {
 				result_columns.push(patch_columns[patch_idx].clone());
 			} else {
-				result_columns.push(original_col);
+				result_columns.push(ColumnWithName::new(original_name.clone(), original_data.clone()));
 			}
 		}
 

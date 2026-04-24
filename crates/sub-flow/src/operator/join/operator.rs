@@ -177,10 +177,11 @@ impl JoinOperator {
 		let mut expr_columns = Vec::with_capacity(compiled_exprs.len());
 		for compiled_expr in compiled_exprs.iter() {
 			let col: ColumnWithName = if let Some(col_name) = compiled_expr.access_column_name() {
-				columns
-					.column(col_name)
+				columns.column(col_name)
 					.map(|c| ColumnWithName::new(c.name().clone(), c.data().clone()))
-					.unwrap_or_else(|| ColumnWithName::undefined_typed(col_name, Type::Boolean, row_count))
+					.unwrap_or_else(|| {
+						ColumnWithName::undefined_typed(col_name, Type::Boolean, row_count)
+					})
 			} else {
 				compiled_expr.execute(&exec_ctx)?
 			};
@@ -730,7 +731,12 @@ impl Operator for JoinOperator {
 			let right_names = builder.right_column_names();
 
 			// Add left columns as-is
-			let mut all_columns: Vec<ColumnWithName> = left_shape.into_iter().collect();
+			let mut all_columns: Vec<ColumnWithName> = left_shape
+				.names
+				.iter()
+				.zip(left_shape.columns.iter())
+				.map(|(name, data)| ColumnWithName::new(name.clone(), data.clone()))
+				.collect();
 
 			// Add right columns with pre-computed aliased names
 			for (col, aliased_name) in right_shape.columns.into_iter().zip(right_names.iter()) {

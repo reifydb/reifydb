@@ -101,7 +101,10 @@ impl QueryNode for AggregateNode {
 				} = projection
 				{
 					let column_ref = columns.column(column).unwrap();
-					let cwn = ColumnWithName::new(column_ref.name().clone(), column_ref.data().clone());
+					let cwn = ColumnWithName::new(
+						column_ref.name().clone(),
+						column_ref.data().clone(),
+					);
 					accumulator.update(&Columns::new(vec![cwn]), &groups).unwrap();
 				}
 			}

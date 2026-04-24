@@ -53,9 +53,9 @@ impl Function for TextPadLeft {
 		let len_col = &args[1];
 		let pad_col = &args[2];
 
-		let (str_data, str_bv) = str_col.data().unwrap_option();
-		let (len_data, len_bv) = len_col.data().unwrap_option();
-		let (pad_data, pad_bv) = pad_col.data().unwrap_option();
+		let (str_data, str_bv) = str_col.unwrap_option();
+		let (len_data, len_bv) = len_col.unwrap_option();
+		let (pad_data, pad_bv) = pad_col.unwrap_option();
 		let row_count = str_data.len();
 
 		let pad_container = match pad_data {

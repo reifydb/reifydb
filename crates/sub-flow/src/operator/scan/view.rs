@@ -135,7 +135,7 @@ impl Operator for PrimitiveViewOperator {
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		if rows.is_empty() {
-			return Ok(Columns::from_view(&self.view));
+			return Ok(Columns::from_catalog_columns(self.view.columns()));
 		}
 
 		let shape: RowShape = self.view.columns().into();
@@ -199,7 +199,7 @@ impl Operator for PrimitiveViewOperator {
 		}
 
 		if row_numbers.is_empty() {
-			Ok(Columns::from_view(&self.view))
+			Ok(Columns::from_catalog_columns(self.view.columns()))
 		} else {
 			Ok(Columns::with_system_columns(columns_vec, row_numbers, created_at, updated_at))
 		}

@@ -336,7 +336,7 @@ impl SubscriptionInspector for SubscriptionInspectorImpl {
 			}
 		}
 
-		Some(Columns::from_rows_with_row_numbers(&names, &all_rows, all_row_numbers))
+		Some(Columns::from_rows(&names, &all_rows).with_row_numbers(all_row_numbers))
 	}
 }
 

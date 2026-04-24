@@ -80,8 +80,8 @@ impl Function for Modulo {
 		let a_col = &args[0];
 		let b_col = &args[1];
 
-		let (a_data, a_bitvec) = a_col.data().unwrap_option();
-		let (b_data, b_bitvec) = b_col.data().unwrap_option();
+		let (a_data, a_bitvec) = a_col.unwrap_option();
+		let (b_data, b_bitvec) = b_col.unwrap_option();
 		let row_count = a_data.len();
 
 		if !a_data.get_type().is_number() {

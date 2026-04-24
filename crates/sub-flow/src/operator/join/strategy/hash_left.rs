@@ -151,7 +151,7 @@ impl LeftHashJoin {
 						key_hash,
 						&ctx.operator.left_parent,
 					)?;
-					if !left_columns.is_empty() {
+					if left_columns.has_rows() {
 						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
 						let unmatched = ctx.operator.unmatched_left_columns_batch(
 							txn,
@@ -268,7 +268,7 @@ impl LeftHashJoin {
 						key_hash,
 						&ctx.operator.left_parent,
 					)?;
-					if !left_columns.is_empty() {
+					if left_columns.has_rows() {
 						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
 						let unmatched = ctx.operator.unmatched_left_columns_batch(
 							txn,

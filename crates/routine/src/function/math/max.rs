@@ -124,7 +124,7 @@ macro_rules! max_arm {
 		for (group, indices) in $groups.iter() {
 			let mut max = None;
 			for &i in indices {
-				if $column.data().is_defined(i) {
+				if $column.is_defined(i) {
 					if let Some(&val) = $container.get(i) {
 						max = Some(match max {
 							Some(current) if val > current => val,
@@ -146,7 +146,7 @@ macro_rules! max_arm {
 impl Accumulator for MaxAccumulator {
 	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError> {
 		let column = &args[0];
-		let (data, _bitvec) = column.data().unwrap_option();
+		let (data, _bitvec) = column.unwrap_option();
 
 		if self.input_type.is_none() {
 			self.input_type = Some(data.get_type());
@@ -197,7 +197,7 @@ impl Accumulator for MaxAccumulator {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<f32> = None;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(&val) = container.get(i)
 						{
 							max = Some(match max {
@@ -218,7 +218,7 @@ impl Accumulator for MaxAccumulator {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<f64> = None;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(&val) = container.get(i)
 						{
 							max = Some(match max {
@@ -242,7 +242,7 @@ impl Accumulator for MaxAccumulator {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<Int> = None;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
 							max = Some(match max {
@@ -267,7 +267,7 @@ impl Accumulator for MaxAccumulator {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<Uint> = None;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
 							max = Some(match max {
@@ -292,7 +292,7 @@ impl Accumulator for MaxAccumulator {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<Decimal> = None;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
 							max = Some(match max {

@@ -145,12 +145,14 @@ pub trait Function: Send + Sync {
 		match combined_bv {
 			Some(bv) => {
 				let wrapped_cols: Vec<ColumnWithName> = result
-					.into_iter()
-					.map(|col| {
+					.names
+					.iter()
+					.zip(result.columns.iter())
+					.map(|(name, data)| {
 						ColumnWithName::new(
-							col.name,
+							name.clone(),
 							ColumnBuffer::Option {
-								inner: Box::new(col.data),
+								inner: Box::new(data.clone()),
 								bitvec: bv.clone(),
 							},
 						)

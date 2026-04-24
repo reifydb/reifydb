@@ -87,7 +87,11 @@ impl QueryNode for RemoteFetchNode {
 					let cols: Columns = frame.into();
 					if self.headers.is_none() {
 						self.headers = Some(ColumnHeaders {
-							columns: cols.names.iter().map(|n| Fragment::internal(n.text())).collect(),
+							columns: cols
+								.names
+								.iter()
+								.map(|n| Fragment::internal(n.text()))
+								.collect(),
 						});
 					}
 					self.batches.push_back(cols);

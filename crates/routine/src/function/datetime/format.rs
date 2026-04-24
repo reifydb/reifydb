@@ -147,8 +147,8 @@ impl Function for DateTimeFormat {
 
 		let dt_col = &args[0];
 		let fmt_col = &args[1];
-		let (dt_data, dt_bitvec) = dt_col.data().unwrap_option();
-		let (fmt_data, fmt_bitvec) = fmt_col.data().unwrap_option();
+		let (dt_data, dt_bitvec) = dt_col.unwrap_option();
+		let (fmt_data, fmt_bitvec) = fmt_col.unwrap_option();
 		let row_count = dt_data.len();
 
 		let result_data = match (dt_data, fmt_data) {

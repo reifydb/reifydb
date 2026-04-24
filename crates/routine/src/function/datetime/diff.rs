@@ -48,8 +48,8 @@ impl Function for DateTimeDiff {
 
 		let col1 = &args[0];
 		let col2 = &args[1];
-		let (data1, bitvec1) = col1.data().unwrap_option();
-		let (data2, bitvec2) = col2.data().unwrap_option();
+		let (data1, bitvec1) = col1.unwrap_option();
+		let (data2, bitvec2) = col2.unwrap_option();
 		let row_count = data1.len();
 
 		let result_data = match (data1, data2) {

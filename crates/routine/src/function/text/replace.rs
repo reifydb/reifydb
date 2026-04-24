@@ -53,9 +53,9 @@ impl Function for TextReplace {
 		let from_col = &args[1];
 		let to_col = &args[2];
 
-		let (str_data, str_bv) = str_col.data().unwrap_option();
-		let (from_data, from_bv) = from_col.data().unwrap_option();
-		let (to_data, to_bv) = to_col.data().unwrap_option();
+		let (str_data, str_bv) = str_col.unwrap_option();
+		let (from_data, from_bv) = from_col.unwrap_option();
+		let (to_data, to_bv) = to_col.unwrap_option();
 		let row_count = str_data.len();
 
 		match (str_data, from_data, to_data) {

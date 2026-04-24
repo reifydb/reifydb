@@ -51,9 +51,9 @@ impl Function for Type {
 		}
 
 		let column = &args[0];
-		let col_type = column.data().get_type();
+		let col_type = column.get_type();
 		let type_name = col_type.to_string();
-		let row_count = column.data().len();
+		let row_count = column.len();
 
 		let result_data: Vec<String> = vec![type_name; row_count];
 

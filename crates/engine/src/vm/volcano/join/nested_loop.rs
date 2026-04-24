@@ -161,7 +161,7 @@ impl QueryNode for NestedLoopJoinNode {
 		let columns = if result_row_numbers.is_empty() {
 			Columns::from_rows(&names_refs, &result_rows)
 		} else {
-			Columns::from_rows_with_row_numbers(&names_refs, &result_rows, result_row_numbers)
+			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
 		};
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));

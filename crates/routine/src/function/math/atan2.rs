@@ -80,8 +80,8 @@ impl Function for Atan2 {
 		let y_col = &args[0];
 		let x_col = &args[1];
 
-		let (y_data, y_bitvec) = y_col.data().unwrap_option();
-		let (x_data, x_bitvec) = x_col.data().unwrap_option();
+		let (y_data, y_bitvec) = y_col.unwrap_option();
+		let (x_data, x_bitvec) = x_col.unwrap_option();
 		let row_count = y_data.len();
 
 		if !y_data.get_type().is_number() {

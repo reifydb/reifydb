@@ -470,9 +470,9 @@ impl Function for Clamp {
 		let min_col = &args[1];
 		let max_col = &args[2];
 
-		let (v_data, v_bv) = val_col.data().unwrap_option();
-		let (lo_data, lo_bv) = min_col.data().unwrap_option();
-		let (hi_data, hi_bv) = max_col.data().unwrap_option();
+		let (v_data, v_bv) = val_col.unwrap_option();
+		let (lo_data, lo_bv) = min_col.unwrap_option();
+		let (hi_data, hi_bv) = max_col.unwrap_option();
 		let row_count = v_data.len();
 
 		let result_data = match (v_data, lo_data, hi_data) {

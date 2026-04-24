@@ -208,7 +208,12 @@ impl QueryNode for SeriesScanNode {
 		}
 
 		let row_numbers: Vec<RowNumber> = sequences.into_iter().map(RowNumber::from).collect();
-		Ok(Some(Columns::with_system_columns(result_columns, row_numbers, created_at_values, updated_at_values)))
+		Ok(Some(Columns::with_system_columns(
+			result_columns,
+			row_numbers,
+			created_at_values,
+			updated_at_values,
+		)))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

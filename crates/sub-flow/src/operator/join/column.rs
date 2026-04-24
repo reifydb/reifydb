@@ -179,9 +179,8 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns::from_parallel(
-			result_columns.iter().map(|c| c.name.clone()).collect(),
-			result_columns.into_iter().map(|c| c.data).collect(),
+		Columns::with_system_columns(
+			result_columns,
 			row_numbers.to_vec(),
 			left.created_at.as_ref().to_vec(),
 			left.updated_at.as_ref().to_vec(),

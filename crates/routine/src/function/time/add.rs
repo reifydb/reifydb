@@ -51,8 +51,8 @@ impl Function for TimeAdd {
 		let time_col = &args[0];
 		let dur_col = &args[1];
 
-		let (time_data, time_bv) = time_col.data().unwrap_option();
-		let (dur_data, dur_bv) = dur_col.data().unwrap_option();
+		let (time_data, time_bv) = time_col.unwrap_option();
+		let (dur_data, dur_bv) = dur_col.unwrap_option();
 
 		match (time_data, dur_data) {
 			(ColumnBuffer::Time(time_container), ColumnBuffer::Duration(dur_container)) => {

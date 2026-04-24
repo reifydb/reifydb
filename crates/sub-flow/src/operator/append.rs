@@ -118,13 +118,7 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let output = Columns::from_parallel(
-						post.names.as_ref().to_vec(),
-						post.columns.as_ref().to_vec(),
-						output_row_numbers,
-						post.created_at.to_vec(),
-						post.updated_at.to_vec(),
-					);
+					let output = post.clone().with_row_numbers(output_row_numbers);
 
 					result_diffs.push(Diff::Insert {
 						post: output,
@@ -150,20 +144,8 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let pre_output = Columns::from_parallel(
-						pre.names.as_ref().to_vec(),
-						pre.columns.as_ref().to_vec(),
-						output_row_numbers.clone(),
-						pre.created_at.to_vec(),
-						pre.updated_at.to_vec(),
-					);
-					let post_output = Columns::from_parallel(
-						post.names.as_ref().to_vec(),
-						post.columns.as_ref().to_vec(),
-						output_row_numbers,
-						post.created_at.to_vec(),
-						post.updated_at.to_vec(),
-					);
+					let pre_output = pre.clone().with_row_numbers(output_row_numbers.clone());
+					let post_output = post.clone().with_row_numbers(output_row_numbers);
 
 					result_diffs.push(Diff::Update {
 						pre: pre_output,
@@ -189,13 +171,7 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let output = Columns::from_parallel(
-						pre.names.as_ref().to_vec(),
-						pre.columns.as_ref().to_vec(),
-						output_row_numbers,
-						pre.created_at.to_vec(),
-						pre.updated_at.to_vec(),
-					);
+					let output = pre.clone().with_row_numbers(output_row_numbers);
 
 					result_diffs.push(Diff::Remove {
 						pre: output,
@@ -228,13 +204,7 @@ impl Operator for AppendOperator {
 
 			if !parent_cols.is_empty() {
 				// Replace row number with append output row number
-				let updated = Columns::from_parallel(
-					parent_cols.names.as_ref().to_vec(),
-					parent_cols.columns.as_ref().to_vec(),
-					vec![row_number],
-					parent_cols.created_at.to_vec(),
-					parent_cols.updated_at.to_vec(),
-				);
+				let updated = parent_cols.with_row_numbers(vec![row_number]);
 				found_columns.push(updated);
 			}
 		}

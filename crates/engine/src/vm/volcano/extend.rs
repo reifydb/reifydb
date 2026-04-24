@@ -157,7 +157,12 @@ impl Transform for ExtendNode {
 		let existing_names: Vec<Fragment> = input.iter().map(|c| c.name().clone()).collect();
 
 		let session = EvalContext::from_transform(ctx, stored_ctx);
-		let mut new_columns = input.into_iter().collect::<Vec<_>>();
+		let mut new_columns: Vec<ColumnWithName> = input
+			.names
+			.iter()
+			.zip(input.columns.iter())
+			.map(|(name, data)| ColumnWithName::new(name.clone(), data.clone()))
+			.collect();
 
 		let mut new_names = Vec::with_capacity(compiled.len());
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {

@@ -87,10 +87,10 @@ impl Function for TimeNew {
 			None
 		};
 
-		let (hour_data, _) = hour_col.data().unwrap_option();
-		let (min_data, _) = min_col.data().unwrap_option();
-		let (sec_data, _) = sec_col.data().unwrap_option();
-		let nano_data = nano_col.map(|c| c.data().unwrap_option());
+		let (hour_data, _) = hour_col.unwrap_option();
+		let (min_data, _) = min_col.unwrap_option();
+		let (sec_data, _) = sec_col.unwrap_option();
+		let nano_data = nano_col.map(|c| c.unwrap_option());
 
 		if !is_integer_type(hour_data) {
 			return Err(FunctionError::InvalidArgumentType {

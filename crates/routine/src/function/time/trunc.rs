@@ -49,8 +49,8 @@ impl Function for TimeTrunc {
 		let time_col = &args[0];
 		let prec_col = &args[1];
 
-		let (time_data, time_bv) = time_col.data().unwrap_option();
-		let (prec_data, _) = prec_col.data().unwrap_option();
+		let (time_data, time_bv) = time_col.unwrap_option();
+		let (prec_data, _) = prec_col.unwrap_option();
 
 		match (time_data, prec_data) {
 			(

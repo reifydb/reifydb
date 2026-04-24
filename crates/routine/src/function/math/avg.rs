@@ -256,7 +256,7 @@ macro_rules! avg_arm {
 			let mut sum = 0.0f64;
 			let mut count = 0u64;
 			for &i in indices {
-				if $column.data().is_defined(i) {
+				if $column.is_defined(i) {
 					if let Some(&val) = $container.get(i) {
 						sum += val as f64;
 						count += 1;
@@ -277,7 +277,7 @@ macro_rules! avg_arm {
 impl Accumulator for AvgAccumulator {
 	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError> {
 		let column = &args[0];
-		let (data, _bitvec) = column.data().unwrap_option();
+		let (data, _bitvec) = column.unwrap_option();
 
 		match data {
 			ColumnBuffer::Int1(container) => {
@@ -336,7 +336,7 @@ impl Accumulator for AvgAccumulator {
 					let mut sum = 0.0f64;
 					let mut count = 0u64;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
 							sum += val.0.to_f64().unwrap_or(0.0);
@@ -364,7 +364,7 @@ impl Accumulator for AvgAccumulator {
 					let mut sum = 0.0f64;
 					let mut count = 0u64;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
 							sum += val.0.to_f64().unwrap_or(0.0);
@@ -392,7 +392,7 @@ impl Accumulator for AvgAccumulator {
 					let mut sum = 0.0f64;
 					let mut count = 0u64;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
 							sum += val.0.to_f64().unwrap_or(0.0);

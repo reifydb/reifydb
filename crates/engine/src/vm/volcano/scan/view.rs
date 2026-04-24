@@ -121,14 +121,14 @@ impl QueryNode for ViewScanNode {
 			self.exhausted = true;
 			if self.last_key.is_none() {
 				// Empty view: return empty columns with correct types to preserve shape
-				return Ok(Some(Columns::from_resolved_view(&self.view)));
+				return Ok(Some(Columns::from_catalog_columns(self.view.columns())));
 			}
 			return Ok(None);
 		}
 
 		self.last_key = new_last_key;
 
-		let mut columns = Columns::from_resolved_view(&self.view);
+		let mut columns = Columns::from_catalog_columns(self.view.columns());
 		let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
 		columns.append_rows(&shape, batch_rows.into_iter(), row_numbers)?;
 

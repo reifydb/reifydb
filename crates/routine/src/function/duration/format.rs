@@ -85,8 +85,8 @@ impl Function for DurationFormat {
 		let dur_col = &args[0];
 		let fmt_col = &args[1];
 
-		let (dur_data, dur_bv) = dur_col.data().unwrap_option();
-		let (fmt_data, _) = fmt_col.data().unwrap_option();
+		let (dur_data, dur_bv) = dur_col.unwrap_option();
+		let (fmt_data, _) = fmt_col.unwrap_option();
 
 		match (dur_data, fmt_data) {
 			(

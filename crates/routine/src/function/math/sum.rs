@@ -106,7 +106,7 @@ macro_rules! sum_arm {
 			let mut sum: $t = Default::default();
 			let mut has_value = false;
 			for &i in indices {
-				if $column.data().is_defined(i) {
+				if $column.is_defined(i) {
 					if let Some(&val) = $container.get(i) {
 						sum += val;
 						has_value = true;
@@ -125,7 +125,7 @@ macro_rules! sum_arm {
 impl Accumulator for SumAccumulator {
 	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError> {
 		let column = &args[0];
-		let (data, _bitvec) = column.data().unwrap_option();
+		let (data, _bitvec) = column.unwrap_option();
 
 		if self.input_type.is_none() {
 			self.input_type = Some(data.get_type());
@@ -188,7 +188,7 @@ impl Accumulator for SumAccumulator {
 					let mut sum = Int::zero();
 					let mut has_value = false;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
 							sum = Int(sum.0 + &val.0);
@@ -211,7 +211,7 @@ impl Accumulator for SumAccumulator {
 					let mut sum = Uint::zero();
 					let mut has_value = false;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
 							sum = Uint(sum.0 + &val.0);
@@ -234,7 +234,7 @@ impl Accumulator for SumAccumulator {
 					let mut sum = Decimal::zero();
 					let mut has_value = false;
 					for &i in indices {
-						if column.data().is_defined(i)
+						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
 							sum = Decimal(sum.0 + &val.0);

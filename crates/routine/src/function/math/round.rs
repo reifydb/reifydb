@@ -54,7 +54,7 @@ impl Function for Round {
 		let value_column = &args[0];
 		let precision_column = args.get(1);
 
-		let (val_data, val_bitvec) = value_column.data().unwrap_option();
+		let (val_data, val_bitvec) = value_column.unwrap_option();
 		let row_count = val_data.len();
 
 		// Helper to get precision value at row index

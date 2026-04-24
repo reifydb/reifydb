@@ -188,11 +188,11 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 
 	for (col_pos, dictionary) in &dict_columns {
 		let col = &columns[*col_pos];
-		let row_count = col.data().len();
+		let row_count = col.len();
 		let mut new_data = ColumnBuffer::with_capacity(dictionary.value_type.clone(), row_count);
 
 		for row_idx in 0..row_count {
-			let id_value = col.data().get_value(row_idx);
+			let id_value = col.get_value(row_idx);
 			if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
 				let index_key =
 					DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128() as u64).encode();

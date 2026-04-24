@@ -51,8 +51,8 @@ impl Function for IsSome {
 		}
 
 		let column = &args[0];
-		let row_count = column.data().len();
-		let data: Vec<bool> = (0..row_count).map(|i| column.data().is_defined(i)).collect();
+		let row_count = column.len();
+		let data: Vec<bool> = (0..row_count).map(|i| column.is_defined(i)).collect();
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::bool(data))]))
 	}

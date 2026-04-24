@@ -49,8 +49,8 @@ impl Function for DurationTrunc {
 		let dur_col = &args[0];
 		let prec_col = &args[1];
 
-		let (dur_data, dur_bv) = dur_col.data().unwrap_option();
-		let (prec_data, _) = prec_col.data().unwrap_option();
+		let (dur_data, dur_bv) = dur_col.unwrap_option();
+		let (prec_data, _) = prec_col.unwrap_option();
 
 		match (dur_data, prec_data) {
 			(

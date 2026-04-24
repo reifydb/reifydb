@@ -474,8 +474,8 @@ impl Function for Power {
 		let base_column = &args[0];
 		let exponent_column = &args[1];
 
-		let (base_data, base_bv) = base_column.data().unwrap_option();
-		let (exp_data, exp_bv) = exponent_column.data().unwrap_option();
+		let (base_data, base_bv) = base_column.unwrap_option();
+		let (exp_data, exp_bv) = exponent_column.unwrap_option();
 		let row_count = base_data.len();
 
 		let result_data = match (base_data, exp_data) {

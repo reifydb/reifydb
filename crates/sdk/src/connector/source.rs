@@ -40,7 +40,7 @@ impl SourceBatch {
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.columns.is_empty()
+		!self.columns.has_rows()
 	}
 }
 

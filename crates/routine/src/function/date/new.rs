@@ -81,9 +81,9 @@ impl Function for DateNew {
 		let year_col = &args[0];
 		let month_col = &args[1];
 		let day_col = &args[2];
-		let (year_data, _) = year_col.data().unwrap_option();
-		let (month_data, _) = month_col.data().unwrap_option();
-		let (day_data, _) = day_col.data().unwrap_option();
+		let (year_data, _) = year_col.unwrap_option();
+		let (month_data, _) = month_col.unwrap_option();
+		let (day_data, _) = day_col.unwrap_option();
 		let row_count = year_data.len();
 
 		if !is_integer_type(year_data) {

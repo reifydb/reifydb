@@ -163,21 +163,6 @@ impl<S: Storage> Clone for ColumnBuffer<S> {
 	}
 }
 
-impl<S: Storage> ColumnBuffer<S> {
-	/// Phase-1 shim: returns `self`. Old callers often wrote `x.data().method()`
-	/// where `x` was `&ColumnWithName`; after the parallel-vec split many of
-	/// those call sites now hold `&ColumnBuffer` directly. Keeping `.data()`
-	/// as a no-op lets those sites compile unchanged during Phase 1; Phase 2
-	/// will remove the shim.
-	pub fn data(&self) -> &Self {
-		self
-	}
-
-	pub fn data_mut(&mut self) -> &mut Self {
-		self
-	}
-}
-
 impl<S: Storage> PartialEq for ColumnBuffer<S> {
 	fn eq(&self, other: &Self) -> bool {
 		match (self, other) {

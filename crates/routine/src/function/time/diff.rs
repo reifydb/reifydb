@@ -49,8 +49,8 @@ impl Function for TimeDiff {
 		let col1 = &args[0];
 		let col2 = &args[1];
 
-		let (data1, bv1) = col1.data().unwrap_option();
-		let (data2, bv2) = col2.data().unwrap_option();
+		let (data1, bv1) = col1.unwrap_option();
+		let (data2, bv2) = col2.unwrap_option();
 
 		match (data1, data2) {
 			(ColumnBuffer::Time(container1), ColumnBuffer::Time(container2)) => {

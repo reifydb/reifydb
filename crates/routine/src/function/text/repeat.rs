@@ -49,8 +49,8 @@ impl Function for TextRepeat {
 		let str_col = &args[0];
 		let count_col = &args[1];
 
-		let (str_data, str_bv) = str_col.data().unwrap_option();
-		let (count_data, count_bv) = count_col.data().unwrap_option();
+		let (str_data, str_bv) = str_col.unwrap_option();
+		let (count_data, count_bv) = count_col.unwrap_option();
 		let row_count = str_data.len();
 
 		match str_data {

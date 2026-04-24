@@ -210,7 +210,7 @@ impl<'a> Vm<'a> {
 				columns: c,
 				..
 			} => Ok(c),
-			Variable::Closure(_) => Ok(Columns::scalar(Value::none())),
+			Variable::Closure(_) => Ok(Columns::single_row([("value", Value::none())])),
 		}
 	}
 

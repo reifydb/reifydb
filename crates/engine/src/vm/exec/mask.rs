@@ -157,7 +157,7 @@ fn variable_to_columns(var: &Variable) -> Columns {
 			columns: c,
 			..
 		} => c.clone(),
-		Variable::Closure(_) => Columns::scalar(Value::none()),
+		Variable::Closure(_) => Columns::single_row([("value", Value::none())]),
 	}
 }
 
@@ -638,8 +638,8 @@ mod tests {
 
 		let merged = merge_by_mask(&existing, &new_value, &mask).unwrap();
 		let col = &merged.columns[0];
-		assert_eq!(col.data().get_value(0), Value::Int4(10));
-		assert_eq!(col.data().get_value(1), Value::Int4(2));
-		assert_eq!(col.data().get_value(2), Value::Int4(30));
+		assert_eq!(col.get_value(0), Value::Int4(10));
+		assert_eq!(col.get_value(1), Value::Int4(2));
+		assert_eq!(col.get_value(2), Value::Int4(30));
 	}
 }

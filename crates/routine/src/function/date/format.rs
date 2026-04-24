@@ -80,8 +80,8 @@ impl Function for DateFormat {
 
 		let date_col = &args[0];
 		let fmt_col = &args[1];
-		let (date_data, date_bitvec) = date_col.data().unwrap_option();
-		let (fmt_data, fmt_bitvec) = fmt_col.data().unwrap_option();
+		let (date_data, date_bitvec) = date_col.unwrap_option();
+		let (fmt_data, fmt_bitvec) = fmt_col.unwrap_option();
 		let row_count = date_data.len();
 
 		let result_data = match (date_data, fmt_data) {

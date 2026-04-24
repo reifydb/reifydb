@@ -79,7 +79,7 @@ impl Operator for PrimitiveTableOperator {
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		if rows.is_empty() {
-			return Ok(Columns::from_table(&self.table));
+			return Ok(Columns::from_catalog_columns(&self.table.columns));
 		}
 
 		let shape: RowShape = (&self.table.columns).into();
@@ -112,7 +112,7 @@ impl Operator for PrimitiveTableOperator {
 		}
 
 		if row_numbers.is_empty() {
-			Ok(Columns::from_table(&self.table))
+			Ok(Columns::from_catalog_columns(&self.table.columns))
 		} else {
 			Ok(Columns::with_system_columns(columns_vec, row_numbers, created_at, updated_at))
 		}

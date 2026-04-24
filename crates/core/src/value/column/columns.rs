@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	collections::HashMap,
 	hash::Hash,
 	ops::{Index, IndexMut},
 };
@@ -16,10 +15,7 @@ use reifydb_type::{
 
 use crate::{
 	encoded::shape::{RowShape, RowShapeField},
-	interface::{
-		catalog::{table::Table, view::View},
-		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
-	},
+	interface::catalog::column::Column as CatalogColumn,
 	row::Row,
 	value::column::{ColumnBuffer, ColumnWithName, array::Column, headers::ColumnHeaders},
 };
@@ -82,55 +78,46 @@ impl<'a> ColumnRef<'a> {
 	}
 }
 
-impl Columns {
-	/// Create a 1-column, 1-row Columns from a single Value.
-	/// Used to store scalar values inside `Variable::Scalar(Columns)`.
-	pub fn scalar(value: Value) -> Self {
-		let data = match value {
-			Value::None {
-				..
-			} => ColumnBuffer::none_typed(Type::Boolean, 1),
-			Value::Boolean(v) => ColumnBuffer::bool([v]),
-			Value::Float4(v) => ColumnBuffer::float4([v.into()]),
-			Value::Float8(v) => ColumnBuffer::float8([v.into()]),
-			Value::Int1(v) => ColumnBuffer::int1([v]),
-			Value::Int2(v) => ColumnBuffer::int2([v]),
-			Value::Int4(v) => ColumnBuffer::int4([v]),
-			Value::Int8(v) => ColumnBuffer::int8([v]),
-			Value::Int16(v) => ColumnBuffer::int16([v]),
-			Value::Utf8(v) => ColumnBuffer::utf8([v]),
-			Value::Uint1(v) => ColumnBuffer::uint1([v]),
-			Value::Uint2(v) => ColumnBuffer::uint2([v]),
-			Value::Uint4(v) => ColumnBuffer::uint4([v]),
-			Value::Uint8(v) => ColumnBuffer::uint8([v]),
-			Value::Uint16(v) => ColumnBuffer::uint16([v]),
-			Value::Date(v) => ColumnBuffer::date([v]),
-			Value::DateTime(v) => ColumnBuffer::datetime([v]),
-			Value::Time(v) => ColumnBuffer::time([v]),
-			Value::Duration(v) => ColumnBuffer::duration([v]),
-			Value::IdentityId(v) => ColumnBuffer::identity_id([v]),
-			Value::Uuid4(v) => ColumnBuffer::uuid4([v]),
-			Value::Uuid7(v) => ColumnBuffer::uuid7([v]),
-			Value::Blob(v) => ColumnBuffer::blob([v]),
-			Value::Int(v) => ColumnBuffer::int(vec![v]),
-			Value::Uint(v) => ColumnBuffer::uint(vec![v]),
-			Value::Decimal(v) => ColumnBuffer::decimal(vec![v]),
-			Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
-			Value::Any(v) => ColumnBuffer::any(vec![v]),
-			Value::Type(v) => ColumnBuffer::any(vec![Box::new(Value::Type(v))]),
-			Value::List(v) => ColumnBuffer::any(vec![Box::new(Value::List(v))]),
-			Value::Record(v) => ColumnBuffer::any(vec![Box::new(Value::Record(v))]),
-			Value::Tuple(v) => ColumnBuffer::any(vec![Box::new(Value::Tuple(v))]),
-		};
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(vec![data]),
-			names: CowVec::new(vec![Fragment::internal("value")]),
-		}
+fn value_to_buffer(value: Value) -> ColumnBuffer {
+	match value {
+		Value::None {
+			..
+		} => ColumnBuffer::none_typed(Type::Boolean, 1),
+		Value::Boolean(v) => ColumnBuffer::bool([v]),
+		Value::Float4(v) => ColumnBuffer::float4([v.into()]),
+		Value::Float8(v) => ColumnBuffer::float8([v.into()]),
+		Value::Int1(v) => ColumnBuffer::int1([v]),
+		Value::Int2(v) => ColumnBuffer::int2([v]),
+		Value::Int4(v) => ColumnBuffer::int4([v]),
+		Value::Int8(v) => ColumnBuffer::int8([v]),
+		Value::Int16(v) => ColumnBuffer::int16([v]),
+		Value::Utf8(v) => ColumnBuffer::utf8([v]),
+		Value::Uint1(v) => ColumnBuffer::uint1([v]),
+		Value::Uint2(v) => ColumnBuffer::uint2([v]),
+		Value::Uint4(v) => ColumnBuffer::uint4([v]),
+		Value::Uint8(v) => ColumnBuffer::uint8([v]),
+		Value::Uint16(v) => ColumnBuffer::uint16([v]),
+		Value::Date(v) => ColumnBuffer::date([v]),
+		Value::DateTime(v) => ColumnBuffer::datetime([v]),
+		Value::Time(v) => ColumnBuffer::time([v]),
+		Value::Duration(v) => ColumnBuffer::duration([v]),
+		Value::IdentityId(v) => ColumnBuffer::identity_id([v]),
+		Value::Uuid4(v) => ColumnBuffer::uuid4([v]),
+		Value::Uuid7(v) => ColumnBuffer::uuid7([v]),
+		Value::Blob(v) => ColumnBuffer::blob([v]),
+		Value::Int(v) => ColumnBuffer::int(vec![v]),
+		Value::Uint(v) => ColumnBuffer::uint(vec![v]),
+		Value::Decimal(v) => ColumnBuffer::decimal(vec![v]),
+		Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
+		Value::Any(v) => ColumnBuffer::any(vec![v]),
+		Value::Type(v) => ColumnBuffer::any(vec![Box::new(Value::Type(v))]),
+		Value::List(v) => ColumnBuffer::any(vec![Box::new(Value::List(v))]),
+		Value::Record(v) => ColumnBuffer::any(vec![Box::new(Value::Record(v))]),
+		Value::Tuple(v) => ColumnBuffer::any(vec![Box::new(Value::Tuple(v))]),
 	}
+}
 
+impl Columns {
 	/// Extract the single value from a 1-column, 1-row Columns.
 	/// Panics if the Columns does not have exactly 1 column and 1 row.
 	pub fn scalar_value(&self) -> Value {
@@ -159,57 +146,6 @@ impl Columns {
 			row_numbers: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
-		}
-	}
-
-	/// Ergonomic construction from name/buffer pairs - replaces the verbose
-	/// `Columns::new(vec![ColumnWithName { name, data }, ...])` pattern.
-	pub fn new_named<N, I>(items: I) -> Self
-	where
-		N: Into<Fragment>,
-		I: IntoIterator<Item = (N, ColumnBuffer)>,
-	{
-		let mut names = Vec::new();
-		let mut buffers = Vec::new();
-		for (name, data) in items {
-			names.push(name.into());
-			buffers.push(data);
-		}
-		let n = buffers.first().map_or(0, |c| c.len());
-		assert!(buffers.iter().all(|c| c.len() == n));
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
-		}
-	}
-
-	/// Construct from parallel `(names, buffers)` vectors with explicit system columns.
-	/// Avoids allocating an intermediate `Vec<ColumnWithName>` at call sites that
-	/// already have the two slices split out.
-	pub fn from_parallel(
-		names: Vec<Fragment>,
-		buffers: Vec<ColumnBuffer>,
-		row_numbers: Vec<RowNumber>,
-		created_at: Vec<DateTime>,
-		updated_at: Vec<DateTime>,
-	) -> Self {
-		assert_eq!(names.len(), buffers.len(), "names and buffers must have equal length");
-		let n = buffers.first().map_or(0, |c| c.len());
-		assert!(buffers.iter().all(|c| c.len() == n));
-		assert_eq!(row_numbers.len(), n, "row_numbers length must match column data length");
-		assert_eq!(created_at.len(), n, "created_at length must match column data length");
-		assert_eq!(updated_at.len(), n, "updated_at length must match column data length");
-
-		Self {
-			row_numbers: CowVec::new(row_numbers),
-			created_at: CowVec::new(created_at),
-			updated_at: CowVec::new(updated_at),
 			columns: CowVec::new(buffers),
 			names: CowVec::new(names),
 		}
@@ -246,51 +182,37 @@ impl Columns {
 	pub fn single_row<'b>(rows: impl IntoIterator<Item = (&'b str, Value)>) -> Columns {
 		let mut names = Vec::new();
 		let mut buffers = Vec::new();
-		let mut index = HashMap::new();
-
-		for (idx, (name, value)) in rows.into_iter().enumerate() {
-			let data = match value {
-				Value::None {
-					..
-				} => ColumnBuffer::none_typed(Type::Boolean, 1),
-				Value::Boolean(v) => ColumnBuffer::bool([v]),
-				Value::Float4(v) => ColumnBuffer::float4([v.into()]),
-				Value::Float8(v) => ColumnBuffer::float8([v.into()]),
-				Value::Int1(v) => ColumnBuffer::int1([v]),
-				Value::Int2(v) => ColumnBuffer::int2([v]),
-				Value::Int4(v) => ColumnBuffer::int4([v]),
-				Value::Int8(v) => ColumnBuffer::int8([v]),
-				Value::Int16(v) => ColumnBuffer::int16([v]),
-				Value::Utf8(v) => ColumnBuffer::utf8([v.clone()]),
-				Value::Uint1(v) => ColumnBuffer::uint1([v]),
-				Value::Uint2(v) => ColumnBuffer::uint2([v]),
-				Value::Uint4(v) => ColumnBuffer::uint4([v]),
-				Value::Uint8(v) => ColumnBuffer::uint8([v]),
-				Value::Uint16(v) => ColumnBuffer::uint16([v]),
-				Value::Date(v) => ColumnBuffer::date([v]),
-				Value::DateTime(v) => ColumnBuffer::datetime([v]),
-				Value::Time(v) => ColumnBuffer::time([v]),
-				Value::Duration(v) => ColumnBuffer::duration([v]),
-				Value::IdentityId(v) => ColumnBuffer::identity_id([v]),
-				Value::Uuid4(v) => ColumnBuffer::uuid4([v]),
-				Value::Uuid7(v) => ColumnBuffer::uuid7([v]),
-				Value::Blob(v) => ColumnBuffer::blob([v.clone()]),
-				Value::Int(v) => ColumnBuffer::int(vec![v]),
-				Value::Uint(v) => ColumnBuffer::uint(vec![v]),
-				Value::Decimal(v) => ColumnBuffer::decimal(vec![v]),
-				Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
-				Value::Type(t) => ColumnBuffer::any(vec![Box::new(Value::Type(t))]),
-				Value::Any(v) => ColumnBuffer::any(vec![v]),
-				Value::List(v) => ColumnBuffer::any(vec![Box::new(Value::List(v))]),
-				Value::Record(v) => ColumnBuffer::any(vec![Box::new(Value::Record(v))]),
-				Value::Tuple(v) => ColumnBuffer::any(vec![Box::new(Value::Tuple(v))]),
-			};
-
-			index.insert(name, idx);
+		for (name, value) in rows {
 			names.push(Fragment::internal(name.to_string()));
-			buffers.push(data);
+			buffers.push(value_to_buffer(value));
 		}
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
+		}
+	}
 
+	pub fn with_row_numbers(mut self, row_numbers: Vec<RowNumber>) -> Self {
+		let n = row_numbers.len();
+		self.row_numbers = CowVec::new(row_numbers);
+		if self.created_at.len() != n {
+			let now = DateTime::default();
+			self.created_at = CowVec::new(vec![now; n]);
+			self.updated_at = CowVec::new(vec![now; n]);
+		}
+		self
+	}
+
+	pub fn from_catalog_columns(cols: &[CatalogColumn]) -> Self {
+		let mut names = Vec::with_capacity(cols.len());
+		let mut buffers = Vec::with_capacity(cols.len());
+		for col in cols {
+			names.push(Fragment::internal(&col.name));
+			buffers.push(ColumnBuffer::with_capacity(col.constraint.get_type(), 0));
+		}
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
@@ -336,7 +258,7 @@ impl Columns {
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.shape().0 == 0
+		self.columns.is_empty()
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = ColumnRef<'_>> + '_ {
@@ -392,31 +314,16 @@ impl Columns {
 		}
 	}
 
+	pub fn has_rows(&self) -> bool {
+		self.row_count() > 0
+	}
+
 	pub fn is_scalar(&self) -> bool {
 		self.len() == 1 && self.row_count() == 1
 	}
 
 	pub fn get_row(&self, index: usize) -> Vec<Value> {
 		self.columns.iter().map(|col| col.get_value(index)).collect()
-	}
-}
-
-impl IntoIterator for Columns {
-	type Item = ColumnWithName;
-	type IntoIter = std::vec::IntoIter<ColumnWithName>;
-
-	fn into_iter(self) -> Self::IntoIter {
-		let names: Vec<Fragment> = self.names.iter().cloned().collect();
-		let buffers: Vec<ColumnBuffer> = self.columns.iter().cloned().collect();
-		let pairs: Vec<ColumnWithName> = names
-			.into_iter()
-			.zip(buffers)
-			.map(|(name, data)| ColumnWithName {
-				name,
-				data,
-			})
-			.collect();
-		pairs.into_iter()
 	}
 }
 
@@ -445,35 +352,6 @@ impl Columns {
 			names: CowVec::new(name_vec),
 		}
 	}
-
-	pub fn from_rows_with_row_numbers(
-		names: &[&str],
-		result_rows: &[Vec<Value>],
-		row_numbers: Vec<RowNumber>,
-	) -> Self {
-		let column_count = names.len();
-
-		let name_vec: Vec<Fragment> = names.iter().map(|name| Fragment::internal(name.to_string())).collect();
-		let mut buffers: Vec<ColumnBuffer> =
-			(0..column_count).map(|_| ColumnBuffer::none_typed(Type::Boolean, 0)).collect();
-
-		for row in result_rows {
-			assert_eq!(row.len(), column_count, "row length does not match column count");
-			for (i, value) in row.iter().enumerate() {
-				buffers[i].push_value(value.clone());
-			}
-		}
-
-		let n = row_numbers.len();
-		let now = DateTime::default();
-		Self {
-			row_numbers: CowVec::new(row_numbers),
-			created_at: CowVec::new(vec![now; n]),
-			updated_at: CowVec::new(vec![now; n]),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(name_vec),
-		}
-	}
 }
 
 impl Columns {
@@ -485,69 +363,6 @@ impl Columns {
 			columns: CowVec::new(vec![]),
 			names: CowVec::new(vec![]),
 		}
-	}
-
-	pub fn from_resolved_table(table: &ResolvedTable) -> Self {
-		Self::from_table(table.def())
-	}
-
-	/// Create empty Columns (0 rows) with shape from a Table
-	pub fn from_table(table: &Table) -> Self {
-		let mut names = Vec::with_capacity(table.columns.len());
-		let mut buffers = Vec::with_capacity(table.columns.len());
-		for col in &table.columns {
-			names.push(Fragment::internal(&col.name));
-			buffers.push(ColumnBuffer::with_capacity(col.constraint.get_type(), 0));
-		}
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
-		}
-	}
-
-	/// Create empty Columns (0 rows) with shape from a View
-	pub fn from_view(view: &View) -> Self {
-		let cols = view.columns();
-		let mut names = Vec::with_capacity(cols.len());
-		let mut buffers = Vec::with_capacity(cols.len());
-		for col in cols {
-			names.push(Fragment::internal(&col.name));
-			buffers.push(ColumnBuffer::with_capacity(col.constraint.get_type(), 0));
-		}
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
-		}
-	}
-
-	pub fn from_ringbuffer(ringbuffer: &ResolvedRingBuffer) -> Self {
-		let cols = ringbuffer.columns();
-		let mut names = Vec::with_capacity(cols.len());
-		let mut buffers = Vec::with_capacity(cols.len());
-		for col in cols {
-			names.push(Fragment::internal(&col.name));
-			buffers.push(ColumnBuffer::with_capacity(col.constraint.get_type(), 0));
-		}
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
-		}
-	}
-
-	pub fn from_resolved_view(view: &ResolvedView) -> Self {
-		Self::from_view(view.def())
 	}
 }
 
@@ -838,17 +653,5 @@ pub mod tests {
 		let columns = Columns::single_row([("normal_column", Value::Int4(42))]);
 		assert_eq!(columns.len(), 1);
 		assert_eq!(columns.column("normal_column").unwrap().data().get_value(0), Value::Int4(42));
-	}
-
-	#[test]
-	fn test_new_named_ergonomic() {
-		let columns = Columns::new_named([
-			("a", ColumnBuffer::int1([1i8, 2, 3])),
-			("b", ColumnBuffer::utf8(["x".to_string(), "y".to_string(), "z".to_string()])),
-		]);
-		assert_eq!(columns.len(), 2);
-		assert_eq!(columns.row_count(), 3);
-		assert_eq!(columns.column("a").unwrap().data().get_value(0), Value::Int1(1));
-		assert_eq!(columns.column("b").unwrap().data().get_value(2), Value::Utf8("z".to_string()));
 	}
 }

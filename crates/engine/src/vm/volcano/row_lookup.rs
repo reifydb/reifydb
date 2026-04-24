@@ -343,9 +343,9 @@ fn get_shape_id(source: &ResolvedShape) -> Result<ShapeId> {
 
 fn columns_from_shape(source: &ResolvedShape) -> Columns {
 	match source {
-		ResolvedShape::Table(table) => Columns::from_resolved_table(table),
-		ResolvedShape::View(view) => Columns::from_resolved_view(view),
-		ResolvedShape::RingBuffer(rb) => Columns::from_ringbuffer(rb),
+		ResolvedShape::Table(table) => Columns::from_catalog_columns(table.columns()),
+		ResolvedShape::View(view) => Columns::from_catalog_columns(view.columns()),
+		ResolvedShape::RingBuffer(rb) => Columns::from_catalog_columns(rb.columns()),
 		_ => Columns::empty(),
 	}
 }

@@ -48,8 +48,8 @@ impl Function for DateTimeSubtract {
 
 		let dt_col = &args[0];
 		let dur_col = &args[1];
-		let (dt_data, dt_bitvec) = dt_col.data().unwrap_option();
-		let (dur_data, dur_bitvec) = dur_col.data().unwrap_option();
+		let (dt_data, dt_bitvec) = dt_col.unwrap_option();
+		let (dur_data, dur_bitvec) = dur_col.unwrap_option();
 		let row_count = dt_data.len();
 
 		let result_data = match (dt_data, dur_data) {

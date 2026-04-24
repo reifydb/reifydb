@@ -49,8 +49,8 @@ impl Function for TextStartsWith {
 		let str_col = &args[0];
 		let prefix_col = &args[1];
 
-		let (str_data, str_bv) = str_col.data().unwrap_option();
-		let (prefix_data, prefix_bv) = prefix_col.data().unwrap_option();
+		let (str_data, str_bv) = str_col.unwrap_option();
+		let (prefix_data, prefix_bv) = prefix_col.unwrap_option();
 		let row_count = str_data.len();
 
 		match (str_data, prefix_data) {

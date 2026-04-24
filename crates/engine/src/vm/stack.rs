@@ -80,7 +80,7 @@ impl Variable {
 	/// Create a scalar variable from a single Value.
 	pub fn scalar(value: Value) -> Self {
 		Variable::Columns {
-			columns: Columns::scalar(value),
+			columns: Columns::single_row([("value", value)]),
 		}
 	}
 
@@ -88,7 +88,7 @@ impl Variable {
 	/// (parameter, loop var, or assignment target). Use this when the value is
 	/// being stored as a named symbol so that later access surfaces the binding name.
 	pub fn scalar_named(name: &str, value: Value) -> Self {
-		let mut columns = Columns::scalar(value);
+		let mut columns = Columns::single_row([("value", value)]);
 		columns.names.make_mut()[0] = Fragment::internal(name);
 		Variable::Columns {
 			columns,
@@ -136,7 +136,7 @@ impl Variable {
 				columns: c,
 				..
 			} => c,
-			Variable::Closure(_) => Columns::scalar(Value::none()),
+			Variable::Closure(_) => Columns::single_row([("value", Value::none())]),
 		};
 		let actual = cols.len();
 		if actual == 1 {

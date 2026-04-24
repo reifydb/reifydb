@@ -49,8 +49,8 @@ impl Function for TextIndexOf {
 		let str_col = &args[0];
 		let substr_col = &args[1];
 
-		let (str_data, str_bv) = str_col.data().unwrap_option();
-		let (substr_data, substr_bv) = substr_col.data().unwrap_option();
+		let (str_data, str_bv) = str_col.unwrap_option();
+		let (substr_data, substr_bv) = substr_col.unwrap_option();
 		let row_count = str_data.len();
 
 		match (str_data, substr_data) {

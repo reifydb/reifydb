@@ -702,8 +702,10 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						Some(Variable::Columns {
 							columns,
 						}) if !columns.is_scalar() => {
-							let col_pos =
-								columns.names.iter().position(|n| n.text() == field_name);
+							let col_pos = columns
+								.names
+								.iter()
+								.position(|n| n.text() == field_name);
 							match col_pos {
 								Some(pos) => {
 									let value = columns.columns[pos].get_value(0);

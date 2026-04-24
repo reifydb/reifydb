@@ -73,10 +73,13 @@ pub(crate) fn call_builtin(
 	let result_columns = function.call(&fn_ctx, &arguments).map_err(|e| e.with_context(fn_fragment))?;
 
 	// For scalar, we expect 1 column. For generator in scalar context, we take the first column.
-	let result_column = result_columns.into_iter().next().ok_or_else(|| FunctionError::ExecutionFailed {
-		function: call.func.0.clone(),
-		reason: "Function returned no columns".to_string(),
-	})?;
-
-	Ok(ColumnWithName::new(call.full_fragment_owned(), result_column.data))
+	if result_columns.is_empty() {
+		return Err(FunctionError::ExecutionFailed {
+			function: call.func.0.clone(),
+			reason: "Function returned no columns".to_string(),
+		}
+		.into());
+	}
+	let result_data = result_columns.data_at(0).clone();
+	Ok(ColumnWithName::new(call.full_fragment_owned(), result_data))
 }

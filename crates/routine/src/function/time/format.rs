@@ -112,8 +112,8 @@ impl Function for TimeFormat {
 		let time_col = &args[0];
 		let fmt_col = &args[1];
 
-		let (time_data, time_bv) = time_col.data().unwrap_option();
-		let (fmt_data, _) = fmt_col.data().unwrap_option();
+		let (time_data, time_bv) = time_col.unwrap_option();
+		let (fmt_data, _) = fmt_col.unwrap_option();
 
 		match (time_data, fmt_data) {
 			(

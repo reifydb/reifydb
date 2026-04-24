@@ -95,7 +95,7 @@ impl Accumulator for CountAccumulator {
 		let column_name = args.name_at(0);
 
 		// Check if this is count(*) by examining if we have a dummy column
-		let is_count_star = column_name.text() == "dummy" && matches!(column.data(), ColumnBuffer::Int4(_));
+		let is_count_star = column_name.text() == "dummy" && matches!(column, ColumnBuffer::Int4(_));
 
 		if is_count_star {
 			for (group, indices) in groups.iter() {
@@ -104,7 +104,7 @@ impl Accumulator for CountAccumulator {
 			}
 		} else {
 			for (group, indices) in groups.iter() {
-				let count = indices.iter().filter(|&i| column.data().is_defined(*i)).count() as i64;
+				let count = indices.iter().filter(|&i| column.is_defined(*i)).count() as i64;
 				*self.counts.entry(group.clone()).or_insert(0) += count;
 			}
 		}

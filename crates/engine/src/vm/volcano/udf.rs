@@ -169,7 +169,10 @@ impl QueryNode for UdfEvalNode {
 						..
 					} if !c.is_empty() => {
 						let name =
-							c.names.iter().next().cloned().unwrap_or_else(|| call.udf.result_column.clone());
+							c.names.iter()
+								.next()
+								.cloned()
+								.unwrap_or_else(|| call.udf.result_column.clone());
 						let data = c.columns.into_inner().into_iter().next().unwrap();
 						ColumnWithName::new(name, data)
 					}

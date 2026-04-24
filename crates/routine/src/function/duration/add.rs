@@ -49,8 +49,8 @@ impl Function for DurationAdd {
 		let lhs_col = &args[0];
 		let rhs_col = &args[1];
 
-		let (lhs_data, lhs_bv) = lhs_col.data().unwrap_option();
-		let (rhs_data, rhs_bv) = rhs_col.data().unwrap_option();
+		let (lhs_data, lhs_bv) = lhs_col.unwrap_option();
+		let (rhs_data, rhs_bv) = rhs_col.unwrap_option();
 
 		match (lhs_data, rhs_data) {
 			(ColumnBuffer::Duration(lhs_container), ColumnBuffer::Duration(rhs_container)) => {

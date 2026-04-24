@@ -70,12 +70,8 @@ impl<'a> Vm<'a> {
 					.iter()
 					.zip(columns.columns.iter())
 					.map(|(name, data)| {
-						let casted = cast_column_data(
-							&ctx,
-							data,
-							target.clone(),
-							name.clone(),
-						)?;
+						let casted =
+							cast_column_data(&ctx, data, target.clone(), name.clone())?;
 						Ok(ColumnWithName::new(name.clone(), casted))
 					})
 					.collect::<Result<Vec<_>>>()?;
@@ -100,7 +96,7 @@ impl<'a> Vm<'a> {
 pub(crate) fn collect_call_result(vm: &mut Vm, func_result: &mut Vec<Frame>) -> Variable {
 	match mem::replace(&mut vm.control_flow, ControlFlow::Normal) {
 		ControlFlow::Return(c) => {
-			let columns = c.unwrap_or(Columns::scalar(Value::none()));
+			let columns = c.unwrap_or(Columns::single_row([("value", Value::none())]));
 			Variable::columns(columns)
 		}
 		_ => {
@@ -737,8 +733,11 @@ impl<'a> Vm<'a> {
 		let identity = ctx.tx.identity();
 		let fn_ctx = FunctionContext::new(name.clone(), &ctx.services.runtime_context, identity, 1);
 		let result_columns = function.call(&fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone()))?;
-		let value =
-			result_columns.into_iter().next().map(|col| col.data().get_value(0)).unwrap_or(Value::none());
+		let value = if !result_columns.has_rows() {
+			Value::none()
+		} else {
+			result_columns.data_at(0).get_value(0)
+		};
 		self.stack.push(Variable::scalar(value));
 		Ok(())
 	}

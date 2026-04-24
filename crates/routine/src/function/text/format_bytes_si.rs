@@ -54,7 +54,7 @@ impl Function for FormatBytesSi {
 		}
 
 		let column = &args[0];
-		let (data, bitvec) = column.data().unwrap_option();
+		let (data, bitvec) = column.unwrap_option();
 		let row_count = data.len();
 
 		let result_data = match data {

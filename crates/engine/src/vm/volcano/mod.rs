@@ -21,10 +21,10 @@ pub(crate) fn decode_dictionary_columns(
 				continue;
 			}
 			let col = &columns[col_idx];
-			let row_count = col.data().len();
+			let row_count = col.len();
 			let mut new_data = ColumnBuffer::with_capacity(dictionary.value_type.clone(), row_count);
 			for row_idx in 0..row_count {
-				let id_value = col.data().get_value(row_idx);
+				let id_value = col.get_value(row_idx);
 				if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
 					match rx.get_from_dictionary(dictionary, entry_id)? {
 						Some(decoded) => new_data.push_value(decoded),
