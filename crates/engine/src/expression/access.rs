@@ -45,7 +45,7 @@ pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessShapeExpression) -> 
 
 	if let Some(col) = matching_col {
 		// Extract the column data and preserve it
-		Ok(col.with_new_data(col.data().clone()))
+		Ok(ColumnWithName::new(col.name().clone(), col.data().clone()))
 	} else {
 		// If not found, return an error with proper diagnostic
 		Err(error!(column_not_found(Fragment::Statement {

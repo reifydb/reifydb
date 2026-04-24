@@ -89,7 +89,7 @@ impl Variable {
 	/// being stored as a named symbol so that later access surfaces the binding name.
 	pub fn scalar_named(name: &str, value: Value) -> Self {
 		let mut columns = Columns::scalar(value);
-		columns.columns.make_mut()[0].name = Fragment::internal(name);
+		columns.names.make_mut()[0] = Fragment::internal(name);
 		Variable::Columns {
 			columns,
 		}
@@ -140,7 +140,9 @@ impl Variable {
 		};
 		let actual = cols.len();
 		if actual == 1 {
-			Ok(cols.columns.into_inner().into_iter().next().unwrap())
+			let name = cols.names.into_inner().into_iter().next().unwrap();
+			let data = cols.columns.into_inner().into_iter().next().unwrap();
+			Ok(ColumnWithName::new(name, data))
 		} else {
 			Err(error::TypeError::Runtime {
 				kind: error::RuntimeErrorKind::ExpectedSingleColumn {

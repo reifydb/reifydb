@@ -101,9 +101,9 @@ impl<'a> Vm<'a> {
 				columns: existing,
 			}) => {
 				let existing_names: Vec<String> =
-					existing.columns.iter().map(|c| c.name.text().to_string()).collect();
+					existing.names.iter().map(|n| n.text().to_string()).collect();
 				let incoming_names: Vec<String> =
-					columns.columns.iter().map(|c| c.name.text().to_string()).collect();
+					columns.names.iter().map(|n| n.text().to_string()).collect();
 				if existing_names != incoming_names {
 					return Err(TypeError::Runtime {
 						kind: RuntimeErrorKind::AppendColumnMismatch {

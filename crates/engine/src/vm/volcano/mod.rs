@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{Value, dictionary::DictionaryEntryId};
@@ -34,8 +34,7 @@ pub(crate) fn decode_dictionary_columns(
 					new_data.push_value(Value::none());
 				}
 			}
-			columns.columns.make_mut()[col_idx] =
-				ColumnWithName::new(columns[col_idx].name().clone(), new_data);
+			columns.columns.make_mut()[col_idx] = new_data;
 		}
 	}
 	Ok(())

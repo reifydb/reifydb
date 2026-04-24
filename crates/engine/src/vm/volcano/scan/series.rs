@@ -15,7 +15,6 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
-	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type},
 };
 use tracing::instrument;
@@ -209,12 +208,7 @@ impl QueryNode for SeriesScanNode {
 		}
 
 		let row_numbers: Vec<RowNumber> = sequences.into_iter().map(RowNumber::from).collect();
-		Ok(Some(Columns {
-			row_numbers: CowVec::new(row_numbers),
-			created_at: CowVec::new(created_at_values),
-			updated_at: CowVec::new(updated_at_values),
-			columns: CowVec::new(result_columns),
-		}))
+		Ok(Some(Columns::with_system_columns(result_columns, row_numbers, created_at_values, updated_at_values)))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

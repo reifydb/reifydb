@@ -11,7 +11,6 @@ use reifydb_core::{
 use reifydb_type::{
 	Result,
 	fragment::Fragment,
-	util::cowvec::CowVec,
 	value::{row_number::RowNumber, r#type::Type},
 };
 
@@ -69,11 +68,6 @@ impl PrimitiveSeriesOperator {
 			});
 		}
 
-		Columns {
-			row_numbers: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
-		}
+		Columns::new(columns)
 	}
 }

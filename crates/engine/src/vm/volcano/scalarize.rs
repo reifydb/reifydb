@@ -60,7 +60,7 @@ impl QueryNode for ScalarizeNode {
 		let row_count = if column_count == 0 {
 			0
 		} else {
-			input_batch[0].data.len()
+			input_batch[0].len()
 		};
 
 		match (row_count, column_count) {

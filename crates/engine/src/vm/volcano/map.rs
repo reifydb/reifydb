@@ -140,11 +140,18 @@ impl Transform for MapNode {
 			new_columns.push(column);
 		}
 
+		let mut names_vec = Vec::with_capacity(new_columns.len());
+		let mut buffers_vec = Vec::with_capacity(new_columns.len());
+		for c in new_columns {
+			names_vec.push(c.name);
+			buffers_vec.push(c.data);
+		}
 		Ok(Columns {
 			row_numbers: input.row_numbers,
 			created_at: input.created_at,
 			updated_at: input.updated_at,
-			columns: CowVec::new(new_columns),
+			columns: CowVec::new(buffers_vec),
+			names: CowVec::new(names_vec),
 		})
 	}
 }

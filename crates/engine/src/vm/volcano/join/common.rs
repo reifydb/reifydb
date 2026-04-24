@@ -105,17 +105,17 @@ pub fn build_eval_columns(
 		let data = match &left_row[idx] {
 			Value::None {
 				..
-			} => ColumnBuffer::typed_none(&col.data().get_type()),
+			} => ColumnBuffer::typed_none(&col.get_type()),
 			value => ColumnBuffer::from(value.clone()),
 		};
-		eval_columns.push(col.with_new_data(data));
+		eval_columns.push(ColumnWithName::new(col.name().clone(), data));
 	}
 
 	for (idx, col) in right_columns.iter().enumerate() {
 		let data = match &right_row[idx] {
 			Value::None {
 				..
-			} => ColumnBuffer::typed_none(&col.data().get_type()),
+			} => ColumnBuffer::typed_none(&col.get_type()),
 			value => ColumnBuffer::from(value.clone()),
 		};
 		if let Some(alias) = alias {
@@ -125,7 +125,7 @@ pub fn build_eval_columns(
 				data,
 			});
 		} else {
-			eval_columns.push(col.with_new_data(data));
+			eval_columns.push(ColumnWithName::new(col.name().clone(), data));
 		}
 	}
 
@@ -176,7 +176,7 @@ pub(crate) fn compute_join_hash(
 ) -> Option<Hash128> {
 	buf.clear();
 	for &idx in col_indices {
-		let value = columns[idx].data().get_value(row_idx);
+		let value = columns[idx].get_value(row_idx);
 		if matches!(value, Value::None { .. }) {
 			return None;
 		}
@@ -196,8 +196,8 @@ pub(crate) fn keys_equal_by_index(
 	right_indices: &[usize],
 ) -> bool {
 	for (&li, &ri) in left_indices.iter().zip(right_indices.iter()) {
-		let lv = left[li].data().get_value(left_row);
-		let rv = right[ri].data().get_value(right_row);
+		let lv = left[li].get_value(left_row);
+		let rv = right[ri].get_value(right_row);
 		if lv != rv {
 			return false;
 		}

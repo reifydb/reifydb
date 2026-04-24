@@ -13,7 +13,6 @@ use reifydb_core::{
 use reifydb_type::{
 	Result,
 	fragment::Fragment,
-	util::cowvec::CowVec,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -113,12 +112,7 @@ impl Operator for PrimitiveRingBufferOperator {
 		if row_numbers.is_empty() {
 			Ok(self.empty_columns())
 		} else {
-			Ok(Columns {
-				row_numbers: CowVec::new(row_numbers),
-				created_at: CowVec::new(created_at),
-				updated_at: CowVec::new(updated_at),
-				columns: CowVec::new(columns_vec),
-			})
+			Ok(Columns::with_system_columns(columns_vec, row_numbers, created_at, updated_at))
 		}
 	}
 }
@@ -134,11 +128,6 @@ impl PrimitiveRingBufferOperator {
 				data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
 			})
 			.collect();
-		Columns {
-			row_numbers: CowVec::new(Vec::new()),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
-		}
+		Columns::new(columns)
 	}
 }

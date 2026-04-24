@@ -111,9 +111,12 @@ pub(crate) fn dispatch(
 
 				// Enter handler scope
 				vm.symbols.enter_scope(ScopeType::Function);
-				for col in event_payload.columns.iter() {
-					let var_name = format!("event_{}", col.name.text());
-					let scalar = Columns::new(vec![col.clone()]);
+				for (idx, name) in event_payload.names.iter().enumerate() {
+					let var_name = format!("event_{}", name.text());
+					let scalar = Columns::new(vec![ColumnWithName::new(
+						name.clone(),
+						event_payload.columns[idx].clone(),
+					)]);
 					vm.symbols.set(var_name, Variable::columns(scalar), true)?;
 				}
 
@@ -163,9 +166,9 @@ pub(crate) fn dispatch(
 	if !native_handlers.is_empty() {
 		// Build named params from event payload (single-row columns → scalar values)
 		let mut named_map = HashMap::new();
-		for col in event_payload.columns.iter() {
-			let key = col.name.text().to_string();
-			if let Some(val) = col.data.iter().next() {
+		for (idx, name) in event_payload.names.iter().enumerate() {
+			let key = name.text().to_string();
+			if let Some(val) = event_payload.columns[idx].iter().next() {
 				named_map.insert(key, val);
 			}
 		}

@@ -93,19 +93,6 @@ pub(crate) struct LoopMaskState {
 	pub loop_end_addr: usize,
 }
 
-/// Merge two columns by mask: row i gets `then_col[i]` if `then_mask[i]`,
-/// `else_col[i]` if `else_mask[i]`, `None` otherwise.
-pub(crate) fn scatter_merge_columns(
-	then_col: &ColumnWithName,
-	else_col: &ColumnWithName,
-	then_mask: &BitVec,
-	else_mask: &BitVec,
-	total_len: usize,
-) -> ColumnWithName {
-	let merged = then_col.data().scatter_merge(else_col.data(), then_mask, else_mask, total_len);
-	ColumnWithName::new(then_col.name().clone(), merged)
-}
-
 /// Selective update: row i gets `new_value[i]` if `mask[i]`, keeps `existing[i]` otherwise.
 pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitVec) -> Result<Columns> {
 	let len = existing.row_count();
@@ -116,17 +103,18 @@ pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitV
 		.columns
 		.iter()
 		.zip(new_value.columns.iter())
-		.map(|(old_col, new_col)| {
-			let result_type = old_col.data().get_type();
+		.enumerate()
+		.map(|(idx, (old_col, new_col))| {
+			let result_type = old_col.get_type();
 			let mut data = ColumnBuffer::with_capacity(result_type, len);
 			for i in 0..len {
 				if mask.get(i) {
-					data.push_value(new_col.data().get_value(i));
+					data.push_value(new_col.get_value(i));
 				} else {
-					data.push_value(old_col.data().get_value(i));
+					data.push_value(old_col.get_value(i));
 				}
 			}
-			ColumnWithName::new(old_col.name().clone(), data)
+			ColumnWithName::new(existing.name_at(idx).clone(), data)
 		})
 		.collect();
 
@@ -148,7 +136,11 @@ pub(crate) fn scatter_merge_variables(
 		.columns
 		.iter()
 		.zip(else_cols.columns.iter())
-		.map(|(tc, ec)| scatter_merge_columns(tc, ec, then_mask, else_mask, total_len))
+		.enumerate()
+		.map(|(idx, (tc, ec))| {
+			let merged_data = tc.scatter_merge(ec, then_mask, else_mask, total_len);
+			ColumnWithName::new(then_cols.name_at(idx).clone(), merged_data)
+		})
 		.collect();
 
 	Variable::columns(Columns::new(merged))
@@ -194,7 +186,7 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
 		return Ok(BitVec::repeat(0, false));
 	}
 	let col = &cols.columns[0];
-	let (inner_data, opt_bv) = col.data.unwrap_option();
+	let (inner_data, opt_bv) = col.unwrap_option();
 	match inner_data {
 		ColumnBuffer::Bool(container) => {
 			let bv = container.data().clone();
@@ -205,8 +197,8 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
 		}
 		_ => {
 			// Non-boolean: evaluate truthiness per row
-			let len = col.data.len();
-			Ok(BitVec::from_fn(len, |i| value_is_truthy(&col.data.get_value(i))))
+			let len = col.len();
+			Ok(BitVec::from_fn(len, |i| value_is_truthy(&col.get_value(i))))
 		}
 	}
 }
@@ -524,14 +516,15 @@ impl<'a> Vm<'a> {
 					.columns
 					.iter()
 					.zip(else_cols.columns.iter())
-					.map(|(tc, ec)| {
-						scatter_merge_columns(
-							tc,
+					.enumerate()
+					.map(|(idx, (tc, ec))| {
+						let merged_data = tc.scatter_merge(
 							ec,
 							&frame.then_mask,
 							&frame.else_mask,
 							total_len,
-						)
+						);
+						ColumnWithName::new(then_cols.name_at(idx).clone(), merged_data)
 					})
 					.collect();
 				self.symbols.reassign(name.clone(), Variable::columns(Columns::new(merged_cols)))?;
@@ -604,10 +597,10 @@ mod tests {
 		let then_mask = BitVec::from_slice(&[true, true, true]);
 		let else_mask = BitVec::from_slice(&[false, false, false]);
 
-		let merged = scatter_merge_columns(&then_col, &else_col, &then_mask, &else_mask, 3);
-		assert_eq!(merged.data().get_value(0), Value::Int4(10));
-		assert_eq!(merged.data().get_value(1), Value::Int4(20));
-		assert_eq!(merged.data().get_value(2), Value::Int4(30));
+		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 3);
+		assert_eq!(merged.get_value(0), Value::Int4(10));
+		assert_eq!(merged.get_value(1), Value::Int4(20));
+		assert_eq!(merged.get_value(2), Value::Int4(30));
 	}
 
 	#[test]
@@ -617,10 +610,10 @@ mod tests {
 		let then_mask = BitVec::from_slice(&[false, false, false]);
 		let else_mask = BitVec::from_slice(&[true, true, true]);
 
-		let merged = scatter_merge_columns(&then_col, &else_col, &then_mask, &else_mask, 3);
-		assert_eq!(merged.data().get_value(0), Value::Int4(40));
-		assert_eq!(merged.data().get_value(1), Value::Int4(50));
-		assert_eq!(merged.data().get_value(2), Value::Int4(60));
+		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 3);
+		assert_eq!(merged.get_value(0), Value::Int4(40));
+		assert_eq!(merged.get_value(1), Value::Int4(50));
+		assert_eq!(merged.get_value(2), Value::Int4(60));
 	}
 
 	#[test]
@@ -630,11 +623,11 @@ mod tests {
 		let then_mask = BitVec::from_slice(&[true, false, true, false]);
 		let else_mask = BitVec::from_slice(&[false, true, false, true]);
 
-		let merged = scatter_merge_columns(&then_col, &else_col, &then_mask, &else_mask, 4);
-		assert_eq!(merged.data().get_value(0), Value::Int4(10));
-		assert_eq!(merged.data().get_value(1), Value::Int4(80));
-		assert_eq!(merged.data().get_value(2), Value::Int4(30));
-		assert_eq!(merged.data().get_value(3), Value::Int4(60));
+		let merged = then_col.data().scatter_merge(else_col.data(), &then_mask, &else_mask, 4);
+		assert_eq!(merged.get_value(0), Value::Int4(10));
+		assert_eq!(merged.get_value(1), Value::Int4(80));
+		assert_eq!(merged.get_value(2), Value::Int4(30));
+		assert_eq!(merged.get_value(3), Value::Int4(60));
 	}
 
 	#[test]

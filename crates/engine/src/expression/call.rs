@@ -54,7 +54,7 @@ pub(crate) fn call_builtin(
 				data: ColumnBuffer::with_capacity(Type::Int4, ctx.row_count),
 			}
 		} else {
-			arguments[0].clone()
+			ColumnWithName::new(arguments.name_at(0).clone(), arguments[0].clone())
 		};
 
 		let mut group_view = GroupByView::new();

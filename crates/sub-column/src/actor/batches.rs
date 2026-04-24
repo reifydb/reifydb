@@ -34,7 +34,7 @@ pub fn column_block_from_batches(
 					column: name.clone(),
 				}
 			})?;
-			let data = column.data.clone();
+			let data = column.data().clone();
 			match combined.as_mut() {
 				None => combined = Some(data),
 				Some(acc) => acc.extend(data)?,

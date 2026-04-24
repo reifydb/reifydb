@@ -176,10 +176,11 @@ impl JoinOperator {
 		// Evaluate all compiled expressions on the entire batch
 		let mut expr_columns = Vec::with_capacity(compiled_exprs.len());
 		for compiled_expr in compiled_exprs.iter() {
-			let col = if let Some(col_name) = compiled_expr.access_column_name() {
-				columns.column(col_name).cloned().unwrap_or_else(|| {
-					ColumnWithName::undefined_typed(col_name, Type::Boolean, row_count)
-				})
+			let col: ColumnWithName = if let Some(col_name) = compiled_expr.access_column_name() {
+				columns
+					.column(col_name)
+					.map(|c| ColumnWithName::new(c.name().clone(), c.data().clone()))
+					.unwrap_or_else(|| ColumnWithName::undefined_typed(col_name, Type::Boolean, row_count))
 			} else {
 				compiled_expr.execute(&exec_ctx)?
 			};
@@ -729,19 +730,14 @@ impl Operator for JoinOperator {
 			let right_names = builder.right_column_names();
 
 			// Add left columns as-is
-			let mut all_columns: Vec<ColumnWithName> = left_shape.columns.into_iter().collect();
+			let mut all_columns: Vec<ColumnWithName> = left_shape.into_iter().collect();
 
 			// Add right columns with pre-computed aliased names
 			for (col, aliased_name) in right_shape.columns.into_iter().zip(right_names.iter()) {
-				all_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col.data));
+				all_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col));
 			}
 
-			Ok(Columns {
-				row_numbers: CowVec::new(Vec::new()),
-				created_at: CowVec::new(Vec::new()),
-				updated_at: CowVec::new(Vec::new()),
-				columns: CowVec::new(all_columns),
-			})
+			Ok(Columns::new(all_columns))
 		} else if found_columns.len() == 1 {
 			Ok(found_columns.remove(0))
 		} else {

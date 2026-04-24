@@ -208,11 +208,18 @@ impl Transform for ExtendNode {
 			}
 		}
 
+		let mut names_vec = Vec::with_capacity(new_columns.len());
+		let mut buffers_vec = Vec::with_capacity(new_columns.len());
+		for c in new_columns {
+			names_vec.push(c.name);
+			buffers_vec.push(c.data);
+		}
 		Ok(Columns {
 			row_numbers: CowVec::new(row_numbers),
 			created_at,
 			updated_at,
-			columns: CowVec::new(new_columns),
+			columns: CowVec::new(buffers_vec),
+			names: CowVec::new(names_vec),
 		})
 	}
 }

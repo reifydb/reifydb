@@ -14,19 +14,19 @@ pub type GroupByView = IndexMap<GroupKey, Vec<usize>>;
 
 impl Columns {
 	pub fn group_by_view(&self, keys: &[&str]) -> Result<GroupByView> {
-		let row_count = self.first().map_or(0, |c| c.data().len());
+		let row_count = self.columns.first().map_or(0, |c| c.len());
 
 		let mut key_columns: Vec<&ColumnBuffer> = Vec::with_capacity(keys.len());
 
 		for &key in keys {
-			let column = self.iter().find(|c| c.name() == key).ok_or_else(|| {
+			let pos = self.names.iter().position(|n| n.text() == key).ok_or_else(|| {
 				let err: Error = CoreError::FrameError {
 					message: format!("Column '{}' not found", key),
 				}
 				.into();
 				err
 			})?;
-			key_columns.push(column.data());
+			key_columns.push(&self.columns[pos]);
 		}
 
 		let mut result = GroupByView::new();

@@ -79,7 +79,15 @@ impl From<ColumnWithName> for FrameColumn {
 
 impl From<Columns> for Frame {
 	fn from(columns: Columns) -> Self {
-		let frame_columns: Vec<FrameColumn> = columns.columns.into_iter().map(|col| col.into()).collect();
+		let frame_columns: Vec<FrameColumn> = columns
+			.names
+			.iter()
+			.zip(columns.columns.iter())
+			.map(|(name, data)| FrameColumn {
+				name: name.to_string(),
+				data: data.clone().into(),
+			})
+			.collect();
 		Frame {
 			row_numbers: columns.row_numbers.to_vec(),
 			created_at: columns.created_at.to_vec(),
@@ -155,11 +163,18 @@ impl From<FrameColumn> for ColumnWithName {
 impl From<Frame> for Columns {
 	fn from(frame: Frame) -> Self {
 		let columns: Vec<ColumnWithName> = frame.columns.into_iter().map(|col| col.into()).collect();
+		let mut names = Vec::with_capacity(columns.len());
+		let mut buffers = Vec::with_capacity(columns.len());
+		for c in columns {
+			names.push(c.name);
+			buffers.push(c.data);
+		}
 		Columns {
 			row_numbers: CowVec::new(frame.row_numbers),
 			created_at: CowVec::new(frame.created_at),
 			updated_at: CowVec::new(frame.updated_at),
-			columns: CowVec::new(columns),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 }

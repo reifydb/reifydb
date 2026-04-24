@@ -4,13 +4,11 @@
 use std::{
 	collections::HashMap,
 	hash::Hash,
-	mem,
-	ops::{Deref, Index, IndexMut},
+	ops::{Index, IndexMut},
 };
 
 use indexmap::IndexMap;
 use reifydb_type::{
-	Result,
 	fragment::Fragment,
 	util::cowvec::CowVec,
 	value::{Value, constraint::Constraint, datetime::DateTime, row_number::RowNumber, r#type::Type},
@@ -23,7 +21,7 @@ use crate::{
 		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
 	},
 	row::Row,
-	value::column::{ColumnBuffer, ColumnWithName, headers::ColumnHeaders},
+	value::column::{ColumnBuffer, ColumnWithName, array::Column, headers::ColumnHeaders},
 };
 
 #[derive(Debug, Clone)]
@@ -31,28 +29,56 @@ pub struct Columns {
 	pub row_numbers: CowVec<RowNumber>,
 	pub created_at: CowVec<DateTime>,
 	pub updated_at: CowVec<DateTime>,
-	pub columns: CowVec<ColumnWithName>,
+	pub columns: CowVec<ColumnBuffer>,
+	pub names: CowVec<Fragment>,
 }
 
-impl Deref for Columns {
-	type Target = [ColumnWithName];
-
-	fn deref(&self) -> &Self::Target {
-		self.columns.deref()
-	}
+#[derive(Debug, Clone, Copy)]
+pub struct ColumnRef<'a> {
+	name: &'a Fragment,
+	data: &'a ColumnBuffer,
 }
 
 impl Index<usize> for Columns {
-	type Output = ColumnWithName;
+	type Output = ColumnBuffer;
 
 	fn index(&self, index: usize) -> &Self::Output {
-		self.columns.index(index)
+		&self.columns[index]
 	}
 }
 
 impl IndexMut<usize> for Columns {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		&mut self.columns.make_mut()[index]
+	}
+}
+
+impl<'a> ColumnRef<'a> {
+	pub fn new(name: &'a Fragment, data: &'a ColumnBuffer) -> Self {
+		Self {
+			name,
+			data,
+		}
+	}
+
+	pub fn name(&self) -> &'a Fragment {
+		self.name
+	}
+
+	pub fn data(&self) -> &'a ColumnBuffer {
+		self.data
+	}
+
+	pub fn get_type(&self) -> Type {
+		self.data.get_type()
+	}
+
+	pub fn column(&self) -> Column {
+		Column::from_column_buffer(self.data.clone())
+	}
+
+	pub fn with_new_data(&self, data: ColumnBuffer) -> ColumnWithName {
+		ColumnWithName::new(self.name.clone(), data)
 	}
 }
 
@@ -96,15 +122,12 @@ impl Columns {
 			Value::Record(v) => ColumnBuffer::any(vec![Box::new(Value::Record(v))]),
 			Value::Tuple(v) => ColumnBuffer::any(vec![Box::new(Value::Tuple(v))]),
 		};
-		let column = ColumnWithName {
-			name: Fragment::internal("value"),
-			data,
-		};
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(vec![column]),
+			columns: CowVec::new(vec![data]),
+			names: CowVec::new(vec![Fragment::internal("value")]),
 		}
 	}
 
@@ -118,18 +141,77 @@ impl Columns {
 			"scalar_value() requires exactly 1 row, got {}",
 			self.row_count()
 		);
-		self.columns[0].data().get_value(0)
+		self.columns[0].get_value(0)
 	}
 
 	pub fn new(columns: Vec<ColumnWithName>) -> Self {
-		let n = columns.first().map_or(0, |c| c.data().len());
-		assert!(columns.iter().all(|c| c.data().len() == n));
+		let n = columns.first().map_or(0, |c| c.data.len());
+		assert!(columns.iter().all(|c| c.data.len() == n));
+
+		let mut names = Vec::with_capacity(columns.len());
+		let mut buffers = Vec::with_capacity(columns.len());
+		for c in columns {
+			names.push(c.name);
+			buffers.push(c.data);
+		}
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
+		}
+	}
+
+	/// Ergonomic construction from name/buffer pairs - replaces the verbose
+	/// `Columns::new(vec![ColumnWithName { name, data }, ...])` pattern.
+	pub fn new_named<N, I>(items: I) -> Self
+	where
+		N: Into<Fragment>,
+		I: IntoIterator<Item = (N, ColumnBuffer)>,
+	{
+		let mut names = Vec::new();
+		let mut buffers = Vec::new();
+		for (name, data) in items {
+			names.push(name.into());
+			buffers.push(data);
+		}
+		let n = buffers.first().map_or(0, |c| c.len());
+		assert!(buffers.iter().all(|c| c.len() == n));
+
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
+		}
+	}
+
+	/// Construct from parallel `(names, buffers)` vectors with explicit system columns.
+	/// Avoids allocating an intermediate `Vec<ColumnWithName>` at call sites that
+	/// already have the two slices split out.
+	pub fn from_parallel(
+		names: Vec<Fragment>,
+		buffers: Vec<ColumnBuffer>,
+		row_numbers: Vec<RowNumber>,
+		created_at: Vec<DateTime>,
+		updated_at: Vec<DateTime>,
+	) -> Self {
+		assert_eq!(names.len(), buffers.len(), "names and buffers must have equal length");
+		let n = buffers.first().map_or(0, |c| c.len());
+		assert!(buffers.iter().all(|c| c.len() == n));
+		assert_eq!(row_numbers.len(), n, "row_numbers length must match column data length");
+		assert_eq!(created_at.len(), n, "created_at length must match column data length");
+		assert_eq!(updated_at.len(), n, "updated_at length must match column data length");
+
+		Self {
+			row_numbers: CowVec::new(row_numbers),
+			created_at: CowVec::new(created_at),
+			updated_at: CowVec::new(updated_at),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 
@@ -139,22 +221,31 @@ impl Columns {
 		created_at: Vec<DateTime>,
 		updated_at: Vec<DateTime>,
 	) -> Self {
-		let n = columns.first().map_or(0, |c| c.data().len());
-		assert!(columns.iter().all(|c| c.data().len() == n));
+		let n = columns.first().map_or(0, |c| c.data.len());
+		assert!(columns.iter().all(|c| c.data.len() == n));
 		assert_eq!(row_numbers.len(), n, "row_numbers length must match column data length");
 		assert_eq!(created_at.len(), n, "created_at length must match column data length");
 		assert_eq!(updated_at.len(), n, "updated_at length must match column data length");
+
+		let mut names = Vec::with_capacity(columns.len());
+		let mut buffers = Vec::with_capacity(columns.len());
+		for c in columns {
+			names.push(c.name);
+			buffers.push(c.data);
+		}
 
 		Self {
 			row_numbers: CowVec::new(row_numbers),
 			created_at: CowVec::new(created_at),
 			updated_at: CowVec::new(updated_at),
-			columns: CowVec::new(columns),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 
 	pub fn single_row<'b>(rows: impl IntoIterator<Item = (&'b str, Value)>) -> Columns {
-		let mut columns = Vec::new();
+		let mut names = Vec::new();
+		let mut buffers = Vec::new();
 		let mut index = HashMap::new();
 
 		for (idx, (name, value)) in rows.into_iter().enumerate() {
@@ -195,33 +286,26 @@ impl Columns {
 				Value::Tuple(v) => ColumnBuffer::any(vec![Box::new(Value::Tuple(v))]),
 			};
 
-			let column = ColumnWithName {
-				name: Fragment::internal(name.to_string()),
-				data,
-			};
 			index.insert(name, idx);
-			columns.push(column);
+			names.push(Fragment::internal(name.to_string()));
+			buffers.push(data);
 		}
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 
 	pub fn apply_headers(&mut self, headers: &ColumnHeaders) {
-		// Apply the column names from headers to this Columns instance
+		let n = self.len();
+		let names = self.names.make_mut();
 		for (i, name) in headers.columns.iter().enumerate() {
-			if i < self.len() {
-				let column = &mut self[i];
-				let data = mem::replace(column.data_mut(), ColumnBuffer::none_typed(Type::Boolean, 0));
-
-				*column = ColumnWithName {
-					name: name.clone(),
-					data,
-				};
+			if i < n {
+				names[i] = name.clone();
 			}
 		}
 	}
@@ -242,28 +326,69 @@ impl Columns {
 		let row_count = if !self.row_numbers.is_empty() {
 			self.row_numbers.len()
 		} else {
-			self.first().map(|c| c.data().len()).unwrap_or(0)
+			self.columns.first().map(|c| c.len()).unwrap_or(0)
 		};
 		(row_count, self.len())
+	}
+
+	pub fn len(&self) -> usize {
+		self.columns.len()
 	}
 
 	pub fn is_empty(&self) -> bool {
 		self.shape().0 == 0
 	}
 
-	pub fn row(&self, i: usize) -> Vec<Value> {
-		self.iter().map(|c| c.data().get_value(i)).collect()
+	pub fn iter(&self) -> impl Iterator<Item = ColumnRef<'_>> + '_ {
+		self.names.iter().zip(self.columns.iter()).map(|(n, d)| ColumnRef::new(n, d))
 	}
 
-	pub fn column(&self, name: &str) -> Option<&ColumnWithName> {
-		self.iter().find(|col| col.name().text() == name)
+	pub fn first(&self) -> Option<ColumnRef<'_>> {
+		self.get(0)
+	}
+
+	pub fn last(&self) -> Option<ColumnRef<'_>> {
+		let n = self.len();
+		if n == 0 {
+			None
+		} else {
+			self.get(n - 1)
+		}
+	}
+
+	pub fn get(&self, index: usize) -> Option<ColumnRef<'_>> {
+		if index < self.len() {
+			Some(ColumnRef::new(&self.names[index], &self.columns[index]))
+		} else {
+			None
+		}
+	}
+
+	pub fn name_at(&self, index: usize) -> &Fragment {
+		&self.names[index]
+	}
+
+	pub fn data_at(&self, index: usize) -> &ColumnBuffer {
+		&self.columns[index]
+	}
+
+	pub fn data_at_mut(&mut self, index: usize) -> &mut ColumnBuffer {
+		&mut self.columns.make_mut()[index]
+	}
+
+	pub fn row(&self, i: usize) -> Vec<Value> {
+		self.columns.iter().map(|c| c.get_value(i)).collect()
+	}
+
+	pub fn column(&self, name: &str) -> Option<ColumnRef<'_>> {
+		self.names.iter().position(|n| n.text() == name).and_then(|i| self.get(i))
 	}
 
 	pub fn row_count(&self) -> usize {
 		if !self.row_numbers.is_empty() {
 			self.row_numbers.len()
 		} else {
-			self.first().map_or(0, |col| col.data().len())
+			self.columns.first().map_or(0, |col| col.len())
 		}
 	}
 
@@ -272,7 +397,7 @@ impl Columns {
 	}
 
 	pub fn get_row(&self, index: usize) -> Vec<Value> {
-		self.iter().map(|col| col.data().get_value(index)).collect()
+		self.columns.iter().map(|col| col.get_value(index)).collect()
 	}
 }
 
@@ -281,13 +406,17 @@ impl IntoIterator for Columns {
 	type IntoIter = std::vec::IntoIter<ColumnWithName>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		self.columns.into_iter()
-	}
-}
-
-impl ColumnWithName {
-	pub fn extend(&mut self, other: ColumnWithName) -> Result<()> {
-		self.data_mut().extend(other.data().clone())
+		let names: Vec<Fragment> = self.names.iter().cloned().collect();
+		let buffers: Vec<ColumnBuffer> = self.columns.iter().cloned().collect();
+		let pairs: Vec<ColumnWithName> = names
+			.into_iter()
+			.zip(buffers)
+			.map(|(name, data)| ColumnWithName {
+				name,
+				data,
+			})
+			.collect();
+		pairs.into_iter()
 	}
 }
 
@@ -295,22 +424,26 @@ impl Columns {
 	pub fn from_rows(names: &[&str], result_rows: &[Vec<Value>]) -> Self {
 		let column_count = names.len();
 
-		let mut columns: Vec<ColumnWithName> = names
-			.iter()
-			.map(|name| ColumnWithName {
-				name: Fragment::internal(name.to_string()),
-				data: ColumnBuffer::none_typed(Type::Boolean, 0),
-			})
-			.collect();
+		let mut name_vec: Vec<Fragment> =
+			names.iter().map(|name| Fragment::internal(name.to_string())).collect();
+		let mut buffers: Vec<ColumnBuffer> =
+			(0..column_count).map(|_| ColumnBuffer::none_typed(Type::Boolean, 0)).collect();
 
 		for row in result_rows {
 			assert_eq!(row.len(), column_count, "row length does not match column count");
 			for (i, value) in row.iter().enumerate() {
-				columns[i].data_mut().push_value(value.clone());
+				buffers[i].push_value(value.clone());
 			}
 		}
 
-		Columns::new(columns)
+		let _ = &mut name_vec;
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(name_vec),
+		}
 	}
 
 	pub fn from_rows_with_row_numbers(
@@ -320,24 +453,26 @@ impl Columns {
 	) -> Self {
 		let column_count = names.len();
 
-		let mut columns: Vec<ColumnWithName> = names
-			.iter()
-			.map(|name| ColumnWithName {
-				name: Fragment::internal(name.to_string()),
-				data: ColumnBuffer::none_typed(Type::Boolean, 0),
-			})
-			.collect();
+		let name_vec: Vec<Fragment> = names.iter().map(|name| Fragment::internal(name.to_string())).collect();
+		let mut buffers: Vec<ColumnBuffer> =
+			(0..column_count).map(|_| ColumnBuffer::none_typed(Type::Boolean, 0)).collect();
 
 		for row in result_rows {
 			assert_eq!(row.len(), column_count, "row length does not match column count");
 			for (i, value) in row.iter().enumerate() {
-				columns[i].data_mut().push_value(value.clone());
+				buffers[i].push_value(value.clone());
 			}
 		}
 
 		let n = row_numbers.len();
 		let now = DateTime::default();
-		Columns::with_system_columns(columns, row_numbers, vec![now; n], vec![now; n])
+		Self {
+			row_numbers: CowVec::new(row_numbers),
+			created_at: CowVec::new(vec![now; n]),
+			updated_at: CowVec::new(vec![now; n]),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(name_vec),
+		}
 	}
 }
 
@@ -348,6 +483,7 @@ impl Columns {
 			created_at: CowVec::new(vec![]),
 			updated_at: CowVec::new(vec![]),
 			columns: CowVec::new(vec![]),
+			names: CowVec::new(vec![]),
 		}
 	}
 
@@ -357,62 +493,56 @@ impl Columns {
 
 	/// Create empty Columns (0 rows) with shape from a Table
 	pub fn from_table(table: &Table) -> Self {
-		let columns: Vec<ColumnWithName> = table
-			.columns
-			.iter()
-			.map(|col| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
-			})
-			.collect();
+		let mut names = Vec::with_capacity(table.columns.len());
+		let mut buffers = Vec::with_capacity(table.columns.len());
+		for col in &table.columns {
+			names.push(Fragment::internal(&col.name));
+			buffers.push(ColumnBuffer::with_capacity(col.constraint.get_type(), 0));
+		}
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 
 	/// Create empty Columns (0 rows) with shape from a View
 	pub fn from_view(view: &View) -> Self {
-		let columns: Vec<ColumnWithName> = view
-			.columns()
-			.iter()
-			.map(|col| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
-			})
-			.collect();
+		let cols = view.columns();
+		let mut names = Vec::with_capacity(cols.len());
+		let mut buffers = Vec::with_capacity(cols.len());
+		for col in cols {
+			names.push(Fragment::internal(&col.name));
+			buffers.push(ColumnBuffer::with_capacity(col.constraint.get_type(), 0));
+		}
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 
 	pub fn from_ringbuffer(ringbuffer: &ResolvedRingBuffer) -> Self {
-		let _source = ringbuffer.clone();
-
-		let columns: Vec<ColumnWithName> = ringbuffer
-			.columns()
-			.iter()
-			.map(|col| {
-				let column_ident = Fragment::internal(&col.name);
-				ColumnWithName {
-					name: column_ident,
-					data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
-				}
-			})
-			.collect();
+		let cols = ringbuffer.columns();
+		let mut names = Vec::with_capacity(cols.len());
+		let mut buffers = Vec::with_capacity(cols.len());
+		for col in cols {
+			names.push(Fragment::internal(&col.name));
+			buffers.push(ColumnBuffer::with_capacity(col.constraint.get_type(), 0));
+		}
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 
@@ -428,20 +558,14 @@ impl Columns {
 			return Columns::empty();
 		}
 
-		let new_columns: Vec<ColumnWithName> = self
-			.columns
-			.iter()
-			.map(|col| {
-				let mut new_data = ColumnBuffer::with_capacity(col.data().get_type(), indices.len());
-				for &idx in indices {
-					new_data.push_value(col.data().get_value(idx));
-				}
-				ColumnWithName {
-					name: col.name.clone(),
-					data: new_data,
-				}
-			})
-			.collect();
+		let mut new_buffers: Vec<ColumnBuffer> = Vec::with_capacity(self.columns.len());
+		for col in self.columns.iter() {
+			let mut new_data = ColumnBuffer::with_capacity(col.get_type(), indices.len());
+			for &idx in indices {
+				new_data.push_value(col.get_value(idx));
+			}
+			new_buffers.push(new_data);
+		}
 
 		let new_row_numbers: Vec<RowNumber> = if self.row_numbers.is_empty() {
 			Vec::new()
@@ -462,7 +586,8 @@ impl Columns {
 			row_numbers: CowVec::new(new_row_numbers),
 			created_at: CowVec::new(new_created_at),
 			updated_at: CowVec::new(new_updated_at),
-			columns: CowVec::new(new_columns),
+			columns: CowVec::new(new_buffers),
+			names: self.names.clone(),
 		}
 	}
 
@@ -501,7 +626,7 @@ impl Columns {
 		let self_cols = self.columns.make_mut();
 		for (i, src_col) in source.columns.iter().enumerate() {
 			for &idx in indices {
-				self_cols[i].data_mut().push_value(src_col.data().get_value(idx));
+				self_cols[i].push_value(src_col.get_value(idx));
 			}
 		}
 
@@ -541,12 +666,17 @@ impl Columns {
 	/// Project to a subset of columns by name, preserving the order of the provided names.
 	/// Columns not found in self are silently skipped.
 	pub fn project_by_names(&self, names: &[String]) -> Columns {
-		let new_columns: Vec<ColumnWithName> = names
-			.iter()
-			.filter_map(|name| self.columns.iter().find(|c| c.name().text() == name.as_str()).cloned())
-			.collect();
+		let mut new_names = Vec::new();
+		let mut new_buffers = Vec::new();
 
-		if new_columns.is_empty() {
+		for name in names {
+			if let Some(pos) = self.names.iter().position(|n| n.text() == name.as_str()) {
+				new_names.push(self.names[pos].clone());
+				new_buffers.push(self.columns[pos].clone());
+			}
+		}
+
+		if new_buffers.is_empty() {
 			return Columns::empty();
 		}
 
@@ -554,7 +684,8 @@ impl Columns {
 			row_numbers: self.row_numbers.clone(),
 			created_at: self.created_at.clone(),
 			updated_at: self.updated_at.clone(),
-			columns: CowVec::new(new_columns),
+			columns: CowVec::new(new_buffers),
+			names: CowVec::new(new_names),
 		}
 	}
 
@@ -563,24 +694,22 @@ impl Columns {
 	pub fn partition_by_keys<K: Hash + Eq + Clone>(&self, keys: &[K]) -> IndexMap<K, Columns> {
 		assert_eq!(keys.len(), self.row_count(), "keys length must match row count");
 
-		// Group indices by key
 		let mut key_to_indices: IndexMap<K, Vec<usize>> = IndexMap::new();
 		for (idx, key) in keys.iter().enumerate() {
 			key_to_indices.entry(key.clone()).or_default().push(idx);
 		}
 
-		// Convert to Columns
 		key_to_indices.into_iter().map(|(key, indices)| (key, self.extract_by_indices(&indices))).collect()
 	}
 
 	/// Create Columns from a Row by decoding its encoded values
 	pub fn from_row(row: &Row) -> Self {
-		let mut columns = Vec::new();
+		let mut names = Vec::new();
+		let mut buffers = Vec::new();
 
 		for (idx, field) in row.shape.fields().iter().enumerate() {
 			let value = row.shape.get_value(&row.encoded, idx);
 
-			// Use the field type for the column data, handling undefined values
 			let column_type = if matches!(value, Value::None { .. }) {
 				field.constraint.get_type()
 			} else {
@@ -603,17 +732,16 @@ impl Columns {
 
 			let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
 
-			columns.push(ColumnWithName {
-				name: Fragment::internal(name),
-				data,
-			});
+			names.push(Fragment::internal(name));
+			buffers.push(data);
 		}
 
 		Self {
 			row_numbers: CowVec::new(vec![row.number]),
 			created_at: CowVec::new(vec![DateTime::from_nanos(row.encoded.created_at_nanos())]),
 			updated_at: CowVec::new(vec![DateTime::from_nanos(row.encoded.updated_at_nanos())]),
-			columns: CowVec::new(columns),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 
@@ -630,18 +758,17 @@ impl Columns {
 
 		let row_number = *self.row_numbers.first().unwrap();
 
-		// Build shape fields for the layout
 		let fields: Vec<RowShapeField> = self
-			.columns
+			.names
 			.iter()
-			.map(|col| RowShapeField::unconstrained(col.name().text().to_string(), col.data().get_type()))
+			.zip(self.columns.iter())
+			.map(|(name, data)| RowShapeField::unconstrained(name.text().to_string(), data.get_type()))
 			.collect();
 
 		let layout = RowShape::new(fields);
 		let mut encoded = layout.allocate();
 
-		// Get values and set them
-		let values: Vec<Value> = self.columns.iter().map(|col| col.data().get_value(0)).collect();
+		let values: Vec<Value> = self.columns.iter().map(|col| col.get_value(0)).collect();
 		layout.set_values(&mut encoded, &values);
 
 		Row {
@@ -675,7 +802,6 @@ pub mod tests {
 		assert_eq!(columns.len(), 4);
 		assert_eq!(columns.shape(), (1, 4));
 
-		// Check that the values are correctly stored
 		assert_eq!(columns.column("date_col").unwrap().data().get_value(0), Value::Date(date));
 		assert_eq!(columns.column("datetime_col").unwrap().data().get_value(0), Value::DateTime(datetime));
 		assert_eq!(columns.column("time_col").unwrap().data().get_value(0), Value::Time(time));
@@ -699,7 +825,6 @@ pub mod tests {
 		assert_eq!(columns.len(), 6);
 		assert_eq!(columns.shape(), (1, 6));
 
-		// Check all values are correctly stored
 		assert_eq!(columns.column("bool_col").unwrap().data().get_value(0), Value::Boolean(true));
 		assert_eq!(columns.column("int_col").unwrap().data().get_value(0), Value::Int4(42));
 		assert_eq!(columns.column("str_col").unwrap().data().get_value(0), Value::Utf8("hello".to_string()));
@@ -713,5 +838,17 @@ pub mod tests {
 		let columns = Columns::single_row([("normal_column", Value::Int4(42))]);
 		assert_eq!(columns.len(), 1);
 		assert_eq!(columns.column("normal_column").unwrap().data().get_value(0), Value::Int4(42));
+	}
+
+	#[test]
+	fn test_new_named_ergonomic() {
+		let columns = Columns::new_named([
+			("a", ColumnBuffer::int1([1i8, 2, 3])),
+			("b", ColumnBuffer::utf8(["x".to_string(), "y".to_string(), "z".to_string()])),
+		]);
+		assert_eq!(columns.len(), 2);
+		assert_eq!(columns.row_count(), 3);
+		assert_eq!(columns.column("a").unwrap().data().get_value(0), Value::Int1(1));
+		assert_eq!(columns.column("b").unwrap().data().get_value(2), Value::Utf8("z".to_string()));
 	}
 }

@@ -32,7 +32,6 @@ use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	util::cowvec::CowVec,
 	value::{Value, blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 use serde::{Deserialize, Serialize};
@@ -107,12 +106,12 @@ impl SerializedRow {
 			columns_vec.push(ColumnWithName::new(Fragment::internal(name), col_data));
 		}
 
-		Columns {
-			row_numbers: CowVec::new(vec![self.number]),
-			created_at: CowVec::new(vec![self.created_at]),
-			updated_at: CowVec::new(vec![self.updated_at]),
-			columns: CowVec::new(columns_vec),
-		}
+		Columns::with_system_columns(
+			columns_vec,
+			vec![self.number],
+			vec![self.created_at],
+			vec![self.updated_at],
+		)
 	}
 }
 

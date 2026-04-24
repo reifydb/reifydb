@@ -167,7 +167,12 @@ impl QueryNode for UdfEvalNode {
 					Variable::Columns {
 						columns: c,
 						..
-					} if !c.is_empty() => c.columns.into_inner().into_iter().next().unwrap(),
+					} if !c.is_empty() => {
+						let name =
+							c.names.iter().next().cloned().unwrap_or_else(|| call.udf.result_column.clone());
+						let data = c.columns.into_inner().into_iter().next().unwrap();
+						ColumnWithName::new(name, data)
+					}
 					_ => {
 						let data = ColumnBuffer::none_typed(Type::Any, row_count);
 						ColumnWithName {
@@ -224,9 +229,8 @@ impl QueryNode for UdfEvalNode {
 				}
 			};
 
-			columns.columns
-				.make_mut()
-				.push(ColumnWithName::new(call.udf.result_column.clone(), result_column.data));
+			columns.columns.make_mut().push(result_column.data);
+			columns.names.make_mut().push(call.udf.result_column.clone());
 		}
 
 		Ok(Some(columns))
@@ -280,7 +284,19 @@ pub(crate) fn strip_udf_columns(columns: &mut Columns, udf_names: &[String]) {
 	if udf_names.is_empty() {
 		return;
 	}
-	columns.columns.make_mut().retain(|c| !udf_names.iter().any(|n| n == c.name.text()));
+	let keep: Vec<bool> = columns.names.iter().map(|n| !udf_names.iter().any(|u| u == n.text())).collect();
+	let mut idx = 0;
+	columns.columns.make_mut().retain(|_| {
+		let k = keep[idx];
+		idx += 1;
+		k
+	});
+	let mut idx = 0;
+	columns.names.make_mut().retain(|_| {
+		let k = keep[idx];
+		idx += 1;
+		k
+	});
 }
 
 /// Extract UDF calls from expressions and evaluate them for a single row with no input columns.

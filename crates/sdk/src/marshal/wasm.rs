@@ -74,7 +74,7 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 
 	for col in columns.iter() {
 		// Name
-		let name_bytes = col.name.text().as_bytes();
+		let name_bytes = col.name().text().as_bytes();
 		let name_offset = buf.len() as u32;
 		buf.extend_from_slice(name_bytes);
 		let name_len = name_bytes.len() as u32;

@@ -123,7 +123,7 @@ pub(crate) fn insert_table(
 			// For each table column, find if it exists in the input columns
 			for (table_idx, table_column) in table.columns.iter().enumerate() {
 				let mut value = if let Some(&input_idx) = column_map.get(table_column.name.as_str()) {
-					columns[input_idx].data().get_value(row_numberx)
+					columns[input_idx].get_value(row_numberx)
 				} else {
 					Value::none()
 				};
@@ -140,7 +140,7 @@ pub(crate) fn insert_table(
 				// Create ResolvedColumn for this column
 				let column_ident = column_map
 					.get(table_column.name.as_str())
-					.map(|&idx| columns[idx].name().clone())
+					.map(|&idx| columns.name_at(idx).clone())
 					.unwrap_or_else(|| Fragment::internal(table_column.name.clone()));
 				let resolved_column = ResolvedColumn::new(
 					column_ident.clone(),

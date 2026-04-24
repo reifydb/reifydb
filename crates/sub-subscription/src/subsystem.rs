@@ -320,7 +320,7 @@ impl SubscriptionInspector for SubscriptionInspectorImpl {
 		// Merge multiple batches: collect all column names from first batch,
 		// then collect all rows across batches.
 		let first = &batches[0];
-		let names: Vec<&str> = first.iter().map(|c| c.name.text()).collect();
+		let names: Vec<&str> = first.iter().map(|c| c.name().text()).collect();
 
 		let mut all_rows = Vec::new();
 		let mut all_row_numbers = Vec::new();

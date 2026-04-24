@@ -13,7 +13,6 @@ use reifydb_core::{
 use reifydb_type::{
 	Result,
 	fragment::Fragment,
-	util::cowvec::CowVec,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -115,12 +114,7 @@ impl Operator for PrimitiveTableOperator {
 		if row_numbers.is_empty() {
 			Ok(Columns::from_table(&self.table))
 		} else {
-			Ok(Columns {
-				row_numbers: CowVec::new(row_numbers),
-				created_at: CowVec::new(created_at),
-				updated_at: CowVec::new(updated_at),
-				columns: CowVec::new(columns_vec),
-			})
+			Ok(Columns::with_system_columns(columns_vec, row_numbers, created_at, updated_at))
 		}
 	}
 }

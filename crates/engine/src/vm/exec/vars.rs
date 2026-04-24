@@ -96,7 +96,7 @@ impl<'a> Vm<'a> {
 				..
 			} => {
 				if c.is_scalar() {
-					c.columns.make_mut()[0].name = Fragment::internal(name);
+					c.names.make_mut()[0] = Fragment::internal(name);
 				}
 				Variable::columns(c)
 			}
@@ -112,18 +112,15 @@ impl<'a> Vm<'a> {
 			Some(Variable::Columns {
 				columns,
 			}) if !columns.is_scalar() => {
-				let col = columns.columns.iter().find(|c| c.name.text() == field_name);
-				match col {
-					Some(col) => {
-						let value = col.data.get_value(0);
+				let col_pos = columns.names.iter().position(|n| n.text() == field_name);
+				match col_pos {
+					Some(pos) => {
+						let value = columns.columns[pos].get_value(0);
 						self.stack.push(Variable::scalar(value));
 					}
 					None => {
-						let available: Vec<String> = columns
-							.columns
-							.iter()
-							.map(|c| c.name.text().to_string())
-							.collect();
+						let available: Vec<String> =
+							columns.names.iter().map(|n| n.text().to_string()).collect();
 						return Err(TypeError::Runtime {
 							kind: RuntimeErrorKind::FieldNotFound {
 								variable: var_name.to_string(),

@@ -3,7 +3,7 @@
 
 use reifydb_type::{
 	fragment::Fragment,
-	util::{bitvec::BitVec, cowvec::CowVec},
+	util::bitvec::BitVec,
 	value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type},
 };
 
@@ -154,12 +154,7 @@ impl LazyBatch {
 			});
 		}
 
-		Columns {
-			row_numbers: CowVec::new(result_row_numbers),
-			created_at: CowVec::new(result_created_at),
-			updated_at: CowVec::new(result_updated_at),
-			columns: CowVec::new(result_columns),
-		}
+		Columns::with_system_columns(result_columns, result_row_numbers, result_created_at, result_updated_at)
 	}
 
 	/// Get column names for headers
@@ -350,9 +345,9 @@ pub mod tests {
 		assert_eq!(columns.row_numbers[0], RowNumber(101));
 
 		// Check values
-		assert_eq!(columns[0].data().get_value(0), Value::Int4(2));
-		assert_eq!(columns[1].data().get_value(0), Value::Utf8("Bob".to_string()));
-		assert_eq!(columns[2].data().get_value(0), Value::Boolean(false));
+		assert_eq!(columns[0].get_value(0), Value::Int4(2));
+		assert_eq!(columns[1].get_value(0), Value::Utf8("Bob".to_string()));
+		assert_eq!(columns[2].get_value(0), Value::Boolean(false));
 	}
 
 	#[test]

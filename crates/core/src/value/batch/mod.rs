@@ -53,7 +53,7 @@ impl Batch {
 	pub fn get_value(&self, row_idx: usize, col_idx: usize) -> Value {
 		match self {
 			Batch::Lazy(lazy) => lazy.get_value(row_idx, col_idx),
-			Batch::FullyMaterialized(columns) => columns[col_idx].data().get_value(row_idx),
+			Batch::FullyMaterialized(columns) => columns[col_idx].get_value(row_idx),
 		}
 	}
 

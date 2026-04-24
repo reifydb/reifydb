@@ -66,16 +66,17 @@ impl<'a> Vm<'a> {
 			} => {
 				let ctx = self.eval_ctx();
 				let coerced: Vec<ColumnWithName> = columns
-					.columns
+					.names
 					.iter()
-					.map(|col| {
-						let data = cast_column_data(
+					.zip(columns.columns.iter())
+					.map(|(name, data)| {
+						let casted = cast_column_data(
 							&ctx,
-							&col.data,
+							data,
 							target.clone(),
-							col.name.clone(),
+							name.clone(),
 						)?;
-						Ok(ColumnWithName::new(col.name.clone(), data))
+						Ok(ColumnWithName::new(name.clone(), casted))
 					})
 					.collect::<Result<Vec<_>>>()?;
 				Ok(Variable::columns(Columns::new(coerced)))

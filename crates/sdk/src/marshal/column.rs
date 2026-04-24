@@ -98,7 +98,7 @@ impl Arena {
 		if !columns_ptr.is_null() {
 			unsafe {
 				for (i, col) in columns.iter().enumerate() {
-					let col_ffi = self.marshal_column(col);
+					let col_ffi = self.marshal_column_ref(col.name(), col.data());
 					*columns_ptr.add(i) = col_ffi;
 				}
 			}
@@ -168,22 +168,19 @@ impl Arena {
 }
 
 impl Arena {
-	pub(super) fn marshal_column(&mut self, column: &ColumnWithName) -> ColumnFFI {
-		// Marshal column name
-		let name_bytes = column.name.text().as_bytes();
+	pub(super) fn marshal_column_ref(&mut self, name: &Fragment, data: &ColumnBuffer) -> ColumnFFI {
+		let name_bytes = name.text().as_bytes();
 		let name_ptr = self.copy_bytes(name_bytes);
-		let name = BufferFFI {
+		let name_buf = BufferFFI {
 			ptr: name_ptr,
 			len: name_bytes.len(),
 			cap: name_bytes.len(),
 		};
 
-		// Marshal column data
-		let buffer = column.data();
-		let data = self.marshal_column_data(buffer);
+		let data = self.marshal_column_data(data);
 
 		ColumnFFI {
-			name,
+			name: name_buf,
 			data,
 		}
 	}

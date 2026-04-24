@@ -118,7 +118,8 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let output = Columns::with_system_columns(
+					let output = Columns::from_parallel(
+						post.names.as_ref().to_vec(),
 						post.columns.as_ref().to_vec(),
 						output_row_numbers,
 						post.created_at.to_vec(),
@@ -149,13 +150,15 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let pre_output = Columns::with_system_columns(
+					let pre_output = Columns::from_parallel(
+						pre.names.as_ref().to_vec(),
 						pre.columns.as_ref().to_vec(),
 						output_row_numbers.clone(),
 						pre.created_at.to_vec(),
 						pre.updated_at.to_vec(),
 					);
-					let post_output = Columns::with_system_columns(
+					let post_output = Columns::from_parallel(
+						post.names.as_ref().to_vec(),
 						post.columns.as_ref().to_vec(),
 						output_row_numbers,
 						post.created_at.to_vec(),
@@ -186,7 +189,8 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let output = Columns::with_system_columns(
+					let output = Columns::from_parallel(
+						pre.names.as_ref().to_vec(),
 						pre.columns.as_ref().to_vec(),
 						output_row_numbers,
 						pre.created_at.to_vec(),
@@ -224,7 +228,8 @@ impl Operator for AppendOperator {
 
 			if !parent_cols.is_empty() {
 				// Replace row number with append output row number
-				let updated = Columns::with_system_columns(
+				let updated = Columns::from_parallel(
+					parent_cols.names.as_ref().to_vec(),
 					parent_cols.columns.as_ref().to_vec(),
 					vec![row_number],
 					parent_cols.created_at.to_vec(),

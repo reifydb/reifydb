@@ -29,14 +29,13 @@ impl Columns {
 		}
 
 		// Take the first n rows from columns
-		let mut columns = Vec::with_capacity(self.len());
+		let mut new_buffers = Vec::with_capacity(self.len());
 
-		for col in self.iter() {
-			let data = col.data().take(n);
-			columns.push(col.with_new_data(data));
+		for data in self.columns.iter() {
+			new_buffers.push(data.take(n));
 		}
 
-		self.columns = CowVec::new(columns);
+		self.columns = CowVec::new(new_buffers);
 
 		Ok(())
 	}
@@ -59,7 +58,7 @@ pub mod tests {
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::bool_with_bitvec([true], [false]));
+		assert_eq!(test_instance[0], ColumnBuffer::bool_with_bitvec([true], [false]));
 	}
 
 	#[test]
@@ -72,7 +71,7 @@ pub mod tests {
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::float4_with_bitvec([1.0, 2.0], [true, false]));
+		assert_eq!(test_instance[0], ColumnBuffer::float4_with_bitvec([1.0, 2.0], [true, false]));
 	}
 
 	#[test]
@@ -85,7 +84,7 @@ pub mod tests {
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::float8_with_bitvec([1.0, 2.0], [true, true]));
+		assert_eq!(test_instance[0], ColumnBuffer::float8_with_bitvec([1.0, 2.0], [true, true]));
 	}
 
 	#[test]
@@ -95,7 +94,7 @@ pub mod tests {
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::int1_with_bitvec([1, 2], [true, false]));
+		assert_eq!(test_instance[0], ColumnBuffer::int1_with_bitvec([1, 2], [true, false]));
 	}
 
 	#[test]
@@ -108,7 +107,7 @@ pub mod tests {
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::int2_with_bitvec([1, 2], [true, true]));
+		assert_eq!(test_instance[0], ColumnBuffer::int2_with_bitvec([1, 2], [true, true]));
 	}
 
 	#[test]
@@ -118,7 +117,7 @@ pub mod tests {
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::int4_with_bitvec([1], [true]));
+		assert_eq!(test_instance[0], ColumnBuffer::int4_with_bitvec([1], [true]));
 	}
 
 	#[test]
@@ -128,7 +127,7 @@ pub mod tests {
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::int8_with_bitvec([1, 2], [false, true]));
+		assert_eq!(test_instance[0], ColumnBuffer::int8_with_bitvec([1, 2], [false, true]));
 	}
 
 	#[test]
@@ -138,7 +137,7 @@ pub mod tests {
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::int16_with_bitvec([1], [true]));
+		assert_eq!(test_instance[0], ColumnBuffer::int16_with_bitvec([1], [true]));
 	}
 
 	#[test]
@@ -148,7 +147,7 @@ pub mod tests {
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::uint1_with_bitvec([1, 2], [false, false]));
+		assert_eq!(test_instance[0], ColumnBuffer::uint1_with_bitvec([1, 2], [false, false]));
 	}
 
 	#[test]
@@ -158,7 +157,7 @@ pub mod tests {
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::uint2_with_bitvec([1], [true]));
+		assert_eq!(test_instance[0], ColumnBuffer::uint2_with_bitvec([1], [true]));
 	}
 
 	#[test]
@@ -168,7 +167,7 @@ pub mod tests {
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::uint4_with_bitvec([10], [false]));
+		assert_eq!(test_instance[0], ColumnBuffer::uint4_with_bitvec([10], [false]));
 	}
 
 	#[test]
@@ -178,7 +177,7 @@ pub mod tests {
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::uint8_with_bitvec([10, 20], [true, true]));
+		assert_eq!(test_instance[0], ColumnBuffer::uint8_with_bitvec([10, 20], [true, true]));
 	}
 
 	#[test]
@@ -191,7 +190,7 @@ pub mod tests {
 
 		test_instance.take(1).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::uint16_with_bitvec([100], [true]));
+		assert_eq!(test_instance[0], ColumnBuffer::uint16_with_bitvec([100], [true]));
 	}
 
 	#[test]
@@ -205,7 +204,7 @@ pub mod tests {
 		test_instance.take(2).unwrap();
 
 		assert_eq!(
-			*test_instance[0].data(),
+			test_instance[0],
 			ColumnBuffer::utf8_with_bitvec(["a".to_string(), "b".to_string()], [true, false])
 		);
 	}
@@ -216,9 +215,9 @@ pub mod tests {
 
 		test_instance.take(2).unwrap();
 
-		assert_eq!(test_instance[0].data().len(), 2);
-		assert_eq!(test_instance[0].data().get_value(0), Value::none());
-		assert_eq!(test_instance[0].data().get_value(1), Value::none());
+		assert_eq!(test_instance[0].len(), 2);
+		assert_eq!(test_instance[0].get_value(0), Value::none());
+		assert_eq!(test_instance[0].get_value(1), Value::none());
 	}
 
 	#[test]
@@ -227,8 +226,8 @@ pub mod tests {
 
 		test_instance.take(3).unwrap();
 
-		assert_eq!(test_instance[0].data().len(), 3);
-		assert_eq!(test_instance[0].data().get_value(0), Value::none());
+		assert_eq!(test_instance[0].len(), 3);
+		assert_eq!(test_instance[0].get_value(0), Value::none());
 	}
 
 	#[test]
@@ -238,6 +237,6 @@ pub mod tests {
 
 		test_instance.take(10).unwrap();
 
-		assert_eq!(*test_instance[0].data(), ColumnBuffer::int2_with_bitvec([10, 20], [true, false]));
+		assert_eq!(test_instance[0], ColumnBuffer::int2_with_bitvec([10, 20], [true, false]));
 	}
 }

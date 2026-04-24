@@ -92,9 +92,10 @@ impl CountAccumulator {
 impl Accumulator for CountAccumulator {
 	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError> {
 		let column = &args[0];
+		let column_name = args.name_at(0);
 
 		// Check if this is count(*) by examining if we have a dummy column
-		let is_count_star = column.name.text() == "dummy" && matches!(column.data(), ColumnBuffer::Int4(_));
+		let is_count_star = column_name.text() == "dummy" && matches!(column.data(), ColumnBuffer::Int4(_));
 
 		if is_count_star {
 			for (group, indices) in groups.iter() {

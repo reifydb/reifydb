@@ -105,11 +105,18 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 	}
 
 	// Preserve system columns
+	let mut names_vec = Vec::with_capacity(result_columns.len());
+	let mut buffers_vec = Vec::with_capacity(result_columns.len());
+	for c in result_columns {
+		names_vec.push(c.name);
+		buffers_vec.push(c.data);
+	}
 	Ok(Columns {
 		row_numbers: columns.row_numbers.clone(),
 		created_at: columns.created_at.clone(),
 		updated_at: columns.updated_at.clone(),
-		columns: CowVec::new(result_columns),
+		columns: CowVec::new(buffers_vec),
+		names: CowVec::new(names_vec),
 	})
 }
 
@@ -130,7 +137,7 @@ pub(crate) fn encode_row_at_index(
 			// Find column with matching name
 			let col = columns
 				.iter()
-				.find(|col| col.name.as_ref() == field_name)
+				.find(|col| col.name().as_ref() == field_name)
 				.unwrap_or_else(|| panic!("Column '{}' not found in Columns", field_name));
 
 			col.data().get_value(row_idx)
@@ -203,7 +210,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 			}
 		}
 
-		columns.columns.make_mut()[*col_pos] = ColumnWithName::new(columns[*col_pos].name().clone(), new_data);
+		columns.columns.make_mut()[*col_pos] = new_data;
 	}
 
 	Ok(())

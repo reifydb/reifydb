@@ -27,7 +27,6 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
@@ -161,16 +160,12 @@ pub(crate) fn delete_series(
 						});
 					}
 				}
-				let pre = Columns {
-					row_numbers: CowVec::new(vec![row_number]),
-					created_at: CowVec::new(vec![DateTime::from_nanos(
-						encoded_row.created_at_nanos(),
-					)]),
-					updated_at: CowVec::new(vec![DateTime::from_nanos(
-						encoded_row.updated_at_nanos(),
-					)]),
-					columns: CowVec::new(pre_col_vec),
-				};
+				let pre = Columns::with_system_columns(
+					pre_col_vec,
+					vec![row_number],
+					vec![DateTime::from_nanos(encoded_row.created_at_nanos())],
+					vec![DateTime::from_nanos(encoded_row.updated_at_nanos())],
+				);
 				txn.track_flow_change(Change {
 					origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 					version: CommitVersion(0),
@@ -255,16 +250,12 @@ pub(crate) fn delete_series(
 						data,
 					});
 				}
-				let pre = Columns {
-					row_numbers: CowVec::new(vec![row_number]),
-					created_at: CowVec::new(vec![DateTime::from_nanos(
-						encoded_row.created_at_nanos(),
-					)]),
-					updated_at: CowVec::new(vec![DateTime::from_nanos(
-						encoded_row.updated_at_nanos(),
-					)]),
-					columns: CowVec::new(pre_col_vec),
-				};
+				let pre = Columns::with_system_columns(
+					pre_col_vec,
+					vec![row_number],
+					vec![DateTime::from_nanos(encoded_row.created_at_nanos())],
+					vec![DateTime::from_nanos(encoded_row.updated_at_nanos())],
+				);
 				txn.track_flow_change(Change {
 					origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 					version: CommitVersion(0),

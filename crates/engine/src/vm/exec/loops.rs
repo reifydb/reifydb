@@ -63,15 +63,15 @@ impl<'a> Vm<'a> {
 		}
 
 		if columns.len() == 1 {
-			let value = columns.columns[0].data.get_value(index);
+			let value = columns.columns[0].get_value(index);
 			self.symbols.set(clean_name.to_string(), Variable::scalar(value), true)?;
 		} else {
 			let mut row_columns = Vec::new();
-			for col in columns.columns.iter() {
-				let value = col.data.get_value(index);
+			for (name, col) in columns.names.iter().zip(columns.columns.iter()) {
+				let value = col.get_value(index);
 				let mut data = ColumnBuffer::none_typed(Type::Boolean, 0);
 				data.push_value(value);
-				row_columns.push(ColumnWithName::new(col.name.clone(), data));
+				row_columns.push(ColumnWithName::new(name.clone(), data));
 			}
 			let row_frame = Columns::new(row_columns);
 			self.symbols.set(clean_name.to_string(), Variable::columns(row_frame), true)?;

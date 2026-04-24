@@ -70,7 +70,8 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 	}
 
 	if let Some(col) = ctx.columns.iter().find(|c| c.name() == name) {
-		return extract_column_data(col, ctx);
+		let owned = ColumnWithName::new(col.name().clone(), col.data().clone());
+		return extract_column_data(&owned, ctx);
 	}
 
 	if let Some(Variable::Columns {
@@ -79,7 +80,8 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 		&& scalar_cols.is_scalar()
 		&& let Some(col) = scalar_cols.columns.first()
 	{
-		return extract_column_data(col, ctx);
+		let owned = ColumnWithName::new(scalar_cols.name_at(0).clone(), col.clone());
+		return extract_column_data(&owned, ctx);
 	}
 
 	Ok(ColumnWithName::new(name.to_string(), ColumnBuffer::none_typed(Type::Boolean, ctx.row_count)))

@@ -24,15 +24,15 @@ impl JoinedColumnsBuilder {
 		let left_column_count = left.columns.len();
 
 		// Collect left column names for conflict detection
-		let left_names: Vec<String> = left.columns.iter().map(|c| c.name.as_ref().to_string()).collect();
+		let left_names: Vec<String> = left.names.iter().map(|n| n.as_ref().to_string()).collect();
 
 		// Compute right column names with alias prefix
 		let alias_str = alias.as_deref().unwrap_or("other");
 		let mut right_column_names = Vec::with_capacity(right.columns.len());
 		let mut all_names = left_names.clone();
 
-		for col in right.columns.iter() {
-			let col_name = col.name.as_ref();
+		for name in right.names.iter() {
+			let col_name = name.as_ref();
 			let prefixed_name = format!("{}_{}", alias_str, col_name);
 
 			// Check for conflict with existing names
@@ -82,25 +82,25 @@ impl JoinedColumnsBuilder {
 		let mut result_columns = Vec::with_capacity(total_columns);
 
 		// Add left columns - single value from left_idx
-		for left_col in left.columns.iter() {
-			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), 1);
-			col_data.push_value(left_col.data().get_value(left_idx));
-			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
+		for (i, left_col) in left.columns.iter().enumerate() {
+			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), 1);
+			col_data.push_value(left_col.get_value(left_idx));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
 		// Add right columns - single value from right_idx
 		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), 1);
-			col_data.push_value(right_col.data().get_value(right_idx));
+			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), 1);
+			col_data.push_value(right_col.get_value(right_idx));
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns {
-			row_numbers: CowVec::new(vec![row_number]),
-			created_at: CowVec::new(Self::extract_single_timestamp(&left.created_at, left_idx)),
-			updated_at: CowVec::new(Self::extract_single_timestamp(&left.updated_at, left_idx)),
-			columns: CowVec::new(result_columns),
-		}
+		Columns::with_system_columns(
+			result_columns,
+			vec![row_number],
+			Self::extract_single_timestamp(&left.created_at, left_idx),
+			Self::extract_single_timestamp(&left.updated_at, left_idx),
+		)
 	}
 
 	/// Join one left row (at left_idx) with all right rows.
@@ -119,30 +119,30 @@ impl JoinedColumnsBuilder {
 		let mut result_columns = Vec::with_capacity(total_columns);
 
 		// Add left columns - duplicate the left row value for each right row
-		for left_col in left.columns.iter() {
-			let left_value = left_col.data().get_value(left_idx);
-			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), right_count);
+		for (i, left_col) in left.columns.iter().enumerate() {
+			let left_value = left_col.get_value(left_idx);
+			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), right_count);
 			for _ in 0..right_count {
 				col_data.push_value(left_value.clone());
 			}
-			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
 		// Add right columns - copy all values from right
 		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), right_count);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), right_count);
 			for row_idx in 0..right_count {
-				col_data.push_value(right_col.data().get_value(row_idx));
+				col_data.push_value(right_col.get_value(row_idx));
 			}
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns {
-			row_numbers: CowVec::new(row_numbers.to_vec()),
-			created_at: CowVec::new(Self::duplicate_timestamp(&left.created_at, left_idx, right_count)),
-			updated_at: CowVec::new(Self::duplicate_timestamp(&left.updated_at, left_idx, right_count)),
-			columns: CowVec::new(result_columns),
-		}
+		Columns::with_system_columns(
+			result_columns,
+			row_numbers.to_vec(),
+			Self::duplicate_timestamp(&left.created_at, left_idx, right_count),
+			Self::duplicate_timestamp(&left.updated_at, left_idx, right_count),
+		)
 	}
 
 	/// Join all left rows with one right row (at right_idx).
@@ -161,30 +161,31 @@ impl JoinedColumnsBuilder {
 		let mut result_columns = Vec::with_capacity(total_columns);
 
 		// Add left columns - copy all values from left
-		for left_col in left.columns.iter() {
-			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), left_count);
+		for (i, left_col) in left.columns.iter().enumerate() {
+			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), left_count);
 			for row_idx in 0..left_count {
-				col_data.push_value(left_col.data().get_value(row_idx));
+				col_data.push_value(left_col.get_value(row_idx));
 			}
-			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
 		// Add right columns - duplicate the right row value for each left row
 		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
-			let right_value = right_col.data().get_value(right_idx);
-			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), left_count);
+			let right_value = right_col.get_value(right_idx);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), left_count);
 			for _ in 0..left_count {
 				col_data.push_value(right_value.clone());
 			}
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns {
-			row_numbers: CowVec::new(row_numbers.to_vec()),
-			created_at: left.created_at.clone(),
-			updated_at: left.updated_at.clone(),
-			columns: CowVec::new(result_columns),
-		}
+		Columns::from_parallel(
+			result_columns.iter().map(|c| c.name.clone()).collect(),
+			result_columns.into_iter().map(|c| c.data).collect(),
+			row_numbers.to_vec(),
+			left.created_at.as_ref().to_vec(),
+			left.updated_at.as_ref().to_vec(),
+		)
 	}
 
 	/// Join left rows (at specified indices) with right rows (at specified indices) (cartesian product).
@@ -206,42 +207,34 @@ impl JoinedColumnsBuilder {
 		let mut result_columns = Vec::with_capacity(total_columns);
 
 		// Add left columns - for each left index, duplicate value for all right rows
-		for left_col in left.columns.iter() {
-			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), result_count);
+		for (i, left_col) in left.columns.iter().enumerate() {
+			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), result_count);
 			for &left_idx in left_indices {
-				let left_value = left_col.data().get_value(left_idx);
+				let left_value = left_col.get_value(left_idx);
 				for _ in 0..right_count {
 					col_data.push_value(left_value.clone());
 				}
 			}
-			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
 		// Add right columns - repeat right rows at specified indices for each left row
 		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), result_count);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), result_count);
 			for _ in 0..left_count {
 				for &right_idx in right_indices {
-					col_data.push_value(right_col.data().get_value(right_idx));
+					col_data.push_value(right_col.get_value(right_idx));
 				}
 			}
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns {
-			row_numbers: CowVec::new(row_numbers.to_vec()),
-			created_at: CowVec::new(Self::expand_timestamps_cartesian(
-				&left.created_at,
-				left_indices,
-				right_count,
-			)),
-			updated_at: CowVec::new(Self::expand_timestamps_cartesian(
-				&left.updated_at,
-				left_indices,
-				right_count,
-			)),
-			columns: CowVec::new(result_columns),
-		}
+		Columns::with_system_columns(
+			result_columns,
+			row_numbers.to_vec(),
+			Self::expand_timestamps_cartesian(&left.created_at, left_indices, right_count),
+			Self::expand_timestamps_cartesian(&left.updated_at, left_indices, right_count),
+		)
 	}
 
 	/// Create unmatched left columns (left join with no right match).
@@ -257,25 +250,25 @@ impl JoinedColumnsBuilder {
 		let mut result_columns = Vec::with_capacity(total_columns);
 
 		// Add left columns - single value from left_idx
-		for left_col in left.columns.iter() {
-			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), 1);
-			col_data.push_value(left_col.data().get_value(left_idx));
-			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
+		for (i, left_col) in left.columns.iter().enumerate() {
+			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), 1);
+			col_data.push_value(left_col.get_value(left_idx));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
 		// Add right columns with Undefined values
 		for (right_col, aliased_name) in right_shape.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), 1);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), 1);
 			col_data.push_value(Value::none());
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns {
-			row_numbers: CowVec::new(vec![row_number]),
-			created_at: CowVec::new(Self::extract_single_timestamp(&left.created_at, left_idx)),
-			updated_at: CowVec::new(Self::extract_single_timestamp(&left.updated_at, left_idx)),
-			columns: CowVec::new(result_columns),
-		}
+		Columns::with_system_columns(
+			result_columns,
+			vec![row_number],
+			Self::extract_single_timestamp(&left.created_at, left_idx),
+			Self::extract_single_timestamp(&left.updated_at, left_idx),
+		)
 	}
 
 	/// Create unmatched left columns for multiple left rows.
@@ -294,29 +287,29 @@ impl JoinedColumnsBuilder {
 		let mut result_columns = Vec::with_capacity(total_columns);
 
 		// Add left columns - values from specified indices
-		for left_col in left.columns.iter() {
-			let mut col_data = ColumnBuffer::with_capacity(left_col.data().get_type(), count);
+		for (i, left_col) in left.columns.iter().enumerate() {
+			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), count);
 			for &idx in left_indices {
-				col_data.push_value(left_col.data().get_value(idx));
+				col_data.push_value(left_col.get_value(idx));
 			}
-			result_columns.push(ColumnWithName::new(left_col.name.clone(), col_data));
+			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
 		// Add right columns with Undefined values
 		for (right_col, aliased_name) in right_shape.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnBuffer::with_capacity(right_col.data().get_type(), count);
+			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), count);
 			for _ in 0..count {
 				col_data.push_value(Value::none());
 			}
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
 		}
 
-		Columns {
-			row_numbers: CowVec::new(row_numbers.to_vec()),
-			created_at: CowVec::new(Self::extract_timestamps_at_indices(&left.created_at, left_indices)),
-			updated_at: CowVec::new(Self::extract_timestamps_at_indices(&left.updated_at, left_indices)),
-			columns: CowVec::new(result_columns),
-		}
+		Columns::with_system_columns(
+			result_columns,
+			row_numbers.to_vec(),
+			Self::extract_timestamps_at_indices(&left.created_at, left_indices),
+			Self::extract_timestamps_at_indices(&left.updated_at, left_indices),
+		)
 	}
 
 	/// Get the pre-computed aliased names for right columns.

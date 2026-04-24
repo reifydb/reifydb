@@ -74,7 +74,7 @@ impl Function for Sum {
 		for i in 0..row_count {
 			// Basic implementation: just use first arg for now or add them if possible
 			// In a full implementation we would use a unified adder
-			let val1 = args[0].data().get_value(i);
+			let val1 = args[0].get_value(i);
 			results.push(Box::new(val1));
 		}
 

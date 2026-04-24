@@ -11,7 +11,6 @@ use reifydb_rql::expression::Expression;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
-	util::cowvec::CowVec,
 	value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
 
@@ -48,12 +47,7 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 		}
 	}
 
-	Columns {
-		row_numbers: CowVec::new(row_numbers),
-		created_at: CowVec::new(created_at),
-		updated_at: CowVec::new(updated_at),
-		columns: CowVec::new(columns_vec),
-	}
+	Columns::with_system_columns(columns_vec, row_numbers, created_at, updated_at)
 }
 
 /// If every RETURNING expression is a simple `Expression::Column`, extract
@@ -61,14 +55,14 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 /// Returns `None` if any expression is not a plain column reference or
 /// if a referenced column is missing from `input`.
 fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Columns> {
-	let mut cols = Vec::with_capacity(exprs.len());
+	let mut cols: Vec<ColumnWithName> = Vec::with_capacity(exprs.len());
 	for expr in exprs {
 		let Expression::Column(col_expr) = expr else {
 			return None;
 		};
 		let name = col_expr.0.name.text();
 		let col = input.column(name)?;
-		cols.push(col.clone());
+		cols.push(ColumnWithName::new(col.name().clone(), col.data().clone()));
 	}
 	if !input.row_numbers.is_empty() {
 		Some(Columns::with_system_columns(

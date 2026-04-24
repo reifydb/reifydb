@@ -131,7 +131,7 @@ pub(crate) fn update_ringbuffer(
 				for (rb_idx, rb_column) in ringbuffer.columns.iter().enumerate() {
 					let mut value =
 						if let Some(&input_idx) = column_map.get(rb_column.name.as_str()) {
-							columns[input_idx].data().get_value(row_idx)
+							columns[input_idx].get_value(row_idx)
 						} else {
 							Value::none()
 						};

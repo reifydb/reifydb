@@ -702,13 +702,11 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						Some(Variable::Columns {
 							columns,
 						}) if !columns.is_scalar() => {
-							let col = columns
-								.columns
-								.iter()
-								.find(|c| c.name.text() == field_name);
-							match col {
-								Some(col) => {
-									let value = col.data.get_value(0);
+							let col_pos =
+								columns.names.iter().position(|n| n.text() == field_name);
+							match col_pos {
+								Some(pos) => {
+									let value = columns.columns[pos].get_value(0);
 									let row_count =
 										ctx.take.unwrap_or(ctx.row_count);
 									let mut data = ColumnBuffer::with_capacity(
@@ -725,9 +723,9 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 								}
 								None => {
 									let available: Vec<String> = columns
-										.columns
+										.names
 										.iter()
-										.map(|c| c.name.text().to_string())
+										.map(|n| n.text().to_string())
 										.collect();
 									Err(TypeError::Runtime {
 										kind: RuntimeErrorKind::FieldNotFound {
