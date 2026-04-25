@@ -24,12 +24,12 @@ reifydb-subscription = { workspace = true}
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-metric = { workspace = true }
-reifydb-sub-column = { workspace = true }
 reifydb-sub-metric = { workspace = true }
 reifydb-derive = { workspace = true }
 
 tracing = { workspace = true }
 reifydb-sub-api = { workspace = true }
+reifydb-sub-column = { workspace = true, optional = true }
 reifydb-sub-server-admin = { workspace = true, optional = true }
 reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-sub-subscription = { workspace = true, optional = true }
@@ -60,6 +60,7 @@ reifydb-build = { workspace = true }
 default = []
 
 # Subsystem features
+sub_column = ["dep:reifydb-sub-column"]
 sub_flow = ["dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
 sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_server = ["dep:reifydb-sub-server"]

@@ -50,6 +50,7 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
+#[cfg(feature = "sub_column")]
 use reifydb_sub_column::factory::StorageSubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowConfigurator, subsystem::factory::FlowSubsystemFactory};
@@ -539,9 +540,7 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
-		// Columnar storage materialization - always-on, no feature gate. Produces
-		// read-optimised `Snapshot`s in an in-memory `SnapshotRegistry`; safe
-		// even on empty catalogs (the Tick is a no-op until tables/series exist).
+		#[cfg(feature = "sub_column")]
 		{
 			let factory: Box<dyn SubsystemFactory> = Box::new(StorageSubsystemFactory::default());
 			let subsystem = factory.create(&self.ioc)?;

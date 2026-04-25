@@ -207,6 +207,7 @@ pub struct SnapshotMeta {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::column::{array::canonical::Canonical, buffer::ColumnBuffer};
+	use reifydb_type::value::Value;
 
 	use super::*;
 
