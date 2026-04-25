@@ -24,7 +24,8 @@ use reifydb_type::{
 use super::{
 	BulkInsertResult, RingBufferInsertResult, TableInsertResult,
 	validation::{
-		reorder_rows_trusted, reorder_rows_trusted_rb, validate_and_coerce_rows, validate_and_coerce_rows_rb,
+		reorder_rows_unvalidated, reorder_rows_unvalidated_rb, validate_and_coerce_rows,
+		validate_and_coerce_rows_rb,
 	},
 };
 use crate::{
@@ -70,19 +71,6 @@ impl ValidationMode for Validated {
 	}
 }
 
-/// Trusted mode - skips validation for pre-validated internal data
-pub struct Trusted;
-impl ValidationMode for Trusted {
-	const VALIDATED: bool = false;
-
-	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R>
-	where
-		F: FnOnce(&mut CommandTransaction) -> Result<R>,
-	{
-		run_checked(txn, total_rows, body)
-	}
-}
-
 /// Unchecked mode - skips validation AND skips registering the commit in the
 /// oracle's per-key conflict-detection index. Used by `bulk_insert_unchecked`.
 /// See that method's doc for the safety contract.
@@ -115,10 +103,9 @@ where
 
 pub mod sealed {
 
-	use super::{Trusted, Unchecked, Validated};
+	use super::{Unchecked, Validated};
 	pub trait Sealed {}
 	impl Sealed for Validated {}
-	impl Sealed for Trusted {}
 	impl Sealed for Unchecked {}
 }
 
@@ -136,19 +123,6 @@ pub struct BulkInsertBuilder<'e, V: ValidationMode = Validated> {
 impl<'e> BulkInsertBuilder<'e, Validated> {
 	/// Create a new bulk insert builder with full validation enabled.
 	pub(crate) fn new(engine: &'e StandardEngine, identity: IdentityId) -> Self {
-		Self {
-			engine,
-			identity,
-			pending_tables: Vec::new(),
-			pending_ringbuffers: Vec::new(),
-			_validation: PhantomData,
-		}
-	}
-}
-
-impl<'e> BulkInsertBuilder<'e, Trusted> {
-	/// Create a new bulk insert builder with validation disabled (trusted mode).
-	pub(crate) fn new_trusted(engine: &'e StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
 			identity,
@@ -266,7 +240,7 @@ fn execute_table_insert<V: ValidationMode>(
 	let coerced_rows = if V::VALIDATED {
 		validate_and_coerce_rows(&pending.rows, &table)?
 	} else {
-		reorder_rows_trusted(&pending.rows, &table)?
+		reorder_rows_unvalidated(&pending.rows, &table)?
 	};
 
 	let mut encoded_rows = Vec::with_capacity(coerced_rows.len());
@@ -411,7 +385,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 	let coerced_rows = if V::VALIDATED {
 		validate_and_coerce_rows_rb(&pending.rows, &ringbuffer)?
 	} else {
-		reorder_rows_trusted_rb(&pending.rows, &ringbuffer)?
+		reorder_rows_unvalidated_rb(&pending.rows, &ringbuffer)?
 	};
 
 	let mut inserted_count = 0u64;

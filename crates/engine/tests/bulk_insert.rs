@@ -16,5 +16,5 @@ mod errors;
 mod ringbuffer;
 #[path = "bulk_insert/transaction.rs"]
 mod transaction;
-#[path = "bulk_insert/trusted.rs"]
-mod trusted;
+#[path = "bulk_insert/unchecked.rs"]
+mod unchecked;

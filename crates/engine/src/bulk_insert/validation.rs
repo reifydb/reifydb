@@ -51,10 +51,12 @@ pub fn validate_and_coerce_rows_rb(rows: &[Params], ringbuffer: &RingBuffer) -> 
 	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
 }
 
-/// Reorder all rows for a table without coercion (trusted mode).
+/// Reorder all rows for a table without coercion.
 ///
-/// Used when validation is skipped for pre-validated internal data.
-pub fn reorder_rows_trusted(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
+/// Used by `Unchecked` mode when validation is skipped for pre-validated
+/// internal data. The caller is responsible for ensuring the rows already
+/// conform to the table's column types.
+pub fn reorder_rows_unvalidated(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -69,8 +71,9 @@ pub fn reorder_rows_trusted(rows: &[Params], table: &Table) -> Result<Vec<Vec<Va
 	Ok(columns_to_rows(&column_data, num_rows, num_cols))
 }
 
-/// Reorder all rows for a ring buffer without coercion (trusted mode).
-pub fn reorder_rows_trusted_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Result<Vec<Vec<Value>>> {
+/// Reorder all rows for a ring buffer without coercion. Companion to
+/// `reorder_rows_unvalidated` for ring buffers.
+pub fn reorder_rows_unvalidated_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}

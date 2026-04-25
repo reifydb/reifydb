@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Trusted mode tests for the bulk_insert module.
+//! Unchecked mode tests for the bulk_insert module.
 //!
-//! Tests verify that trusted mode skips validation and coercion.
+//! Tests verify that unchecked mode skips validation/coercion and the OCC
+//! conflict-detection registration. See `bulk_insert_unchecked` for the
+//! safety contract these tests assume.
 
 use reifydb_engine::test_prelude::*;
 
 #[test]
-fn test_trusted_mode_basic_insert() {
+fn test_unchecked_mode_basic_insert() {
 	let t = TestEngine::new();
 	let identity = TestEngine::identity();
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE TABLE test::trusted_tbl { id: int4, name: utf8 }");
+	t.admin("CREATE TABLE test::unchecked_tbl { id: int4, name: utf8 }");
 
-	// Use bulk_insert_trusted instead of bulk_insert
-	let mut builder = t.bulk_insert_trusted(identity);
-	builder.table("test::trusted_tbl")
+	let mut builder = t.bulk_insert_unchecked(identity);
+	builder.table("test::unchecked_tbl")
 		.row(params! { id: 1i32, name: "Alice" })
 		.row(params! { id: 2i32, name: "Bob" })
 		.done();
@@ -25,7 +26,7 @@ fn test_trusted_mode_basic_insert() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = t.query("FROM test::trusted_tbl");
+	let frames = t.query("FROM test::unchecked_tbl");
 	assert_eq!(TestEngine::row_count(&frames), 2);
 
 	let mut values: Vec<_> = frames[0]
@@ -37,15 +38,15 @@ fn test_trusted_mode_basic_insert() {
 }
 
 #[test]
-fn test_trusted_mode_ringbuffer() {
+fn test_unchecked_mode_ringbuffer() {
 	let t = TestEngine::new();
 	let identity = TestEngine::identity();
 
 	t.admin("CREATE NAMESPACE test");
-	t.admin("CREATE RINGBUFFER test::trusted_rb { seq: int4, data: utf8 } WITH { capacity: 100 }");
+	t.admin("CREATE RINGBUFFER test::unchecked_rb { seq: int4, data: utf8 } WITH { capacity: 100 }");
 
-	let mut builder = t.bulk_insert_trusted(identity);
-	builder.ringbuffer("test::trusted_rb")
+	let mut builder = t.bulk_insert_unchecked(identity);
+	builder.ringbuffer("test::unchecked_rb")
 		.row(params! { seq: 1i32, data: "first" })
 		.row(params! { seq: 2i32, data: "second" })
 		.done();
@@ -53,10 +54,9 @@ fn test_trusted_mode_ringbuffer() {
 
 	assert_eq!(result.ringbuffers[0].inserted, 2);
 
-	let frames = t.query("FROM test::trusted_rb");
+	let frames = t.query("FROM test::unchecked_rb");
 	assert_eq!(TestEngine::row_count(&frames), 2);
 
-	// Verify values
 	let mut values: Vec<_> = frames[0]
 		.rows()
 		.map(|r| (r.get::<i32>("seq").unwrap().unwrap(), r.get::<String>("data").unwrap().unwrap()))
@@ -66,7 +66,7 @@ fn test_trusted_mode_ringbuffer() {
 }
 
 #[test]
-fn test_trusted_mode_mixed_batch() {
+fn test_unchecked_mode_mixed_batch() {
 	let t = TestEngine::new();
 	let identity = TestEngine::identity();
 
@@ -75,7 +75,7 @@ fn test_trusted_mode_mixed_batch() {
 	t.admin("CREATE TABLE test::t2 { b: int4 }");
 	t.admin("CREATE RINGBUFFER test::rb1 { c: int4 } WITH { capacity: 50 }");
 
-	let mut builder = t.bulk_insert_trusted(identity);
+	let mut builder = t.bulk_insert_unchecked(identity);
 	builder.table("test::t1").row(params! { a: 10i32 }).done();
 	builder.table("test::t2").row(params! { b: 20i32 }).row(params! { b: 30i32 }).done();
 	builder.ringbuffer("test::rb1").row(params! { c: 100i32 }).done();
@@ -89,17 +89,16 @@ fn test_trusted_mode_mixed_batch() {
 }
 
 #[test]
-fn test_trusted_mode_large_batch() {
+fn test_unchecked_mode_large_batch() {
 	let t = TestEngine::new();
 	let identity = TestEngine::identity();
 
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::large { n: int4 }");
 
-	// Insert 1000 rows in trusted mode for performance
 	let rows: Vec<_> = (1..=1000).map(|n| params! { n: n as i32 }).collect();
 
-	let mut builder = t.bulk_insert_trusted(identity);
+	let mut builder = t.bulk_insert_unchecked(identity);
 	builder.table("test::large").rows(rows).done();
 	let result = builder.execute().unwrap();
 

@@ -58,7 +58,7 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	bulk_insert::builder::{BulkInsertBuilder, Trusted, Unchecked, Validated},
+	bulk_insert::builder::{BulkInsertBuilder, Unchecked, Validated},
 	interceptor::catalog::MaterializedCatalogInterceptor,
 	vm::{
 		Admin, Command, Query, Subscription,
@@ -628,35 +628,22 @@ impl StandardEngine {
 		BulkInsertBuilder::new(self, identity)
 	}
 
-	/// Start a bulk insert operation with validation disabled (trusted mode).
-	///
-	/// Use this for pre-validated internal data where constraint validation
-	/// can be skipped for maximum performance.
-	///
-	/// # Safety
-	///
-	/// The caller is responsible for ensuring the data conforms to the
-	/// shape constraints. Invalid data may cause undefined behavior.
-	pub fn bulk_insert_trusted<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Trusted> {
-		BulkInsertBuilder::new_trusted(self, identity)
-	}
-
 	/// Start a bulk insert that bypasses BOTH constraint validation AND the
 	/// oracle's per-key conflict-detection index ("unchecked" mode).
 	///
-	/// # What this skips beyond `bulk_insert_trusted`
+	/// # What this skips beyond `bulk_insert`
 	///
-	/// `bulk_insert_trusted` skips schema/constraint validation but still
-	/// registers the commit's write set in the oracle's conflict-detection
-	/// time-windows so that any concurrent OCC transaction whose read set
-	/// overlaps these writes will be aborted at its own commit time.
+	/// `bulk_insert` (the validated default) performs full type/constraint
+	/// validation and registers the commit's write set in the oracle's
+	/// conflict-detection time-windows so that any concurrent OCC transaction
+	/// whose read set overlaps these writes will be aborted at its own commit
+	/// time.
 	///
-	/// `bulk_insert_unchecked` skips that registration entirely. The commit
-	/// version still advances and the watermark still progresses, so any
-	/// transaction that reads at version >= this commit will observe the
-	/// new rows. But concurrent OCC transactions that already started
-	/// reading at an older version will NOT detect that this commit
-	/// happened underneath them.
+	/// `bulk_insert_unchecked` skips both. The commit version still advances
+	/// and the watermark still progresses, so any transaction that reads at
+	/// version >= this commit will observe the new rows. But concurrent OCC
+	/// transactions that already started reading at an older version will
+	/// NOT detect that this commit happened underneath them.
 	///
 	/// # Safety contract - when this is sound
 	///
@@ -674,9 +661,9 @@ impl StandardEngine {
 	///    streaming-view operators that consume each new commit on its own merits (not via OCC retry), this is
 	///    fine.
 	///
-	/// 3. **Caller-side uniqueness.** Validation is skipped, so primary key violations or constraint failures will
-	///    surface as storage errors at insert time rather than as transaction-level conflicts. The caller must
-	///    already ensure the data is well-formed (same contract as `bulk_insert_trusted`).
+	/// 3. **Caller-side well-formedness.** Validation is skipped, so primary key violations or constraint failures
+	///    will surface as storage errors at insert time rather than as transaction-level conflicts. The caller must
+	///    already ensure the data conforms to the table/ringbuffer shape.
 	///
 	/// 4. **No need to abort on overlap.** OCC normally aborts a writer whose read set was modified by a more
 	///    recent committer. Skipping the index means a concurrent OCC writer with an overlapping read set will
