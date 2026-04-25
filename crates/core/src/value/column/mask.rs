@@ -104,6 +104,39 @@ impl RowMask {
 			len: self.len,
 		}
 	}
+
+	// Extract a sub-mask covering rows `[start, end)`. Used by predicate
+	// pushdown to align a batch-wide mask with each individual chunk slice.
+	pub fn slice(&self, start: usize, end: usize) -> Self {
+		debug_assert!(start <= end, "RowMask::slice: start {start} > end {end}");
+		debug_assert!(end <= self.len, "RowMask::slice: end {end} > len {}", self.len);
+		let new_len = end - start;
+		let mut out = Self::none_set(new_len);
+		for i in 0..new_len {
+			if self.get(start + i) {
+				out.set(i, true);
+			}
+		}
+		out
+	}
+
+	// Concatenate per-chunk masks into a single block-wide mask. Used by
+	// multi-chunk predicate evaluation to assemble a column-spanning mask from
+	// independent per-chunk evaluations.
+	pub fn concat(parts: &[Self]) -> Self {
+		let total: usize = parts.iter().map(|m| m.len).sum();
+		let mut out = Self::none_set(total);
+		let mut row_offset = 0;
+		for part in parts {
+			for i in 0..part.len {
+				if part.get(i) {
+					out.set(row_offset + i, true);
+				}
+			}
+			row_offset += part.len;
+		}
+		out
+	}
 }
 
 #[cfg(test)]
@@ -149,5 +182,91 @@ mod tests {
 		b.set(7, true);
 		assert_eq!(a.and(&b).popcount(), 2);
 		assert_eq!(a.or(&b).popcount(), 4);
+	}
+
+	#[test]
+	fn concat_appends_each_part_at_its_offset() {
+		let mut a = RowMask::none_set(3);
+		a.set(0, true);
+		a.set(2, true);
+		let mut b = RowMask::none_set(2);
+		b.set(1, true);
+		let mut c = RowMask::none_set(4);
+		c.set(0, true);
+		c.set(3, true);
+		let combined = RowMask::concat(&[a, b, c]);
+		assert_eq!(combined.len(), 9);
+		assert!(combined.get(0));
+		assert!(!combined.get(1));
+		assert!(combined.get(2));
+		assert!(!combined.get(3));
+		assert!(combined.get(4));
+		assert!(combined.get(5));
+		assert!(!combined.get(6));
+		assert!(!combined.get(7));
+		assert!(combined.get(8));
+	}
+
+	#[test]
+	fn concat_handles_word_boundary_crossings() {
+		let a = RowMask::all_set(70);
+		let b = RowMask::all_set(70);
+		let combined = RowMask::concat(&[a, b]);
+		assert_eq!(combined.len(), 140);
+		assert_eq!(combined.popcount(), 140);
+	}
+
+	#[test]
+	fn concat_empty_parts_yield_empty_mask() {
+		let combined = RowMask::concat(&[]);
+		assert_eq!(combined.len(), 0);
+		assert_eq!(combined.popcount(), 0);
+	}
+
+	#[test]
+	fn slice_extracts_inner_window() {
+		let mut m = RowMask::none_set(8);
+		m.set(1, true);
+		m.set(3, true);
+		m.set(5, true);
+		m.set(7, true);
+		let s = m.slice(2, 6);
+		assert_eq!(s.len(), 4);
+		assert!(!s.get(0));
+		assert!(s.get(1));
+		assert!(!s.get(2));
+		assert!(s.get(3));
+	}
+
+	#[test]
+	fn slice_crosses_word_boundary() {
+		let mut m = RowMask::none_set(140);
+		m.set(60, true);
+		m.set(64, true);
+		m.set(70, true);
+		let s = m.slice(50, 80);
+		assert_eq!(s.len(), 30);
+		assert_eq!(s.popcount(), 3);
+		assert!(s.get(10));
+		assert!(s.get(14));
+		assert!(s.get(20));
+	}
+
+	#[test]
+	fn slice_full_range_equals_self() {
+		let mut m = RowMask::none_set(10);
+		m.set(0, true);
+		m.set(4, true);
+		m.set(9, true);
+		let s = m.slice(0, 10);
+		assert_eq!(s, m);
+	}
+
+	#[test]
+	fn slice_empty_range_yields_empty_mask() {
+		let m = RowMask::all_set(10);
+		let s = m.slice(5, 5);
+		assert_eq!(s.len(), 0);
+		assert_eq!(s.popcount(), 0);
 	}
 }

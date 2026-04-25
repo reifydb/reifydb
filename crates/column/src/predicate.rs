@@ -42,19 +42,12 @@ pub enum Predicate {
 	Not(Box<Predicate>),
 }
 
-// Evaluate a `Predicate` over a single-chunk `ColumnBlock`, producing a `Selection`
-// that callers can feed to `compute::filter`. v1 asserts every column has at
-// most one chunk; multi-chunk eval lands alongside batched scan output.
+// Evaluate a `Predicate` over a `ColumnBlock`, producing a `Selection` that
+// callers can feed to `compute::filter`. Per-column iteration walks each chunk
+// independently and dispatches through `compute::compare`, so encoding-specific
+// kernels stay live - canonicalization happens only on the bool result we have
+// to inspect bit-by-bit, not on the input columns.
 pub fn evaluate(block: &ColumnBlock, predicate: &Predicate) -> Result<Selection> {
-	for ch in &block.columns {
-		if ch.chunk_count() > 1 {
-			return Err(ColumnError::MultiChunkUnsupported {
-				operation: "predicate::evaluate",
-				chunk_count: ch.chunk_count(),
-			}
-			.into());
-		}
-	}
 	let len = block.len();
 	let mask = evaluate_mask(block, predicate, len)?;
 	Ok(mask_to_selection(mask))
@@ -97,23 +90,32 @@ fn evaluate_mask(block: &ColumnBlock, predicate: &Predicate, len: usize) -> Resu
 
 fn compare_mask(block: &ColumnBlock, col: &ColRef, rhs: &Value, op: CompareOp) -> Result<RowMask> {
 	let ch = column(block, col)?;
-	let array = single_chunk(ch)?;
-	let result = compute::compare(array, rhs, op)?;
-	bool_array_to_mask(&result)
+	if ch.chunks.is_empty() {
+		return Ok(RowMask::none_set(0));
+	}
+	let mut parts = Vec::with_capacity(ch.chunks.len());
+	for chunk in &ch.chunks {
+		// `compute::compare` routes through encoding-specific specialization, so
+		// compressed encodings can run the comparison without canonicalizing.
+		let result = compute::compare(chunk, rhs, op)?;
+		parts.push(bool_array_to_mask(&result)?);
+	}
+	Ok(RowMask::concat(&parts))
 }
 
 fn is_none_mask(ch: &ColumnChunks) -> RowMask {
-	let len = ch.len();
-	let mut mask = RowMask::none_set(len);
-	// v1: single-chunk assumption checked by evaluate().
-	if let Some(array) = ch.chunks.first()
-		&& let Some(nones) = array.nones()
-	{
-		for i in 0..array.len() {
-			if nones.is_none(i) {
-				mask.set(i, true);
+	let total = ch.len();
+	let mut mask = RowMask::none_set(total);
+	let mut row_offset = 0;
+	for chunk in &ch.chunks {
+		if let Some(nones) = chunk.nones() {
+			for i in 0..chunk.len() {
+				if nones.is_none(i) {
+					mask.set(row_offset + i, true);
+				}
 			}
 		}
+		row_offset += chunk.len();
 	}
 	mask
 }
@@ -123,15 +125,6 @@ fn column<'a>(block: &'a ColumnBlock, col: &ColRef) -> Result<&'a ColumnChunks> 
 		ColumnError::ColumnNotInSchema {
 			operation: "predicate::evaluate",
 			name: col.0.clone(),
-		}
-		.into()
-	})
-}
-
-fn single_chunk(ch: &ColumnChunks) -> Result<&Column> {
-	ch.chunks.first().ok_or_else(|| {
-		ColumnError::EmptyChunkedArray {
-			operation: "predicate::evaluate",
 		}
 		.into()
 	})
@@ -274,5 +267,103 @@ mod tests {
 		assert_eq!(m.popcount(), 2);
 		assert!(m.get(1));
 		assert!(m.get(3));
+	}
+
+	fn int4_chunked(parts: &[&[i32]]) -> ColumnChunks {
+		let chunks = parts
+			.iter()
+			.map(|p| {
+				Column::from_canonical(
+					Canonical::from_column_buffer(&ColumnBuffer::int4(p.to_vec())).unwrap(),
+				)
+			})
+			.collect();
+		ColumnChunks::new(Type::Int4, false, chunks)
+	}
+
+	fn mkblock_chunked(id_parts: &[&[i32]]) -> ColumnBlock {
+		let id_col = int4_chunked(id_parts);
+		let schema = Arc::new(vec![("id".to_string(), Type::Int4, false)]);
+		ColumnBlock::new(schema, vec![id_col])
+	}
+
+	#[test]
+	fn evaluate_eq_over_multi_chunk_column() {
+		// id chunks: [1, 2, 3] | [2, 4, 2] | [5, 2]. Looking for id == 2.
+		let t = mkblock_chunked(&[&[1, 2, 3], &[2, 4, 2], &[5, 2]]);
+		let p = Predicate::Eq(ColRef::from("id"), Value::Int4(2));
+		let Selection::Mask(m) = evaluate(&t, &p).unwrap() else {
+			panic!("expected Mask selection");
+		};
+		assert_eq!(m.len(), 8);
+		assert_eq!(m.popcount(), 4);
+		assert!(m.get(1));
+		assert!(m.get(3));
+		assert!(m.get(5));
+		assert!(m.get(7));
+	}
+
+	#[test]
+	fn evaluate_and_or_across_multi_chunk_columns() {
+		// Both columns are 2 chunks of length 3. AND/OR must align across chunk boundaries.
+		let id_col = int4_chunked(&[&[1, 2, 3], &[4, 5, 6]]);
+		let other_col = int4_chunked(&[&[10, 20, 10], &[20, 10, 20]]);
+		let schema =
+			Arc::new(vec![("id".to_string(), Type::Int4, false), ("other".to_string(), Type::Int4, false)]);
+		let t = ColumnBlock::new(schema, vec![id_col, other_col]);
+
+		let p = Predicate::And(vec![
+			Predicate::Gt(ColRef::from("id"), Value::Int4(2)),
+			Predicate::Eq(ColRef::from("other"), Value::Int4(20)),
+		]);
+		let Selection::Mask(m) = evaluate(&t, &p).unwrap() else {
+			panic!("expected Mask selection");
+		};
+		// id > 2 → rows 2,3,4,5; other == 20 → rows 1,3,5. Intersection: rows 3, 5.
+		assert_eq!(m.len(), 6);
+		assert_eq!(m.popcount(), 2);
+		assert!(m.get(3));
+		assert!(m.get(5));
+	}
+
+	#[test]
+	fn evaluate_is_none_across_multi_chunk_nullable() {
+		// Two nullable chunks; nones at row 1 of each chunk → block rows 1 and 4.
+		let mut a = ColumnBuffer::int4_with_capacity(3);
+		a.push::<i32>(10);
+		a.push_none();
+		a.push::<i32>(30);
+		let mut b = ColumnBuffer::int4_with_capacity(3);
+		b.push::<i32>(40);
+		b.push_none();
+		b.push::<i32>(60);
+		let chunks = vec![
+			Column::from_canonical(Canonical::from_column_buffer(&a).unwrap()),
+			Column::from_canonical(Canonical::from_column_buffer(&b).unwrap()),
+		];
+		let id_col = ColumnChunks::new(Type::Int4, true, chunks);
+		let schema = Arc::new(vec![("id".to_string(), Type::Int4, true)]);
+		let t = ColumnBlock::new(schema, vec![id_col]);
+
+		let Selection::Mask(m) = evaluate(&t, &Predicate::IsNone(ColRef::from("id"))).unwrap() else {
+			panic!("expected Mask selection");
+		};
+		assert_eq!(m.len(), 6);
+		assert_eq!(m.popcount(), 2);
+		assert!(m.get(1));
+		assert!(m.get(4));
+	}
+
+	#[test]
+	fn evaluate_in_across_multi_chunk_column() {
+		let t = mkblock_chunked(&[&[1, 2], &[3, 4], &[5, 6]]);
+		let p = Predicate::In(ColRef::from("id"), vec![Value::Int4(2), Value::Int4(5)]);
+		let Selection::Mask(m) = evaluate(&t, &p).unwrap() else {
+			panic!("expected Mask selection");
+		};
+		assert_eq!(m.len(), 6);
+		assert_eq!(m.popcount(), 2);
+		assert!(m.get(1));
+		assert!(m.get(4));
 	}
 }

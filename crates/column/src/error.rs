@@ -9,17 +9,6 @@ use reifydb_type::{
 
 #[derive(Debug, thiserror::Error)]
 pub enum ColumnError {
-	#[error("{operation}: multi-chunk arrays not yet supported (got {chunk_count} chunks)")]
-	MultiChunkUnsupported {
-		operation: &'static str,
-		chunk_count: usize,
-	},
-
-	#[error("{operation}: empty column_chunks array")]
-	EmptyChunkedArray {
-		operation: &'static str,
-	},
-
 	#[error("{operation}: column '{name}' not in schema")]
 	ColumnNotInSchema {
 		operation: &'static str,
@@ -91,39 +80,6 @@ impl From<ColumnError> for Error {
 impl IntoDiagnostic for ColumnError {
 	fn into_diagnostic(self) -> Diagnostic {
 		match self {
-			ColumnError::MultiChunkUnsupported {
-				operation,
-				chunk_count,
-			} => Diagnostic {
-				code: "COL_001".to_string(),
-				rql: None,
-				message: format!(
-					"{operation}: multi-chunk arrays not yet supported (got {chunk_count} chunks)"
-				),
-				column: None,
-				fragment: Fragment::None,
-				label: Some("multi-chunk input".to_string()),
-				help: Some("v1 kernels expect single-chunk arrays; multi-chunk support lands with batched scan output".to_string()),
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			ColumnError::EmptyChunkedArray {
-				operation,
-			} => Diagnostic {
-				code: "COL_002".to_string(),
-				rql: None,
-				message: format!("{operation}: empty column_chunks array"),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
 			ColumnError::ColumnNotInSchema {
 				operation,
 				name,
