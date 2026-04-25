@@ -154,6 +154,13 @@ impl ReplicaTransaction {
 		self.rpl.as_mut().unwrap().remove(key)
 	}
 
+	#[inline]
+	pub fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
+		self.check_active()?;
+		self.rpl.as_mut().unwrap().mark_preexisting(key);
+		Ok(())
+	}
+
 	/// Create a streaming iterator for forward range queries.
 	#[inline]
 	pub fn range(

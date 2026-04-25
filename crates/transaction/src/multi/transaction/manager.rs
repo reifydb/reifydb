@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::mem;
+use std::collections::HashSet;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -113,6 +114,11 @@ where
 	// same key (and any other multi-touch sequences) are visible in their original
 	// order. `pending_writes` collapses to one entry per key and so cannot serve this.
 	pub(super) delta_log: Vec<Pending>,
+	// Keys that existed in committed storage before this transaction started.
+	// Populated by Update operations (where the prior row was read). The optimizer
+	// uses this to distinguish a true Insert+Delete (cancellable) from an
+	// Update+Delete (must keep tombstone). See `optimize_deltas`.
+	pub(super) preexisting_keys: HashSet<Vec<u8>>,
 
 	pub(super) discarded: bool,
 	pub(super) done_query: bool,
@@ -161,6 +167,14 @@ where
 	/// Returns the conflict manager.
 	pub fn conflicts(&self) -> &ConflictManager {
 		&self.conflicts
+	}
+
+	pub fn mark_preexisting(&mut self, key: &EncodedKey) {
+		self.preexisting_keys.insert(key.as_ref().to_vec());
+	}
+
+	pub fn preexisting_keys(&self) -> &HashSet<Vec<u8>> {
+		&self.preexisting_keys
 	}
 }
 

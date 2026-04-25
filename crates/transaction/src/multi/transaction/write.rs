@@ -96,7 +96,7 @@ impl MultiWriteTransaction {
 		for pending in &entries {
 			raw_deltas.push(pending.delta.clone());
 		}
-		let optimized = optimize_deltas(raw_deltas.iter().cloned());
+		let optimized = optimize_deltas(raw_deltas.iter().cloned(), self.tm.preexisting_keys());
 		let deltas = CowVec::new(optimized);
 
 		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
@@ -180,6 +180,10 @@ impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.tm.remove(key)
+	}
+
+	pub fn mark_preexisting(&mut self, key: &EncodedKey) {
+		self.tm.mark_preexisting(key);
 	}
 
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {

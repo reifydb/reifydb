@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::collections::HashSet;
+
 use indexmap::{
 	IndexMap,
 	map::Entry::{Occupied, Vacant},
@@ -28,13 +30,20 @@ enum OptimizedDeltaState {
 	Cancelled,
 }
 
-/// Optimize deltas by applying cancellation and coalescing logic at the delta level
+/// Optimize deltas by applying cancellation and coalescing logic at the delta level.
 ///
-/// This function processes a sequence of deltas and returns an optimized list where:
-/// - Insert+Delete pairs are canceled out completely
-/// - Multiple updates are coalesced into a single update
-/// - Only the final state for each key is returned
-pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
+/// `preexisting_keys` lists keys that existed in committed storage before this
+/// transaction (populated by Update / Delete operations after they read the prior
+/// row). The optimizer uses it to decide whether `Set + Unset` on a key represents
+/// a true intra-transaction Insert+Delete (cancellable) or an Update of a prior
+/// committed row (cancelling would silently drop the required tombstone). When
+/// the key is preexisting, Set+Unset / Set+Remove keeps the tombstone instead of
+/// cancelling.
+///
+/// - Multiple updates on the same key coalesce to a single final value
+/// - Insert+Delete on a never-existing key cancels out (preserves CDC semantics)
+/// - Update+Delete on a preexisting key writes a tombstone (preserves correctness)
+pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys: &HashSet<Vec<u8>>) -> Vec<Delta> {
 	// Track the optimized state for each key
 	// Using IndexMap to preserve insertion order for deterministic CDC sequencing
 	let mut key_states: IndexMap<Vec<u8>, (OptimizedDeltaState, usize)> = IndexMap::new();
@@ -104,6 +113,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 			} => {
 				// Check if this key has been seen before in this transaction
 				let key_bytes = key.as_ref().to_vec();
+				let preexisting = preexisting_keys.contains(&key_bytes);
 				let entry = key_states.entry(key_bytes);
 				match entry {
 					Occupied(mut occ) => {
@@ -113,8 +123,18 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 							OptimizedDeltaState::Set {
 								..
 							} => {
-								// Insert + Unset = Cancel
-								*state = OptimizedDeltaState::Cancelled;
+								if preexisting {
+									// Update + Unset on a prior-committed key:
+									// keep the tombstone, otherwise the prior
+									// version would remain visible.
+									*state = OptimizedDeltaState::Unset {
+										row,
+									};
+								} else {
+									// Insert + Unset on a never-existing key:
+									// cancel both (CDC sees no event).
+									*state = OptimizedDeltaState::Cancelled;
+								}
 							}
 							OptimizedDeltaState::Unset {
 								..
@@ -148,6 +168,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 			} => {
 				// Check if this key has been seen before in this transaction
 				let key_bytes = key.as_ref().to_vec();
+				let preexisting = preexisting_keys.contains(&key_bytes);
 				let entry = key_states.entry(key_bytes);
 				match entry {
 					Occupied(mut occ) => {
@@ -157,8 +178,15 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 							OptimizedDeltaState::Set {
 								..
 							} => {
-								// Insert + Remove = Cancel
-								*state = OptimizedDeltaState::Cancelled;
+								if preexisting {
+									// Update + Remove on a prior-committed key:
+									// keep the Remove (same reasoning as Unset).
+									*state = OptimizedDeltaState::Remove;
+								} else {
+									// Insert + Remove on a never-existing key:
+									// cancel both.
+									*state = OptimizedDeltaState::Cancelled;
+								}
 							}
 							OptimizedDeltaState::Unset {
 								..
@@ -259,10 +287,62 @@ pub mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas);
+		let optimized = optimize_deltas(deltas, &HashSet::new());
 
-		// Insert + Delete should cancel out completely
+		// Insert + Delete on a never-committed key cancels out completely.
 		assert_eq!(optimized.len(), 0);
+	}
+
+	#[test]
+	fn test_update_delete_keeps_tombstone() {
+		let deltas = vec![
+			Delta::Set {
+				key: make_key("key_a"),
+				row: make_row("value1"),
+			},
+			Delta::Unset {
+				key: make_key("key_a"),
+				row: make_row("value1"),
+			},
+		];
+
+		let mut preexisting = HashSet::new();
+		preexisting.insert(b"key_a".to_vec());
+		let optimized = optimize_deltas(deltas, &preexisting);
+
+		// Update + Delete on a prior-committed key must keep the tombstone -
+		// otherwise the prior version remains visible.
+		assert_eq!(optimized.len(), 1);
+		match &optimized[0] {
+			Delta::Unset {
+				key,
+				row,
+			} => {
+				assert_eq!(key.as_ref(), b"key_a");
+				assert_eq!(row.0.as_slice(), b"value1");
+			}
+			other => panic!("Expected Unset delta, got {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_update_remove_keeps_tombstone() {
+		let deltas = vec![
+			Delta::Set {
+				key: make_key("key_a"),
+				row: make_row("value1"),
+			},
+			Delta::Remove {
+				key: make_key("key_a"),
+			},
+		];
+
+		let mut preexisting = HashSet::new();
+		preexisting.insert(b"key_a".to_vec());
+		let optimized = optimize_deltas(deltas, &preexisting);
+
+		assert_eq!(optimized.len(), 1);
+		assert!(matches!(&optimized[0], Delta::Remove { .. }));
 	}
 
 	#[test]
@@ -282,7 +362,7 @@ pub mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas);
+		let optimized = optimize_deltas(deltas, &HashSet::new());
 
 		// Multiple updates should coalesce to single update
 		assert_eq!(optimized.len(), 1);
@@ -315,7 +395,7 @@ pub mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas);
+		let optimized = optimize_deltas(deltas, &HashSet::new());
 
 		// Insert + Update + Delete should cancel
 		assert_eq!(optimized.len(), 0);
@@ -342,7 +422,7 @@ pub mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas);
+		let optimized = optimize_deltas(deltas, &HashSet::new());
 
 		// key_a: Insert+Delete = cancel
 		// key_b: Insert = keep

@@ -79,7 +79,7 @@ impl MultiReplicaTransaction {
 		});
 		duplicate_writes.into_iter().for_each(|item| raw_deltas.push(item.delta));
 
-		let optimized = optimize_deltas(raw_deltas.into_iter());
+		let optimized = optimize_deltas(raw_deltas.into_iter(), self.tm.preexisting_keys());
 		let deltas = CowVec::new(optimized);
 
 		// Register with command watermark BEFORE storage write
@@ -155,6 +155,10 @@ impl MultiReplicaTransaction {
 	#[instrument(name = "transaction::replica::remove", level = "trace", skip(self))]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.tm.remove(key)
+	}
+
+	pub fn mark_preexisting(&mut self, key: &EncodedKey) {
+		self.tm.mark_preexisting(key);
 	}
 
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {

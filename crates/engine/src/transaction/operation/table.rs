@@ -134,6 +134,7 @@ impl TableOperations for CommandTransaction {
 
 		let row = TableRowInterceptor::pre_update(self, &table, id, row)?;
 
+		self.mark_preexisting(&key)?;
 		self.set(&key, row.clone())?;
 
 		TableRowInterceptor::post_update(self, &table, id, &row, &pre)?;
@@ -153,6 +154,7 @@ impl TableOperations for CommandTransaction {
 
 		TableRowInterceptor::pre_delete(self, &table, id)?;
 
+		self.mark_preexisting(&key)?;
 		self.unset(&key, deleted_values.clone())?;
 
 		TableRowInterceptor::post_delete(self, &table, id, &deleted_values)?;
@@ -200,6 +202,7 @@ impl TableOperations for AdminTransaction {
 
 		let row = TableRowInterceptor::pre_update(self, &table, id, row)?;
 
+		self.mark_preexisting(&key)?;
 		self.set(&key, row.clone())?;
 
 		TableRowInterceptor::post_update(self, &table, id, &row, &pre)?;
@@ -219,6 +222,7 @@ impl TableOperations for AdminTransaction {
 
 		TableRowInterceptor::pre_delete(self, &table, id)?;
 
+		self.mark_preexisting(&key)?;
 		self.unset(&key, deleted_values.clone())?;
 
 		TableRowInterceptor::post_delete(self, &table, id, &deleted_values)?;

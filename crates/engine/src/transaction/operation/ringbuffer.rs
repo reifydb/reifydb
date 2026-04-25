@@ -160,6 +160,9 @@ impl RingBufferOperations for CommandTransaction {
 
 		let row = RingBufferRowInterceptor::pre_update(self, &ringbuffer, id, row)?;
 
+		if pre.is_some() {
+			self.mark_preexisting(&key)?;
+		}
 		self.set(&key, row.clone())?;
 
 		if let Some(ref pre) = pre {
@@ -183,6 +186,7 @@ impl RingBufferOperations for CommandTransaction {
 		RingBufferRowInterceptor::pre_delete(self, ringbuffer, id)?;
 
 		// Remove the encoded from the database
+		self.mark_preexisting(&key)?;
 		self.unset(&key, deleted_row.clone())?;
 
 		RingBufferRowInterceptor::post_delete(self, ringbuffer, id, &deleted_row)?;
@@ -238,6 +242,9 @@ impl RingBufferOperations for AdminTransaction {
 
 		let row = RingBufferRowInterceptor::pre_update(self, &ringbuffer, id, row)?;
 
+		if pre.is_some() {
+			self.mark_preexisting(&key)?;
+		}
 		self.set(&key, row.clone())?;
 
 		if let Some(ref pre) = pre {
@@ -258,6 +265,7 @@ impl RingBufferOperations for AdminTransaction {
 
 		RingBufferRowInterceptor::pre_delete(self, ringbuffer, id)?;
 
+		self.mark_preexisting(&key)?;
 		self.unset(&key, deleted_row.clone())?;
 
 		RingBufferRowInterceptor::post_delete(self, ringbuffer, id, &deleted_row)?;

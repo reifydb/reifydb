@@ -86,6 +86,7 @@ where
 			pending_writes: PendingWrites::new(),
 			duplicates: Vec::new(),
 			delta_log: Vec::new(),
+			preexisting_keys: Default::default(),
 			discarded: false,
 			done_query: false,
 		})

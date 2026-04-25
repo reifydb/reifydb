@@ -633,6 +633,16 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
+	pub fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.mark_preexisting(key),
+			Transaction::Admin(txn) => txn.mark_preexisting(key),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Test(t) => t.inner.mark_preexisting(key),
+			Transaction::Replica(txn) => txn.mark_preexisting(key),
+		}
+	}
+
 	/// Track a row change for post-commit event emission.
 	/// No-op on Replica transactions. Panics on Query transactions.
 	pub fn track_row_change(&mut self, change: RowChange) {
