@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::value::datetime::DateTime;
+use serde::{Deserialize, Serialize};
 
 use crate::{
 	common::CommitVersion,
@@ -10,13 +11,13 @@ use crate::{
 };
 
 /// Origin of a change
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChangeOrigin {
 	Shape(ShapeId),
 	Flow(FlowNodeId),
 }
 /// Represents a single diff
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Diff {
 	Insert {
 		post: Columns,
@@ -31,7 +32,7 @@ pub enum Diff {
 }
 
 /// A change with origin, diffs, version, and timestamp
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Change {
 	/// Origin of this change
 	pub origin: ChangeOrigin,

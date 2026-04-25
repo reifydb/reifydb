@@ -12,6 +12,7 @@ use reifydb_type::{
 	util::cowvec::CowVec,
 	value::{Value, constraint::Constraint, datetime::DateTime, row_number::RowNumber, r#type::Type},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
 	encoded::shape::{RowShape, RowShapeField},
@@ -20,7 +21,7 @@ use crate::{
 	value::column::{ColumnBuffer, ColumnWithName, array::Column, headers::ColumnHeaders},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Columns {
 	pub row_numbers: CowVec<RowNumber>,
 	pub created_at: CowVec<DateTime>,

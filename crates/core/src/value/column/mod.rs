@@ -12,7 +12,6 @@ use reifydb_type::{
 		uuid::{Uuid4, Uuid7},
 	},
 };
-
 use crate::value::column::{array::Column, buffer::ColumnBuffer};
 
 pub mod array;

@@ -85,6 +85,7 @@ where
 			conflicts: ConflictManager::new(),
 			pending_writes: PendingWrites::new(),
 			duplicates: Vec::new(),
+			delta_log: Vec::new(),
 			discarded: false,
 			done_query: false,
 		})

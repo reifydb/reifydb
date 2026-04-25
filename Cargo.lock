@@ -2608,6 +2608,7 @@ dependencies = [
 name = "reifydb-cdc"
 version = "0.4.12"
 dependencies = [
+ "postcard",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
@@ -2617,8 +2618,11 @@ dependencies = [
  "reifydb-testing",
  "reifydb-transaction",
  "reifydb-type",
+ "rusqlite",
+ "serde",
  "test_each_file",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

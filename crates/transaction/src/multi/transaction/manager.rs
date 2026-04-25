@@ -105,9 +105,14 @@ where
 	pub(super) count: u64,
 	pub(super) oracle: Arc<Oracle<L>>,
 	pub(super) conflicts: ConflictManager,
-	// stores any writes done by tx
+	// stores any writes done by tx (used for read-your-own-writes; last value per key wins)
 	pub(super) pending_writes: PendingWrites,
 	pub(super) duplicates: Vec<Pending>,
+	// Append-only history of every modify() call in issuance order. Source of truth
+	// for the deltas fed to `optimize_deltas` at commit time so that Set+Unset of the
+	// same key (and any other multi-touch sequences) are visible in their original
+	// order. `pending_writes` collapses to one entry per key and so cannot serve this.
+	pub(super) delta_log: Vec<Pending>,
 
 	pub(super) discarded: bool,
 	pub(super) done_query: bool,
@@ -259,6 +264,8 @@ where
 
 		self.pending_writes.rollback();
 		self.conflicts.rollback();
+		self.delta_log.clear();
+		self.duplicates.clear();
 		Ok(())
 	}
 
@@ -391,6 +398,9 @@ where
 				version,
 			})
 		}
+		// Append to delta_log BEFORE moving into pending_writes so commit can replay
+		// the full issuance order (including same-key sequences like Set+Unset).
+		self.delta_log.push(pending.clone());
 		pending_writes.insert(key.clone(), pending);
 
 		Ok(())
@@ -424,27 +434,23 @@ where
 			}
 			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
 			CreateCommitResult::Success(version) => {
-				let pending_writes = mem::take(&mut self.pending_writes);
+				// Drop pending_writes; it's only needed for read-your-own-writes
+				// during the transaction. The delta history is in delta_log.
+				let _ = mem::take(&mut self.pending_writes);
 				let duplicate_writes = mem::take(&mut self.duplicates);
-				// Pre-allocate exact capacity to avoid
-				// reallocations
-				let mut all = Vec::with_capacity(pending_writes.len() + duplicate_writes.len());
+				let mut all = mem::take(&mut self.delta_log);
+				all.reserve(duplicate_writes.len());
 
 				let process = |entries: &mut Vec<Pending>, mut pending: Pending| {
 					pending.version = version;
 					entries.push(pending);
 				};
 
-				pending_writes.into_iter_insertion_order().for_each(|(_k, v)| {
-					let (ver, delta) = v.into_components();
-					process(
-						&mut all,
-						Pending {
-							delta,
-							version: ver,
-						},
-					)
-				});
+				// Stamp commit version onto every delta. Issuance order is
+				// preserved by delta_log's append-only construction.
+				for pending in all.iter_mut() {
+					pending.version = version;
+				}
 
 				duplicate_writes.into_iter().for_each(|item| process(&mut all, item));
 

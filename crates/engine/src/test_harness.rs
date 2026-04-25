@@ -11,6 +11,8 @@ use reifydb_catalog::{
 	},
 	materialized::MaterializedCatalog,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_cdc::storage::sqlite::config::SqliteCdcConfig;
 use reifydb_cdc::{
 	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
 	storage::CdcStore,
@@ -51,6 +53,7 @@ use crate::{engine::StandardEngine, vm::services::EngineConfig};
 
 pub struct TestEngine {
 	engine: StandardEngine,
+	mock_clock: MockClock,
 }
 
 impl Default for TestEngine {
@@ -138,6 +141,12 @@ impl TestEngine {
 	pub fn inner(&self) -> &StandardEngine {
 		&self.engine
 	}
+
+	/// The mock clock backing the test engine. Use `.advance_millis()` etc. to
+	/// move time forward deterministically.
+	pub fn mock_clock(&self) -> MockClock {
+		self.mock_clock.clone()
+	}
 }
 
 impl Deref for TestEngine {
@@ -151,6 +160,8 @@ impl Deref for TestEngine {
 #[derive(Default)]
 pub struct TestEngineBuilder {
 	cdc: bool,
+	#[cfg(not(target_arch = "wasm32"))]
+	sqlite_cdc: Option<SqliteCdcConfig>,
 }
 
 impl TestEngineBuilder {
@@ -159,16 +170,30 @@ impl TestEngineBuilder {
 		self
 	}
 
+	/// Use a SQLite-backed CDC store instead of the default in-memory backend.
+	/// Implies `with_cdc()`.
+	#[cfg(not(target_arch = "wasm32"))]
+	pub fn with_sqlite_cdc(mut self, config: SqliteCdcConfig) -> Self {
+		self.cdc = true;
+		self.sqlite_cdc = Some(config);
+		self
+	}
+
 	pub fn build(self) -> TestEngine {
+		let mock_clock = MockClock::from_millis(1000);
 		let pools = Pools::new(PoolConfig::default());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let actor_system = ActorSystem::new(pools, Clock::Mock(mock_clock.clone()));
 		let eventbus = EventBus::new(&actor_system);
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default().async_threads(2).system_threads(2).query_threads(2).seeded(1000),
-		);
+		let runtime_config =
+			SharedRuntimeConfig::default().async_threads(2).system_threads(2).query_threads(2).seeded(1000);
+		let runtime_config = SharedRuntimeConfig {
+			clock: Clock::Mock(mock_clock.clone()),
+			..runtime_config
+		};
+		let runtime = SharedRuntime::from_config(runtime_config);
 		let materialized_catalog = MaterializedCatalog::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
@@ -188,6 +213,12 @@ impl TestEngineBuilder {
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
 
+		#[cfg(not(target_arch = "wasm32"))]
+		let cdc_store = match self.sqlite_cdc {
+			Some(config) => CdcStore::sqlite(config),
+			None => CdcStore::memory(),
+		};
+		#[cfg(target_arch = "wasm32")]
 		let cdc_store = CdcStore::memory();
 		ioc = ioc.register(cdc_store.clone());
 
@@ -228,6 +259,7 @@ impl TestEngineBuilder {
 
 		TestEngine {
 			engine,
+			mock_clock,
 		}
 	}
 }

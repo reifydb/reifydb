@@ -91,7 +91,7 @@ impl SystemChange {
 }
 
 /// Structure for storing CDC data with shared metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cdc {
 	pub version: CommitVersion,
 	pub timestamp: DateTime,

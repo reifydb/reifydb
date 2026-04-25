@@ -15,6 +15,8 @@ use reifydb_catalog::{
 	materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_cdc::storage::sqlite::config::SqliteCdcConfig;
 use reifydb_cdc::{
 	CdcVersion,
 	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
@@ -75,6 +77,18 @@ use reifydb_type::value::Value;
 use crate::system::tasks::create_system_tasks;
 use crate::{Migration, Result, database::Database, health::HealthMonitor, subsystem::Subsystems};
 
+/// Backend selection for the CDC store.
+///
+/// Defaults to `Memory`. Use `Sqlite(config)` for on-disk, restart-safe CDC
+/// (non-wasm32 targets only).
+#[derive(Default)]
+pub enum CdcBackend {
+	#[default]
+	Memory,
+	#[cfg(not(target_arch = "wasm32"))]
+	Sqlite(SqliteCdcConfig),
+}
+
 pub struct DatabaseBuilder {
 	interceptors: InterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
@@ -105,6 +119,7 @@ pub struct DatabaseBuilder {
 	migrations: Vec<Migration>,
 	is_replica: bool,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
+	cdc_backend: CdcBackend,
 }
 
 impl DatabaseBuilder {
@@ -147,7 +162,14 @@ impl DatabaseBuilder {
 			migrations: Vec::new(),
 			is_replica: false,
 			bootstrap_configs: Vec::new(),
+			cdc_backend: CdcBackend::default(),
 		}
+	}
+
+	/// Select the CDC storage backend. Defaults to `CdcBackend::Memory`.
+	pub fn with_cdc_backend(mut self, backend: CdcBackend) -> Self {
+		self.cdc_backend = backend;
+		self
 	}
 
 	/// Store the underlying MultiStore and SingleStore for metrics worker
@@ -343,8 +365,12 @@ impl DatabaseBuilder {
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
 		let actor_system = self.actor_system.unwrap_or_else(|| runtime.actor_system().scope());
 
-		// Create and register CdcStore for CDC storage
-		let cdc_store = CdcStore::memory();
+		// Create and register CdcStore for CDC storage.
+		let cdc_store = match self.cdc_backend {
+			CdcBackend::Memory => CdcStore::memory(),
+			#[cfg(not(target_arch = "wasm32"))]
+			CdcBackend::Sqlite(config) => CdcStore::sqlite(config),
+		};
 		self.ioc = self.ioc.register(cdc_store.clone());
 
 		// Get the underlying stores for workers
