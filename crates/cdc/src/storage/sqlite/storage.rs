@@ -65,6 +65,26 @@ impl SqliteCdcStorage {
 			[],
 		)
 		.expect("Failed to create cdc table");
+
+		conn.execute(
+			r#"CREATE TABLE IF NOT EXISTS "cdc_block" (
+				max_version BLOB PRIMARY KEY,
+				min_version BLOB NOT NULL,
+				min_timestamp INTEGER NOT NULL,
+				max_timestamp INTEGER NOT NULL,
+				num_entries INTEGER NOT NULL,
+				payload BLOB NOT NULL
+			) WITHOUT ROWID"#,
+			[],
+		)
+		.expect("Failed to create cdc_block table");
+
+		conn.execute(
+			r#"CREATE INDEX IF NOT EXISTS "cdc_block_max_ts_idx"
+			   ON "cdc_block"(max_timestamp)"#,
+			[],
+		)
+		.expect("Failed to create cdc_block_max_ts index");
 	}
 
 	pub fn incremental_vacuum(&self) {

@@ -48,6 +48,7 @@ pub enum ConfigKey {
 	CdcCompactBlockSize,
 	CdcCompactSafetyLag,
 	CdcCompactMaxBlocksPerTick,
+	CdcCompactBlockCacheCapacity,
 }
 
 impl ConfigKey {
@@ -62,6 +63,7 @@ impl ConfigKey {
 			Self::CdcCompactBlockSize,
 			Self::CdcCompactSafetyLag,
 			Self::CdcCompactMaxBlocksPerTick,
+			Self::CdcCompactBlockCacheCapacity,
 		]
 	}
 
@@ -78,6 +80,7 @@ impl ConfigKey {
 			Self::CdcCompactBlockSize => Value::Uint8(1024),
 			Self::CdcCompactSafetyLag => Value::Uint8(1024),
 			Self::CdcCompactMaxBlocksPerTick => Value::Uint8(16),
+			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
 		}
 	}
 
@@ -98,6 +101,9 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => {
 				"Upper bound on consecutive blocks produced per actor tick."
 			}
+			Self::CdcCompactBlockCacheCapacity => {
+				"Number of decompressed CDC blocks held in the in-memory LRU cache."
+			}
 		}
 	}
 
@@ -112,6 +118,7 @@ impl ConfigKey {
 			Self::CdcCompactBlockSize => false,
 			Self::CdcCompactSafetyLag => false,
 			Self::CdcCompactMaxBlocksPerTick => false,
+			Self::CdcCompactBlockCacheCapacity => true,
 		}
 	}
 
@@ -126,6 +133,7 @@ impl ConfigKey {
 			Self::CdcCompactBlockSize => &[Type::Uint8],
 			Self::CdcCompactSafetyLag => &[Type::Uint8],
 			Self::CdcCompactMaxBlocksPerTick => &[Type::Uint8],
+			Self::CdcCompactBlockCacheCapacity => &[Type::Uint8],
 		}
 	}
 
@@ -144,6 +152,7 @@ impl ConfigKey {
 			Self::CdcCompactBlockSize => false,
 			Self::CdcCompactSafetyLag => false,
 			Self::CdcCompactMaxBlocksPerTick => false,
+			Self::CdcCompactBlockCacheCapacity => false,
 		}
 	}
 
@@ -178,6 +187,12 @@ impl ConfigKey {
 			},
 			Self::CdcCompactBlockSize => match value {
 				Value::Uint8(0) => Err("CDC_COMPACT_BLOCK_SIZE must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::CdcCompactBlockCacheCapacity => match value {
+				Value::Uint8(0) => {
+					Err("CDC_COMPACT_BLOCK_CACHE_CAPACITY must be greater than zero".to_string())
+				}
 				_ => Ok(()),
 			},
 			_ => Ok(()),
@@ -275,6 +290,7 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCompactBlockSize => write!(f, "CDC_COMPACT_BLOCK_SIZE"),
 			Self::CdcCompactSafetyLag => write!(f, "CDC_COMPACT_SAFETY_LAG"),
 			Self::CdcCompactMaxBlocksPerTick => write!(f, "CDC_COMPACT_MAX_BLOCKS_PER_TICK"),
+			Self::CdcCompactBlockCacheCapacity => write!(f, "CDC_COMPACT_BLOCK_CACHE_CAPACITY"),
 		}
 	}
 }
@@ -293,6 +309,7 @@ impl FromStr for ConfigKey {
 			"CDC_COMPACT_BLOCK_SIZE" => Ok(Self::CdcCompactBlockSize),
 			"CDC_COMPACT_SAFETY_LAG" => Ok(Self::CdcCompactSafetyLag),
 			"CDC_COMPACT_MAX_BLOCKS_PER_TICK" => Ok(Self::CdcCompactMaxBlocksPerTick),
+			"CDC_COMPACT_BLOCK_CACHE_CAPACITY" => Ok(Self::CdcCompactBlockCacheCapacity),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -438,11 +455,12 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 9);
+		assert_eq!(all.len(), 10);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
 		assert!(all.contains(&ConfigKey::CdcCompactMaxBlocksPerTick));
+		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
 	}
 
 	#[test]

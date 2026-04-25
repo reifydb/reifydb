@@ -275,6 +275,9 @@ futures-util = { version = "0.3.32", features = ["sink"] }
 # sqlite
 rusqlite = { version = "0.39.0", features = ["bundled"] }
 
+# compression
+zstd = { version = "0.13" }
+
 # hashing
 xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 

@@ -2625,6 +2625,7 @@ dependencies = [
  "test_each_file",
  "tracing",
  "uuid",
+ "zstd",
 ]
 
 [[package]]
