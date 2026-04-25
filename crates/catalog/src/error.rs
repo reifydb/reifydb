@@ -6,7 +6,10 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
-use reifydb_core::key::kind::KeyKind;
+use reifydb_core::{
+	interface::catalog::config::{AcceptError, ConfigKey},
+	key::kind::KeyKind,
+};
 use reifydb_type::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -236,6 +239,25 @@ pub enum CatalogError {
 		reason: String,
 		fragment: Fragment,
 	},
+}
+
+impl From<(ConfigKey, AcceptError)> for CatalogError {
+	fn from((key, err): (ConfigKey, AcceptError)) -> Self {
+		match err {
+			AcceptError::TypeMismatch {
+				expected,
+				actual,
+			} => CatalogError::ConfigTypeMismatch {
+				key: key.to_string(),
+				expected,
+				actual,
+			},
+			AcceptError::InvalidValue(reason) => CatalogError::ConfigInvalidValue {
+				key: key.to_string(),
+				reason,
+			},
+		}
+	}
 }
 
 impl IntoDiagnostic for CatalogError {

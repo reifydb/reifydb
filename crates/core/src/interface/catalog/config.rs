@@ -3,9 +3,39 @@
 
 use std::{fmt, str::FromStr, time::Duration as StdDuration};
 
-use reifydb_type::value::{Value, duration::Duration, r#type::Type};
+use reifydb_type::value::{
+	Value, decimal::Decimal, duration::Duration, int::Int, ordered_f32::OrderedF32, ordered_f64::OrderedF64,
+	r#type::Type, uint::Uint,
+};
 
 use crate::common::CommitVersion;
+
+/// Error returned by `ConfigKey::accept`. Callers map this to their domain error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcceptError {
+	/// The value's Type is not in `expected_types()` and no lossless coercion succeeded.
+	TypeMismatch {
+		expected: Vec<Type>,
+		actual: Type,
+	},
+	/// Coercion succeeded (or wasn't needed) but the canonical value violated
+	/// the key's domain rules (e.g., zero where positive is required).
+	InvalidValue(String),
+}
+
+impl fmt::Display for AcceptError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::TypeMismatch {
+				expected,
+				actual,
+			} => {
+				write!(f, "expected one of {:?}, got {:?}", expected, actual)
+			}
+			Self::InvalidValue(reason) => write!(f, "{reason}"),
+		}
+	}
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ConfigKey {
@@ -14,6 +44,10 @@ pub enum ConfigKey {
 	RowTtlScanBatchSize,
 	RowTtlScanInterval,
 	CdcTtlDuration,
+	CdcCompactInterval,
+	CdcCompactBlockSize,
+	CdcCompactSafetyLag,
+	CdcCompactMaxBlocksPerTick,
 }
 
 impl ConfigKey {
@@ -24,6 +58,10 @@ impl ConfigKey {
 			Self::RowTtlScanBatchSize,
 			Self::RowTtlScanInterval,
 			Self::CdcTtlDuration,
+			Self::CdcCompactInterval,
+			Self::CdcCompactBlockSize,
+			Self::CdcCompactSafetyLag,
+			Self::CdcCompactMaxBlocksPerTick,
 		]
 	}
 
@@ -36,6 +74,10 @@ impl ConfigKey {
 			Self::CdcTtlDuration => Value::None {
 				inner: Type::Duration,
 			},
+			Self::CdcCompactInterval => Value::Duration(Duration::from_seconds(60).unwrap()),
+			Self::CdcCompactBlockSize => Value::Uint8(1024),
+			Self::CdcCompactSafetyLag => Value::Uint8(1024),
+			Self::CdcCompactMaxBlocksPerTick => Value::Uint8(16),
 		}
 	}
 
@@ -50,6 +92,12 @@ impl ConfigKey {
 				 when set, must be > 0 and entries older than this duration are evicted regardless \
 				 of consumer state."
 			}
+			Self::CdcCompactInterval => "How often the CDC compaction actor runs.",
+			Self::CdcCompactBlockSize => "Number of CDC entries packed into one compressed block.",
+			Self::CdcCompactSafetyLag => "Versions newer than (max_version - lag) are never compacted.",
+			Self::CdcCompactMaxBlocksPerTick => {
+				"Upper bound on consecutive blocks produced per actor tick."
+			}
 		}
 	}
 
@@ -60,6 +108,10 @@ impl ConfigKey {
 			Self::RowTtlScanBatchSize => false,
 			Self::RowTtlScanInterval => false,
 			Self::CdcTtlDuration => false,
+			Self::CdcCompactInterval => false,
+			Self::CdcCompactBlockSize => false,
+			Self::CdcCompactSafetyLag => false,
+			Self::CdcCompactMaxBlocksPerTick => false,
 		}
 	}
 
@@ -70,6 +122,10 @@ impl ConfigKey {
 			Self::RowTtlScanBatchSize => &[Type::Uint8],
 			Self::RowTtlScanInterval => &[Type::Duration],
 			Self::CdcTtlDuration => &[Type::Duration],
+			Self::CdcCompactInterval => &[Type::Duration],
+			Self::CdcCompactBlockSize => &[Type::Uint8],
+			Self::CdcCompactSafetyLag => &[Type::Uint8],
+			Self::CdcCompactMaxBlocksPerTick => &[Type::Uint8],
 		}
 	}
 
@@ -84,14 +140,18 @@ impl ConfigKey {
 			Self::RowTtlScanBatchSize => false,
 			Self::RowTtlScanInterval => false,
 			Self::CdcTtlDuration => true,
+			Self::CdcCompactInterval => false,
+			Self::CdcCompactBlockSize => false,
+			Self::CdcCompactSafetyLag => false,
+			Self::CdcCompactMaxBlocksPerTick => false,
 		}
 	}
 
-	/// Per-key value validation beyond type checking.
-	///
-	/// Returns `Err(reason)` when the value is the right type but otherwise invalid for this key.
-	/// The caller is expected to wrap the reason in a domain error (e.g. `CatalogError`).
-	pub fn validate(&self, value: &Value) -> Result<(), String> {
+	/// Domain-rule check that assumes the value is already in canonical form
+	/// (its Type is in `expected_types()`). Called only by `accept` after
+	/// coercion. Bespoke variant matches such as `Value::Uint8(0)` are safe
+	/// here because non-canonical inputs cannot reach this point.
+	fn validate_canonical(&self, value: &Value) -> Result<(), String> {
 		match self {
 			Self::CdcTtlDuration => match value {
 				Value::None {
@@ -106,9 +166,101 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
+			Self::CdcCompactInterval => match value {
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("CDC_COMPACT_INTERVAL must be greater than zero".to_string())
+					}
+				}
+				_ => Ok(()),
+			},
+			Self::CdcCompactBlockSize => match value {
+				Value::Uint8(0) => Err("CDC_COMPACT_BLOCK_SIZE must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
 			_ => Ok(()),
 		}
 	}
+
+	pub fn accept(&self, value: Value) -> Result<Value, AcceptError> {
+		if let Value::None {
+			inner,
+		} = &value
+		{
+			if self.is_optional() && self.expected_types().contains(inner) {
+				return Ok(value);
+			}
+			return Err(AcceptError::TypeMismatch {
+				expected: self.expected_types().to_vec(),
+				actual: value.get_type(),
+			});
+		}
+
+		let canonical = if self.expected_types().contains(&value.get_type()) {
+			value
+		} else {
+			try_coerce_numeric(&value, self.expected_types()).ok_or_else(|| AcceptError::TypeMismatch {
+				expected: self.expected_types().to_vec(),
+				actual: value.get_type(),
+			})?
+		};
+
+		self.validate_canonical(&canonical).map_err(AcceptError::InvalidValue)?;
+		Ok(canonical)
+	}
+}
+
+fn try_coerce_numeric(value: &Value, expected: &[Type]) -> Option<Value> {
+	for target in expected {
+		let coerced = match target {
+			Type::Uint1 => {
+				value.to_usize().filter(|&v| v <= u8::MAX as usize).map(|v| Value::Uint1(v as u8))
+			}
+			Type::Uint2 => {
+				value.to_usize().filter(|&v| v <= u16::MAX as usize).map(|v| Value::Uint2(v as u16))
+			}
+			Type::Uint4 => {
+				value.to_usize().filter(|&v| v <= u32::MAX as usize).map(|v| Value::Uint4(v as u32))
+			}
+			Type::Uint8 => {
+				value.to_usize().filter(|&v| v <= u64::MAX as usize).map(|v| Value::Uint8(v as u64))
+			}
+			Type::Uint16 => value.to_usize().map(|v| Value::Uint16(v as u128)),
+			Type::Int1 => value.to_usize().filter(|&v| v <= i8::MAX as usize).map(|v| Value::Int1(v as i8)),
+			Type::Int2 => {
+				value.to_usize().filter(|&v| v <= i16::MAX as usize).map(|v| Value::Int2(v as i16))
+			}
+			Type::Int4 => {
+				value.to_usize().filter(|&v| v <= i32::MAX as usize).map(|v| Value::Int4(v as i32))
+			}
+			Type::Int8 => {
+				value.to_usize().filter(|&v| v <= i64::MAX as usize).map(|v| Value::Int8(v as i64))
+			}
+			Type::Int16 => {
+				value.to_usize().filter(|&v| v <= i128::MAX as usize).map(|v| Value::Int16(v as i128))
+			}
+			Type::Uint => value.to_usize().map(|v| Value::Uint(Uint::from_u64(v as u64))),
+			Type::Int => value.to_usize().map(|v| Value::Int(Int::from_i64(v as i64))),
+			Type::Decimal => value.to_usize().map(|v| Value::Decimal(Decimal::from_i64(v as i64))),
+			Type::Float4 => {
+				value.to_usize().and_then(|v| OrderedF32::try_from(v as f32).ok()).map(Value::Float4)
+			}
+			Type::Float8 => {
+				value.to_usize().and_then(|v| OrderedF64::try_from(v as f64).ok()).map(Value::Float8)
+			}
+			Type::Duration => value
+				.to_usize()
+				.and_then(|v| Duration::from_seconds(v as i64).ok())
+				.map(Value::Duration),
+			_ => None,
+		};
+		if coerced.is_some() {
+			return coerced;
+		}
+	}
+	None
 }
 
 impl fmt::Display for ConfigKey {
@@ -119,6 +271,10 @@ impl fmt::Display for ConfigKey {
 			Self::RowTtlScanBatchSize => write!(f, "ROW_TTL_SCAN_BATCH_SIZE"),
 			Self::RowTtlScanInterval => write!(f, "ROW_TTL_SCAN_INTERVAL"),
 			Self::CdcTtlDuration => write!(f, "CDC_TTL_DURATION"),
+			Self::CdcCompactInterval => write!(f, "CDC_COMPACT_INTERVAL"),
+			Self::CdcCompactBlockSize => write!(f, "CDC_COMPACT_BLOCK_SIZE"),
+			Self::CdcCompactSafetyLag => write!(f, "CDC_COMPACT_SAFETY_LAG"),
+			Self::CdcCompactMaxBlocksPerTick => write!(f, "CDC_COMPACT_MAX_BLOCKS_PER_TICK"),
 		}
 	}
 }
@@ -133,6 +289,10 @@ impl FromStr for ConfigKey {
 			"ROW_TTL_SCAN_BATCH_SIZE" => Ok(Self::RowTtlScanBatchSize),
 			"ROW_TTL_SCAN_INTERVAL" => Ok(Self::RowTtlScanInterval),
 			"CDC_TTL_DURATION" => Ok(Self::CdcTtlDuration),
+			"CDC_COMPACT_INTERVAL" => Ok(Self::CdcCompactInterval),
+			"CDC_COMPACT_BLOCK_SIZE" => Ok(Self::CdcCompactBlockSize),
+			"CDC_COMPACT_SAFETY_LAG" => Ok(Self::CdcCompactSafetyLag),
+			"CDC_COMPACT_MAX_BLOCKS_PER_TICK" => Ok(Self::CdcCompactMaxBlocksPerTick),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -220,41 +380,46 @@ mod tests {
 	}
 
 	#[test]
-	fn test_cdc_ttl_validate_accepts_none() {
+	fn test_cdc_ttl_accept_passes_typed_null() {
 		let none = Value::None {
 			inner: Type::Duration,
 		};
-		assert!(ConfigKey::CdcTtlDuration.validate(&none).is_ok());
+		let v = ConfigKey::CdcTtlDuration.accept(none.clone()).unwrap();
+		assert_eq!(v, none);
 	}
 
 	#[test]
-	fn test_cdc_ttl_validate_accepts_positive_duration() {
+	fn test_cdc_ttl_accept_passes_positive_duration() {
 		let one_sec = Value::Duration(Duration::from_seconds(1).unwrap());
-		assert!(ConfigKey::CdcTtlDuration.validate(&one_sec).is_ok());
+		assert_eq!(ConfigKey::CdcTtlDuration.accept(one_sec.clone()).unwrap(), one_sec);
 
 		let one_hour = Value::Duration(Duration::from_seconds(3600).unwrap());
-		assert!(ConfigKey::CdcTtlDuration.validate(&one_hour).is_ok());
+		assert_eq!(ConfigKey::CdcTtlDuration.accept(one_hour.clone()).unwrap(), one_hour);
 	}
 
 	#[test]
-	fn test_cdc_ttl_validate_rejects_zero() {
+	fn test_cdc_ttl_accept_rejects_zero() {
 		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
-		let err = ConfigKey::CdcTtlDuration.validate(&zero).unwrap_err();
-		assert!(err.contains("greater than zero"), "unexpected reason: {err}");
+		match ConfigKey::CdcTtlDuration.accept(zero).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
 	}
 
 	#[test]
-	fn test_cdc_ttl_validate_rejects_negative() {
+	fn test_cdc_ttl_accept_rejects_negative() {
 		let negative = Value::Duration(Duration::from_seconds(-5).unwrap());
-		assert!(ConfigKey::CdcTtlDuration.validate(&negative).is_err());
+		assert!(matches!(ConfigKey::CdcTtlDuration.accept(negative), Err(AcceptError::InvalidValue(_))));
 	}
 
 	#[test]
-	fn test_other_keys_validate_unconditionally_ok() {
+	fn test_other_keys_accept_in_type_values() {
 		// Keys without bespoke validation should accept any in-type value.
-		assert!(ConfigKey::OracleWindowSize.validate(&Value::Uint8(0)).is_ok());
+		assert!(ConfigKey::OracleWindowSize.accept(Value::Uint8(0)).is_ok());
 		assert!(ConfigKey::RowTtlScanInterval
-			.validate(&Value::Duration(Duration::from_seconds(0).unwrap()))
+			.accept(Value::Duration(Duration::from_seconds(0).unwrap()))
 			.is_ok());
 	}
 
@@ -268,5 +433,189 @@ mod tests {
 	#[test]
 	fn test_cdc_ttl_in_all() {
 		assert!(ConfigKey::all().contains(&ConfigKey::CdcTtlDuration));
+	}
+
+	#[test]
+	fn test_all_contains_every_compact_key_and_has_expected_len() {
+		let all = ConfigKey::all();
+		assert_eq!(all.len(), 9);
+		assert!(all.contains(&ConfigKey::CdcCompactInterval));
+		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
+		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
+		assert!(all.contains(&ConfigKey::CdcCompactMaxBlocksPerTick));
+	}
+
+	#[test]
+	fn test_cdc_compact_interval_round_trips_through_display_and_from_str() {
+		let key: ConfigKey = "CDC_COMPACT_INTERVAL".parse().unwrap();
+		assert_eq!(key, ConfigKey::CdcCompactInterval);
+		assert_eq!(format!("{}", ConfigKey::CdcCompactInterval), "CDC_COMPACT_INTERVAL");
+	}
+
+	#[test]
+	fn test_cdc_compact_block_size_round_trips_through_display_and_from_str() {
+		let key: ConfigKey = "CDC_COMPACT_BLOCK_SIZE".parse().unwrap();
+		assert_eq!(key, ConfigKey::CdcCompactBlockSize);
+		assert_eq!(format!("{}", ConfigKey::CdcCompactBlockSize), "CDC_COMPACT_BLOCK_SIZE");
+	}
+
+	#[test]
+	fn test_cdc_compact_safety_lag_round_trips_through_display_and_from_str() {
+		let key: ConfigKey = "CDC_COMPACT_SAFETY_LAG".parse().unwrap();
+		assert_eq!(key, ConfigKey::CdcCompactSafetyLag);
+		assert_eq!(format!("{}", ConfigKey::CdcCompactSafetyLag), "CDC_COMPACT_SAFETY_LAG");
+	}
+
+	#[test]
+	fn test_cdc_compact_max_blocks_per_tick_round_trips_through_display_and_from_str() {
+		let key: ConfigKey = "CDC_COMPACT_MAX_BLOCKS_PER_TICK".parse().unwrap();
+		assert_eq!(key, ConfigKey::CdcCompactMaxBlocksPerTick);
+		assert_eq!(format!("{}", ConfigKey::CdcCompactMaxBlocksPerTick), "CDC_COMPACT_MAX_BLOCKS_PER_TICK");
+	}
+
+	#[test]
+	fn test_cdc_compact_interval_default_is_duration() {
+		assert!(matches!(ConfigKey::CdcCompactInterval.default_value(), Value::Duration(_)));
+	}
+
+	#[test]
+	fn test_cdc_compact_block_size_default_is_uint8_1024() {
+		assert_eq!(ConfigKey::CdcCompactBlockSize.default_value(), Value::Uint8(1024));
+	}
+
+	#[test]
+	fn test_cdc_compact_safety_lag_default_is_uint8_1024() {
+		assert_eq!(ConfigKey::CdcCompactSafetyLag.default_value(), Value::Uint8(1024));
+	}
+
+	#[test]
+	fn test_cdc_compact_max_blocks_per_tick_default_is_uint8_16() {
+		assert_eq!(ConfigKey::CdcCompactMaxBlocksPerTick.default_value(), Value::Uint8(16));
+	}
+
+	#[test]
+	fn test_cdc_compact_interval_accept_passes_positive_duration() {
+		let one_sec = Value::Duration(Duration::from_seconds(1).unwrap());
+		assert_eq!(ConfigKey::CdcCompactInterval.accept(one_sec.clone()).unwrap(), one_sec);
+	}
+
+	#[test]
+	fn test_cdc_compact_interval_accept_rejects_zero() {
+		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
+		match ConfigKey::CdcCompactInterval.accept(zero).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_cdc_compact_interval_accept_rejects_negative() {
+		let negative = Value::Duration(Duration::from_seconds(-5).unwrap());
+		assert!(matches!(ConfigKey::CdcCompactInterval.accept(negative), Err(AcceptError::InvalidValue(_))));
+	}
+
+	#[test]
+	fn test_cdc_compact_block_size_accept_rejects_zero() {
+		match ConfigKey::CdcCompactBlockSize.accept(Value::Uint8(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_cdc_compact_block_size_accept_passes_positive() {
+		assert_eq!(ConfigKey::CdcCompactBlockSize.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
+		assert_eq!(ConfigKey::CdcCompactBlockSize.accept(Value::Uint8(1024)).unwrap(), Value::Uint8(1024));
+	}
+
+	#[test]
+	fn test_cdc_compact_safety_lag_and_max_blocks_accept_zero() {
+		assert_eq!(ConfigKey::CdcCompactSafetyLag.accept(Value::Uint8(0)).unwrap(), Value::Uint8(0));
+		assert_eq!(ConfigKey::CdcCompactMaxBlocksPerTick.accept(Value::Uint8(0)).unwrap(), Value::Uint8(0));
+	}
+
+	#[test]
+	fn test_accept_coerces_int4_to_uint8_for_block_size() {
+		// SET CONFIG CDC_COMPACT_BLOCK_SIZE = 1024 (parsed as Int4) becomes Uint8(1024).
+		let v = ConfigKey::CdcCompactBlockSize.accept(Value::Int4(1024)).unwrap();
+		assert_eq!(v, Value::Uint8(1024));
+	}
+
+	#[test]
+	fn test_accept_coerces_int8_to_uint8_for_block_size() {
+		let v = ConfigKey::CdcCompactBlockSize.accept(Value::Int8(2048)).unwrap();
+		assert_eq!(v, Value::Uint8(2048));
+	}
+
+	#[test]
+	fn test_accept_rejects_zero_after_coercion() {
+		// Int4(0) coerces to Uint8(0), then validate_canonical rejects it.
+		match ConfigKey::CdcCompactBlockSize.accept(Value::Int4(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"));
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_accept_rejects_negative_int_for_uint8_key() {
+		// to_usize() returns None for negatives -> all coercion arms fail -> TypeMismatch.
+		assert!(matches!(
+			ConfigKey::CdcCompactBlockSize.accept(Value::Int4(-1)),
+			Err(AcceptError::TypeMismatch { .. })
+		));
+	}
+
+	#[test]
+	fn test_accept_coerces_int_to_duration_via_seconds() {
+		// SET CONFIG CDC_COMPACT_INTERVAL = 60 (Int4) -> Duration(60s).
+		let v = ConfigKey::CdcCompactInterval.accept(Value::Int4(60)).unwrap();
+		assert!(matches!(v, Value::Duration(_)));
+	}
+
+	#[test]
+	fn test_accept_idempotent_on_canonical_uint8() {
+		let canonical = Value::Uint8(42);
+		assert_eq!(ConfigKey::OracleWindowSize.accept(canonical.clone()).unwrap(), canonical);
+	}
+
+	#[test]
+	fn test_accept_idempotent_on_canonical_duration() {
+		let canonical = Value::Duration(Duration::from_seconds(5).unwrap());
+		assert_eq!(ConfigKey::CdcCompactInterval.accept(canonical.clone()).unwrap(), canonical);
+	}
+
+	#[test]
+	fn test_accept_rejects_typed_null_for_non_optional_key() {
+		let err = ConfigKey::CdcCompactBlockSize
+			.accept(Value::None {
+				inner: Type::Uint8,
+			})
+			.unwrap_err();
+		assert!(matches!(err, AcceptError::TypeMismatch { .. }));
+	}
+
+	#[test]
+	fn test_accept_passes_typed_null_for_optional_key() {
+		let none = Value::None {
+			inner: Type::Duration,
+		};
+		assert_eq!(ConfigKey::CdcTtlDuration.accept(none.clone()).unwrap(), none);
+	}
+
+	#[test]
+	fn test_accept_rejects_wrong_inner_type_typed_null_for_optional_key() {
+		// Optional key still rejects typed-null whose inner doesn't match expected_types.
+		let err = ConfigKey::CdcTtlDuration
+			.accept(Value::None {
+				inner: Type::Uint8,
+			})
+			.unwrap_err();
+		assert!(matches!(err, AcceptError::TypeMismatch { .. }));
 	}
 }

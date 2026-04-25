@@ -10,7 +10,7 @@ use reifydb_type::{
 	error::Error as TypeError,
 	fragment::Fragment,
 	params::Params,
-	value::{Value, duration::Duration, r#type::Type},
+	value::{Value, r#type::Type},
 };
 
 use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
@@ -85,8 +85,9 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
 			}
 		};
 
-		let coerced_value = coerce_config_value(config_key, value)
-			.map_err(|e| RoutineError::Wrapped(Box::new(TypeError::from(*e))))?;
+		let coerced_value = config_key.accept(value).map_err(|e| {
+			RoutineError::Wrapped(Box::new(TypeError::from(CatalogError::from((config_key, e)))))
+		})?;
 
 		let value_clone = coerced_value.clone();
 
@@ -103,90 +104,4 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
 
 		Ok(Columns::single_row([("key", Value::Utf8(key_str)), ("value", value_clone)]))
 	}
-}
-
-fn coerce_config_value(key: ConfigKey, value: Value) -> Result<Value, Box<CatalogError>> {
-	let expected_types = key.expected_types();
-	if expected_types.contains(&value.get_type()) {
-		return Ok(value);
-	}
-
-	// Try basic coercion
-	for expected in expected_types {
-		match expected {
-			Type::Uint8 => {
-				if let Some(v) = value.to_usize()
-					&& v <= u64::MAX as usize
-				{
-					return Ok(Value::Uint8(v as u64));
-				}
-			}
-			Type::Uint4 => {
-				if let Some(v) = value.to_usize()
-					&& v <= u32::MAX as usize
-				{
-					return Ok(Value::Uint4(v as u32));
-				}
-			}
-			Type::Uint2 => {
-				if let Some(v) = value.to_usize()
-					&& v <= u16::MAX as usize
-				{
-					return Ok(Value::Uint2(v as u16));
-				}
-			}
-			Type::Uint1 => {
-				if let Some(v) = value.to_usize()
-					&& v <= u8::MAX as usize
-				{
-					return Ok(Value::Uint1(v as u8));
-				}
-			}
-			Type::Int8 => {
-				if let Some(v) = value.to_usize()
-					&& v <= i64::MAX as usize
-				{
-					return Ok(Value::Int8(v as i64));
-				}
-			}
-			Type::Int4 => {
-				if let Some(v) = value.to_usize()
-					&& v <= i32::MAX as usize
-				{
-					return Ok(Value::Int4(v as i32));
-				}
-			}
-			Type::Int2 => {
-				if let Some(v) = value.to_usize()
-					&& v <= i16::MAX as usize
-				{
-					return Ok(Value::Int2(v as i16));
-				}
-			}
-			Type::Int1 => {
-				if let Some(v) = value.to_usize()
-					&& v <= i8::MAX as usize
-				{
-					return Ok(Value::Int1(v as i8));
-				}
-			}
-			Type::Duration => {
-				if let Value::Duration(v) = value {
-					return Ok(Value::Duration(v));
-				}
-				if let Some(v) = value.to_usize()
-					&& let Ok(d) = Duration::from_seconds(v as i64)
-				{
-					return Ok(Value::Duration(d));
-				}
-			}
-			_ => {}
-		}
-	}
-
-	Err(Box::new(CatalogError::ConfigTypeMismatch {
-		key: key.to_string(),
-		expected: expected_types.to_vec(),
-		actual: value.get_type(),
-	}))
 }

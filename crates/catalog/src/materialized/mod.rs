@@ -437,38 +437,12 @@ impl MaterializedCatalog {
 
 	/// Set a new value for a configuration at a given version.
 	pub fn set_config(&self, key: ConfigKey, version: CommitVersion, value: Value) -> Result<()> {
-		check_config_value(key, &value)?;
+		let value = key.accept(value).map_err(|e| CatalogError::from((key, e)))?;
 
 		let entry = self.0.configs.get_or_insert_with(key, MultiVersionContainer::new);
 		entry.value().insert(version, value);
 		Ok(())
 	}
-}
-
-/// Type and value checking shared by both `set_config` paths.
-pub(crate) fn check_config_value(key: ConfigKey, value: &Value) -> Result<()> {
-	let expected_types = key.expected_types();
-	let type_ok = match value {
-		// Typed null: accept if the key is optional and the inner type matches.
-		Value::None {
-			inner,
-		} => key.is_optional() && expected_types.contains(inner),
-		other => expected_types.contains(&other.get_type()),
-	};
-	if !type_ok {
-		return Err(CatalogError::ConfigTypeMismatch {
-			key: key.to_string(),
-			expected: expected_types.to_vec(),
-			actual: value.get_type(),
-		}
-		.into());
-	}
-
-	key.validate(value).map_err(|reason| CatalogError::ConfigInvalidValue {
-		key: key.to_string(),
-		reason,
-	})?;
-	Ok(())
 }
 
 impl GetConfig for MaterializedCatalog {
@@ -554,8 +528,10 @@ mod config_validation_tests {
 
 	#[test]
 	fn test_set_cdc_ttl_wrong_type_returns_type_mismatch_not_validate_error() {
+		// A non-numeric, non-Duration value cannot coerce to Type::Duration
+		// and must surface as ConfigTypeMismatch.
 		let catalog = MaterializedCatalog::new();
-		let bad = Value::Uint8(5);
+		let bad = Value::Boolean(true);
 		let err = catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), bad).unwrap_err();
 		assert_eq!(err.code, "CA_052", "expected ConfigTypeMismatch (CA_052)");
 	}
