@@ -11,8 +11,6 @@ use reifydb_catalog::{
 	},
 	materialized::MaterializedCatalog,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_cdc::storage::sqlite::config::SqliteCdcConfig;
 use reifydb_cdc::{
 	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
 	storage::CdcStore,
@@ -35,6 +33,8 @@ use reifydb_runtime::{
 	},
 	pool::{PoolConfig, Pools},
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
@@ -161,7 +161,7 @@ impl Deref for TestEngine {
 pub struct TestEngineBuilder {
 	cdc: bool,
 	#[cfg(not(target_arch = "wasm32"))]
-	sqlite_cdc: Option<SqliteCdcConfig>,
+	sqlite_cdc: Option<SqliteConfig>,
 }
 
 impl TestEngineBuilder {
@@ -173,7 +173,7 @@ impl TestEngineBuilder {
 	/// Use a SQLite-backed CDC store instead of the default in-memory backend.
 	/// Implies `with_cdc()`.
 	#[cfg(not(target_arch = "wasm32"))]
-	pub fn with_sqlite_cdc(mut self, config: SqliteCdcConfig) -> Self {
+	pub fn with_sqlite_cdc(mut self, config: SqliteConfig) -> Self {
 		self.cdc = true;
 		self.sqlite_cdc = Some(config);
 		self

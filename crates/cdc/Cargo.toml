@@ -9,12 +9,13 @@ description = "Change Data Capture module for ReifyDB"
 
 [features]
 default = ["sqlite"]
-sqlite = ["rusqlite"]
+sqlite = ["rusqlite", "reifydb-sqlite"]
 
 [dependencies]
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-sqlite = { workspace = true, optional = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }

@@ -15,8 +15,6 @@ use reifydb_catalog::{
 	materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_cdc::storage::sqlite::config::SqliteCdcConfig;
 use reifydb_cdc::{
 	CdcVersion,
 	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
@@ -47,6 +45,8 @@ use reifydb_routine::{
 };
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, context::RuntimeContext};
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
@@ -86,7 +86,7 @@ pub enum CdcBackend {
 	#[default]
 	Memory,
 	#[cfg(not(target_arch = "wasm32"))]
-	Sqlite(SqliteCdcConfig),
+	Sqlite(SqliteConfig),
 }
 
 pub struct DatabaseBuilder {

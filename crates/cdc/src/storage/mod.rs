@@ -19,6 +19,8 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::cdc::{Cdc, CdcBatch},
 };
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_sqlite::SqliteConfig;
 use reifydb_type::value::datetime::DateTime;
 
 use crate::error::CdcError;
@@ -202,7 +204,7 @@ impl CdcStore {
 
 	/// Create a SQLite-backed CDC store with the given configuration.
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(config: sqlite::config::SqliteCdcConfig) -> Self {
+	pub fn sqlite(config: SqliteConfig) -> Self {
 		Self::Sqlite(sqlite::storage::SqliteCdcStorage::new(config))
 	}
 

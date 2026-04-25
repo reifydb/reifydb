@@ -7,15 +7,13 @@
 
 use std::collections::Bound;
 
-use reifydb_cdc::storage::{
-	CdcStorage, CdcStore,
-	sqlite::{config::SqliteCdcConfig, storage::SqliteCdcStorage},
-};
+use reifydb_cdc::storage::{CdcStorage, CdcStore, sqlite::storage::SqliteCdcStorage};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::{Cdc, SystemChange},
 };
+use reifydb_sqlite::SqliteConfig;
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
 
@@ -36,7 +34,7 @@ fn cdc_at(version: u64) -> Cdc {
 #[test]
 fn persistence_across_reopen() {
 	temp_dir(|path| {
-		let cfg = SqliteCdcConfig::new(path.join("cdc.reifydb"));
+		let cfg = SqliteConfig::new(path.join("cdc.reifydb"));
 
 		{
 			let store = SqliteCdcStorage::new(cfg.clone());
@@ -65,7 +63,7 @@ fn persistence_across_reopen() {
 /// find_ttl_cutoff) route correctly.
 #[test]
 fn dispatch_through_cdcstore_enum() {
-	let store = CdcStore::sqlite(SqliteCdcConfig::test());
+	let store = CdcStore::sqlite(SqliteConfig::test());
 	store.write(&cdc_at(1)).unwrap();
 	store.write(&cdc_at(2)).unwrap();
 	store.write(&cdc_at(3)).unwrap();

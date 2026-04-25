@@ -8,18 +8,16 @@ use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{clock::Clock, rng::Rng},
 };
+use reifydb_sqlite::{DbPath, SqliteConfig};
 use reifydb_store_multi::{
 	MultiStore,
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
-	hot::{
-		sqlite::config::{DbPath, SqliteConfig},
-		storage::HotStorage,
-	},
+	hot::storage::HotStorage,
 };
 use reifydb_store_single::{
 	SingleStore,
 	config::{HotConfig as SingleHotConfig, SingleStoreConfig},
-	hot::{sqlite::config::SqliteConfig as SingleSqliteConfig, tier::HotTier},
+	hot::tier::HotTier,
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 
@@ -119,11 +117,14 @@ fn create_sqlite_store(
 
 	// Create single-version config with single.db in same directory
 	let single_path = match &config.path {
-		DbPath::File(p) => p.with_extension("").join("single.db"),
-		DbPath::Memory(p) => p.with_extension("").join("single.db"),
-		DbPath::Tmpfs(p) => p.with_extension("").join("single.db"),
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("single.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("single.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("single.db")),
 	};
-	let single_config = SingleSqliteConfig::new(single_path);
+	let single_config = SqliteConfig {
+		path: single_path,
+		..config.clone()
+	};
 	let single_storage = HotTier::sqlite(single_config);
 	let single_store = SingleStore::standard(SingleStoreConfig {
 		hot: Some(SingleHotConfig {

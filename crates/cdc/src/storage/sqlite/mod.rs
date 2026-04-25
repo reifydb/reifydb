@@ -6,6 +6,4 @@
 //! Provides on-disk CDC persistence. RAM is bounded by SQLite's page cache;
 //! disk is bounded only by retention policy (keep-forever by default).
 
-pub mod config;
-pub mod connection;
 pub mod storage;

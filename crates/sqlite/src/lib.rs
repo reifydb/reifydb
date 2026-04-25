@@ -7,11 +7,22 @@ use std::path::{Path, PathBuf};
 
 use uuid::Uuid;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod connection;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod error;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod pragma;
+
+/// Where the SQLite database file lives on disk.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum DbPath {
+	/// A regular file path.
 	File(PathBuf),
-	Tmpfs(PathBuf),  // tmpfs-backed file for WAL support + cleanup
-	Memory(PathBuf), // RAM-backed file for storage with WAL support + cleanup
+	/// Tmpfs-backed file for WAL support + automatic cleanup.
+	Tmpfs(PathBuf),
+	/// RAM-backed file for storage with WAL support + automatic cleanup.
+	Memory(PathBuf),
 }
 
 fn memory_dir() -> PathBuf {
@@ -25,7 +36,7 @@ fn memory_dir() -> PathBuf {
 	}
 }
 
-/// Configuration for SQLite storage backend
+/// Configuration for a SQLite storage backend.
 #[derive(Debug, Clone)]
 pub struct SqliteConfig {
 	pub path: DbPath,
@@ -35,12 +46,12 @@ pub struct SqliteConfig {
 	pub temp_store: TempStore,
 	pub cache_size: u32,
 	pub wal_autocheckpoint: u32,
-	pub page_size: u32, // Page size in bytes (must be power of 2, 512-65536)
-	pub mmap_size: u64, // Memory-mapped I/O size in bytes
+	pub page_size: u32,
+	pub mmap_size: u64,
 }
 
 impl SqliteConfig {
-	/// Create a new SqliteConfig with the specified database path
+	/// Create a new `SqliteConfig` with the specified database path.
 	pub fn new<P: AsRef<Path>>(path: P) -> Self {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
@@ -50,16 +61,15 @@ impl SqliteConfig {
 			temp_store: TempStore::Memory,
 			cache_size: 20000,
 			wal_autocheckpoint: 1000,
-			page_size: 4096, // SQLite default
-			mmap_size: 0,    // Disabled by default
+			page_size: 4096,
+			mmap_size: 0,
 		}
 	}
 
-	/// Create a safety-first configuration optimized for data integrity
+	/// Safety-first configuration optimized for data integrity.
 	/// - WAL journal mode for crash recovery
 	/// - FULL synchronous mode for maximum durability
 	/// - FILE temp store for persistence
-	/// - Conservative pool size
 	pub fn safe<P: AsRef<Path>>(path: P) -> Self {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
@@ -69,16 +79,15 @@ impl SqliteConfig {
 			temp_store: TempStore::File,
 			cache_size: 20000,
 			wal_autocheckpoint: 1000,
-			page_size: 4096, // SQLite default
-			mmap_size: 0,    // Disabled by default
+			page_size: 4096,
+			mmap_size: 0,
 		}
 	}
 
-	/// Create a high-performance configuration optimized for speed
+	/// High-performance configuration optimized for speed.
 	/// - MEMORY journal mode for fastest writes
 	/// - OFF synchronous mode for minimal disk I/O
 	/// - MEMORY temp store for fastest temp operations
-	/// - Larger pool size for concurrency
 	pub fn fast<P: AsRef<Path>>(path: P) -> Self {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
@@ -88,126 +97,103 @@ impl SqliteConfig {
 			temp_store: TempStore::Memory,
 			cache_size: 10000,
 			wal_autocheckpoint: 10000,
-			page_size: 16384,     // Larger page size for bulk operations
-			mmap_size: 268435456, // 256MB mmap for performance
+			page_size: 16384,
+			mmap_size: 268435456,
 		}
 	}
 
-	/// Create a tmpfs configuration for temporary database storage
-	/// - Tmpfs-backed database with WAL mode for concurrent access
-	/// - Uses /tmp which may or may not be tmpfs (system-dependent)
-	/// - WAL journal mode for concurrent readers + single writer
-	/// - OFF synchronous mode for maximum speed
-	/// - MEMORY temp store
-	/// - Automatic cleanup on drop
+	/// Tmpfs-backed configuration for temporary database storage.
+	/// Uses /tmp which may or may not be tmpfs (system-dependent).
 	pub fn tmpfs() -> Self {
 		Self {
-			path: DbPath::Tmpfs(PathBuf::from(format!("/tmp/reifydb_tmpfs_{}.db", Uuid::new_v4()))),
+			path: DbPath::Tmpfs(PathBuf::from(format!("/tmp/reifydb_{}.db", Uuid::new_v4()))),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
 			cache_size: 20000,
 			wal_autocheckpoint: 10000,
-			page_size: 16384,     // Larger page size for bulk operations
-			mmap_size: 268435456, // 256MB mmap for RAM-backed storage
+			page_size: 16384,
+			mmap_size: 268435456,
 		}
 	}
 
-	/// Create an in-memory configuration for production use
-	/// - RAM-only database with WAL mode for concurrent access
-	/// - Uses /dev/shm on Linux, temp dir on other platforms
-	/// - WAL journal mode for concurrent readers + single writer
-	/// - NORMAL synchronous mode (safe for RAM storage)
-	/// - MEMORY temp store
-	/// - Automatic cleanup on drop
+	/// In-memory configuration for production use.
+	/// Uses /dev/shm on Linux, temp dir on other platforms.
 	pub fn in_memory() -> Self {
 		Self {
-			path: DbPath::Memory(memory_dir().join(format!("reifydb_mem_{}.db", Uuid::new_v4()))),
+			path: DbPath::Memory(memory_dir().join(format!("reifydb_{}.db", Uuid::new_v4()))),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
 			cache_size: 20000,
 			wal_autocheckpoint: 10000,
-			page_size: 16384,     // Larger page size for bulk operations
-			mmap_size: 268435456, // 256MB mmap for RAM-backed storage
+			page_size: 16384,
+			mmap_size: 268435456,
 		}
 	}
 
-	/// Create a test configuration optimized for testing with in-memory database
-	/// - RAM-only database with WAL mode for concurrent access
-	/// - Uses /dev/shm on Linux, temp dir on other platforms
-	/// - WAL journal mode for concurrent readers + single writer
-	/// - FULL synchronous mode for test safety
-	/// - MEMORY temp store for fastest temp operations
-	/// - Automatic cleanup on drop
+	/// Test configuration with an in-memory database.
+	/// Uses /dev/shm on Linux, temp dir on other platforms.
 	pub fn test() -> Self {
 		Self {
-			path: DbPath::Memory(memory_dir().join(format!("reifydb_test_{}.db", Uuid::new_v4()))),
+			path: DbPath::Memory(memory_dir().join(format!("reifydb_{}.db", Uuid::new_v4()))),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
 			cache_size: 10000,
 			wal_autocheckpoint: 10000,
-			page_size: 4096, // Default for tests
-			mmap_size: 0,    // Disabled for tests
+			page_size: 4096,
+			mmap_size: 0,
 		}
 	}
 
-	/// Set the database file path
 	pub fn path<P: AsRef<Path>>(mut self, path: P) -> Self {
 		self.path = DbPath::File(path.as_ref().to_path_buf());
 		self
 	}
 
-	/// Set the SQLite open flags
 	pub fn flags(mut self, flags: OpenFlags) -> Self {
 		self.flags = flags;
 		self
 	}
 
-	/// Set the journal mode
 	pub fn journal_mode(mut self, mode: JournalMode) -> Self {
 		self.journal_mode = mode;
 		self
 	}
 
-	/// Set the synchronous mode
 	pub fn synchronous_mode(mut self, mode: SynchronousMode) -> Self {
 		self.synchronous_mode = mode;
 		self
 	}
 
-	/// Set the temp store location
 	pub fn temp_store(mut self, store: TempStore) -> Self {
 		self.temp_store = store;
 		self
 	}
 
-	/// Set the cache size in KB (will be negated when passed to SQLite)
 	pub fn cache_size(mut self, size_kb: u32) -> Self {
 		self.cache_size = size_kb;
 		self
 	}
 
-	/// Set WAL auto-checkpoint threshold in pages (0 = disable)
 	pub fn wal_autocheckpoint(mut self, pages: u32) -> Self {
 		self.wal_autocheckpoint = pages;
 		self
 	}
 
-	/// Set the page size in bytes (must be a power of 2 between 512 and 65536)
-	/// Note: This must be set before the database is created. Changing page size
-	/// on an existing database requires a VACUUM operation.
+	/// Set the page size in bytes (must be a power of 2 between 512 and 65536).
+	/// Must be set before the database is created; changing the page size
+	/// on an existing database requires a VACUUM.
 	pub fn page_size(mut self, size: u32) -> Self {
 		self.page_size = size;
 		self
 	}
 
-	/// Set the memory-mapped I/O size in bytes (0 = disabled)
-	/// Larger values can improve read performance for in-memory databases
+	/// Memory-mapped I/O size in bytes (0 = disabled).
 	pub fn mmap_size(mut self, size: u64) -> Self {
 		self.mmap_size = size;
 		self
@@ -216,11 +202,11 @@ impl SqliteConfig {
 
 impl Default for SqliteConfig {
 	fn default() -> Self {
-		Self::new("reify.reifydb")
+		Self::new("reifydb.db")
 	}
 }
 
-/// SQLite database open flags
+/// SQLite database open flags.
 #[derive(Debug, Clone)]
 pub struct OpenFlags {
 	pub read_write: bool,
@@ -233,52 +219,44 @@ pub struct OpenFlags {
 }
 
 impl OpenFlags {
-	/// Create a new OpenFlags configuration
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	/// Enable read-write access (default: true)
 	pub fn read_write(mut self, enabled: bool) -> Self {
 		self.read_write = enabled;
 		self
 	}
 
-	/// Enable creation of database if it doesn't exist (default: true)
 	pub fn create(mut self, enabled: bool) -> Self {
 		self.create = enabled;
 		self
 	}
 
-	/// Use full mutex locking (default: true)
 	pub fn full_mutex(mut self, enabled: bool) -> Self {
 		self.full_mutex = enabled;
 		self.no_mutex = !enabled;
 		self
 	}
 
-	/// Disable mutex locking (default: false)
 	pub fn no_mutex(mut self, enabled: bool) -> Self {
 		self.no_mutex = enabled;
 		self.full_mutex = !enabled;
 		self
 	}
 
-	/// Enable shared cache (default: false)
 	pub fn shared_cache(mut self, enabled: bool) -> Self {
 		self.shared_cache = enabled;
 		self.private_cache = !enabled;
 		self
 	}
 
-	/// Enable private cache (default: false)
 	pub fn private_cache(mut self, enabled: bool) -> Self {
 		self.private_cache = enabled;
 		self.shared_cache = !enabled;
 		self
 	}
 
-	/// Enable URI filename interpretation (default: false)
 	pub fn uri(mut self, enabled: bool) -> Self {
 		self.uri = enabled;
 		self
@@ -299,25 +277,19 @@ impl Default for OpenFlags {
 	}
 }
 
-/// SQLite journal mode options
+/// SQLite journal mode options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JournalMode {
-	/// Delete journal files after each transaction
 	Delete,
-	/// Truncate journal files to zero length instead of deleting
 	Truncate,
-	/// Persist journal files
 	Persist,
-	/// Use memory for journaling
 	Memory,
-	/// Write-Ahead Logging mode (recommended for concurrent access)
 	Wal,
-	/// No journaling (unsafe)
 	Off,
 }
 
 impl JournalMode {
-	pub(crate) fn as_str(&self) -> &'static str {
+	pub fn as_str(&self) -> &'static str {
 		match self {
 			JournalMode::Delete => "DELETE",
 			JournalMode::Truncate => "TRUNCATE",
@@ -329,21 +301,17 @@ impl JournalMode {
 	}
 }
 
-/// SQLite synchronous mode options
+/// SQLite synchronous mode options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SynchronousMode {
-	/// No sync calls (fastest, but may corrupt on power loss)
 	Off,
-	/// Sync only at critical moments (good balance of safety and speed)
 	Normal,
-	/// Sync more frequently (safer but slower)
 	Full,
-	/// Sync even more frequently (safest but slowest)
 	Extra,
 }
 
 impl SynchronousMode {
-	pub(crate) fn as_str(&self) -> &'static str {
+	pub fn as_str(&self) -> &'static str {
 		match self {
 			SynchronousMode::Off => "OFF",
 			SynchronousMode::Normal => "NORMAL",
@@ -353,19 +321,16 @@ impl SynchronousMode {
 	}
 }
 
-/// SQLite temporary storage location
+/// SQLite temporary storage location.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TempStore {
-	/// Use default storage (usually disk)
 	Default,
-	/// Store temporary data in files
 	File,
-	/// Store temporary data in memory (faster)
 	Memory,
 }
 
 impl TempStore {
-	pub(crate) fn as_str(&self) -> &'static str {
+	pub fn as_str(&self) -> &'static str {
 		match self {
 			TempStore::Default => "DEFAULT",
 			TempStore::File => "FILE",
@@ -375,7 +340,7 @@ impl TempStore {
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
 	use reifydb_testing::tempdir::temp_dir;
 
 	use super::*;
@@ -432,9 +397,9 @@ pub mod tests {
 	}
 
 	#[test]
-	fn testault_config() {
+	fn test_default_config() {
 		let config = SqliteConfig::default();
-		assert_eq!(config.path, DbPath::File(PathBuf::from("reify.reifydb")));
+		assert_eq!(config.path, DbPath::File(PathBuf::from("reifydb.db")));
 		assert_eq!(config.journal_mode, JournalMode::Wal);
 		assert_eq!(config.synchronous_mode, SynchronousMode::Normal);
 		assert_eq!(config.temp_store, TempStore::Memory);
@@ -474,10 +439,9 @@ pub mod tests {
 	fn test_tmpfs_config() {
 		let config = SqliteConfig::tmpfs();
 
-		// Path should be Tmpfs variant with /tmp prefix
 		match config.path {
 			DbPath::Tmpfs(path) => {
-				assert!(path.to_string_lossy().starts_with("/tmp/reifydb_tmpfs_"));
+				assert!(path.to_string_lossy().starts_with("/tmp/reifydb_"));
 				assert!(path.to_string_lossy().ends_with(".db"));
 			}
 			_ => panic!("Expected DbPath::Tmpfs variant"),
@@ -551,12 +515,10 @@ pub mod tests {
 	#[test]
 	fn test_path_handling() {
 		temp_dir(|db_path| {
-			// Test with file path
 			let file_path = db_path.join("test.reifydb");
 			let config = SqliteConfig::new(&file_path);
 			assert_eq!(config.path, DbPath::File(file_path));
 
-			// Test with directory path
 			let config = SqliteConfig::new(db_path);
 			assert_eq!(config.path, DbPath::File(db_path.to_path_buf()));
 			Ok(())

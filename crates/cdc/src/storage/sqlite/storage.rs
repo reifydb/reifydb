@@ -14,12 +14,13 @@ use reifydb_core::{
 	interface::cdc::{Cdc, CdcBatch},
 };
 use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_sqlite::{
+	SqliteConfig,
+	connection::{connect, convert_flags, resolve_db_path},
+	pragma,
+};
 use rusqlite::{Connection, Error::QueryReturnedNoRows, params, params_from_iter, types::Value as SqlValue};
 
-use super::{
-	config::SqliteCdcConfig,
-	connection::{connect, convert_flags, resolve_db_path},
-};
 use crate::{
 	error::CdcError,
 	storage::{CdcStorage, CdcStorageResult, DropBeforeResult, DroppedCdcEntry},
@@ -35,23 +36,12 @@ struct Inner {
 }
 
 impl SqliteCdcStorage {
-	pub fn new(config: SqliteCdcConfig) -> Self {
-		let db_path = resolve_db_path(config.path);
+	pub fn new(config: SqliteConfig) -> Self {
+		let db_path = resolve_db_path(config.path.clone(), "cdc.db");
 		let flags = convert_flags(&config.flags);
 
 		let conn = connect(&db_path, flags).expect("Failed to connect to CDC SQLite database");
-
-		conn.pragma_update(None, "page_size", config.page_size).expect("Failed to set page_size");
-		conn.pragma_update(None, "journal_mode", config.journal_mode.as_str())
-			.expect("Failed to set journal_mode");
-		conn.pragma_update(None, "synchronous", config.synchronous_mode.as_str())
-			.expect("Failed to set synchronous");
-		conn.pragma_update(None, "temp_store", config.temp_store.as_str()).expect("Failed to set temp_store");
-		conn.pragma_update(None, "auto_vacuum", "INCREMENTAL").expect("Failed to set auto_vacuum");
-		conn.pragma_update(None, "cache_size", -(config.cache_size as i32)).expect("Failed to set cache_size");
-		conn.pragma_update(None, "wal_autocheckpoint", config.wal_autocheckpoint)
-			.expect("Failed to set wal_autocheckpoint");
-		conn.pragma_update(None, "mmap_size", config.mmap_size as i64).expect("Failed to set mmap_size");
+		pragma::apply(&conn, &config).expect("Failed to configure CDC SQLite pragmas");
 
 		Self::ensure_schema(&conn);
 
@@ -63,7 +53,7 @@ impl SqliteCdcStorage {
 	}
 
 	pub fn in_memory() -> Self {
-		Self::new(SqliteCdcConfig::in_memory())
+		Self::new(SqliteConfig::in_memory())
 	}
 
 	fn ensure_schema(conn: &Connection) {
@@ -78,19 +68,15 @@ impl SqliteCdcStorage {
 	}
 
 	pub fn incremental_vacuum(&self) {
-		let conn = self.inner.conn.lock();
-		let _ = conn.execute("PRAGMA incremental_vacuum", []);
+		let _ = pragma::incremental_vacuum(&self.inner.conn.lock());
 	}
 
 	pub fn shrink_memory(&self) {
-		let conn = self.inner.conn.lock();
-		let _ = conn.pragma_update(None, "shrink_memory", 0);
+		let _ = pragma::shrink_memory(&self.inner.conn.lock());
 	}
 
 	pub fn shutdown(&self) {
-		let conn = self.inner.conn.lock();
-		let _ = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE");
-		let _ = conn.pragma_update(None, "cache_size", 0);
+		let _ = pragma::shutdown(&self.inner.conn.lock());
 	}
 }
 

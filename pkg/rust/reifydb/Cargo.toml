@@ -17,6 +17,7 @@ reifydb-engine = { workspace = true }
 reifydb-extension = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }
+reifydb-sqlite = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-subscription = { workspace = true}

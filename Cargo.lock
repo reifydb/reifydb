@@ -2528,6 +2528,7 @@ dependencies = [
  "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-sub-api",
@@ -2613,6 +2614,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-testing",
@@ -2729,6 +2731,7 @@ dependencies = [
  "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-transaction",
@@ -2907,12 +2910,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-sqlite"
+version = "0.4.12"
+dependencies = [
+ "reifydb-build",
+ "reifydb-testing",
+ "rusqlite",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
 name = "reifydb-store-multi"
 version = "0.4.12"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-testing",
  "reifydb-type",
  "rusqlite",
@@ -2928,6 +2943,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-testing",
  "reifydb-type",
  "rusqlite",

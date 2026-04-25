@@ -1,22 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! SQLite connection utilities.
+//! SQLite connection utilities shared by all ReifyDB storage subsystems.
 
 use std::fs;
 
-use reifydb_core::internal_error;
-use reifydb_type::Result;
 use rusqlite::{Connection, OpenFlags as SqliteOpenFlags};
 
-use super::{DbPath, OpenFlags};
+use crate::{DbPath, OpenFlags, error::SqliteError};
 
-/// Connect to a SQLite database asynchronously.
-pub(super) fn connect(path: &DbPath, flags: SqliteOpenFlags) -> Result<Connection> {
-	fn connection_failed(path: String, error: String) -> String {
-		format!("Failed to connect to database at {}: {}", path, error)
-	}
-
+/// Connect to a SQLite database.
+pub fn connect(path: &DbPath, flags: SqliteOpenFlags) -> Result<Connection, SqliteError> {
 	match path {
 		DbPath::File(path) => {
 			let path_str = path.to_string_lossy();
@@ -25,36 +19,43 @@ pub(super) fn connect(path: &DbPath, flags: SqliteOpenFlags) -> Result<Connectio
 			if is_uri {
 				let uri_flags = flags | SqliteOpenFlags::SQLITE_OPEN_URI;
 				let path_string = path_str.to_string();
-				Connection::open_with_flags(path_string, uri_flags).map_err(|e| {
-					internal_error!("{}", connection_failed(path_str.to_string(), e.to_string()))
+				Connection::open_with_flags(path_string, uri_flags).map_err(|source| {
+					SqliteError::Connect {
+						path: path_str.to_string(),
+						source,
+					}
 				})
 			} else {
 				let path_clone = path.clone();
-				Connection::open_with_flags(path_clone, flags).map_err(|e| {
-					internal_error!(
-						"{}",
-						connection_failed(path.display().to_string(), e.to_string())
-					)
+				Connection::open_with_flags(path_clone, flags).map_err(|source| SqliteError::Connect {
+					path: path.display().to_string(),
+					source,
 				})
 			}
 		}
 		DbPath::Tmpfs(path) => {
 			let path_clone = path.clone();
-			Connection::open_with_flags(path_clone, flags).map_err(|e| {
-				internal_error!("{}", connection_failed(path.display().to_string(), e.to_string()))
+			Connection::open_with_flags(path_clone, flags).map_err(|source| SqliteError::Connect {
+				path: path.display().to_string(),
+				source,
 			})
 		}
 		DbPath::Memory(path) => {
 			let path_clone = path.clone();
-			Connection::open_with_flags(path_clone, flags).map_err(|e| {
-				internal_error!("{}", connection_failed(path.display().to_string(), e.to_string()))
+			Connection::open_with_flags(path_clone, flags).map_err(|source| SqliteError::Connect {
+				path: path.display().to_string(),
+				source,
 			})
 		}
 	}
 }
 
 /// Resolve the database path, creating directories as needed.
-pub(super) fn resolve_db_path(db_path: DbPath) -> DbPath {
+///
+/// `default_filename` is appended when the caller passes a `DbPath::File`
+/// that points at a directory (no extension), so each subsystem can keep its
+/// own default (e.g. `"cdc.db"` or `"primitive.db"`).
+pub fn resolve_db_path(db_path: DbPath, default_filename: &str) -> DbPath {
 	match db_path {
 		DbPath::Tmpfs(path) => {
 			if let Some(parent) = path.parent() {
@@ -74,7 +75,7 @@ pub(super) fn resolve_db_path(db_path: DbPath) -> DbPath {
 				DbPath::File(config_path)
 			} else if config_path.extension().is_none() {
 				fs::create_dir_all(&config_path).ok();
-				DbPath::File(config_path.join("primitive.db"))
+				DbPath::File(config_path.join(default_filename))
 			} else {
 				if let Some(parent) = config_path.parent() {
 					fs::create_dir_all(parent).ok();
@@ -85,8 +86,8 @@ pub(super) fn resolve_db_path(db_path: DbPath) -> DbPath {
 	}
 }
 
-/// Convert our OpenFlags to rusqlite OpenFlags.
-pub(super) fn convert_flags(flags: &OpenFlags) -> SqliteOpenFlags {
+/// Convert our `OpenFlags` to `rusqlite::OpenFlags`.
+pub fn convert_flags(flags: &OpenFlags) -> SqliteOpenFlags {
 	let mut rusqlite_flags = SqliteOpenFlags::empty();
 
 	if flags.read_write {

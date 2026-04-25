@@ -9,17 +9,18 @@ use std::{ops::Bound, sync::Arc};
 
 use reifydb_core::internal_error;
 use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_sqlite::{
+	SqliteConfig,
+	connection::{connect, convert_flags, resolve_db_path},
+	pragma,
+};
 use reifydb_type::{Result, util::cowvec::CowVec};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction, params,
 };
 use tracing::instrument;
 
-use super::{
-	SqliteConfig,
-	connection::{connect, convert_flags, resolve_db_path},
-	query::build_range_query,
-};
+use super::query::build_range_query;
 use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
 /// Single table name for all storage
@@ -48,23 +49,11 @@ impl SqlitePrimitiveStorage {
 		journal_mode = %config.journal_mode.as_str()
 	))]
 	pub fn new(config: SqliteConfig) -> Self {
-		let db_path = resolve_db_path(config.path);
+		let db_path = resolve_db_path(config.path.clone(), "primitive.db");
 		let flags = convert_flags(&config.flags);
 
 		let conn = connect(&db_path, flags).expect("Failed to connect to database");
-
-		// Configure SQLite pragmas
-		conn.pragma_update(None, "page_size", config.page_size).expect("Failed to set page_size");
-		conn.pragma_update(None, "journal_mode", config.journal_mode.as_str())
-			.expect("Failed to set journal_mode");
-		conn.pragma_update(None, "synchronous", config.synchronous_mode.as_str())
-			.expect("Failed to set synchronous");
-		conn.pragma_update(None, "temp_store", config.temp_store.as_str()).expect("Failed to set temp_store");
-		conn.pragma_update(None, "auto_vacuum", "INCREMENTAL").expect("Failed to set auto_vacuum");
-		conn.pragma_update(None, "cache_size", -(config.cache_size as i32)).expect("Failed to set cache_size");
-		conn.pragma_update(None, "wal_autocheckpoint", config.wal_autocheckpoint)
-			.expect("Failed to set wal_autocheckpoint");
-		conn.pragma_update(None, "mmap_size", config.mmap_size as i64).expect("Failed to set mmap_size");
+		pragma::apply(&conn, &config).expect("Failed to configure SQLite pragmas");
 
 		Self {
 			inner: Arc::new(SqlitePrimitiveStorageInner {

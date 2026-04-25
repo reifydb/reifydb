@@ -9,7 +9,7 @@ description = "Multi-version storage for OLTP operations with MVCC support"
 
 [features]
 default = ["sqlite"]
-sqlite = ["rusqlite"]
+sqlite = ["rusqlite", "reifydb-sqlite"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -17,6 +17,7 @@ reifydb-build = { workspace = true }
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-sqlite = { workspace = true, optional = true }
 reifydb-type = { workspace = true }
 
 tracing = { workspace = true }

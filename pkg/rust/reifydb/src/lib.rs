@@ -40,8 +40,9 @@ pub use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::{Clock, MockClock},
 };
+pub use reifydb_sqlite::SqliteConfig;
 pub use reifydb_store_multi as multi_storage;
-pub use reifydb_store_multi::hot::{sqlite::config::SqliteConfig, storage::HotStorage};
+pub use reifydb_store_multi::hot::storage::HotStorage;
 pub use reifydb_store_single as single_storage;
 // subsystems
 pub use reifydb_sub_api as sub;

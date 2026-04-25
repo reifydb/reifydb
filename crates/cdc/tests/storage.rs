@@ -8,16 +8,13 @@
 
 use std::collections::Bound;
 
-use reifydb_cdc::storage::{
-	CdcStorage, DropBeforeResult,
-	memory::MemoryCdcStorage,
-	sqlite::{config::SqliteCdcConfig, storage::SqliteCdcStorage},
-};
+use reifydb_cdc::storage::{CdcStorage, DropBeforeResult, memory::MemoryCdcStorage, sqlite::storage::SqliteCdcStorage};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::{Cdc, SystemChange},
 };
+use reifydb_sqlite::SqliteConfig;
 use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
 
 fn cdc_minimal(version: u64) -> Cdc {
@@ -274,4 +271,4 @@ macro_rules! storage_trait_tests {
 }
 
 storage_trait_tests!(memory, MemoryCdcStorage::new());
-storage_trait_tests!(sqlite, SqliteCdcStorage::new(SqliteCdcConfig::test()));
+storage_trait_tests!(sqlite, SqliteCdcStorage::new(SqliteConfig::test()));
