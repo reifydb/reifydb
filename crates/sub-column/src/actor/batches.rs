@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_column::{column_block::ColumnBlock, column_chunks::ColumnChunks, compress::Compressor};
+use reifydb_column::{
+	compress::Compressor,
+	snapshot::{ColumnBlock, ColumnChunks},
+};
 use reifydb_core::value::column::{array::canonical::Canonical, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{Result, value::r#type::Type};
 

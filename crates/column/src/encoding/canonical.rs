@@ -10,11 +10,6 @@ use reifydb_type::{Result, value::Value};
 
 use crate::{compress::CompressConfig, encoding::Encoding};
 
-// Canonical encoding for one storage family - identity round-trip plus the
-// cheap stats that can be derived without decoding (currently `NoneCount`).
-// Four constants (`BOOL`/`FIXED`/`VARLEN`/`BIGNUM`) cover the four families;
-// the `EncodingRegistry::builtins()` registers each one so the dispatch model
-// is exercised end-to-end.
 pub struct CanonicalEncoding {
 	pub id: EncodingId,
 }

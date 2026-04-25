@@ -151,7 +151,10 @@ mod tests {
 	use reifydb_runtime::context::clock::Clock;
 
 	use super::*;
-	use crate::{bucket::Bucket, column_block::ColumnBlock, snapshot::Snapshot};
+	use crate::{
+		bucket::Bucket,
+		snapshot::{ColumnBlock, Snapshot},
+	};
 
 	fn empty_block() -> ColumnBlock {
 		ColumnBlock::new(Arc::new(vec![]), vec![])

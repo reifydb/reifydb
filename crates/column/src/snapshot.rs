@@ -1,16 +1,90 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::id::{SeriesId, TableId},
+	value::column::array::Column,
 };
 use reifydb_runtime::context::clock::Instant;
+use reifydb_type::value::r#type::Type;
 
-use crate::{
-	bucket::{Bucket, BucketId},
-	column_block::ColumnBlock,
-};
+use crate::bucket::{Bucket, BucketId};
+
+// A column as a sequence of `Column` chunks, each encoded independently. v1
+// materialization produces single-chunk `ColumnChunks`s; multi-chunk support
+// is reserved for the future batched-scan path.
+#[derive(Clone)]
+pub struct ColumnChunks {
+	pub ty: Type,
+	pub nullable: bool,
+	pub chunks: Vec<Column>,
+}
+
+impl ColumnChunks {
+	pub fn new(ty: Type, nullable: bool, chunks: Vec<Column>) -> Self {
+		Self {
+			ty,
+			nullable,
+			chunks,
+		}
+	}
+
+	pub fn single(ty: Type, nullable: bool, array: Column) -> Self {
+		Self {
+			ty,
+			nullable,
+			chunks: vec![array],
+		}
+	}
+
+	pub fn len(&self) -> usize {
+		self.chunks.iter().map(|c| c.len()).sum()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
+	pub fn chunk_count(&self) -> usize {
+		self.chunks.len()
+	}
+}
+
+pub type Schema = Arc<Vec<(String, Type, bool)>>;
+
+// The column container used by a `Snapshot` - a schema plus one
+// `ColumnChunks` per user column. The schema's tuple entries are
+// `(name, ty, nullable)` in positional order.
+#[derive(Clone)]
+pub struct ColumnBlock {
+	pub schema: Schema,
+	pub columns: Vec<ColumnChunks>,
+}
+
+impl ColumnBlock {
+	pub fn new(schema: Schema, columns: Vec<ColumnChunks>) -> Self {
+		debug_assert_eq!(schema.len(), columns.len(), "ColumnBlock::new: schema and columns length mismatch");
+		Self {
+			schema,
+			columns,
+		}
+	}
+
+	pub fn len(&self) -> usize {
+		self.columns.first().map(|c| c.len()).unwrap_or(0)
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
+	pub fn column_by_name(&self, name: &str) -> Option<(usize, &ColumnChunks)> {
+		self.schema.iter().position(|(n, _, _)| n == name).map(|i| (i, &self.columns[i]))
+	}
+}
 
 // Registry key. Disjoint keyspaces per shape: table snapshots are keyed by
 // `(table_id, commit_version)`, series by `(series_id, bucket)`. Bucket

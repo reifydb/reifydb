@@ -93,11 +93,7 @@ mod tests {
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
-	use crate::{
-		column_block::ColumnBlock,
-		column_chunks::ColumnChunks,
-		snapshot::{SnapshotId, SnapshotSource},
-	};
+	use crate::snapshot::{ColumnBlock, ColumnChunks, SnapshotId, SnapshotSource};
 
 	fn array_from_column_data(cd: &ColumnBuffer) -> Column {
 		let ca = Canonical::from_column_buffer(cd).unwrap();

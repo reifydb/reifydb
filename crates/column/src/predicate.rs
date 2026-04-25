@@ -5,11 +5,10 @@ use reifydb_core::value::column::{array::Column, buffer::ColumnBuffer, mask::Row
 use reifydb_type::{Result, value::Value};
 
 use crate::{
-	column_block::ColumnBlock,
-	column_chunks::ColumnChunks,
 	compute::{self, CompareOp},
 	error::ColumnError,
 	selection::Selection,
+	snapshot::{ColumnBlock, ColumnChunks},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
