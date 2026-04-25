@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+	collections::{BTreeMap, HashSet},
 	sync::Arc,
 };
 
@@ -74,11 +74,6 @@ impl CommittedWindow {
 		self.modified_keys.contains(key)
 	}
 
-	/// Get the modified keys for cleanup purposes
-	pub(crate) fn get_modified_keys(&self) -> &HashSet<EncodedKey> {
-		&self.modified_keys
-	}
-
 	pub(super) fn max_version(&self) -> CommitVersion {
 		self.max_version
 	}
@@ -86,14 +81,13 @@ impl CommittedWindow {
 
 /// Oracle implementation with time-window based conflict detection
 pub(crate) struct OracleInner {
-	pub last_cleanup: CommitVersion,
-
 	/// Time windows containing committed transactions, keyed by window
-	/// start version
+	/// start version. Each window carries its own `modified_keys` set and
+	/// bloom filter, which together act as the conflict-lookup index.
+	/// (We previously kept a denormalized `key_to_windows` index here, but
+	/// it grew unbounded with every distinct write key - dropped in favour
+	/// of bloom-filter scans across the bounded `time_windows`.)
 	pub time_windows: BTreeMap<CommitVersion, CommittedWindow>,
-
-	/// Index: key -> set of window versions that modified this key
-	pub key_to_windows: HashMap<EncodedKey, BTreeSet<CommitVersion>>,
 
 	/// Highest commit version present in any evicted window.
 	/// Any transaction with read-start version < this must be aborted.
@@ -144,9 +138,7 @@ where
 		Self {
 			clock,
 			inner: RwLock::new(OracleInner {
-				last_cleanup: CommitVersion(0),
 				time_windows: BTreeMap::new(),
-				key_to_windows: HashMap::with_capacity(10000),
 				evicted_up_through: CommitVersion(0),
 			}),
 			query: WaterMark::new("txn-mark-query".into(), &actor_system),
@@ -220,37 +212,27 @@ where
 		Span::current().record("write_keys", write_keys.len());
 		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
 
-		// Only check conflicts in windows that contain relevant keys
+		// Only check conflicts in windows that contain relevant keys.
+		// We scan the (bounded) `time_windows` and use each window's bloom
+		// filter to cheaply skip windows that can't possibly hold any of
+		// our keys. Range operations bypass the bloom filter and need a
+		// full window scan. The number of retained windows is bounded by
+		// `OracleWaterMark`, so this is O(retained_windows * keys * bloom).
 		let find_start = self.metrics_clock.instant();
-		let relevant_windows: Vec<CommitVersion> = if !has_keys {
-			// If no specific keys, we need to check recent windows
-			// for range/all operations
-			inner.time_windows.range(version..).take(5).map(|(&v, _)| v).collect()
+		let relevant_windows: Vec<CommitVersion> = if conflicts.has_range_operations() {
+			// Range operations can't be bloom-filtered; check all retained windows.
+			inner.time_windows.keys().copied().collect()
+		} else if !has_keys {
+			// No specific keys and no range ops -> nothing can conflict.
+			Vec::new()
 		} else {
-			let mut windows = HashSet::new();
-
-			// Iterate over combined keys once instead of twice
-			for key in read_keys.iter().chain(write_keys.iter()) {
-				if let Some(window_versions) = inner.key_to_windows.get(key) {
-					windows.extend(window_versions.iter().copied());
-				}
-			}
-
-			// If no windows found via key index, only fall back to full
-			// window scan if there are range operations. For point
-			// operations on new keys, no conflicts are possible since
-			// no other transaction could have written to those keys.
-			if windows.is_empty() {
-				if conflicts.has_range_operations() {
-					// Range operations require checking all windows
-					inner.time_windows.keys().copied().collect()
-				} else {
-					// New keys with no range ops = no possible conflicts
-					Vec::new()
-				}
-			} else {
-				windows.into_iter().collect()
-			}
+			inner.time_windows
+				.iter()
+				.filter(|(_, win)| {
+					read_keys.iter().chain(write_keys.iter()).any(|k| win.might_have_key(k))
+				})
+				.map(|(v, _)| *v)
+				.collect()
 		};
 		Span::current().record("find_windows_us", find_start.elapsed().as_micros() as u64);
 		Span::current().record("relevant_windows", relevant_windows.len());
@@ -359,13 +341,10 @@ where
 
 		if needs_cleanup {
 			let cleanup_start = self.metrics_clock.instant();
+			let safe_evict_below = self.query.done_until();
 			let mut inner = self.inner.write();
 			let inner = &mut *inner;
-			cleanup_old_windows(
-				&mut inner.time_windows,
-				&mut inner.key_to_windows,
-				&mut inner.evicted_up_through,
-			);
+			cleanup_old_windows(&mut inner.time_windows, &mut inner.evicted_up_through, safe_evict_below);
 			Span::current().record("cleanup_us", cleanup_start.elapsed().as_micros() as u64);
 		}
 
@@ -382,7 +361,6 @@ where
 	pub(crate) fn bootstrapping_completed(&self) {
 		let mut inner = self.inner.write();
 		inner.time_windows.clear();
-		inner.key_to_windows.clear();
 	}
 
 	pub(crate) fn version(&self) -> Result<CommitVersion> {
@@ -400,7 +378,6 @@ where
 		{
 			let mut inner = self.inner.write();
 			inner.time_windows.clear();
-			inner.key_to_windows.clear();
 		}
 
 		self.actor_system.shutdown();
@@ -420,6 +397,41 @@ where
 	pub(crate) fn advance_version_for_replica(&self, version: CommitVersion) {
 		self.clock.advance_to(version);
 	}
+
+	/// Allocate the next commit version without registering the transaction
+	/// in the conflict-detection time-windows. Still rejects with `TooOld`
+	/// if the caller's read-version is already past `evicted_up_through`,
+	/// preserving the staleness invariant.
+	///
+	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	pub(crate) fn advance_unchecked(
+		&self,
+		done_read: &mut bool,
+		version: CommitVersion,
+	) -> Result<CreateCommitResult> {
+		// Hold the read lock across clock.next() so the TooOld check and
+		// version allocation observe the same evicted_up_through. The value
+		// is monotonic and we don't register a window, so the race would
+		// be benign even without the lock - but holding it removes that
+		// analysis from the hot path of any future reader. Unlike new_commit,
+		// advance_unchecked never reacquires the write lock, so holding the
+		// read lock across clock.next() is cheap.
+		let inner = self.inner.read();
+		if version < inner.evicted_up_through {
+			return Ok(CreateCommitResult::TooOld);
+		}
+
+		if !*done_read {
+			self.query.done(version);
+			*done_read = true;
+		}
+
+		let commit_version = self.clock.next()?;
+		self.command.begin(commit_version);
+		drop(inner);
+
+		Ok(CreateCommitResult::Success(commit_version))
+	}
 }
 
 impl OracleInner {
@@ -432,20 +444,15 @@ impl OracleInner {
 		let window =
 			self.time_windows.entry(window_start).or_insert_with(|| CommittedWindow::new(window_start));
 
-		// Update key index for all conflict keys
-		let write_keys = conflicts.get_write_keys();
-		for key in write_keys {
-			self.key_to_windows.entry(key.clone()).or_default().insert(window_start);
-		}
-
-		// Add transaction to window
+		// Add transaction to window. The window's own `modified_keys` set
+		// and bloom filter are updated by `add_transaction`, which is now
+		// the sole index used by conflict-detection lookups.
 		let txn = CommittedTxn {
 			version,
 			conflict_manager: Some(conflicts),
 		};
 
 		window.add_transaction(txn);
-		self.last_cleanup = self.last_cleanup.max(version);
 	}
 }
 
@@ -554,13 +561,15 @@ pub mod tests {
 			CreateCommitResult::Success(version) => {
 				assert!(version.0 >= 1); // Should get a new version
 
-				// Check that keys were indexed
+				// Check that the keys ended up in the window's modified_keys index
 				let inner = oracle.inner.read();
-				assert!(inner.key_to_windows.contains_key(&key1));
-				assert!(inner.key_to_windows.contains_key(&key2));
-
-				// Check that window was created
 				assert!(inner.time_windows.len() > 0);
+				let any_window_has_key1 =
+					inner.time_windows.values().any(|w| w.modified_keys.contains(&key1));
+				let any_window_has_key2 =
+					inner.time_windows.values().any(|w| w.modified_keys.contains(&key2));
+				assert!(any_window_has_key1);
+				assert!(any_window_has_key2);
 			}
 			CreateCommitResult::Conflict(_) => panic!("Unexpected conflict for first transaction"),
 			CreateCommitResult::TooOld => panic!("Unexpected TooOld for first transaction"),
@@ -655,16 +664,15 @@ pub mod tests {
 			assert!(matches!(result, CreateCommitResult::Success(_)));
 		}
 
-		// Check key indexing across multiple windows
+		// Check key indexing across multiple windows via the per-window
+		// `modified_keys` set (the source of truth).
 		let inner = oracle.inner.read();
 
-		// key1 should be in windows 0 and 2000 (i=0,2)
-		let key1_windows = inner.key_to_windows.get(&key1).unwrap();
-		assert!(key1_windows.len() >= 1);
+		let key1_window_count = inner.time_windows.values().filter(|w| w.modified_keys.contains(&key1)).count();
+		assert!(key1_window_count >= 1);
 
-		// key2 should be in window 1000 (i=1)
-		let key2_windows = inner.key_to_windows.get(&key2).unwrap();
-		assert!(key2_windows.len() >= 1);
+		let key2_window_count = inner.time_windows.values().filter(|w| w.modified_keys.contains(&key2)).count();
+		assert!(key2_window_count >= 1);
 	}
 
 	#[test]
@@ -738,6 +746,138 @@ pub mod tests {
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
+	/// Regression: range-only reads must scan windows whose `window_start`
+	/// is less than `read_version` but whose contents include transactions
+	/// with `commit_version > read_version`. The `!has_keys` branch in
+	/// `new_commit` (oracle/mod.rs:225-228) limits its scan to
+	/// `time_windows.range(version..).take(5)`, which skips such windows.
+	#[test]
+	fn test_range_only_read_finds_conflict_in_older_window() {
+		// Default OracleWindowSize = 500. Start clock at 749 so T1 commits at 750
+		// and lands in the window keyed by window_start = 500.
+		let oracle = create_test_oracle(749);
+
+		let key_k = create_test_key("k");
+
+		// T1: write to "k". Read version irrelevant; commit version will be 750.
+		let mut conflicts1 = ConflictManager::new();
+		conflicts1.mark_write(&key_k);
+		let mut done_read1 = false;
+		let r1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
+		let commit_v1 = match r1 {
+			CreateCommitResult::Success(v) => v,
+			_ => panic!("T1 should commit"),
+		};
+		assert_eq!(commit_v1, CommitVersion(750));
+
+		// Sanity: T1 lives in the window keyed at 500, so any read_version in
+		// (500, 750) exercises the bug. If defaults change, this assertion
+		// fires before the silent-pass below masks a real regression.
+		{
+			let inner = oracle.inner.read();
+			assert!(
+				inner.time_windows.contains_key(&CommitVersion(500)),
+				"expected T1's window_start to be 500 (default OracleWindowSize=500); \
+				 test assumptions invalidated"
+			);
+		}
+
+		// T2: range-only read covering "k". No read_keys, no write_keys, so
+		// has_keys = false. read_version = 510 is inside window [500, 1000)
+		// but greater than the window's start. T1's commit version (750) is
+		// greater than T2's read version, so T2 must see the conflict.
+		let mut conflicts2 = ConflictManager::new();
+		conflicts2.mark_range(EncodedKeyRange::parse("a..z"));
+		let mut done_read2 = false;
+		let r2 = oracle.new_commit(&mut done_read2, CommitVersion(510), conflicts2).unwrap();
+
+		assert!(
+			matches!(r2, CreateCommitResult::Conflict(_)),
+			"T2's range read of 'k' must conflict with T1's write at version 750 > 510, \
+			 but the !has_keys branch in oracle/mod.rs:225 skips windows whose \
+			 window_start < read_version"
+		);
+	}
+
+	/// Regression: a transaction that has both specific keys AND a range op
+	/// must scan every retained window, not just the windows the bloom filter
+	/// matched on its specific keys. Otherwise a range conflict in a window
+	/// whose bloom does not contain any of our specific keys is silently missed.
+	#[test]
+	fn test_range_op_with_keys_scans_all_windows_not_just_bloom_matches() {
+		// Default OracleWindowSize = 500. Place T_b at v=50 (window @ 0)
+		// and T_a at v=750 (window @ 500) so the two are in different windows.
+		let oracle = create_test_oracle(49);
+
+		let key_alpha = create_test_key("alpha");
+		let key_beta = create_test_key("beta");
+
+		// T_b: writes "beta". Lands in window @ 0. Bloom for window 0
+		// contains "beta" but not "alpha".
+		let mut conflicts_b = ConflictManager::new();
+		conflicts_b.mark_write(&key_beta);
+		let mut done_read_b = false;
+		let r_b = oracle.new_commit(&mut done_read_b, CommitVersion(1), conflicts_b).unwrap();
+		let commit_v_b = match r_b {
+			CreateCommitResult::Success(v) => v,
+			_ => panic!("T_b should commit"),
+		};
+		assert_eq!(commit_v_b, CommitVersion(50));
+
+		// Skip the clock forward so T_a lands in window @ 500.
+		oracle.advance_version_for_replica(CommitVersion(749));
+
+		// T_a: writes "alpha". Lands in window @ 500. Bloom for window 500
+		// contains "alpha" but not "beta".
+		let mut conflicts_a = ConflictManager::new();
+		conflicts_a.mark_write(&key_alpha);
+		let mut done_read_a = false;
+		let r_a = oracle.new_commit(&mut done_read_a, CommitVersion(1), conflicts_a).unwrap();
+		let commit_v_a = match r_a {
+			CreateCommitResult::Success(v) => v,
+			_ => panic!("T_a should commit"),
+		};
+		assert_eq!(commit_v_a, CommitVersion(750));
+
+		// Sanity: both windows exist as expected. If OracleWindowSize defaults
+		// change, this fires before the conflict assertion silently masks a regression.
+		{
+			let inner = oracle.inner.read();
+			assert!(
+				inner.time_windows.contains_key(&CommitVersion(0)),
+				"expected T_b's window_start to be 0 (default OracleWindowSize=500); \
+				 test assumptions invalidated"
+			);
+			assert!(
+				inner.time_windows.contains_key(&CommitVersion(500)),
+				"expected T_a's window_start to be 500 (default OracleWindowSize=500); \
+				 test assumptions invalidated"
+			);
+		}
+
+		// T3: writes "beta" (so has_keys=true; bloom-only path matches window @ 0
+		// only) AND reads range "a..z" (which overlaps "alpha" in window @ 500).
+		// read_version=100 sits between T_b (v=50) and T_a (v=750), so:
+		//   - In window @ 0, max_version=50 <= 100, the early-skip fires before the per-txn loop.
+		//   - Window @ 500 is the only place where the conflict is visible (T_a's "alpha" is in T3's range and
+		//     v=750 > 100).
+		// New code: has_range_operations() => scan all windows => finds conflict.
+		// Old code: bloom-only relevant_windows=[0] when has_keys=true => never visits
+		// window @ 500 => silently misses the range conflict.
+		let mut conflicts_3 = ConflictManager::new();
+		conflicts_3.mark_write(&key_beta);
+		conflicts_3.mark_range(EncodedKeyRange::parse("a..z"));
+		let mut done_read_3 = false;
+		let r_3 = oracle.new_commit(&mut done_read_3, CommitVersion(100), conflicts_3).unwrap();
+
+		assert!(
+			matches!(r_3, CreateCommitResult::Conflict(_)),
+			"T3's range 'a..z' overlaps T_a's write of 'alpha' (v=750 > 100), \
+			 but T3's specific write key 'beta' only bloom-matches window @ 0. \
+			 Range ops must force a scan of all retained windows, including window @ 500."
+		);
+	}
+
 	#[test]
 	fn test_empty_conflict_manager() {
 		let oracle = create_test_oracle(0);
@@ -748,11 +888,14 @@ pub mod tests {
 		let mut done_read = false;
 		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).unwrap();
 
-		// Should succeed but not create any key index entries
+		// Should succeed; no write keys means the window's modified_keys
+		// stays empty.
 		match result {
 			CreateCommitResult::Success(_) => {
 				let inner = oracle.inner.read();
-				assert!(inner.key_to_windows.is_empty());
+				let total_modified: usize =
+					inner.time_windows.values().map(|w| w.modified_keys.len()).sum();
+				assert_eq!(total_modified, 0);
 			}
 			CreateCommitResult::Conflict(_) => {
 				panic!("Empty conflict manager should not cause conflicts")

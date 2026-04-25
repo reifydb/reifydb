@@ -206,6 +206,16 @@ where
 	pub fn mark_write(&mut self, k: &EncodedKey) {
 		self.conflicts.mark_write(k);
 	}
+
+	/// Reserve capacity in the conflict manager's write-key set ahead of a known-size bulk write.
+	pub fn reserve_writes(&mut self, additional: usize) {
+		self.conflicts.reserve_writes(additional);
+	}
+
+	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	pub fn disable_conflict_tracking(&mut self) {
+		self.conflicts.disable();
+	}
 }
 
 impl<L> TransactionManagerCommand<L>
@@ -470,6 +480,48 @@ where
 
 				// version should not be zero if we're inserting
 				// transaction markers.
+				debug_assert_ne!(version, 0);
+
+				Ok((version, all))
+			}
+		}
+	}
+
+	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	#[instrument(name = "transaction::command::commit_pending_unchecked", level = "debug", skip(self), fields(
+		txn_id = %self.id,
+		pending_count = self.pending_writes.len()
+	))]
+	pub(crate) fn commit_pending_unchecked(&mut self) -> Result<(CommitVersion, Vec<Pending>)> {
+		if self.discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+
+		// Drop the conflict manager without consulting it - this commit
+		// is not registered in the oracle's conflict index, so the
+		// previously-collected read/write keys are not needed.
+		let _ = mem::take(&mut self.conflicts);
+		let base_version = self.base_version();
+
+		match self.oracle.advance_unchecked(&mut self.done_query, base_version)? {
+			CreateCommitResult::Conflict(_) => {
+				unreachable!("advance_unchecked never reports a conflict")
+			}
+			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
+			CreateCommitResult::Success(version) => {
+				let _ = mem::take(&mut self.pending_writes);
+				let duplicate_writes = mem::take(&mut self.duplicates);
+				let mut all = mem::take(&mut self.delta_log);
+				all.reserve(duplicate_writes.len());
+
+				for pending in all.iter_mut() {
+					pending.version = version;
+				}
+				for mut pending in duplicate_writes {
+					pending.version = version;
+					all.push(pending);
+				}
+
 				debug_assert_ne!(version, 0);
 
 				Ok((version, all))

@@ -58,7 +58,7 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
+	bulk_insert::builder::{BulkInsertBuilder, Trusted, Unchecked, Validated},
 	interceptor::catalog::MaterializedCatalogInterceptor,
 	vm::{
 		Admin, Command, Query, Subscription,
@@ -639,6 +639,56 @@ impl StandardEngine {
 	/// shape constraints. Invalid data may cause undefined behavior.
 	pub fn bulk_insert_trusted<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Trusted> {
 		BulkInsertBuilder::new_trusted(self, identity)
+	}
+
+	/// Start a bulk insert that bypasses BOTH constraint validation AND the
+	/// oracle's per-key conflict-detection index ("unchecked" mode).
+	///
+	/// # What this skips beyond `bulk_insert_trusted`
+	///
+	/// `bulk_insert_trusted` skips schema/constraint validation but still
+	/// registers the commit's write set in the oracle's conflict-detection
+	/// time-windows so that any concurrent OCC transaction whose read set
+	/// overlaps these writes will be aborted at its own commit time.
+	///
+	/// `bulk_insert_unchecked` skips that registration entirely. The commit
+	/// version still advances and the watermark still progresses, so any
+	/// transaction that reads at version >= this commit will observe the
+	/// new rows. But concurrent OCC transactions that already started
+	/// reading at an older version will NOT detect that this commit
+	/// happened underneath them.
+	///
+	/// # Safety contract - when this is sound
+	///
+	/// Use this method ONLY when ALL of the following hold for the calling
+	/// context:
+	///
+	/// 1. **Single writer.** This commit is the only writer touching the rows it inserts. No other thread / process
+	///    / connection is writing to the same keys concurrently. (For chain ingest: the block-stream consumer is
+	///    the only writer, and blocks arrive in monotonic order.)
+	///
+	/// 2. **No concurrent OCC reader needs to be invalidated.** Any OCC transaction reading at an older version
+	///    will silently miss this commit's writes when computing its own conflict set. If your workload has
+	///    concurrent user transactions that read these rows, they will commit successfully despite a logical
+	///    conflict, and they will see stale data on retry. For trusted ingest where "downstream" readers are
+	///    streaming-view operators that consume each new commit on its own merits (not via OCC retry), this is
+	///    fine.
+	///
+	/// 3. **Caller-side uniqueness.** Validation is skipped, so primary key violations or constraint failures will
+	///    surface as storage errors at insert time rather than as transaction-level conflicts. The caller must
+	///    already ensure the data is well-formed (same contract as `bulk_insert_trusted`).
+	///
+	/// 4. **No need to abort on overlap.** OCC normally aborts a writer whose read set was modified by a more
+	///    recent committer. Skipping the index means a concurrent OCC writer with an overlapping read set will
+	///    commit through. For trusted ingest where there is no competing OCC writer, this is irrelevant.
+	///
+	/// In short: safe for sequential, single-writer, append-mostly trusted
+	/// ingest where downstream readers don't rely on OCC abort-on-overlap.
+	/// Unsafe (silently incorrect) for any workload with concurrent OCC
+	/// transactions that read these keys and rely on conflict detection
+	/// for correctness.
+	pub fn bulk_insert_unchecked<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Unchecked> {
+		BulkInsertBuilder::new_unchecked(self, identity)
 	}
 }
 

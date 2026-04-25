@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{any, marker::PhantomData};
+use std::marker::PhantomData;
 
-use any::TypeId;
 use reifydb_catalog::{
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
@@ -45,22 +44,82 @@ use crate::{
 };
 
 /// Marker trait for validation mode (sealed)
-pub trait ValidationMode: sealed::Sealed + 'static {}
+pub trait ValidationMode: sealed::Sealed + 'static {
+	/// Whether this mode performs full type checking and constraint validation.
+	const VALIDATED: bool;
+
+	/// Run `body` inside a transaction in this mode and commit. `Unchecked`
+	/// routes through `execute_bulk_unchecked`, which disables conflict tracking
+	/// and commits via the bypass path; the others reserve the write-set hint
+	/// (when `total_rows > 0`) and commit through the standard path.
+	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R>
+	where
+		F: FnOnce(&mut CommandTransaction) -> Result<R>;
+}
 
 /// Validated mode - performs full type checking and constraint validation
 pub struct Validated;
-impl ValidationMode for Validated {}
+impl ValidationMode for Validated {
+	const VALIDATED: bool = true;
+
+	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R>
+	where
+		F: FnOnce(&mut CommandTransaction) -> Result<R>,
+	{
+		run_checked(txn, total_rows, body)
+	}
+}
 
 /// Trusted mode - skips validation for pre-validated internal data
 pub struct Trusted;
-impl ValidationMode for Trusted {}
+impl ValidationMode for Trusted {
+	const VALIDATED: bool = false;
+
+	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R>
+	where
+		F: FnOnce(&mut CommandTransaction) -> Result<R>,
+	{
+		run_checked(txn, total_rows, body)
+	}
+}
+
+/// Unchecked mode - skips validation AND skips registering the commit in the
+/// oracle's per-key conflict-detection index. Used by `bulk_insert_unchecked`.
+/// See that method's doc for the safety contract.
+pub struct Unchecked;
+impl ValidationMode for Unchecked {
+	const VALIDATED: bool = false;
+
+	fn run<F, R>(txn: &mut CommandTransaction, _total_rows: usize, body: F) -> Result<R>
+	where
+		F: FnOnce(&mut CommandTransaction) -> Result<R>,
+	{
+		txn.execute_bulk_unchecked(body)
+	}
+}
+
+fn run_checked<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R>
+where
+	F: FnOnce(&mut CommandTransaction) -> Result<R>,
+{
+	// Pre-size the conflict-tracker write set so a known-size bulk insert doesn't
+	// rehash its HashSet thousands of times. Each row produces one row write plus
+	// up to one primary-index write, so reserve 2x the row total.
+	if total_rows > 0 {
+		txn.reserve_writes(total_rows.saturating_mul(2))?;
+	}
+	let r = body(txn)?;
+	txn.commit()?;
+	Ok(r)
+}
 
 pub mod sealed {
 
-	use super::{Trusted, Validated};
+	use super::{Trusted, Unchecked, Validated};
 	pub trait Sealed {}
 	impl Sealed for Validated {}
 	impl Sealed for Trusted {}
+	impl Sealed for Unchecked {}
 }
 
 /// Main builder for bulk insert operations.
@@ -90,6 +149,20 @@ impl<'e> BulkInsertBuilder<'e, Validated> {
 impl<'e> BulkInsertBuilder<'e, Trusted> {
 	/// Create a new bulk insert builder with validation disabled (trusted mode).
 	pub(crate) fn new_trusted(engine: &'e StandardEngine, identity: IdentityId) -> Self {
+		Self {
+			engine,
+			identity,
+			pending_tables: Vec::new(),
+			pending_ringbuffers: Vec::new(),
+			_validation: PhantomData,
+		}
+	}
+}
+
+impl<'e> BulkInsertBuilder<'e, Unchecked> {
+	/// Create a new bulk insert builder with validation AND oracle conflict
+	/// tracking disabled (unchecked mode).
+	pub(crate) fn new_unchecked(engine: &'e StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
 			identity,
@@ -138,35 +211,33 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		let mut txn = self.engine.begin_command(self.identity)?;
 		let catalog = self.engine.catalog();
 		let clock = self.engine.clock();
-		let mut result = BulkInsertResult::default();
 
-		// Process all pending table inserts
-		for pending in self.pending_tables {
-			let table_result =
-				execute_table_insert(&catalog, &mut txn, &pending, TypeId::of::<V>(), clock)?;
-			result.tables.push(table_result);
-		}
+		let total_rows: usize = self.pending_tables.iter().map(|p| p.rows.len()).sum::<usize>()
+			+ self.pending_ringbuffers.iter().map(|p| p.rows.len()).sum::<usize>();
 
-		// Process all pending ring buffer inserts
-		for pending in self.pending_ringbuffers {
-			let rb_result =
-				execute_ringbuffer_insert(&catalog, &mut txn, &pending, TypeId::of::<V>(), clock)?;
-			result.ringbuffers.push(rb_result);
-		}
+		let pending_tables = self.pending_tables;
+		let pending_ringbuffers = self.pending_ringbuffers;
 
-		// Commit the transaction
-		txn.commit()?;
-
-		Ok(result)
+		V::run(&mut txn, total_rows, move |txn| {
+			let mut result = BulkInsertResult::default();
+			for pending in pending_tables {
+				let table_result = execute_table_insert::<V>(&catalog, txn, &pending, clock)?;
+				result.tables.push(table_result);
+			}
+			for pending in pending_ringbuffers {
+				let rb_result = execute_ringbuffer_insert::<V>(&catalog, txn, &pending, clock)?;
+				result.ringbuffers.push(rb_result);
+			}
+			Ok(result)
+		})
 	}
 }
 
 /// Execute a table insert within a transaction
-fn execute_table_insert(
+fn execute_table_insert<V: ValidationMode>(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
-	type_id: TypeId,
 	clock: &Clock,
 ) -> Result<TableInsertResult> {
 	// 1. Look up namespace and table from catalog
@@ -192,8 +263,7 @@ fn execute_table_insert(
 	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
-	let is_validated = type_id == TypeId::of::<Validated>();
-	let coerced_rows = if is_validated {
+	let coerced_rows = if V::VALIDATED {
 		validate_and_coerce_rows(&pending.rows, &table)?
 	} else {
 		reorder_rows_trusted(&pending.rows, &table)?
@@ -227,7 +297,7 @@ fn execute_table_insert(
 		}
 
 		// Validate constraints (coercion is done in batch, but final constraint check still needed)
-		if is_validated {
+		if V::VALIDATED {
 			for (idx, col) in table.columns.iter().enumerate() {
 				col.constraint.validate(&values[idx])?;
 			}
@@ -301,11 +371,10 @@ fn execute_table_insert(
 }
 
 /// Execute a ring buffer insert within a transaction
-fn execute_ringbuffer_insert(
+fn execute_ringbuffer_insert<V: ValidationMode>(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,
-	type_id: TypeId,
 	clock: &Clock,
 ) -> Result<RingBufferInsertResult> {
 	let namespace = catalog
@@ -339,8 +408,7 @@ fn execute_ringbuffer_insert(
 	let shape = get_or_create_ringbuffer_shape(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
-	let is_validated = type_id == TypeId::of::<Validated>();
-	let coerced_rows = if is_validated {
+	let coerced_rows = if V::VALIDATED {
 		validate_and_coerce_rows_rb(&pending.rows, &ringbuffer)?
 	} else {
 		reorder_rows_trusted_rb(&pending.rows, &ringbuffer)?
@@ -368,7 +436,7 @@ fn execute_ringbuffer_insert(
 		}
 
 		// Validate constraints (coercion is done in batch, but final constraint check still needed)
-		if is_validated {
+		if V::VALIDATED {
 			for (idx, col) in ringbuffer.columns.iter().enumerate() {
 				col.constraint.validate(&values[idx])?;
 			}

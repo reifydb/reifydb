@@ -279,6 +279,77 @@ impl CommandTransaction {
 		}
 	}
 
+	/// Run `body` with conflict tracking disabled, then commit via the
+	/// bypass path. This is the only public entry point that reaches
+	/// `commit_unchecked`; both halves it composes are crate-private.
+	///
+	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	pub fn execute_bulk_unchecked<F, R>(&mut self, body: F) -> Result<R>
+	where
+		F: FnOnce(&mut CommandTransaction) -> Result<R>,
+	{
+		self.disable_conflict_tracking()?;
+		let r = body(self)?;
+		self.commit_unchecked()?;
+		Ok(r)
+	}
+
+	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
+	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
+		self.check_active()?;
+
+		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
+			.pending_writes()
+			.iter()
+			.map(|(key, pending)| match &pending.delta {
+				Delta::Set {
+					row,
+					..
+				} => (key.clone(), Some(row.clone())),
+				_ => (key.clone(), None),
+			})
+			.collect();
+
+		let mut ctx = PreCommitContext {
+			flow_changes: self
+				.accumulator
+				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos())),
+			pending_writes: Vec::new(),
+			pending_shapes: Vec::new(),
+			transaction_writes,
+			view_entries: Vec::new(),
+		};
+		self.interceptors.pre_commit.execute(&mut ctx)?;
+
+		if let Some(mut multi) = self.cmd.take() {
+			for (key, value) in &ctx.pending_writes {
+				match value {
+					Some(v) => multi.set(key, v.clone())?,
+					None => multi.remove(key)?,
+				}
+			}
+
+			let id = multi.tm.id();
+			self.state = TransactionState::Committed;
+
+			let changes = TransactionalCatalogChanges::default();
+			let row_changes = take(&mut self.row_changes);
+
+			let version = multi.commit_unchecked()?;
+			self.interceptors.post_commit.execute(PostCommitContext::new(
+				id,
+				version,
+				changes,
+				row_changes,
+			))?;
+
+			Ok(version)
+		} else {
+			unreachable!("Transaction state inconsistency")
+		}
+	}
+
 	/// Rollback the transaction.
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> Result<()> {
@@ -458,6 +529,23 @@ impl CommandTransaction {
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, row)
+	}
+
+	/// Reserve capacity in the conflict tracker for `additional` more write keys.
+	/// Use ahead of a known-size bulk write to avoid HashSet rehash churn.
+	#[inline]
+	pub fn reserve_writes(&mut self, additional: usize) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().reserve_writes(additional);
+		Ok(())
+	}
+
+	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	#[inline]
+	pub(crate) fn disable_conflict_tracking(&mut self) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().disable_conflict_tracking();
+		Ok(())
 	}
 
 	/// Unset a key, preserving the deleted values.

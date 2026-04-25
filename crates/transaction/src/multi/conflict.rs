@@ -28,6 +28,9 @@ pub struct ConflictManager {
 	read_all: bool,
 	/// Keys that will be written to
 	write_keys: HashSet<EncodedKey>,
+	/// When set, every mutating method is a no-op. Used for unchecked bulk
+	/// ingest where the recorded keys would be discarded at commit anyway.
+	disabled: bool,
 }
 
 impl ConflictManager {
@@ -37,21 +40,45 @@ impl ConflictManager {
 			read_ranges: Vec::new(),
 			read_all: false,
 			write_keys: HashSet::new(),
+			disabled: false,
 		}
+	}
+
+	/// Make every subsequent `mark_*` / `reserve_writes` call a no-op.
+	pub fn disable(&mut self) {
+		self.disabled = true;
 	}
 
 	#[instrument(name = "transaction::conflict::mark_read", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	pub fn mark_read(&mut self, key: &EncodedKey) {
+		if self.disabled {
+			return;
+		}
 		self.read_keys.insert(key.clone());
 	}
 
 	#[instrument(name = "transaction::conflict::mark_write", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	pub fn mark_write(&mut self, key: &EncodedKey) {
+		if self.disabled {
+			return;
+		}
 		self.write_keys.insert(key.clone());
+	}
+
+	/// Reserve capacity for `additional` more write keys to avoid HashSet rehashes
+	/// during a known-size bulk write. No-op if the existing free capacity already covers it.
+	pub fn reserve_writes(&mut self, additional: usize) {
+		if self.disabled {
+			return;
+		}
+		self.write_keys.reserve(additional);
 	}
 
 	#[instrument(name = "transaction::conflict::mark_range", level = "trace", skip(self), fields(range_start = ?range.start_bound(), range_end = ?range.end_bound()))]
 	pub fn mark_range(&mut self, range: EncodedKeyRange) {
+		if self.disabled {
+			return;
+		}
 		// Already tracking all - nothing more to do
 		if self.read_all {
 			return;
@@ -604,6 +631,32 @@ pub mod tests {
 		}
 
 		assert!(!cm1.has_conflict(&cm2));
+	}
+
+	#[test]
+	fn test_disabled_marks_are_noop() {
+		let mut cm = ConflictManager::new();
+		cm.disable();
+
+		// Before disable: capacity reservation must also no-op so we don't
+		// pay for an allocation we'll never fill.
+		cm.reserve_writes(10_000);
+
+		let k = create_key("k");
+		cm.mark_read(&k);
+		cm.mark_write(&k);
+		cm.mark_range(EncodedKeyRange::parse("a..z"));
+		cm.mark_iter();
+
+		assert!(cm.get_read_keys().is_empty());
+		assert!(cm.get_write_keys().is_empty());
+		assert!(!cm.has_range_operations());
+
+		// has_conflict against a writer that touches the same key must
+		// still report no conflict, because nothing was recorded.
+		let mut other = ConflictManager::new();
+		other.mark_write(&k);
+		assert!(!cm.has_conflict(&other));
 	}
 
 	#[test]

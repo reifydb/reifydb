@@ -75,10 +75,16 @@ where
 {
 	#[instrument(name = "transaction::manager::write", level = "debug", skip(self))]
 	pub fn write(&self) -> Result<TransactionManagerCommand<L>> {
+		let version = self.inner.version()?;
+		// Register the read snapshot with the query watermark so cleanup
+		// of conflict-detection windows knows this version is still in
+		// flight. The matching `done` is called from `discard()` /
+		// `new_commit` once the transaction terminates.
+		self.inner.query.begin(version);
 		Ok(TransactionManagerCommand {
 			id: TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
 			oracle: self.inner.clone(),
-			version: self.inner.version()?,
+			version,
 			read_version: None,
 			size: 0,
 			count: 0,
@@ -155,6 +161,8 @@ where
 				version,
 			)
 		} else {
+			// Pair with `done_query(safe_version)` in TransactionManagerQuery::drop.
+			self.inner.query.begin(safe_version);
 			TransactionManagerQuery::new_current(
 				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
 				self.clone(),

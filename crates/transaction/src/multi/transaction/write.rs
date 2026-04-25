@@ -117,6 +117,40 @@ impl MultiWriteTransaction {
 
 		Ok(commit_version)
 	}
+
+	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
+	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
+		if self.tm.pending_writes().is_empty() {
+			self.tm.discard();
+			return Ok(CommitVersion(0));
+		}
+
+		let (commit_version, entries) = self.tm.commit_pending_unchecked()?;
+
+		if entries.is_empty() {
+			self.tm.discard();
+			return Ok(CommitVersion(0));
+		}
+
+		let mut raw_deltas = CowVec::with_capacity(entries.len());
+		for pending in &entries {
+			raw_deltas.push(pending.delta.clone());
+		}
+		let optimized = optimize_deltas(raw_deltas.iter().cloned(), self.tm.preexisting_keys());
+		let deltas = CowVec::new(optimized);
+
+		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
+
+		self.tm.discard();
+
+		// Order matters: emit PostCommitEvent before done_commit.
+		// See `commit` above for the CDC checkpoint race this avoids.
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version));
+		self.tm.oracle.done_commit(commit_version);
+
+		Ok(commit_version)
+	}
 }
 
 impl MultiWriteTransaction {
@@ -170,6 +204,16 @@ impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::set", level = "trace", skip(self, row), fields(key_hex = %hex::display(key.as_ref()), value_len = row.len()))]
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.tm.set(key, row)
+	}
+
+	/// Reserve capacity for `additional` more write keys ahead of a known-size bulk write.
+	pub fn reserve_writes(&mut self, additional: usize) {
+		self.tm.reserve_writes(additional);
+	}
+
+	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	pub(crate) fn disable_conflict_tracking(&mut self) {
+		self.tm.disable_conflict_tracking();
 	}
 
 	#[instrument(name = "transaction::command::unset", level = "trace", skip(self, row), fields(key_hex = %hex::display(key.as_ref()), value_len = row.len()))]
