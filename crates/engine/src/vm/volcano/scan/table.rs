@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	error::diagnostic,
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable},
@@ -38,9 +39,16 @@ pub struct TableScanNode {
 	shape: Option<RowShape>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
+	scan_limit: Option<usize>,
+	min_commit_version: Option<CommitVersion>,
 }
 
 impl TableScanNode {
+	pub fn with_min_commit_version(mut self, min_commit_version: Option<CommitVersion>) -> Self {
+		self.min_commit_version = min_commit_version;
+		self
+	}
+
 	pub fn new(table: ResolvedTable, context: Arc<QueryContext>, rx: &mut Transaction<'_>) -> Result<Self> {
 		let mut storage_types = Vec::with_capacity(table.columns().len());
 		let mut dictionaries = Vec::with_capacity(table.columns().len());
@@ -73,6 +81,8 @@ impl TableScanNode {
 			shape: None,
 			last_key: None,
 			exhausted: false,
+			scan_limit: None,
+			min_commit_version: None,
 		})
 	}
 
@@ -121,7 +131,11 @@ impl QueryNode for TableScanNode {
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
 
-		let mut stream = rx.range(range, RangeScope::All, batch_size as usize)?;
+		let scope = match self.min_commit_version {
+			Some(v) => RangeScope::After(v),
+			None => RangeScope::All,
+		};
+		let mut stream = rx.range(range, scope, batch_size as usize)?;
 
 		for _ in 0..batch_size {
 			match stream.next() {
@@ -203,7 +217,11 @@ impl QueryNode for TableScanNode {
 
 		let range = RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref());
 
-		let mut stream = rx.range(range, RangeScope::All, batch_size as usize)?;
+		let scope = match self.min_commit_version {
+			Some(v) => RangeScope::After(v),
+			None => RangeScope::All,
+		};
+		let mut stream = rx.range(range, scope, batch_size as usize)?;
 
 		let mut encoded_rows = Vec::with_capacity(batch_size as usize);
 		let mut row_numbers = Vec::with_capacity(batch_size as usize);

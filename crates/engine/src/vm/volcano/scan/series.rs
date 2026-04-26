@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::key::EncodedKey,
 	interface::resolved::ResolvedSeries,
 	key::{
@@ -36,6 +37,8 @@ pub struct SeriesScanNode {
 	headers: ColumnHeaders,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
+	scan_limit: Option<usize>,
+	min_commit_version: Option<CommitVersion>,
 }
 
 impl SeriesScanNode {
@@ -66,7 +69,14 @@ impl SeriesScanNode {
 			headers,
 			last_key: None,
 			exhausted: false,
+			scan_limit: None,
+			min_commit_version: None,
 		})
+	}
+
+	pub fn with_min_commit_version(mut self, min_commit_version: Option<CommitVersion>) -> Self {
+		self.min_commit_version = min_commit_version;
+		self
 	}
 }
 
@@ -107,7 +117,11 @@ impl QueryNode for SeriesScanNode {
 
 		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;
 
-		let mut stream = rx.range(range, RangeScope::All, batch_size as usize)?;
+		let scope = match self.min_commit_version {
+			Some(v) => RangeScope::After(v),
+			None => RangeScope::All,
+		};
+		let mut stream = rx.range(range, scope, batch_size as usize)?;
 		let mut count = 0;
 
 		for entry in stream.by_ref() {
