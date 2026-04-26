@@ -33,7 +33,7 @@ use reifydb_type::{Result, util::hex, value::Value};
 use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
 
-pub(crate) use crate::multi::oracle::{CreateCommitResult, Oracle};
+pub(crate) use crate::multi::oracle::Oracle;
 use crate::{TransactionId, multi::types::*, single::SingleTransaction};
 
 pub mod manager;
@@ -46,9 +46,7 @@ use reifydb_store_single::SingleStore;
 
 use crate::multi::{
 	MultiReadTransaction, MultiReplicaTransaction, MultiWriteTransaction,
-	conflict::ConflictManager,
-	pending::PendingWrites,
-	transaction::manager::{TransactionManagerCommand, TransactionManagerQuery},
+	transaction::manager::TransactionManagerQuery,
 };
 
 pub struct TransactionManager<L>
@@ -66,36 +64,6 @@ where
 		Self {
 			inner: self.inner.clone(),
 		}
-	}
-}
-
-impl<L> TransactionManager<L>
-where
-	L: VersionProvider,
-{
-	#[instrument(name = "transaction::manager::write", level = "debug", skip(self))]
-	pub fn write(&self) -> Result<TransactionManagerCommand<L>> {
-		let version = self.inner.version()?;
-		// Register the read snapshot with the query watermark so cleanup
-		// of conflict-detection windows knows this version is still in
-		// flight. The matching `done` is called from `discard()` /
-		// `new_commit` once the transaction terminates.
-		self.inner.query.begin(version);
-		Ok(TransactionManagerCommand {
-			id: TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
-			oracle: self.inner.clone(),
-			version,
-			read_version: None,
-			size: 0,
-			count: 0,
-			conflicts: ConflictManager::new(),
-			pending_writes: PendingWrites::new(),
-			duplicates: Vec::new(),
-			delta_log: Vec::new(),
-			preexisting_keys: Default::default(),
-			discarded: false,
-			done_query: false,
-		})
 	}
 }
 
@@ -132,6 +100,13 @@ where
 	/// Get the shared configuration.
 	pub fn config(&self) -> Arc<dyn GetConfig> {
 		self.inner.config()
+	}
+
+	/// Access the underlying oracle. Crate-private so the write/replica
+	/// transactions can read snapshot version, register on watermarks, and
+	/// invoke `new_commit` / `advance_unchecked` directly.
+	pub(crate) fn oracle(&self) -> &Arc<Oracle<L>> {
+		&self.inner
 	}
 
 	/// Clear the conflict detection window after bootstrap.

@@ -7,18 +7,23 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
-	interface::store::{MultiVersionBatch, MultiVersionRow},
+	interface::{
+		change::Change,
+		store::{MultiVersionBatch, MultiVersionRow},
+	},
 };
 use reifydb_type::Result;
 use tracing::instrument;
 
 use crate::{
 	TransactionId,
+	change::RowChange,
 	error::TransactionError,
 	multi::{
 		pending::PendingWrites,
 		transaction::{MultiTransaction, replica::MultiReplicaTransaction},
 	},
+	transaction::write::Write,
 };
 
 /// A replica transaction for applying replicated catalog changes.
@@ -96,7 +101,7 @@ impl ReplicaTransaction {
 	/// Get the transaction ID.
 	#[inline]
 	pub fn id(&self) -> TransactionId {
-		self.rpl.as_ref().unwrap().tm.id()
+		self.rpl.as_ref().unwrap().id()
 	}
 
 	/// Get access to the pending writes in this transaction.
@@ -191,5 +196,32 @@ impl Drop for ReplicaTransaction {
 		{
 			let _ = cmd.rollback();
 		}
+	}
+}
+
+impl Write for ReplicaTransaction {
+	#[inline]
+	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		ReplicaTransaction::set(self, key, row)
+	}
+	#[inline]
+	fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		ReplicaTransaction::unset(self, key, row)
+	}
+	#[inline]
+	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+		ReplicaTransaction::remove(self, key)
+	}
+	#[inline]
+	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
+		ReplicaTransaction::mark_preexisting(self, key)
+	}
+	#[inline]
+	fn track_row_change(&mut self, _change: RowChange) {
+		// Replicas do not generate row-change events.
+	}
+	#[inline]
+	fn track_flow_change(&mut self, _change: Change) {
+		// Replicas do not run flow processing.
 	}
 }

@@ -32,6 +32,7 @@ use crate::{
 	change::{RowChange, TransactionalCatalogChanges, TransactionalChanges},
 	change_accumulator::ChangeAccumulator,
 	error::TransactionError,
+	transaction::write::Write,
 	interceptor::{
 		WithInterceptors,
 		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
@@ -158,7 +159,7 @@ impl AdminTransaction {
 		clock: Clock,
 	) -> Result<Self> {
 		let cmd = multi.begin_command()?;
-		let txn_id = cmd.tm.id();
+		let txn_id = cmd.id();
 		Ok(Self {
 			cmd: Some(cmd),
 			multi,
@@ -270,7 +271,7 @@ impl AdminTransaction {
 				}
 			}
 
-			let id = multi.tm.id();
+			let id = multi.id();
 			self.state = TransactionState::Committed;
 
 			let changes = take(&mut self.changes);
@@ -426,7 +427,7 @@ impl AdminTransaction {
 	/// Get the transaction ID
 	#[inline]
 	pub fn id(&self) -> TransactionId {
-		self.cmd.as_ref().unwrap().tm.id()
+		self.cmd.as_ref().unwrap().id()
 	}
 
 	/// Get a value by key
@@ -519,6 +520,33 @@ impl AdminTransaction {
 impl WithEventBus for AdminTransaction {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
+	}
+}
+
+impl Write for AdminTransaction {
+	#[inline]
+	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		AdminTransaction::set(self, key, row)
+	}
+	#[inline]
+	fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		AdminTransaction::unset(self, key, row)
+	}
+	#[inline]
+	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+		AdminTransaction::remove(self, key)
+	}
+	#[inline]
+	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
+		AdminTransaction::mark_preexisting(self, key)
+	}
+	#[inline]
+	fn track_row_change(&mut self, change: RowChange) {
+		AdminTransaction::track_row_change(self, change)
+	}
+	#[inline]
+	fn track_flow_change(&mut self, change: Change) {
+		AdminTransaction::track_flow_change(self, change)
 	}
 }
 

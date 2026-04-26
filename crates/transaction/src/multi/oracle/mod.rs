@@ -468,6 +468,7 @@ where
 #[cfg(test)]
 pub mod tests {
 	use std::{
+		mem::discriminant,
 		sync::{
 			Arc, Barrier,
 			atomic::{AtomicU64, Ordering},
@@ -1197,7 +1198,7 @@ pub mod tests {
 		let mut done_read1 = false;
 		let v1 = match oracle.new_commit(&mut done_read1, CommitVersion(1), cm1).unwrap() {
 			CreateCommitResult::Success(v) => v,
-			other => panic!("T1 should commit, got variant {:?}", std::mem::discriminant(&other)),
+			other => panic!("T1 should commit, got variant {:?}", discriminant(&other)),
 		};
 		assert!(v1.0 >= 2, "T1's commit version should be at least 2, got {}", v1.0);
 

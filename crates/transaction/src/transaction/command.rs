@@ -32,6 +32,7 @@ use crate::{
 	change::{RowChange, TransactionalCatalogChanges},
 	change_accumulator::ChangeAccumulator,
 	error::TransactionError,
+	transaction::write::Write,
 	interceptor::{
 		WithInterceptors,
 		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
@@ -258,7 +259,7 @@ impl CommandTransaction {
 				}
 			}
 
-			let id = multi.tm.id();
+			let id = multi.id();
 			self.state = TransactionState::Committed;
 
 			let changes = TransactionalCatalogChanges::default();
@@ -343,7 +344,7 @@ impl CommandTransaction {
 				}
 			}
 
-			let id = multi.tm.id();
+			let id = multi.id();
 			self.state = TransactionState::Committed;
 
 			let changes = TransactionalCatalogChanges::default();
@@ -498,7 +499,7 @@ impl CommandTransaction {
 	/// Get the transaction ID
 	#[inline]
 	pub fn id(&self) -> TransactionId {
-		self.cmd.as_ref().unwrap().tm.id()
+		self.cmd.as_ref().unwrap().id()
 	}
 
 	/// Get a value by key
@@ -612,6 +613,33 @@ impl CommandTransaction {
 impl WithEventBus for CommandTransaction {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
+	}
+}
+
+impl Write for CommandTransaction {
+	#[inline]
+	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		CommandTransaction::set(self, key, row)
+	}
+	#[inline]
+	fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		CommandTransaction::unset(self, key, row)
+	}
+	#[inline]
+	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+		CommandTransaction::remove(self, key)
+	}
+	#[inline]
+	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
+		CommandTransaction::mark_preexisting(self, key)
+	}
+	#[inline]
+	fn track_row_change(&mut self, change: RowChange) {
+		CommandTransaction::track_row_change(self, change)
+	}
+	#[inline]
+	fn track_flow_change(&mut self, change: Change) {
+		CommandTransaction::track_flow_change(self, change)
 	}
 }
 

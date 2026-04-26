@@ -94,7 +94,7 @@ use crate::{
 	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{
 		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
-		replica::ReplicaTransaction,
+		replica::ReplicaTransaction, write::Write,
 	},
 };
 
@@ -112,6 +112,7 @@ pub mod catalog;
 pub mod command;
 pub mod query;
 pub mod replica;
+pub mod write;
 
 /// Opaque savepoint for per-test transaction isolation.
 pub struct Savepoint {
@@ -600,71 +601,47 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
+	/// Resolve to the underlying `WriteOps` impl. Panics on `Query`,
+	/// matching the prior per-method panic site.
+	fn write_ops(&mut self) -> &mut dyn Write {
+		match self {
+			Transaction::Command(txn) => &mut **txn,
+			Transaction::Admin(txn) => &mut **txn,
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Test(t) => &mut *t.inner,
+			Transaction::Replica(txn) => &mut **txn,
+		}
+	}
+
 	/// Set a key-value pair. Panics on Query transactions.
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		match self {
-			Transaction::Command(txn) => txn.set(key, row),
-			Transaction::Admin(txn) => txn.set(key, row),
-			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Test(t) => t.inner.set(key, row),
-			Transaction::Replica(txn) => txn.set(key, row),
-		}
+		Write::set(self.write_ops(), key, row)
 	}
 
 	/// Unset (delete with tombstone) a key-value pair. Panics on Query transactions.
 	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		match self {
-			Transaction::Command(txn) => txn.unset(key, row),
-			Transaction::Admin(txn) => txn.unset(key, row),
-			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Test(t) => t.inner.unset(key, row),
-			Transaction::Replica(txn) => txn.unset(key, row),
-		}
+		Write::unset(self.write_ops(), key, row)
 	}
 
 	/// Remove a key. Panics on Query transactions.
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		match self {
-			Transaction::Command(txn) => txn.remove(key),
-			Transaction::Admin(txn) => txn.remove(key),
-			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Test(t) => t.inner.remove(key),
-			Transaction::Replica(txn) => txn.remove(key),
-		}
+		Write::remove(self.write_ops(), key)
 	}
 
 	pub fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
-		match self {
-			Transaction::Command(txn) => txn.mark_preexisting(key),
-			Transaction::Admin(txn) => txn.mark_preexisting(key),
-			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Test(t) => t.inner.mark_preexisting(key),
-			Transaction::Replica(txn) => txn.mark_preexisting(key),
-		}
+		Write::mark_preexisting(self.write_ops(), key)
 	}
 
 	/// Track a row change for post-commit event emission.
 	/// No-op on Replica transactions. Panics on Query transactions.
 	pub fn track_row_change(&mut self, change: RowChange) {
-		match self {
-			Transaction::Command(txn) => txn.track_row_change(change),
-			Transaction::Admin(txn) => txn.track_row_change(change),
-			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Test(t) => t.inner.track_row_change(change),
-			Transaction::Replica(_) => {}
-		}
+		Write::track_row_change(self.write_ops(), change)
 	}
 
 	/// Track a flow change for transactional view pre-commit processing.
 	/// No-op on Replica transactions. Panics on Query transactions.
 	pub fn track_flow_change(&mut self, change: Change) {
-		match self {
-			Transaction::Command(txn) => txn.track_flow_change(change),
-			Transaction::Admin(txn) => txn.track_flow_change(change),
-			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Test(t) => t.inner.track_flow_change(change),
-			Transaction::Replica(_) => {}
-		}
+		Write::track_flow_change(self.write_ops(), change)
 	}
 
 	/// Record a test event dispatch. No-op for non-Test transactions.
