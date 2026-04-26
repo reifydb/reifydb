@@ -11,6 +11,9 @@ pub struct BlockCache {
 }
 
 impl BlockCache {
+	/// Default: 8 blocks * 1024 entries ~= 8K cached entries.
+	pub const DEFAULT_CAPACITY: usize = 8;
+
 	pub fn new(capacity: usize) -> Self {
 		Self {
 			inner: Arc::new(LruCache::new(capacity.max(1))),

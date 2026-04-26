@@ -49,6 +49,7 @@ pub enum ConfigKey {
 	CdcCompactSafetyLag,
 	CdcCompactMaxBlocksPerTick,
 	CdcCompactBlockCacheCapacity,
+	CdcCompactZstdLevel,
 }
 
 impl ConfigKey {
@@ -64,6 +65,7 @@ impl ConfigKey {
 			Self::CdcCompactSafetyLag,
 			Self::CdcCompactMaxBlocksPerTick,
 			Self::CdcCompactBlockCacheCapacity,
+			Self::CdcCompactZstdLevel,
 		]
 	}
 
@@ -81,6 +83,7 @@ impl ConfigKey {
 			Self::CdcCompactSafetyLag => Value::Uint8(1024),
 			Self::CdcCompactMaxBlocksPerTick => Value::Uint8(16),
 			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
+			Self::CdcCompactZstdLevel => Value::Uint1(7),
 		}
 	}
 
@@ -104,6 +107,10 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => {
 				"Number of decompressed CDC blocks held in the in-memory LRU cache."
 			}
+			Self::CdcCompactZstdLevel => {
+				"Zstd compression level for CDC blocks. Range 1-22; higher means smaller blocks but \
+				 slower compression. Decompression cost is independent of level."
+			}
 		}
 	}
 
@@ -119,6 +126,7 @@ impl ConfigKey {
 			Self::CdcCompactSafetyLag => false,
 			Self::CdcCompactMaxBlocksPerTick => false,
 			Self::CdcCompactBlockCacheCapacity => true,
+			Self::CdcCompactZstdLevel => false,
 		}
 	}
 
@@ -134,6 +142,7 @@ impl ConfigKey {
 			Self::CdcCompactSafetyLag => &[Type::Uint8],
 			Self::CdcCompactMaxBlocksPerTick => &[Type::Uint8],
 			Self::CdcCompactBlockCacheCapacity => &[Type::Uint8],
+			Self::CdcCompactZstdLevel => &[Type::Uint1],
 		}
 	}
 
@@ -153,6 +162,7 @@ impl ConfigKey {
 			Self::CdcCompactSafetyLag => false,
 			Self::CdcCompactMaxBlocksPerTick => false,
 			Self::CdcCompactBlockCacheCapacity => false,
+			Self::CdcCompactZstdLevel => false,
 		}
 	}
 
@@ -193,6 +203,11 @@ impl ConfigKey {
 				Value::Uint8(0) => {
 					Err("CDC_COMPACT_BLOCK_CACHE_CAPACITY must be greater than zero".to_string())
 				}
+				_ => Ok(()),
+			},
+			Self::CdcCompactZstdLevel => match value {
+				Value::Uint1(v) if (1..=22).contains(v) => Ok(()),
+				Value::Uint1(_) => Err("CDC_COMPACT_ZSTD_LEVEL must be in [1, 22]".to_string()),
 				_ => Ok(()),
 			},
 			_ => Ok(()),
@@ -291,6 +306,7 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCompactSafetyLag => write!(f, "CDC_COMPACT_SAFETY_LAG"),
 			Self::CdcCompactMaxBlocksPerTick => write!(f, "CDC_COMPACT_MAX_BLOCKS_PER_TICK"),
 			Self::CdcCompactBlockCacheCapacity => write!(f, "CDC_COMPACT_BLOCK_CACHE_CAPACITY"),
+			Self::CdcCompactZstdLevel => write!(f, "CDC_COMPACT_ZSTD_LEVEL"),
 		}
 	}
 }
@@ -310,6 +326,7 @@ impl FromStr for ConfigKey {
 			"CDC_COMPACT_SAFETY_LAG" => Ok(Self::CdcCompactSafetyLag),
 			"CDC_COMPACT_MAX_BLOCKS_PER_TICK" => Ok(Self::CdcCompactMaxBlocksPerTick),
 			"CDC_COMPACT_BLOCK_CACHE_CAPACITY" => Ok(Self::CdcCompactBlockCacheCapacity),
+			"CDC_COMPACT_ZSTD_LEVEL" => Ok(Self::CdcCompactZstdLevel),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -347,6 +364,15 @@ pub trait GetConfig: Send + Sync {
 		match val {
 			Value::Uint8(v) => v,
 			v => panic!("config key '{}' expected Uint8, got {:?}", key, v),
+		}
+	}
+
+	/// Get the current value as a u8. Panics if the value is not Value::Uint1.
+	fn get_config_uint1(&self, key: ConfigKey) -> u8 {
+		let val = self.get_config(key);
+		match val {
+			Value::Uint1(v) => v,
+			v => panic!("config key '{}' expected Uint1, got {:?}", key, v),
 		}
 	}
 
@@ -455,12 +481,13 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 10);
+		assert_eq!(all.len(), 11);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
 		assert!(all.contains(&ConfigKey::CdcCompactMaxBlocksPerTick));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
+		assert!(all.contains(&ConfigKey::CdcCompactZstdLevel));
 	}
 
 	#[test]
