@@ -25,7 +25,7 @@ pub enum TransactionValue {
 		key: EncodedKey,
 		row: EncodedRow,
 	},
-	Pending(Pending),
+	Pending(DeltaEntry),
 	Committed(Committed),
 }
 
@@ -169,8 +169,8 @@ impl From<(CommitVersion, &EncodedKey, &EncodedRow)> for TransactionValue {
 	}
 }
 
-impl From<Pending> for TransactionValue {
-	fn from(pending: Pending) -> Self {
+impl From<DeltaEntry> for TransactionValue {
+	fn from(pending: DeltaEntry) -> Self {
 		Self::Pending(pending)
 	}
 }
@@ -213,24 +213,24 @@ impl Committed {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Pending {
+pub struct DeltaEntry {
 	pub delta: Delta,
 	pub version: CommitVersion,
 }
 
-impl PartialOrd for Pending {
+impl PartialOrd for DeltaEntry {
 	fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
 		Some(self.cmp(other))
 	}
 }
 
-impl Ord for Pending {
+impl Ord for DeltaEntry {
 	fn cmp(&self, other: &Self) -> cmp::Ordering {
 		self.delta.key().cmp(other.delta.key()).then_with(|| Reverse(self.version).cmp(&Reverse(other.version)))
 	}
 }
 
-impl Clone for Pending {
+impl Clone for DeltaEntry {
 	fn clone(&self) -> Self {
 		Self {
 			version: self.version,
@@ -239,7 +239,7 @@ impl Clone for Pending {
 	}
 }
 
-impl Pending {
+impl DeltaEntry {
 	pub fn delta(&self) -> &Delta {
 		&self.delta
 	}

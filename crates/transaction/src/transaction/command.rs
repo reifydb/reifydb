@@ -290,7 +290,7 @@ impl CommandTransaction {
 	/// detection. `rollback` resets `ConflictManager.disabled` so a reused
 	/// transaction resumes normal tracking.
 	///
-	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	/// See the "Unchecked commits" section in `multi::transaction` for the safety contract.
 	pub fn execute_bulk_unchecked<F, R>(&mut self, body: F) -> Result<R>
 	where
 		F: FnOnce(&mut CommandTransaction) -> Result<R>,
@@ -307,7 +307,7 @@ impl CommandTransaction {
 		Ok(r)
 	}
 
-	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	/// See the "Unchecked commits" section in `multi::transaction` for the safety contract.
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
 	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
@@ -553,7 +553,7 @@ impl CommandTransaction {
 		Ok(())
 	}
 
-	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	/// See the "Unchecked commits" section in `multi::transaction` for the safety contract.
 	#[inline]
 	pub(crate) fn disable_conflict_tracking(&mut self) -> Result<()> {
 		self.check_active()?;

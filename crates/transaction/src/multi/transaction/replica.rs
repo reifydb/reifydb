@@ -28,8 +28,8 @@ use crate::{
 		marker::Marker,
 		oracle::Oracle,
 		pending::PendingWrites,
-		transaction::write::MergePendingIterator,
-		types::{Pending, TransactionValue},
+		transaction::write::{Lifecycle, MergePendingIterator},
+		types::{DeltaEntry, TransactionValue},
 	},
 };
 
@@ -47,12 +47,11 @@ pub struct MultiReplicaTransaction {
 	pub(crate) oracle: Arc<Oracle<StandardVersionProvider>>,
 	pub(crate) conflicts: ConflictManager,
 	pub(crate) pending_writes: PendingWrites,
-	pub(crate) duplicates: Vec<Pending>,
-	pub(crate) delta_log: Vec<Pending>,
+	pub(crate) duplicates: Vec<DeltaEntry>,
+	pub(crate) delta_log: Vec<DeltaEntry>,
 	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
 
-	pub(crate) discarded: bool,
-	pub(crate) done_query: bool,
+	pub(crate) lifecycle: Lifecycle,
 
 	commit_version: CommitVersion,
 }
@@ -62,7 +61,7 @@ impl MultiReplicaTransaction {
 	pub fn new(engine: MultiTransaction, version: CommitVersion) -> Result<Self> {
 		let oracle = engine.tm.oracle().clone();
 		let snapshot = oracle.version()?;
-		oracle.query.begin(snapshot);
+		oracle.query.register_in_flight(snapshot);
 
 		let id = TransactionId::generate(oracle.metrics_clock(), oracle.rng());
 		Ok(Self {
@@ -78,16 +77,25 @@ impl MultiReplicaTransaction {
 			duplicates: Vec::new(),
 			delta_log: Vec::new(),
 			preexisting_keys: HashSet::new(),
-			discarded: false,
-			done_query: false,
+			lifecycle: Lifecycle::Active,
 			commit_version: version,
 		})
+	}
+
+	fn transition_to(&mut self, next: Lifecycle) {
+		debug_assert!(matches!(
+			(self.lifecycle, next),
+			(Lifecycle::Active, Lifecycle::QueryDone)
+				| (Lifecycle::Active, Lifecycle::Discarded)
+				| (Lifecycle::QueryDone, Lifecycle::Discarded)
+		));
+		self.lifecycle = next;
 	}
 }
 
 impl Drop for MultiReplicaTransaction {
 	fn drop(&mut self) {
-		if !self.discarded {
+		if self.lifecycle != Lifecycle::Discarded {
 			self.discard();
 		}
 	}
@@ -160,17 +168,17 @@ impl MultiReplicaTransaction {
 		});
 		duplicate_writes.into_iter().for_each(|item| raw_deltas.push(item.delta));
 
-		CowVec::new(optimize_deltas(raw_deltas.into_iter(), &self.preexisting_keys))
+		CowVec::new(optimize_deltas(raw_deltas, &self.preexisting_keys))
 	}
 }
 
 impl MultiReplicaTransaction {
 	#[instrument(name = "transaction::replica::set", level = "trace", skip(self, row))]
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(Pending {
+		self.modify(DeltaEntry {
 			delta: Delta::Set {
 				key: key.clone(),
 				row,
@@ -181,10 +189,10 @@ impl MultiReplicaTransaction {
 
 	#[instrument(name = "transaction::replica::unset", level = "trace", skip(self, row))]
 	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(Pending {
+		self.modify(DeltaEntry {
 			delta: Delta::Unset {
 				key: key.clone(),
 				row,
@@ -195,10 +203,10 @@ impl MultiReplicaTransaction {
 
 	#[instrument(name = "transaction::replica::remove", level = "trace", skip(self))]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(Pending {
+		self.modify(DeltaEntry {
 			delta: Delta::Remove {
 				key: key.clone(),
 			},
@@ -208,7 +216,7 @@ impl MultiReplicaTransaction {
 
 	#[instrument(name = "transaction::replica::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> Result<()> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		self.pending_writes.rollback();
@@ -220,7 +228,7 @@ impl MultiReplicaTransaction {
 
 	#[instrument(name = "transaction::replica::contains_key", level = "trace", skip(self))]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		let version = self.version();
@@ -240,13 +248,13 @@ impl MultiReplicaTransaction {
 
 	#[instrument(name = "transaction::replica::get", level = "trace", skip(self))]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		let version = self.version();
 		if let Some(v) = self.pending_writes.get(key) {
 			if v.row().is_some() {
-				return Ok(Some(Pending {
+				return Ok(Some(DeltaEntry {
 					delta: match v.row() {
 						Some(row) => Delta::Set {
 							key: key.clone(),
@@ -268,7 +276,7 @@ impl MultiReplicaTransaction {
 }
 
 impl MultiReplicaTransaction {
-	fn modify(&mut self, pending: Pending) -> Result<()> {
+	fn modify(&mut self, pending: DeltaEntry) -> Result<()> {
 		let cnt = self.count + 1;
 		let size = self.size + self.pending_writes.estimate_size(&pending);
 		if cnt >= self.pending_writes.max_batch_entries() || size >= self.pending_writes.max_batch_size() {
@@ -287,7 +295,7 @@ impl MultiReplicaTransaction {
 		if let Some((old_key, old_value)) = self.pending_writes.remove_entry(key)
 			&& old_value.version != version
 		{
-			self.duplicates.push(Pending {
+			self.duplicates.push(DeltaEntry {
 				delta: match row {
 					Some(row) => Delta::Set {
 						key: old_key,
@@ -306,23 +314,17 @@ impl MultiReplicaTransaction {
 		Ok(())
 	}
 
-	fn finish_query(&mut self) {
-		if !self.done_query {
-			self.done_query = true;
-			self.oracle.query.done(self.version);
-		}
-	}
-
 	pub fn discard(&mut self) {
-		if self.discarded {
-			return;
+		match self.lifecycle {
+			Lifecycle::Discarded => return,
+			Lifecycle::Active => self.oracle.query.mark_finished(self.version),
+			Lifecycle::QueryDone => {}
 		}
-		self.discarded = true;
-		self.finish_query();
+		self.transition_to(Lifecycle::Discarded);
 	}
 
 	pub fn is_discard(&self) -> bool {
-		self.discarded
+		self.lifecycle == Lifecycle::Discarded
 	}
 }
 
@@ -356,7 +358,7 @@ impl MultiReplicaTransaction {
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, Pending)> =
+		let pending: Vec<(EncodedKey, DeltaEntry)> =
 			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range(range, version, batch_size);
@@ -376,7 +378,7 @@ impl MultiReplicaTransaction {
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, Pending)> =
+		let pending: Vec<(EncodedKey, DeltaEntry)> =
 			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range_rev(range, version, batch_size);

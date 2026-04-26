@@ -40,7 +40,7 @@ use crate::{
 		marker::Marker,
 		oracle::{CreateCommitResult, Oracle},
 		pending::PendingWrites,
-		types::{Pending, TransactionValue},
+		types::{DeltaEntry, TransactionValue},
 	},
 };
 
@@ -48,10 +48,17 @@ pub struct WriteSavepoint {
 	pub(crate) pending_writes: PendingWrites,
 	pub(crate) count: u64,
 	pub(crate) size: u64,
-	pub(crate) duplicates: Vec<Pending>,
+	pub(crate) duplicates: Vec<DeltaEntry>,
 	pub(crate) delta_log_len: usize,
 	pub(crate) conflicts: ConflictManager,
 	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Lifecycle {
+	Active,
+	QueryDone,
+	Discarded,
 }
 
 pub struct MultiWriteTransaction {
@@ -65,12 +72,12 @@ pub struct MultiWriteTransaction {
 	pub(crate) oracle: Arc<Oracle<StandardVersionProvider>>,
 	pub(crate) conflicts: ConflictManager,
 	pub(crate) pending_writes: PendingWrites,
-	pub(crate) duplicates: Vec<Pending>,
+	pub(crate) duplicates: Vec<DeltaEntry>,
 	/// Append-only delta history. Source of truth for `optimize_deltas`
 	/// at commit time so that same-key sequences (Set+Unset, multi-touch)
 	/// are visible in issuance order. `pending_writes` collapses to one
 	/// entry per key and cannot serve this.
-	pub(crate) delta_log: Vec<Pending>,
+	pub(crate) delta_log: Vec<DeltaEntry>,
 	/// Keys that existed in committed storage before this transaction
 	/// started. Populated by `mark_preexisting` from Update / Delete after
 	/// they read the prior row. The optimiser uses this to distinguish a
@@ -78,8 +85,7 @@ pub struct MultiWriteTransaction {
 	/// tombstone, otherwise the prior version remains visible).
 	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
 
-	pub(crate) discarded: bool,
-	pub(crate) done_query: bool,
+	pub(crate) lifecycle: Lifecycle,
 }
 
 impl MultiWriteTransaction {
@@ -87,7 +93,7 @@ impl MultiWriteTransaction {
 	pub fn new(engine: MultiTransaction) -> Result<Self> {
 		let oracle = engine.tm.oracle().clone();
 		let version = oracle.version()?;
-		oracle.query.begin(version);
+		oracle.query.register_in_flight(version);
 
 		let id = TransactionId::generate(oracle.metrics_clock(), oracle.rng());
 		Ok(Self {
@@ -103,15 +109,24 @@ impl MultiWriteTransaction {
 			duplicates: Vec::new(),
 			delta_log: Vec::new(),
 			preexisting_keys: HashSet::new(),
-			discarded: false,
-			done_query: false,
+			lifecycle: Lifecycle::Active,
 		})
+	}
+
+	fn transition_to(&mut self, next: Lifecycle) {
+		debug_assert!(matches!(
+			(self.lifecycle, next),
+			(Lifecycle::Active, Lifecycle::QueryDone)
+				| (Lifecycle::Active, Lifecycle::Discarded)
+				| (Lifecycle::QueryDone, Lifecycle::Discarded)
+		));
+		self.lifecycle = next;
 	}
 }
 
 impl Drop for MultiWriteTransaction {
 	fn drop(&mut self) {
-		if !self.discarded {
+		if self.lifecycle != Lifecycle::Discarded {
 			self.discard();
 		}
 	}
@@ -201,9 +216,9 @@ impl MultiWriteTransaction {
 		self.conflicts.reserve_writes(additional);
 	}
 
-	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	/// See the "Unchecked commits" section in `multi::transaction` for the safety contract.
 	pub(crate) fn disable_conflict_tracking(&mut self) {
-		self.conflicts.disable();
+		self.conflicts.set_disabled();
 	}
 }
 
@@ -214,10 +229,10 @@ impl MultiWriteTransaction {
 		value_len = row.len()
 	))]
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(Pending {
+		self.modify(DeltaEntry {
 			delta: Delta::Set {
 				key: key.clone(),
 				row,
@@ -234,10 +249,10 @@ impl MultiWriteTransaction {
 		value_len = row.len()
 	))]
 	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(Pending {
+		self.modify(DeltaEntry {
 			delta: Delta::Unset {
 				key: key.clone(),
 				row,
@@ -254,10 +269,10 @@ impl MultiWriteTransaction {
 		key_len = key.len()
 	))]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		self.modify(Pending {
+		self.modify(DeltaEntry {
 			delta: Delta::Remove {
 				key: key.clone(),
 			},
@@ -267,7 +282,7 @@ impl MultiWriteTransaction {
 
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
 	pub fn rollback(&mut self) -> Result<()> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
@@ -283,7 +298,7 @@ impl MultiWriteTransaction {
 		key_hex = %hex::display(key.as_ref())
 	))]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
@@ -307,14 +322,14 @@ impl MultiWriteTransaction {
 		key_hex = %hex::display(key.as_ref())
 	))]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
-		if self.discarded {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
 		let version = self.version();
 		if let Some(v) = self.pending_writes.get(key) {
 			if v.row().is_some() {
-				return Ok(Some(Pending {
+				return Ok(Some(DeltaEntry {
 					delta: match v.row() {
 						Some(row) => Delta::Set {
 							key: key.clone(),
@@ -341,7 +356,7 @@ impl MultiWriteTransaction {
 		key_hex = %hex::display(pending.key().as_ref()),
 		is_remove = pending.was_removed()
 	))]
-	fn modify(&mut self, pending: Pending) -> Result<()> {
+	fn modify(&mut self, pending: DeltaEntry) -> Result<()> {
 		let cnt = self.count + 1;
 		let size = self.size + self.pending_writes.estimate_size(&pending);
 		if cnt >= self.pending_writes.max_batch_entries() || size >= self.pending_writes.max_batch_size() {
@@ -360,7 +375,7 @@ impl MultiWriteTransaction {
 		if let Some((old_key, old_value)) = self.pending_writes.remove_entry(key)
 			&& old_value.version != version
 		{
-			self.duplicates.push(Pending {
+			self.duplicates.push(DeltaEntry {
 				delta: match row {
 					Some(row) => Delta::Set {
 						key: old_key,
@@ -388,15 +403,25 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>)> {
-		if self.discarded {
+	fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<DeltaEntry>)> {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
 		let conflict_manager = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 
-		match self.oracle.new_commit(&mut self.done_query, base_version, conflict_manager)? {
+		let result = self.oracle.new_commit(base_version, conflict_manager);
+		// The oracle has consumed the read snapshot - whether it committed,
+		// conflicted, or rejected as TooOld, base_version is no longer
+		// needed for conflict detection. Release it on the watermark
+		// exactly once.
+		if self.lifecycle == Lifecycle::Active {
+			self.oracle.query.mark_finished(base_version);
+			self.transition_to(Lifecycle::QueryDone);
+		}
+
+		match result? {
 			CreateCommitResult::Conflict(conflicts) => {
 				self.conflicts = conflicts;
 				Err(TransactionError::Conflict.into())
@@ -424,20 +449,26 @@ impl MultiWriteTransaction {
 		}
 	}
 
-	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	/// See the "Unchecked commits" section in `multi::transaction` for the safety contract.
 	#[instrument(name = "transaction::command::commit_pending_unchecked", level = "debug", skip(self), fields(
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	fn commit_pending_unchecked(&mut self) -> Result<(CommitVersion, Vec<Pending>)> {
-		if self.discarded {
+	fn commit_pending_unchecked(&mut self) -> Result<(CommitVersion, Vec<DeltaEntry>)> {
+		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
 		let _ = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 
-		match self.oracle.advance_unchecked(&mut self.done_query, base_version)? {
+		let result = self.oracle.advance_unchecked(base_version);
+		if self.lifecycle == Lifecycle::Active {
+			self.oracle.query.mark_finished(base_version);
+			self.transition_to(Lifecycle::QueryDone);
+		}
+
+		match result? {
 			CreateCommitResult::Conflict(_) => {
 				unreachable!("advance_unchecked never reports a conflict")
 			}
@@ -487,7 +518,7 @@ impl MultiWriteTransaction {
 		Ok(commit_version)
 	}
 
-	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	/// See the "Unchecked commits" section in `multi::transaction` for the safety contract.
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
 	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		if self.pending_writes.is_empty() {
@@ -511,7 +542,7 @@ impl MultiWriteTransaction {
 	}
 
 	#[inline]
-	fn optimize_for_storage(&self, entries: &[Pending]) -> CowVec<Delta> {
+	fn optimize_for_storage(&self, entries: &[DeltaEntry]) -> CowVec<Delta> {
 		let mut raw_deltas = CowVec::with_capacity(entries.len());
 		for pending in entries {
 			raw_deltas.push(pending.delta.clone());
@@ -534,25 +565,18 @@ impl MultiWriteTransaction {
 }
 
 impl MultiWriteTransaction {
-	#[instrument(name = "transaction::command::done_query", level = "trace", skip(self), fields(txn_id = %self.id))]
-	fn finish_query(&mut self) {
-		if !self.done_query {
-			self.done_query = true;
-			self.oracle.query.done(self.version);
-		}
-	}
-
 	#[instrument(name = "transaction::command::discard", level = "trace", skip(self), fields(txn_id = %self.id))]
 	pub fn discard(&mut self) {
-		if self.discarded {
-			return;
+		match self.lifecycle {
+			Lifecycle::Discarded => return,
+			Lifecycle::Active => self.oracle.query.mark_finished(self.version),
+			Lifecycle::QueryDone => {}
 		}
-		self.discarded = true;
-		self.finish_query();
+		self.transition_to(Lifecycle::Discarded);
 	}
 
 	pub fn is_discard(&self) -> bool {
-		self.discarded
+		self.lifecycle == Lifecycle::Discarded
 	}
 }
 
@@ -586,7 +610,7 @@ impl MultiWriteTransaction {
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, Pending)> =
+		let pending: Vec<(EncodedKey, DeltaEntry)> =
 			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range(range, version, batch_size);
@@ -606,7 +630,7 @@ impl MultiWriteTransaction {
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, Pending)> =
+		let pending: Vec<(EncodedKey, DeltaEntry)> =
 			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range_rev(range, version, batch_size);
@@ -616,7 +640,7 @@ impl MultiWriteTransaction {
 }
 
 pub(crate) struct MergePendingIterator<I> {
-	pending_iter: iter::Peekable<vec::IntoIter<(EncodedKey, Pending)>>,
+	pending_iter: iter::Peekable<vec::IntoIter<(EncodedKey, DeltaEntry)>>,
 	storage_iter: I,
 	next_storage: Option<MultiVersionRow>,
 	reverse: bool,
@@ -626,7 +650,7 @@ impl<I> MergePendingIterator<I>
 where
 	I: Iterator<Item = Result<MultiVersionRow>>,
 {
-	pub(crate) fn new(pending: Vec<(EncodedKey, Pending)>, storage_iter: I, reverse: bool) -> Self {
+	pub(crate) fn new(pending: Vec<(EncodedKey, DeltaEntry)>, storage_iter: I, reverse: bool) -> Self {
 		Self {
 			pending_iter: pending.into_iter().peekable(),
 			storage_iter,
@@ -671,7 +695,7 @@ where
 							}));
 						}
 					} else if matches!(cmp, Ordering::Equal) {
-						// Pending shadows storage on equal keys.
+						// DeltaEntry shadows storage on equal keys.
 						let (key, value) = self.pending_iter.next().unwrap();
 						self.next_storage = None;
 						if let Some(row) = value.row() {

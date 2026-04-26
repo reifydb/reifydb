@@ -12,12 +12,12 @@ use std::{
 
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 
-use crate::multi::types::Pending;
+use crate::multi::types::DeltaEntry;
 
 #[derive(Debug, Default, Clone)]
 pub struct PendingWrites {
 	/// Primary storage - BTreeMap for sorted key access and range queries
-	writes: BTreeMap<EncodedKey, Pending>,
+	writes: BTreeMap<EncodedKey, DeltaEntry>,
 	/// Track insertion order for preserving delta ordering
 	insertion_order: Vec<EncodedKey>,
 	/// Position index: key -> index in insertion_order Vec
@@ -64,20 +64,20 @@ impl PendingWrites {
 
 	/// Fast size estimation - uses cached value
 	#[inline]
-	pub fn estimate_size(&self, _entry: &Pending) -> u64 {
+	pub fn estimate_size(&self, _entry: &DeltaEntry) -> u64 {
 		// Use fixed size estimation for speed
 		(size_of::<EncodedKey>() + size_of::<EncodedRow>()) as u64
 	}
 
 	/// Get a pending write by key - O(log n) performance
 	#[inline]
-	pub fn get(&self, key: &EncodedKey) -> Option<&Pending> {
+	pub fn get(&self, key: &EncodedKey) -> Option<&DeltaEntry> {
 		self.writes.get(key)
 	}
 
 	/// Get key-value pair by key - O(log n) performance  
 	#[inline]
-	pub fn get_entry(&self, key: &EncodedKey) -> Option<(&EncodedKey, &Pending)> {
+	pub fn get_entry(&self, key: &EncodedKey) -> Option<(&EncodedKey, &DeltaEntry)> {
 		self.writes.get_key_value(key)
 	}
 
@@ -88,7 +88,7 @@ impl PendingWrites {
 	}
 
 	/// Insert a new pending write - O(log n) BTreeMap + O(1) HashMap performance
-	pub fn insert(&mut self, key: EncodedKey, value: Pending) {
+	pub fn insert(&mut self, key: EncodedKey, value: DeltaEntry) {
 		let size_estimate = self.estimate_size(&value);
 
 		if let Some(pre) = self.writes.insert(key.clone(), value) {
@@ -109,7 +109,7 @@ impl PendingWrites {
 	}
 
 	/// Remove an entry by key - O(log n) BTreeMap + O(1) HashMap lookup + O(1) swap removal
-	pub fn remove_entry(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)> {
+	pub fn remove_entry(&mut self, key: &EncodedKey) -> Option<(EncodedKey, DeltaEntry)> {
 		if let Some((removed_key, removed_value)) = self.writes.remove_entry(key) {
 			if let Some(position) = self.position_index.remove(key)
 				&& position < self.insertion_order.len()
@@ -132,13 +132,13 @@ impl PendingWrites {
 	}
 
 	/// Iterate over all pending writes - returns BTreeMap iterator for sorted access
-	pub fn iter(&self) -> BTreeMapIter<'_, EncodedKey, Pending> {
+	pub fn iter(&self) -> BTreeMapIter<'_, EncodedKey, DeltaEntry> {
 		self.writes.iter()
 	}
 
 	/// Consume and iterate over pending writes in insertion order
 	/// Uses the insertion_order Vec to maintain original insertion sequence
-	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (EncodedKey, Pending)> {
+	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (EncodedKey, DeltaEntry)> {
 		let mut writes = self.writes;
 		self.insertion_order.into_iter().filter_map(move |key| writes.remove_entry(&key))
 	}
@@ -158,7 +158,7 @@ impl PendingWrites {
 	}
 
 	/// Range query support - BTreeMap provides efficient range queries
-	pub fn range<R>(&self, range: R) -> BTreeMapRange<'_, EncodedKey, Pending>
+	pub fn range<R>(&self, range: R) -> BTreeMapRange<'_, EncodedKey, DeltaEntry>
 	where
 		R: RangeBounds<EncodedKey>,
 	{
@@ -166,7 +166,7 @@ impl PendingWrites {
 	}
 
 	/// Range query with comparable bounds (same as range for compatibility)
-	pub fn range_comparable<R>(&self, range: R) -> BTreeMapRange<'_, EncodedKey, Pending>
+	pub fn range_comparable<R>(&self, range: R) -> BTreeMapRange<'_, EncodedKey, DeltaEntry>
 	where
 		R: RangeBounds<EncodedKey>,
 	{
@@ -175,12 +175,12 @@ impl PendingWrites {
 
 	/// Optimized get methods for compatibility (same as regular methods)
 	#[inline]
-	pub fn get_comparable(&self, key: &EncodedKey) -> Option<&Pending> {
+	pub fn get_comparable(&self, key: &EncodedKey) -> Option<&DeltaEntry> {
 		self.get(key)
 	}
 
 	#[inline]
-	pub fn get_entry_comparable(&self, key: &EncodedKey) -> Option<(&EncodedKey, &Pending)> {
+	pub fn get_entry_comparable(&self, key: &EncodedKey) -> Option<(&EncodedKey, &DeltaEntry)> {
 		self.get_entry(key)
 	}
 
@@ -190,14 +190,14 @@ impl PendingWrites {
 	}
 
 	#[inline]
-	pub fn remove_entry_comparable(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)> {
+	pub fn remove_entry_comparable(&mut self, key: &EncodedKey) -> Option<(EncodedKey, DeltaEntry)> {
 		self.remove_entry(key)
 	}
 }
 
 impl IntoIterator for PendingWrites {
-	type Item = (EncodedKey, Pending);
-	type IntoIter = BTreeMapIntoIter<EncodedKey, Pending>;
+	type Item = (EncodedKey, DeltaEntry);
+	type IntoIter = BTreeMapIntoIter<EncodedKey, DeltaEntry>;
 
 	/// Consume and iterate over all pending writes in sorted order
 	fn into_iter(self) -> Self::IntoIter {
@@ -220,8 +220,8 @@ pub mod tests {
 		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn create_test_pending(version: CommitVersion, key: &str, values_data: &str) -> Pending {
-		Pending {
+	fn create_test_pending(version: CommitVersion, key: &str, values_data: &str) -> DeltaEntry {
+		DeltaEntry {
 			delta: Delta::Set {
 				key: create_test_key(key),
 				row: create_test_row(values_data),

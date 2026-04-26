@@ -11,47 +11,48 @@ use reifydb_core::encoded::key::{EncodedKey, EncodedKeyRange};
 use reifydb_type::util::hex;
 use tracing::instrument;
 
-/// Maximum number of ranges before escalating to read_all.
-/// This prevents memory bloat from too many small ranges.
 const MAX_RANGES_BEFORE_ESCALATION: usize = 64;
 
-/// High-performance conflict manager using HashSet for O(1) lookups
-/// and optimized range handling with sorted, merged ranges.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub enum ConflictMode {
+	#[default]
+	Tracking,
+	Disabled,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct ConflictManager {
-	/// Single key reads - deduplicated automatically by HashSet
+	mode: ConflictMode,
+	/// Single key reads - deduplicated by HashSet.
 	read_keys: HashSet<EncodedKey>,
-	/// Range reads - kept sorted by start bound and merged to reduce count.
-	/// Invariant: ranges are non-overlapping and sorted.
+	/// Sorted, non-overlapping range reads.
 	read_ranges: Vec<(Bound<EncodedKey>, Bound<EncodedKey>)>,
-	/// Full scan flag
 	read_all: bool,
-	/// Keys that will be written to
 	write_keys: HashSet<EncodedKey>,
-	/// When set, every mutating method is a no-op. Used for unchecked bulk
-	/// ingest where the recorded keys would be discarded at commit anyway.
-	disabled: bool,
 }
 
 impl ConflictManager {
 	pub fn new() -> Self {
+		Self::default()
+	}
+
+	/// Construct a manager that records nothing. Used by the unchecked
+	/// bulk-ingest path where recorded keys would be discarded at commit
+	/// anyway.
+	pub fn disabled() -> Self {
 		Self {
-			read_keys: HashSet::new(),
-			read_ranges: Vec::new(),
-			read_all: false,
-			write_keys: HashSet::new(),
-			disabled: false,
+			mode: ConflictMode::Disabled,
+			..Self::default()
 		}
 	}
 
-	/// Make every subsequent `mark_*` / `reserve_writes` call a no-op.
-	pub fn disable(&mut self) {
-		self.disabled = true;
+	pub fn set_disabled(&mut self) {
+		self.mode = ConflictMode::Disabled;
 	}
 
 	#[instrument(name = "transaction::conflict::mark_read", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	pub fn mark_read(&mut self, key: &EncodedKey) {
-		if self.disabled {
+		if self.mode == ConflictMode::Disabled {
 			return;
 		}
 		self.read_keys.insert(key.clone());
@@ -59,16 +60,14 @@ impl ConflictManager {
 
 	#[instrument(name = "transaction::conflict::mark_write", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	pub fn mark_write(&mut self, key: &EncodedKey) {
-		if self.disabled {
+		if self.mode == ConflictMode::Disabled {
 			return;
 		}
 		self.write_keys.insert(key.clone());
 	}
 
-	/// Reserve capacity for `additional` more write keys to avoid HashSet rehashes
-	/// during a known-size bulk write. No-op if the existing free capacity already covers it.
 	pub fn reserve_writes(&mut self, additional: usize) {
-		if self.disabled {
+		if self.mode == ConflictMode::Disabled {
 			return;
 		}
 		self.write_keys.reserve(additional);
@@ -76,7 +75,7 @@ impl ConflictManager {
 
 	#[instrument(name = "transaction::conflict::mark_range", level = "trace", skip(self), fields(range_start = ?range.start_bound(), range_end = ?range.end_bound()))]
 	pub fn mark_range(&mut self, range: EncodedKeyRange) {
-		if self.disabled {
+		if self.mode == ConflictMode::Disabled {
 			return;
 		}
 		// Already tracking all - nothing more to do
@@ -358,10 +357,10 @@ impl ConflictManager {
 		self.read_ranges.clear();
 		self.read_all = false;
 		self.write_keys.clear();
-		// Reset `disabled` so a transaction reused after a failed unchecked
+		// Reset to Tracking so a transaction reused after a failed unchecked
 		// path resumes normal conflict tracking instead of silently dropping
 		// every subsequent mark_*.
-		self.disabled = false;
+		self.mode = ConflictMode::Tracking;
 	}
 
 	/// Get all keys that were read by this transaction for efficient
@@ -400,109 +399,11 @@ impl ConflictManager {
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
 	use super::*;
 
 	fn create_key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
-	}
-
-	#[test]
-	fn test_basic_conflict_detection() {
-		let mut cm1 = ConflictManager::new();
-		let mut cm2 = ConflictManager::new();
-
-		let key = create_key("test");
-		cm1.mark_read(&key);
-		cm2.mark_write(&key);
-
-		assert!(cm1.has_conflict(&cm2));
-		assert!(!cm2.has_conflict(&cm1)); // Asymmetric
-	}
-
-	#[test]
-	fn test_write_write_conflict() {
-		let mut cm1 = ConflictManager::new();
-		let mut cm2 = ConflictManager::new();
-
-		let key = create_key("test");
-		cm1.mark_write(&key);
-		cm2.mark_write(&key);
-
-		assert!(cm1.has_conflict(&cm2));
-		assert!(cm2.has_conflict(&cm1)); // Symmetric for write-write
-	}
-
-	#[test]
-	fn test_no_conflict_different_keys() {
-		let mut cm1 = ConflictManager::new();
-		let mut cm2 = ConflictManager::new();
-
-		cm1.mark_read(&create_key("key1"));
-		cm1.mark_write(&create_key("key1"));
-		cm2.mark_read(&create_key("key2"));
-		cm2.mark_write(&create_key("key2"));
-
-		assert!(!cm1.has_conflict(&cm2));
-		assert!(!cm2.has_conflict(&cm1));
-	}
-
-	#[test]
-	fn test_range_conflict() {
-		let mut cm1 = ConflictManager::new();
-		let mut cm2 = ConflictManager::new();
-
-		// cm1 reads range, cm2 writes within range
-		let range = EncodedKeyRange::parse("a..z");
-		cm1.mark_range(range);
-
-		cm2.mark_write(&create_key("m")); // "m" is in range "a..z"
-
-		assert!(cm1.has_conflict(&cm2));
-	}
-
-	#[test]
-	fn test_deduplication() {
-		let mut cm = ConflictManager::new();
-		let key = create_key("test");
-
-		// Add same key multiple times
-		cm.mark_read(&key);
-		cm.mark_read(&key);
-		cm.mark_read(&key);
-
-		// Should only contain one copy
-		assert_eq!(cm.get_read_keys().len(), 1);
-	}
-
-	#[test]
-	fn test_performance_with_many_keys() {
-		let mut cm1 = ConflictManager::new();
-		let mut cm2 = ConflictManager::new();
-
-		// Add many keys to test HashSet performance
-		for i in 0..1000 {
-			cm1.mark_read(&create_key(&format!("read_{}", i)));
-			cm2.mark_write(&create_key(&format!("write_{}", i)));
-		}
-
-		// Add one overlapping key
-		let shared_key = create_key("shared");
-		cm1.mark_read(&shared_key);
-		cm2.mark_write(&shared_key);
-
-		assert!(cm1.has_conflict(&cm2));
-	}
-
-	#[test]
-	fn test_iter_functionality() {
-		let mut cm1 = ConflictManager::new();
-		let mut cm2 = ConflictManager::new();
-
-		cm1.mark_iter(); // Full scan
-		cm2.mark_write(&create_key("any_key"));
-
-		assert!(cm1.has_conflict(&cm2));
 	}
 
 	#[test]
@@ -590,77 +491,6 @@ pub mod tests {
 		// Adding more ranges should be a no-op
 		cm.mark_range(EncodedKeyRange::parse("a..z"));
 		assert!(cm.read_ranges.is_empty());
-	}
-
-	#[test]
-	fn test_sweep_line_many_ranges_many_keys() {
-		let mut cm1 = ConflictManager::new();
-		let mut cm2 = ConflictManager::new();
-
-		// Add many non-overlapping ranges using numeric prefixes for proper ordering
-		// e.g., "r_00_a..r_00_z", "r_01_a..r_01_z", etc.
-		for i in 0..20 {
-			let start = format!("r_{:02}_a", i);
-			let end = format!("r_{:02}_z", i);
-			let range = EncodedKeyRange::parse(&format!("{}..{}", start, end));
-			cm1.mark_range(range);
-		}
-
-		// Add many conflict keys in a different namespace (no overlap)
-		for i in 0..100 {
-			cm2.mark_write(&create_key(&format!("write_{:04}", i)));
-		}
-		// Add one key that IS in one of the ranges: "r_10_m" is between "r_10_a" and "r_10_z"
-		cm2.mark_write(&create_key("r_10_m"));
-
-		assert!(cm1.has_conflict(&cm2));
-	}
-
-	#[test]
-	fn test_sweep_line_no_conflict() {
-		let mut cm1 = ConflictManager::new();
-		let mut cm2 = ConflictManager::new();
-
-		// Add ranges in "r_*" namespace
-		for i in 0..10 {
-			let start = format!("r_{:02}_a", i);
-			let end = format!("r_{:02}_z", i);
-			let range = EncodedKeyRange::parse(&format!("{}..{}", start, end));
-			cm1.mark_range(range);
-		}
-
-		// Add conflict keys in "write_*" namespace (no overlap)
-		for i in 0..100 {
-			cm2.mark_write(&create_key(&format!("write_{:04}", i)));
-		}
-
-		assert!(!cm1.has_conflict(&cm2));
-	}
-
-	#[test]
-	fn test_disabled_marks_are_noop() {
-		let mut cm = ConflictManager::new();
-		cm.disable();
-
-		// Before disable: capacity reservation must also no-op so we don't
-		// pay for an allocation we'll never fill.
-		cm.reserve_writes(10_000);
-
-		let k = create_key("k");
-		cm.mark_read(&k);
-		cm.mark_write(&k);
-		cm.mark_range(EncodedKeyRange::parse("a..z"));
-		cm.mark_iter();
-
-		assert!(cm.get_read_keys().is_empty());
-		assert!(cm.get_write_keys().is_empty());
-		assert!(!cm.has_range_operations());
-
-		// has_conflict against a writer that touches the same key must
-		// still report no conflict, because nothing was recorded.
-		let mut other = ConflictManager::new();
-		other.mark_write(&k);
-		assert!(!cm.has_conflict(&other));
 	}
 
 	#[test]

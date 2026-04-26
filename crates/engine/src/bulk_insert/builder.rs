@@ -8,9 +8,9 @@ use reifydb_catalog::{
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_core::{
-	encoded::shape::RowShape,
+	encoded::{row::EncodedRow, shape::RowShape},
 	error::CoreError,
-	interface::catalog::id::IndexId,
+	interface::catalog::{id::IndexId, key::PrimaryKey, table::Table},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
 };
@@ -207,14 +207,54 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	}
 }
 
-/// Execute a table insert within a transaction
 fn execute_table_insert<V: ValidationMode>(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
 	clock: &Clock,
 ) -> Result<TableInsertResult> {
-	// 1. Look up namespace and table from catalog
+	let table = resolve_table(catalog, txn, pending)?;
+	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
+
+	let encoded_rows = encode_table_rows::<V>(catalog, txn, pending, &table, &shape, clock)?;
+
+	if encoded_rows.is_empty() {
+		return Ok(TableInsertResult {
+			namespace: pending.namespace.clone(),
+			table: pending.table.clone(),
+			inserted: 0,
+		});
+	}
+
+	let total_rows = encoded_rows.len();
+	let row_numbers = catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
+	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), &table)?;
+	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[Type::Uint8]));
+
+	for (row, &row_number) in encoded_rows.iter().zip(row_numbers.iter()) {
+		txn.insert_table(&table, &shape, row.clone(), row_number)?;
+
+		if let Some(ref pk_def) = pk_def {
+			write_primary_key_index(
+				txn,
+				&table,
+				&shape,
+				pk_def,
+				row,
+				row_number,
+				row_number_shape.as_ref().unwrap(),
+			)?;
+		}
+	}
+
+	Ok(TableInsertResult {
+		namespace: pending.namespace.clone(),
+		table: pending.table.clone(),
+		inserted: total_rows as u64,
+	})
+}
+
+fn resolve_table(catalog: &Catalog, txn: &mut CommandTransaction, pending: &PendingTableInsert) -> Result<Table> {
 	let namespace = catalog
 		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
 		.ok_or_else(|| CatalogError::NotFound {
@@ -224,124 +264,118 @@ fn execute_table_insert<V: ValidationMode>(
 			fragment: Fragment::None,
 		})?;
 
-	let table = catalog
-		.find_table_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.table)?
-		.ok_or_else(|| CatalogError::NotFound {
+	catalog.find_table_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.table)?.ok_or_else(|| {
+		CatalogError::NotFound {
 			kind: CatalogObjectKind::Table,
 			namespace: pending.namespace.to_string(),
 			name: pending.table.to_string(),
 			fragment: Fragment::None,
-		})?;
+		}
+		.into()
+	})
+}
 
-	// 2. Get or create shape with proper field names and constraints
-	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
-
-	// 3. Validate and coerce all rows in batch (fail-fast)
+fn encode_table_rows<V: ValidationMode>(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	pending: &PendingTableInsert,
+	table: &Table,
+	shape: &RowShape,
+	clock: &Clock,
+) -> Result<Vec<EncodedRow>> {
 	let coerced_rows = if V::VALIDATED {
-		validate_and_coerce_rows(&pending.rows, &table)?
+		validate_and_coerce_rows(&pending.rows, table)?
 	} else {
-		reorder_rows_unvalidated(&pending.rows, &table)?
+		reorder_rows_unvalidated(&pending.rows, table)?
 	};
 
 	let mut encoded_rows = Vec::with_capacity(coerced_rows.len());
 
 	for mut values in coerced_rows {
-		// Handle auto-increment columns
-		for (idx, col) in table.columns.iter().enumerate() {
-			if col.auto_increment && matches!(values[idx], Value::None { .. }) {
-				values[idx] = catalog.column_sequence_next_value(txn, table.id, col.id)?;
-			}
-		}
+		fill_auto_increment_table(catalog, txn, table, &mut values)?;
+		dictionary_encode_table(catalog, txn, table, &mut values)?;
 
-		// Handle dictionary encoding
-		for (idx, col) in table.columns.iter().enumerate() {
-			if let Some(dict_id) = col.dictionary_id {
-				let dictionary = catalog
-					.find_dictionary(&mut Transaction::Command(txn), dict_id)?
-					.ok_or_else(|| {
-						internal_error!(
-							"Dictionary {:?} not found for column {}",
-							dict_id,
-							col.name
-						)
-					})?;
-				let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx])?;
-				values[idx] = entry_id.to_value();
-			}
-		}
-
-		// Validate constraints (coercion is done in batch, but final constraint check still needed)
 		if V::VALIDATED {
 			for (idx, col) in table.columns.iter().enumerate() {
 				col.constraint.validate(&values[idx])?;
 			}
 		}
 
-		// Encode the row
-		let mut row = shape.allocate();
-		for (idx, value) in values.iter().enumerate() {
-			shape.set_value(&mut row, idx, value);
-		}
-
-		let now_nanos = clock.now_nanos();
-		row.set_timestamps(now_nanos, now_nanos);
-
-		encoded_rows.push(row);
+		encoded_rows.push(encode_row(shape, &values, clock));
 	}
 
-	let total_rows = encoded_rows.len();
-	if total_rows == 0 {
-		return Ok(TableInsertResult {
-			namespace: pending.namespace.clone(),
-			table: pending.table.clone(),
-			inserted: 0,
-		});
-	}
+	Ok(encoded_rows)
+}
 
-	let row_numbers = catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
-
-	// Hoist loop-invariant computations out of the insertion loop
-	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), &table)?;
-	let row_number_shape = if pk_def.is_some() {
-		Some(RowShape::testing(&[Type::Uint8]))
-	} else {
-		None
-	};
-
-	// 5. Insert all rows with their row numbers
-	for (row, &row_number) in encoded_rows.iter().zip(row_numbers.iter()) {
-		txn.insert_table(&table, &shape, row.clone(), row_number)?;
-
-		// Handle primary key index if table has one
-		if let Some(ref pk_def) = pk_def {
-			let index_key = primary_key::encode_primary_key(pk_def, row, &table, &shape)?;
-			let index_entry_key =
-				IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key.clone());
-
-			// Check for primary key violation
-			if txn.contains_key(&index_entry_key.encode())? {
-				let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
-				return Err(CoreError::PrimaryKeyViolation {
-					fragment: Fragment::None,
-					table_name: table.name.clone(),
-					key_columns,
-				}
-				.into());
-			}
-
-			// Store the index entry
-			let rns = row_number_shape.as_ref().unwrap();
-			let mut row_number_encoded = rns.allocate();
-			rns.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
-			txn.set(&index_entry_key.encode(), row_number_encoded)?;
+fn fill_auto_increment_table(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	table: &Table,
+	values: &mut [Value],
+) -> Result<()> {
+	for (idx, col) in table.columns.iter().enumerate() {
+		if col.auto_increment && matches!(values[idx], Value::None { .. }) {
+			values[idx] = catalog.column_sequence_next_value(txn, table.id, col.id)?;
 		}
 	}
+	Ok(())
+}
 
-	Ok(TableInsertResult {
-		namespace: pending.namespace.clone(),
-		table: pending.table.clone(),
-		inserted: total_rows as u64,
-	})
+fn dictionary_encode_table(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	table: &Table,
+	values: &mut [Value],
+) -> Result<()> {
+	for (idx, col) in table.columns.iter().enumerate() {
+		if let Some(dict_id) = col.dictionary_id {
+			let dictionary =
+				catalog.find_dictionary(&mut Transaction::Command(txn), dict_id)?.ok_or_else(|| {
+					internal_error!("Dictionary {:?} not found for column {}", dict_id, col.name)
+				})?;
+			let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx])?;
+			values[idx] = entry_id.to_value();
+		}
+	}
+	Ok(())
+}
+
+fn encode_row(shape: &RowShape, values: &[Value], clock: &Clock) -> EncodedRow {
+	let mut row = shape.allocate();
+	for (idx, value) in values.iter().enumerate() {
+		shape.set_value(&mut row, idx, value);
+	}
+	let now_nanos = clock.now_nanos();
+	row.set_timestamps(now_nanos, now_nanos);
+	row
+}
+
+fn write_primary_key_index(
+	txn: &mut CommandTransaction,
+	table: &Table,
+	shape: &RowShape,
+	pk_def: &PrimaryKey,
+	row: &EncodedRow,
+	row_number: RowNumber,
+	row_number_shape: &RowShape,
+) -> Result<()> {
+	let index_key = primary_key::encode_primary_key(pk_def, row, table, shape)?;
+	let index_entry_key = IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key);
+
+	if txn.contains_key(&index_entry_key.encode())? {
+		let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
+		return Err(CoreError::PrimaryKeyViolation {
+			fragment: Fragment::None,
+			table_name: table.name.clone(),
+			key_columns,
+		}
+		.into());
+	}
+
+	let mut row_number_encoded = row_number_shape.allocate();
+	row_number_shape.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+	txn.set(&index_entry_key.encode(), row_number_encoded)?;
+	Ok(())
 }
 
 /// Execute a ring buffer insert within a transaction

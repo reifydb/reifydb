@@ -67,10 +67,10 @@ impl WaterMark {
 		}
 	}
 
-	/// Sets the last index to the given value.
-	#[instrument(name = "transaction::watermark::begin", level = "trace", skip(self), fields(version = version.0))]
-	pub fn begin(&self, version: CommitVersion) {
-		// Update last_index to the maximum
+	/// Register `version` as in-flight. Must be paired with a later
+	/// `mark_finished(version)` call so `done_until` can advance past it.
+	#[instrument(name = "transaction::watermark::register_in_flight", level = "trace", skip(self), fields(version = version.0))]
+	pub fn register_in_flight(&self, version: CommitVersion) {
 		self.shared.last_index.fetch_max(version.0, Ordering::SeqCst);
 
 		let _ = self.actor.send(WatermarkMessage::Begin {
@@ -78,9 +78,11 @@ impl WaterMark {
 		});
 	}
 
-	/// Sets a single version as done.
-	#[instrument(name = "transaction::watermark::done", level = "trace", skip(self), fields(index = version.0))]
-	pub fn done(&self, version: CommitVersion) {
+	/// Mark `version` as finished. Pairs with an earlier
+	/// `register_in_flight(version)`. `done_until` advances when every
+	/// version up through some `V` has been marked finished.
+	#[instrument(name = "transaction::watermark::mark_finished", level = "trace", skip(self), fields(index = version.0))]
+	pub fn mark_finished(&self, version: CommitVersion) {
 		let _ = self.actor.send(WatermarkMessage::Done {
 			version: version.0,
 		});
@@ -159,29 +161,29 @@ pub mod tests {
 	#[test]
 	fn test_begin_done() {
 		init_and_close(|watermark| {
-			watermark.begin(CommitVersion(1));
-			watermark.begin(CommitVersion(2));
-			watermark.begin(CommitVersion(3));
+			watermark.register_in_flight(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(2));
+			watermark.register_in_flight(CommitVersion(3));
 
-			watermark.done(CommitVersion(1));
-			watermark.done(CommitVersion(2));
-			watermark.done(CommitVersion(3));
+			watermark.mark_finished(CommitVersion(1));
+			watermark.mark_finished(CommitVersion(2));
+			watermark.mark_finished(CommitVersion(3));
 		});
 	}
 
 	#[test]
 	fn test_wait_for_mark() {
 		init_and_close(|watermark| {
-			watermark.begin(CommitVersion(1));
-			watermark.begin(CommitVersion(2));
-			watermark.begin(CommitVersion(3));
+			watermark.register_in_flight(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(2));
+			watermark.register_in_flight(CommitVersion(3));
 
-			watermark.done(CommitVersion(2));
-			watermark.done(CommitVersion(3));
+			watermark.mark_finished(CommitVersion(2));
+			watermark.mark_finished(CommitVersion(3));
 
 			assert_eq!(watermark.done_until(), 0);
 
-			watermark.done(CommitVersion(1));
+			watermark.mark_finished(CommitVersion(1));
 			watermark.wait_for_mark(1);
 			watermark.wait_for_mark(3);
 			assert_eq!(watermark.done_until(), 3);
@@ -212,8 +214,8 @@ pub mod tests {
 			let handle = thread::spawn(move || {
 				for i in 0..OPS_PER_TASK {
 					let version = CommitVersion((task_id * OPS_PER_TASK + i) as u64 + 1);
-					wm.begin(version);
-					wm.done(version);
+					wm.register_in_flight(version);
+					wm.mark_finished(version);
 				}
 			});
 			handles.push(handle);
@@ -241,7 +243,7 @@ pub mod tests {
 
 		// Start some versions
 		for i in 1..=10 {
-			watermark.begin(CommitVersion(i));
+			watermark.register_in_flight(CommitVersion(i));
 		}
 
 		let mut handles = vec![];
@@ -264,7 +266,7 @@ pub mod tests {
 
 		// Complete the versions
 		for i in 1..=10 {
-			watermark.done(CommitVersion(i));
+			watermark.mark_finished(CommitVersion(i));
 		}
 
 		for handle in handles {
@@ -283,8 +285,8 @@ pub mod tests {
 		init_and_close(|watermark| {
 			// Advance done_until significantly
 			for i in 1..=100 {
-				watermark.begin(CommitVersion(i));
-				watermark.done(CommitVersion(i));
+				watermark.register_in_flight(CommitVersion(i));
+				watermark.mark_finished(CommitVersion(i));
 			}
 
 			let reached = watermark.wait_for_mark_timeout(CommitVersion(100), Duration::from_secs(5));
@@ -307,7 +309,7 @@ pub mod tests {
 	fn test_timeout_behavior() {
 		init_and_close(|watermark| {
 			// Begin but don't complete a version
-			watermark.begin(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(1));
 
 			// Wait with short timeout
 			let clock = Clock::Real;
@@ -329,14 +331,14 @@ pub mod tests {
 		// Test that begin() calls can arrive out of order with gap-tolerant processing
 		init_and_close(|watermark| {
 			// Begin versions out of order
-			watermark.begin(CommitVersion(3));
-			watermark.begin(CommitVersion(1));
-			watermark.begin(CommitVersion(2));
+			watermark.register_in_flight(CommitVersion(3));
+			watermark.register_in_flight(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(2));
 
 			// Complete in order
-			watermark.done(CommitVersion(1));
-			watermark.done(CommitVersion(2));
-			watermark.done(CommitVersion(3));
+			watermark.mark_finished(CommitVersion(1));
+			watermark.mark_finished(CommitVersion(2));
+			watermark.mark_finished(CommitVersion(3));
 
 			let reached = watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_secs(5));
 			assert!(reached, "Timed out waiting for watermark to advance to 3");
@@ -350,7 +352,7 @@ pub mod tests {
 		// Test that done() arriving before begin() is handled correctly
 		init_and_close(|watermark| {
 			// done() arrives before begin() - this is an "orphaned" done
-			watermark.done(CommitVersion(1));
+			watermark.mark_finished(CommitVersion(1));
 
 			// Wait a bit for processing
 			sleep(Duration::from_millis(20));
@@ -359,7 +361,7 @@ pub mod tests {
 			assert_eq!(watermark.done_until().0, 0);
 
 			// Now begin() arrives
-			watermark.begin(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(1));
 
 			// Wait for processing
 			sleep(Duration::from_millis(50));
@@ -375,12 +377,12 @@ pub mod tests {
 		// Test complex out-of-order scenario
 		init_and_close(|watermark| {
 			// Interleaved begin/done in various orders
-			watermark.begin(CommitVersion(2));
-			watermark.done(CommitVersion(3)); // orphaned
-			watermark.begin(CommitVersion(1));
-			watermark.done(CommitVersion(1));
-			watermark.begin(CommitVersion(3));
-			watermark.done(CommitVersion(2));
+			watermark.register_in_flight(CommitVersion(2));
+			watermark.mark_finished(CommitVersion(3)); // orphaned
+			watermark.register_in_flight(CommitVersion(1));
+			watermark.mark_finished(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(3));
+			watermark.mark_finished(CommitVersion(2));
 
 			let reached = watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_secs(5));
 			assert!(reached, "Timed out waiting for watermark to advance to 3");
