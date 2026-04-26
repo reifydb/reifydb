@@ -11,6 +11,7 @@ use reifydb_core::{
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	util::encoding::keycode::serializer::KeySerializer,
 };
+use reifydb_transaction::multi::RangeScope;
 use reifydb_type::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{
@@ -124,7 +125,7 @@ impl RowNumberProvider {
 		let full_range = EncodedKeyRange::prefix(&state_prefix.encode());
 
 		let keys_to_remove = {
-			let stream = txn.range(full_range, 1024);
+			let stream = txn.range(full_range, RangeScope::All, 1024);
 			let mut keys = Vec::new();
 			for result in stream {
 				let multi = result?;

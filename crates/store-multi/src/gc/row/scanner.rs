@@ -14,6 +14,7 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 
 use super::ScanStats;
 use crate::{
+	MultiVersionScope,
 	buffer::storage::BufferStorage,
 	tier::{RangeCursor, TierStorage},
 };
@@ -46,7 +47,10 @@ pub fn scan_shape_by_created_at(
 
 	let mut expired = Vec::new();
 	let mut batch_cursor = cursor.clone();
-	let batch = storage.range_next(table, &mut batch_cursor, start, end, CommitVersion(u64::MAX), batch_size)?;
+	let scope = MultiVersionScope::AsOf {
+		read: CommitVersion(u64::MAX),
+	};
+	let batch = storage.range_next(table, &mut batch_cursor, start, end, scope, batch_size)?;
 
 	for entry in &batch.entries {
 		if let Some(ref value) = entry.value {
@@ -91,7 +95,10 @@ pub fn scan_shape_by_updated_at(
 
 	let mut expired = Vec::new();
 	let mut batch_cursor = cursor.clone();
-	let batch = storage.range_next(table, &mut batch_cursor, start, end, CommitVersion(u64::MAX), batch_size)?;
+	let scope = MultiVersionScope::AsOf {
+		read: CommitVersion(u64::MAX),
+	};
+	let batch = storage.range_next(table, &mut batch_cursor, start, end, scope, batch_size)?;
 
 	for entry in &batch.entries {
 		if let Some(ref value) = entry.value {

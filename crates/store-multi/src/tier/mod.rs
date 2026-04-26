@@ -6,6 +6,8 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
+use crate::MultiVersionScope;
+
 pub type TierBatch = HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>;
 
 #[derive(Debug, Clone)]
@@ -93,7 +95,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch>;
 
@@ -103,7 +105,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch>;
 

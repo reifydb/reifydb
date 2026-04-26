@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKeyRange};
+use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
 use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
@@ -26,14 +27,15 @@ fn test_range() {
 	let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
 	let txn = engine.begin_query().unwrap();
-	let items: Vec<_> = txn.range(four_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).rev().zip(items) {
 		assert_eq!(v.key, as_key!(expected));
 		assert_eq!(v.row, as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
-	let items: Vec<_> = txn.range_rev(four_to_one, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = txn.range_rev(four_to_one, RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).zip(items) {
 		assert_eq!(v.key, as_key!(expected));
 		assert_eq!(v.row, as_values!(expected));
@@ -51,14 +53,16 @@ fn test_range2() {
 
 	let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
-	let items: Vec<_> = txn.range(four_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 1);
 	}
 
-	let items: Vec<_> = txn.range_rev(four_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.row, &as_values!(expected));
@@ -74,14 +78,16 @@ fn test_range2() {
 
 	let seven_to_one = EncodedKeyRange::start_end(Some(as_key!(7)), Some(as_key!(1)));
 
-	let items: Vec<_> = txn.range(seven_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(seven_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=6).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
-	let items: Vec<_> = txn.range_rev(seven_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(seven_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=6).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.row, &as_values!(expected));
@@ -99,14 +105,16 @@ fn test_range3() {
 
 	let seven_to_four = EncodedKeyRange::start_end(Some(as_key!(7)), Some(as_key!(4)));
 
-	let items: Vec<_> = txn.range(seven_to_four.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(seven_to_four.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (4..=6).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 1);
 	}
 
-	let items: Vec<_> = txn.range_rev(seven_to_four.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(seven_to_four.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (4..=6).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.row, &as_values!(expected));
@@ -122,14 +130,16 @@ fn test_range3() {
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
-	let items: Vec<_> = txn.range(five_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(five_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=5).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
-	let items: Vec<_> = txn.range_rev(five_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(five_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=5).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
 		assert_eq!(&v.row, &as_values!(expected));
@@ -205,13 +215,16 @@ fn test_range_edge() {
 	let ten_to_one = EncodedKeyRange::start_end(Some(as_key!(10)), Some(as_key!(1)));
 
 	let mut txn = engine.begin_command().unwrap();
-	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 13]);
-	let items: Vec<_> = txn.range_rev(ten_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(6));
-	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	let mut count = 2;
 	for v in items {
 		if v.key == as_key!(1) {
@@ -224,7 +237,8 @@ fn test_range_edge() {
 	}
 	assert_eq!(0, count);
 
-	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	let mut count = 2;
 	for v in items {
 		if v.key == as_key!(1) {
@@ -238,23 +252,29 @@ fn test_range_edge() {
 	assert_eq!(0, count);
 
 	txn.read_as_of_version_exclusive(CommitVersion(4));
-	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 23, 13]);
 
-	let items: Vec<_> = txn.range_rev(ten_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 23, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(3));
-	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 12]);
 
-	let items: Vec<_> = txn.range_rev(ten_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[12, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(2));
-	let items: Vec<_> = txn.range(ten_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[31]);
-	let items: Vec<_> = txn.range_rev(ten_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(ten_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[31]);
 }
 
@@ -291,7 +311,8 @@ fn test_range_stream_returns_newest_version() {
 	// Before fix: would return an older version
 	// After fix: returns newest version
 	let txn = engine.begin_query().unwrap();
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 5).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 5).collect::<Result<Vec<_>, _>>().unwrap();
 
 	assert_eq!(items.len(), 1);
 	let item = &items[0];
@@ -320,7 +341,8 @@ fn test_range_stream_multiple_keys_many_versions() {
 
 	// Query with streaming
 	let txn = engine.begin_query().unwrap();
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 200).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 200).collect::<Result<Vec<_>, _>>().unwrap();
 
 	// Should have all 5 keys, each with newest version
 	// Keys are returned in descending order (5, 4, 3, 2, 1)

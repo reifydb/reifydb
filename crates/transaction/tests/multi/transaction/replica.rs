@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKeyRange};
-use reifydb_transaction::transaction::replica::ReplicaTransaction;
+use reifydb_transaction::{multi::RangeScope, transaction::replica::ReplicaTransaction};
 
 use super::test_multi;
 use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
@@ -118,14 +118,15 @@ fn test_replica_range() {
 	let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
 	let rx = engine.begin_query().unwrap();
-	let items: Vec<_> = rx.range(four_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		rx.range(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).rev().zip(items) {
 		assert_eq!(v.key, as_key!(expected));
 		assert_eq!(v.row, as_values!(expected));
 		assert_eq!(v.version, CommitVersion(100));
 	}
 
-	let items: Vec<_> = rx.range_rev(four_to_one, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = rx.range_rev(four_to_one, RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).zip(items) {
 		assert_eq!(v.key, as_key!(expected));
 		assert_eq!(v.row, as_values!(expected));
@@ -159,7 +160,7 @@ fn test_replica_range_multiple_commits() {
 	let seven_to_one = EncodedKeyRange::start_end(Some(as_key!(7)), Some(as_key!(1)));
 
 	let rx = engine.begin_query().unwrap();
-	let items: Vec<_> = rx.range(seven_to_one, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> = rx.range(seven_to_one, RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	assert_eq!(items.len(), 6);
 	for (expected, v) in (1..=6).rev().zip(items) {
 		assert_eq!(v.key, as_key!(expected));

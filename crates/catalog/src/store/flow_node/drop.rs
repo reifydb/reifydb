@@ -10,7 +10,10 @@ use reifydb_core::{
 		retention_strategy::OperatorRetentionStrategyKey,
 	},
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::{
+	multi::RangeScope,
+	transaction::{Transaction, admin::AdminTransaction},
+};
 
 use crate::{CatalogStore, Result};
 
@@ -20,7 +23,7 @@ impl CatalogStore {
 
 		if let Some(node_def) = node {
 			let state_range = FlowNodeStateKey::node_range(node_id);
-			let mut state_stream = txn.range(state_range, 1024)?;
+			let mut state_stream = txn.range(state_range, RangeScope::All, 1024)?;
 			let mut state_keys = Vec::new();
 			for entry in state_stream.by_ref() {
 				state_keys.push(entry?.key.clone());
@@ -31,7 +34,7 @@ impl CatalogStore {
 			}
 
 			let internal_range = FlowNodeInternalStateKey::node_range(node_id);
-			let mut internal_stream = txn.range(internal_range, 1024)?;
+			let mut internal_stream = txn.range(internal_range, RangeScope::All, 1024)?;
 			let mut internal_keys = Vec::new();
 			for entry in internal_stream.by_ref() {
 				internal_keys.push(entry?.key.clone());

@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{handler::HandlerKey, namespace_handler::NamespaceHandlerKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
@@ -30,7 +30,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<Handler>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceHandlerKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceHandlerKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_id = None;
 		for entry in stream.by_ref() {

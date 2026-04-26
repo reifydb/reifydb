@@ -8,7 +8,7 @@ use reifydb_core::{
 		flow_node::{FlowNodeByFlowKey, FlowNodeKey},
 	},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
@@ -19,7 +19,7 @@ impl CatalogStore {
 	pub(crate) fn list_flow_nodes_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNode>> {
 		let mut node_ids = Vec::new();
 		{
-			let stream = rx.range(FlowNodeByFlowKey::full_scan(flow_id), 1024)?;
+			let stream = rx.range(FlowNodeByFlowKey::full_scan(flow_id), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				node_ids.push(FlowNodeId(
@@ -41,7 +41,7 @@ impl CatalogStore {
 	pub(crate) fn list_flow_nodes_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowNode>> {
 		let mut result = Vec::new();
 
-		let stream = rx.range(FlowNodeKey::full_scan(), 1024)?;
+		let stream = rx.range(FlowNodeKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

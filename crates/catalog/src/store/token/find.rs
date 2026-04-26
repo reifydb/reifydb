@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::token::Token, key::token::TokenKey};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use subtle::ConstantTimeEq;
 
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_token_by_value(rx: &mut Transaction<'_>, value: &str) -> Result<Option<Token>> {
-		let stream = rx.range(TokenKey::full_scan(), 1024)?;
+		let stream = rx.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

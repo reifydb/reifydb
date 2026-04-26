@@ -12,7 +12,10 @@ use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_sqlite::SqliteConfig;
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage};
+use crate::{
+	MultiVersionScope,
+	tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage},
+};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
@@ -58,11 +61,11 @@ impl TierStorage for PersistentStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Sqlite(s) => s.range_next(table, cursor, start, end, version, batch_size),
+			Self::Sqlite(s) => s.range_next(table, cursor, start, end, scope, batch_size),
 		}
 	}
 
@@ -72,11 +75,11 @@ impl TierStorage for PersistentStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, version, batch_size),
+			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, scope, batch_size),
 		}
 	}
 

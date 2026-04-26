@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::sink::SinkKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;
 
 use crate::{CatalogStore, Result, store::sink::shape::sink};
@@ -18,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn list_sinks_all(rx: &mut Transaction<'_>) -> Result<Vec<Sink>> {
 		let mut result = Vec::new();
 
-		let stream = rx.range(SinkKey::full_scan(), 1024)?;
+		let stream = rx.range(SinkKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

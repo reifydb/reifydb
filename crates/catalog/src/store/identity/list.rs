@@ -2,14 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result, store::identity::convert_identity};
 
 impl CatalogStore {
 	pub(crate) fn list_all_identities(rx: &mut Transaction<'_>) -> Result<Vec<Identity>> {
 		let mut result = Vec::new();
-		let stream = rx.range(IdentityKey::full_scan(), 1024)?;
+		let stream = rx.range(IdentityKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

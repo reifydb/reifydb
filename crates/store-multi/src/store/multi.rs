@@ -29,7 +29,7 @@ use super::{
 	version::{VersionedGetResult, get_at_version},
 };
 use crate::{
-	Result,
+	MultiVersionScope, Result,
 	buffer::storage::BufferStorage,
 	persistent::PersistentStorage,
 	tier::{RangeBatch, RangeCursor, TierBatch, TierStorage},
@@ -247,7 +247,7 @@ pub struct TierScanQuery<'a> {
 	pub table: EntryKind,
 	pub start: &'a [u8],
 	pub end: &'a [u8],
-	pub version: CommitVersion,
+	pub scope: MultiVersionScope,
 	pub range: &'a EncodedKeyRange,
 }
 
@@ -262,7 +262,7 @@ pub fn scan_tier_chunk<S: TierStorage>(
 		cursor,
 		Bound::Included(scan.start),
 		Bound::Included(scan.end),
-		scan.version,
+		scan.scope,
 		TIER_SCAN_CHUNK_SIZE,
 	)?;
 	merge_tier_batch(batch, scan.range, collected)
@@ -279,7 +279,7 @@ pub fn scan_tier_chunk_rev<S: TierStorage>(
 		cursor,
 		Bound::Included(scan.start),
 		Bound::Included(scan.end),
-		scan.version,
+		scan.scope,
 		TIER_SCAN_CHUNK_SIZE,
 	)?;
 	merge_tier_batch(batch, scan.range, collected)
@@ -366,7 +366,7 @@ pub fn scan_tiers_latest(
 	buffer: Option<&BufferStorage>,
 	persistent: Option<&PersistentStorage>,
 	range: EncodedKeyRange,
-	version: CommitVersion,
+	scope: MultiVersionScope,
 	max_keys: usize,
 ) -> Result<MultiVersionBatch> {
 	let table = classify_key_range(&range);
@@ -375,7 +375,7 @@ pub fn scan_tiers_latest(
 		table,
 		start: &start,
 		end: &end,
-		version,
+		scope,
 		range: &range,
 	};
 
@@ -407,7 +407,7 @@ impl StandardMultiStore {
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
 		range: EncodedKeyRange,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: u64,
 	) -> Result<MultiVersionBatch> {
 		if cursor.exhausted {
@@ -426,7 +426,7 @@ impl StandardMultiStore {
 			table,
 			start: &start,
 			end: &end,
-			version,
+			scope,
 			range: &range,
 		};
 
@@ -471,14 +471,14 @@ impl StandardMultiStore {
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRangeIter {
 		MultiVersionRangeIter {
 			store: self.clone(),
 			cursor: MultiVersionRangeCursor::new(),
 			range,
-			version,
+			scope,
 			batch_size,
 			current_batch: Vec::new(),
 			current_index: 0,
@@ -488,14 +488,14 @@ impl StandardMultiStore {
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRangeRevIter {
 		MultiVersionRangeRevIter {
 			store: self.clone(),
 			cursor: MultiVersionRangeCursor::new(),
 			range,
-			version,
+			scope,
 			batch_size,
 			current_batch: Vec::new(),
 			current_index: 0,
@@ -506,7 +506,7 @@ impl StandardMultiStore {
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
 		range: EncodedKeyRange,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: u64,
 	) -> Result<MultiVersionBatch> {
 		if cursor.exhausted {
@@ -525,7 +525,7 @@ impl StandardMultiStore {
 			table,
 			start: &start,
 			end: &end,
-			version,
+			scope,
 			range: &range,
 		};
 
@@ -718,7 +718,7 @@ pub struct MultiVersionRangeIter {
 	store: StandardMultiStore,
 	cursor: MultiVersionRangeCursor,
 	range: EncodedKeyRange,
-	version: CommitVersion,
+	scope: MultiVersionScope,
 	batch_size: usize,
 	current_batch: Vec<MultiVersionRow>,
 	current_index: usize,
@@ -738,8 +738,7 @@ impl Iterator for MultiVersionRangeIter {
 			return None;
 		}
 
-		match self.store.range_next(&mut self.cursor, self.range.clone(), self.version, self.batch_size as u64)
-		{
+		match self.store.range_next(&mut self.cursor, self.range.clone(), self.scope, self.batch_size as u64) {
 			Ok(batch) => {
 				if batch.items.is_empty() {
 					if self.cursor.exhausted {
@@ -760,7 +759,7 @@ pub struct MultiVersionRangeRevIter {
 	store: StandardMultiStore,
 	cursor: MultiVersionRangeCursor,
 	range: EncodedKeyRange,
-	version: CommitVersion,
+	scope: MultiVersionScope,
 	batch_size: usize,
 	current_batch: Vec<MultiVersionRow>,
 	current_index: usize,
@@ -783,7 +782,7 @@ impl Iterator for MultiVersionRangeRevIter {
 		match self.store.range_rev_next(
 			&mut self.cursor,
 			self.range.clone(),
-			self.version,
+			self.scope,
 			self.batch_size as u64,
 		) {
 			Ok(batch) => {

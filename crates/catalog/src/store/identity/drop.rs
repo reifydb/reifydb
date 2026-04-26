@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::key::{EncodableKey, granted_role::GrantedRoleKey, identity::IdentityKey};
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 use reifydb_type::value::identity::IdentityId;
 
 use crate::{CatalogStore, Result};
@@ -11,7 +11,7 @@ impl CatalogStore {
 	pub(crate) fn drop_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
 		{
 			let range = GrantedRoleKey::identity_scan(identity);
-			let mut stream = txn.range(range, 1024)?;
+			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;

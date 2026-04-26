@@ -21,7 +21,10 @@ use super::{
 		build_upsert_warm_current_sql, version_from_bytes, version_to_bytes,
 	},
 };
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
+use crate::{
+	MultiVersionScope,
+	tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage},
+};
 
 #[derive(Clone)]
 pub struct SqlitePersistentStorage {
@@ -97,7 +100,7 @@ impl SqlitePersistentStorage {
 			Err(e) => return Err(error!(internal(format!("Failed to prepare persistent range: {}", e)))),
 		};
 
-		let version_bytes = version_to_bytes(req.version).to_vec();
+		let version_bytes = version_to_bytes(req.scope.read()).to_vec();
 		let limit_i64 = req.batch_size as i64;
 		let mut params: Vec<Box<dyn ToSql>> = Vec::new();
 		match req.start {
@@ -114,7 +117,7 @@ impl SqlitePersistentStorage {
 		params.push(Box::new(version_bytes));
 		params.push(Box::new(limit_i64));
 
-		let entries = match stmt.query_map(params_from_iter(params), |row| {
+		let raw: Vec<RawEntry> = match stmt.query_map(params_from_iter(params), |row| {
 			let key: Vec<u8> = row.get(0)?;
 			let version_blob: Vec<u8> = row.get(1)?;
 			let value: Option<Vec<u8>> = row.get(2)?;
@@ -133,6 +136,7 @@ impl SqlitePersistentStorage {
 			}
 			Err(e) => return Err(error!(internal(format!("Failed to scan persistent range: {}", e)))),
 		};
+		let entries: Vec<RawEntry> = raw.into_iter().filter(|e| req.scope.contains(e.version)).collect();
 
 		if entries.len() < req.batch_size {
 			cursor.exhausted = true;
@@ -161,7 +165,7 @@ struct RangeChunkRequest<'a> {
 	table: EntryKind,
 	start: Bound<&'a [u8]>,
 	end: Bound<&'a [u8]>,
-	version: CommitVersion,
+	scope: MultiVersionScope,
 	batch_size: usize,
 	descending: bool,
 }
@@ -233,7 +237,7 @@ impl TierStorage for SqlitePersistentStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		self.range_chunk(
@@ -242,7 +246,7 @@ impl TierStorage for SqlitePersistentStorage {
 				table,
 				start,
 				end,
-				version,
+				scope,
 				batch_size,
 				descending: false,
 			},
@@ -255,7 +259,7 @@ impl TierStorage for SqlitePersistentStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		self.range_chunk(
@@ -264,7 +268,7 @@ impl TierStorage for SqlitePersistentStorage {
 				table,
 				start,
 				end,
-				version,
+				scope,
 				batch_size,
 				descending: true,
 			},

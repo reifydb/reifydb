@@ -20,6 +20,7 @@ use crate::{
 	change::RowChange,
 	error::TransactionError,
 	multi::{
+		RangeScope,
 		pending::PendingWrites,
 		transaction::{MultiTransaction, replica::MultiReplicaTransaction},
 	},
@@ -146,20 +147,22 @@ impl ReplicaTransaction {
 	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		self.check_active()?;
-		Ok(self.rpl.as_mut().unwrap().range(range, batch_size))
+		Ok(self.rpl.as_mut().unwrap().range(range, scope, batch_size))
 	}
 
 	#[inline]
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		self.check_active()?;
-		Ok(self.rpl.as_mut().unwrap().range_rev(range, batch_size))
+		Ok(self.rpl.as_mut().unwrap().range_rev(range, scope, batch_size))
 	}
 }
 

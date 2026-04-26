@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
 	key::{Key, primary_key::PrimaryKeyKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
@@ -33,7 +33,7 @@ impl CatalogStore {
 
 		let mut entries = Vec::new();
 		{
-			let stream = rx.range(primary_key_range, 1024)?;
+			let stream = rx.range(primary_key_range, RangeScope::All, 1024)?;
 			for entry in stream {
 				entries.push(entry?);
 			}
@@ -87,7 +87,7 @@ impl CatalogStore {
 			EncodedKeyRange::new(Bound::Included(start_key), Bound::Included(end_key))
 		};
 
-		let stream = rx.range(primary_key_range, 1024)?;
+		let stream = rx.range(primary_key_range, RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

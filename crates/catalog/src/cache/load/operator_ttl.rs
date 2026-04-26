@@ -5,7 +5,7 @@ use reifydb_core::key::{
 	EncodableKey,
 	operator_ttl::{OperatorTtlKey, OperatorTtlKeyRange},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use tracing::warn;
 
 use super::CatalogCache;
@@ -13,7 +13,7 @@ use crate::{Result, store::ttl::decode_ttl_config};
 
 pub(crate) fn load_operator_ttls(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = OperatorTtlKeyRange::full_scan();
-	let stream = rx.range(range, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

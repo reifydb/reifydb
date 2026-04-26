@@ -18,6 +18,7 @@ use crate::{
 		subscription::shape::{subscription, subscription_column},
 	},
 };
+use reifydb_transaction::multi::RangeScope;
 
 #[derive(Debug, Clone)]
 pub struct SubscriptionColumnToCreate {
@@ -84,7 +85,7 @@ impl CatalogStore {
 		txn: &mut Transaction<'_>,
 		subscription: SubscriptionId,
 	) -> Result<Vec<SubscriptionColumn>> {
-		let mut stream = txn.range(SubscriptionColumnKey::subscription_range(subscription), 256)?;
+		let mut stream = txn.range(SubscriptionColumnKey::subscription_range(subscription), RangeScope::All, 256)?;
 
 		let mut columns = Vec::new();
 		while let Some(result) = stream.next() {

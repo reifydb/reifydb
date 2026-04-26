@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{id::SeriesId, series::Series},
 	key::{Key, series::SeriesKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result};
 
@@ -15,7 +15,7 @@ impl CatalogStore {
 
 		let mut series_data: Vec<SeriesId> = Vec::new();
 		{
-			let stream = rx.range(SeriesKey::full_scan(), 1024)?;
+			let stream = rx.range(SeriesKey::full_scan(), RangeScope::All, 1024)?;
 
 			for entry in stream {
 				let entry = entry?;

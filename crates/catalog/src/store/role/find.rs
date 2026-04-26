@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::identity::{Role, RoleId},
 	key::role::RoleKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
@@ -19,7 +19,7 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Role>> {
-		let stream = rx.range(RoleKey::full_scan(), 1024)?;
+		let stream = rx.range(RoleKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

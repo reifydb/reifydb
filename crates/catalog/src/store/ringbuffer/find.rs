@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	util::encoding::keycode::deserializer::KeyDeserializer,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::value::Value;
 
 use crate::{
@@ -100,7 +100,7 @@ impl CatalogStore {
 		ringbuffer: &RingBuffer,
 	) -> Result<Vec<PartitionedMetadata>> {
 		let range = RingBufferMetadataKey::full_scan_for_ringbuffer(ringbuffer.id);
-		let stream = rx.range(range, 4096)?;
+		let stream = rx.range(range, RangeScope::All, 4096)?;
 		let mut results = Vec::new();
 
 		for entry in stream {
@@ -161,7 +161,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<RingBuffer>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceRingBufferKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceRingBufferKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_ringbuffer = None;
 		for entry in stream.by_ref() {

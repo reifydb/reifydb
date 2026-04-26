@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKeyRange};
+use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
 use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
@@ -38,7 +39,10 @@ fn test_versions() {
 		}
 
 		// Try retrieving the latest version forward and reverse.
-		let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+		let items: Vec<_> = txn
+			.range(EncodedKeyRange::all(), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
 		let mut count = 0;
 		for sv in items {
 			assert_eq!(&sv.key, &k0);
@@ -48,7 +52,10 @@ fn test_versions() {
 		}
 		assert_eq!(1, count); // should only loop once.
 
-		let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+		let items: Vec<_> = txn
+			.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
 		let mut count = 0;
 		for sv in items {
 			let value = from_row!(i32, &sv.row);

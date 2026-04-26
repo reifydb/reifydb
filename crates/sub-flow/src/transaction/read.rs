@@ -23,6 +23,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionBatch, MultiVersionRow},
 	key::{Key, kind::KeyKind},
 };
+use reifydb_transaction::multi::RangeScope;
 use reifydb_type::Result;
 use vec::IntoIter;
 
@@ -125,7 +126,7 @@ impl FlowTransaction {
 
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		let range = EncodedKeyRange::prefix(prefix);
-		let items = self.range(range, 1024).collect::<Result<Vec<_>>>()?;
+		let items = self.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -218,6 +219,7 @@ impl FlowTransaction {
 	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		match self {
@@ -240,7 +242,7 @@ impl FlowTransaction {
 					Unbounded => &inner.query,
 				};
 
-				let storage_iter = query.range(range, batch_size);
+				let storage_iter = query.range(range, scope, batch_size);
 				let v = inner.version;
 				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 			}
@@ -266,7 +268,7 @@ impl FlowTransaction {
 					Unbounded => &inner.query,
 				};
 
-				let storage_iter = query.range(range, batch_size);
+				let storage_iter = query.range(range, scope, batch_size);
 				let v = inner.version;
 				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 			}
@@ -309,7 +311,7 @@ impl FlowTransaction {
 					});
 					Box::new(flow_merge_pending_iterator(pending_vec, sorted_items.into_iter(), v))
 				} else {
-					let storage_iter = inner.query.range(range, batch_size);
+					let storage_iter = inner.query.range(range, scope, batch_size);
 					let v = inner.version;
 					Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 				}
@@ -320,6 +322,7 @@ impl FlowTransaction {
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		match self {
@@ -342,7 +345,7 @@ impl FlowTransaction {
 					Unbounded => &inner.query,
 				};
 
-				let storage_iter = query.range_rev(range, batch_size);
+				let storage_iter = query.range_rev(range, scope, batch_size);
 				let v = inner.version;
 				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 			}
@@ -368,7 +371,7 @@ impl FlowTransaction {
 					Unbounded => &inner.query,
 				};
 
-				let storage_iter = query.range_rev(range, batch_size);
+				let storage_iter = query.range_rev(range, scope, batch_size);
 				let v = inner.version;
 				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 			}
@@ -414,7 +417,7 @@ impl FlowTransaction {
 						v,
 					))
 				} else {
-					let storage_iter = inner.query.range_rev(range, batch_size);
+					let storage_iter = inner.query.range_rev(range, scope, batch_size);
 					let v = inner.version;
 					Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 				}
@@ -826,7 +829,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let mut iter = txn.range(EncodedKeyRange::all(), 1024);
+		let mut iter = txn.range(EncodedKeyRange::all(), RangeScope::All, 1024);
 		assert!(iter.next().is_none());
 	}
 
@@ -845,7 +848,8 @@ pub mod tests {
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 
-		let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>>>().unwrap();
+		let items: Vec<_> =
+			txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should be in sorted order
 		assert_eq!(items.len(), 3);
@@ -869,7 +873,8 @@ pub mod tests {
 		txn.remove(&make_key("b")).unwrap();
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 
-		let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>>>().unwrap();
+		let items: Vec<_> =
+			txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should only have 2 items (remove filtered out)
 		assert_eq!(items.len(), 2);
@@ -889,7 +894,7 @@ pub mod tests {
 		);
 
 		let range = EncodedKeyRange::start_end(Some(make_key("a")), Some(make_key("z")));
-		let mut iter = txn.range(range, 1024);
+		let mut iter = txn.range(range, RangeScope::All, 1024);
 		assert!(iter.next().is_none());
 	}
 
@@ -910,7 +915,7 @@ pub mod tests {
 		txn.set(&make_key("d"), make_value("4")).unwrap();
 
 		let range = EncodedKeyRange::new(Included(make_key("b")), Excluded(make_key("d")));
-		let items: Vec<_> = txn.range(range, 1024).collect::<Result<Vec<_>>>().unwrap();
+		let items: Vec<_> = txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should only include b and c (not d, exclusive end)
 		assert_eq!(items.len(), 2);

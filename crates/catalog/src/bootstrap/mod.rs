@@ -16,7 +16,8 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_multi::{
-	buffer::storage::BufferStorage, persistent::PersistentStorage, store::multi::scan_tiers_latest,
+	MultiVersionScope, buffer::storage::BufferStorage, persistent::PersistentStorage,
+	store::multi::scan_tiers_latest,
 };
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
@@ -101,7 +102,15 @@ pub fn read_configs(
 	let mut found: HashMap<ConfigKey, Value> = HashMap::new();
 
 	let range = ConfigStorageKey::full_scan();
-	let batch = scan_tiers_latest(buffer, persistent, range, CommitVersion(u64::MAX), 1024)?;
+	let batch = scan_tiers_latest(
+		buffer,
+		persistent,
+		range,
+		MultiVersionScope::AsOf {
+			read: CommitVersion(u64::MAX),
+		},
+		1024,
+	)?;
 
 	for multi in batch.items {
 		let (key, value) = convert_config(multi);

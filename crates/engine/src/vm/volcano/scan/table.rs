@@ -16,7 +16,7 @@ use reifydb_core::{
 		column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 	},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::{error, fragment::Fragment, util::cowvec::CowVec, value::r#type::Type};
 use tracing::instrument;
 
@@ -121,7 +121,7 @@ impl QueryNode for TableScanNode {
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
 
-		let mut stream = rx.range(range, batch_size as usize)?;
+		let mut stream = rx.range(range, RangeScope::All, batch_size as usize)?;
 
 		for _ in 0..batch_size {
 			match stream.next() {
@@ -203,7 +203,7 @@ impl QueryNode for TableScanNode {
 
 		let range = RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref());
 
-		let mut stream = rx.range(range, batch_size as usize)?;
+		let mut stream = rx.range(range, RangeScope::All, batch_size as usize)?;
 
 		let mut encoded_rows = Vec::with_capacity(batch_size as usize);
 		let mut row_numbers = Vec::with_capacity(batch_size as usize);

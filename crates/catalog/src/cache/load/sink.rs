@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	key::sink::SinkKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;
 
 use super::CatalogCache;
@@ -26,7 +26,7 @@ use crate::{
 
 pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = SinkKey::full_scan();
-	let stream = rx.range(range, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

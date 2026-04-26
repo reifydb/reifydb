@@ -121,6 +121,7 @@ pub mod tests {
 		key::namespace_flow::NamespaceFlowKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::multi::RangeScope;
 	use reifydb_type::fragment::Fragment;
 
 	use crate::{
@@ -177,7 +178,7 @@ pub mod tests {
 
 		// Verify both are linked to namespace
 		let links: Vec<_> = txn
-			.range(NamespaceFlowKey::full_scan(test_namespace.id()), 1024)
+			.range(NamespaceFlowKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

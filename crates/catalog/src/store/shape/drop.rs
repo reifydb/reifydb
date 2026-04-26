@@ -12,7 +12,7 @@ use reifydb_core::{
 		row_sequence::RowSequenceKey,
 	},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 
 use crate::{Result, store::column::shape::primitive_column};
 
@@ -22,7 +22,7 @@ pub(crate) fn drop_shape_metadata(
 	pk_id: Option<PrimaryKeyId>,
 ) -> Result<()> {
 	let range = ColumnKey::full_scan(shape);
-	let mut stream = txn.range(range, 1024)?;
+	let mut stream = txn.range(range, RangeScope::All, 1024)?;
 	let mut col_entries = Vec::new();
 	for entry in stream.by_ref() {
 		let entry = entry?;
@@ -33,7 +33,7 @@ pub(crate) fn drop_shape_metadata(
 
 	for (col_key, col_id) in &col_entries {
 		let policy_range = ColumnPropertyKey::full_scan(*col_id);
-		let mut policy_stream = txn.range(policy_range, 1024)?;
+		let mut policy_stream = txn.range(policy_range, RangeScope::All, 1024)?;
 		let mut policy_keys = Vec::new();
 		for entry in policy_stream.by_ref() {
 			policy_keys.push(entry?.key.clone());

@@ -19,7 +19,10 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
 use super::entry::{CurrentMap, Entries, Entry, HistoricalMap, entry_id_to_key};
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
+use crate::{
+	MultiVersionScope,
+	tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage},
+};
 
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
@@ -202,14 +205,14 @@ impl TierStorage for MemoryPrimitiveStorage {
 		Ok(())
 	}
 
-	#[instrument(name = "store::multi::memory::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, version = version.0))]
+	#[instrument(name = "store::multi::memory::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, scope = ?scope))]
 	fn range_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		if cursor.exhausted {
@@ -269,24 +272,35 @@ impl TierStorage for MemoryPrimitiveStorage {
 				break;
 			}
 
-			if *cur_version <= version {
+			if scope.contains(*cur_version) {
 				entries.push(RawEntry {
 					key: key.clone(),
 					version: *cur_version,
 					value: cur_value.clone(),
 				});
-			} else if let Some(versions) = historical.get(key) {
-				for (Reverse(v), value) in versions.range(Reverse(version)..) {
-					if *v <= version {
-						entries.push(RawEntry {
-							key: key.clone(),
-							version: *v,
-							value: value.clone(),
-						});
-						break;
+			} else if *cur_version > scope.read() {
+				if let Some(versions) = historical.get(key) {
+					for (Reverse(v), value) in versions.range(Reverse(scope.read())..) {
+						if scope.contains(*v) {
+							entries.push(RawEntry {
+								key: key.clone(),
+								version: *v,
+								value: value.clone(),
+							});
+							break;
+						}
+						if let MultiVersionScope::Between {
+							after,
+							..
+						} = scope && *v <= after
+						{
+							break;
+						}
 					}
 				}
 			}
+			// else: current is <= read but not in scope (Between with v <= after);
+			// no older historical version can satisfy v > after, so drop the key.
 		}
 
 		for (key, versions) in historical.range::<CowVec<u8>, _>((iter_start, iter_end)) {
@@ -298,13 +312,20 @@ impl TierStorage for MemoryPrimitiveStorage {
 				continue;
 			}
 
-			for (Reverse(v), value) in versions.range(Reverse(version)..) {
-				if *v <= version {
+			for (Reverse(v), value) in versions.range(Reverse(scope.read())..) {
+				if scope.contains(*v) {
 					entries.push(RawEntry {
 						key: key.clone(),
 						version: *v,
 						value: value.clone(),
 					});
+					break;
+				}
+				if let MultiVersionScope::Between {
+					after,
+					..
+				} = scope && *v <= after
+				{
 					break;
 				}
 			}
@@ -330,14 +351,14 @@ impl TierStorage for MemoryPrimitiveStorage {
 		})
 	}
 
-	#[instrument(name = "store::multi::memory::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, version = version.0))]
+	#[instrument(name = "store::multi::memory::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, scope = ?scope))]
 	fn range_rev_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		if cursor.exhausted {
@@ -397,24 +418,34 @@ impl TierStorage for MemoryPrimitiveStorage {
 				break;
 			}
 
-			if *cur_version <= version {
+			if scope.contains(*cur_version) {
 				entries.push(RawEntry {
 					key: key.clone(),
 					version: *cur_version,
 					value: cur_value.clone(),
 				});
-			} else if let Some(versions) = historical.get(key) {
-				for (Reverse(v), value) in versions.range(Reverse(version)..) {
-					if *v <= version {
-						entries.push(RawEntry {
-							key: key.clone(),
-							version: *v,
-							value: value.clone(),
-						});
-						break;
+			} else if *cur_version > scope.read() {
+				if let Some(versions) = historical.get(key) {
+					for (Reverse(v), value) in versions.range(Reverse(scope.read())..) {
+						if scope.contains(*v) {
+							entries.push(RawEntry {
+								key: key.clone(),
+								version: *v,
+								value: value.clone(),
+							});
+							break;
+						}
+						if let MultiVersionScope::Between {
+							after,
+							..
+						} = scope && *v <= after
+						{
+							break;
+						}
 					}
 				}
 			}
+			// else: current is <= read but not in scope; drop the key.
 		}
 
 		for (key, versions) in historical.range::<CowVec<u8>, _>((iter_start, iter_end)).rev() {
@@ -426,13 +457,20 @@ impl TierStorage for MemoryPrimitiveStorage {
 				continue;
 			}
 
-			for (Reverse(v), value) in versions.range(Reverse(version)..) {
-				if *v <= version {
+			for (Reverse(v), value) in versions.range(Reverse(scope.read())..) {
+				if scope.contains(*v) {
 					entries.push(RawEntry {
 						key: key.clone(),
 						version: *v,
 						value: value.clone(),
 					});
+					break;
+				}
+				if let MultiVersionScope::Between {
+					after,
+					..
+				} = scope && *v <= after
+				{
 					break;
 				}
 			}
@@ -834,7 +872,16 @@ pub mod tests {
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 100)
+			.range_next(
+				EntryKind::Multi,
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				100,
+			)
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
@@ -867,7 +914,16 @@ pub mod tests {
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 100)
+			.range_rev_next(
+				EntryKind::Multi,
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				100,
+			)
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
@@ -896,7 +952,16 @@ pub mod tests {
 
 		// First batch of 3
 		let batch1 = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
+			.range_next(
+				EntryKind::Multi,
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				3,
+			)
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
@@ -907,7 +972,16 @@ pub mod tests {
 
 		// Second batch of 3
 		let batch2 = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
+			.range_next(
+				EntryKind::Multi,
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				3,
+			)
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
@@ -918,7 +992,16 @@ pub mod tests {
 
 		// Third batch of 3
 		let batch3 = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
+			.range_next(
+				EntryKind::Multi,
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				3,
+			)
 			.unwrap();
 		assert_eq!(batch3.entries.len(), 3);
 		assert!(batch3.has_more);
@@ -929,7 +1012,16 @@ pub mod tests {
 
 		// Fourth batch - only 1 entry remaining
 		let batch4 = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
+			.range_next(
+				EntryKind::Multi,
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				3,
+			)
 			.unwrap();
 		assert_eq!(batch4.entries.len(), 1);
 		assert!(!batch4.has_more);
@@ -939,7 +1031,16 @@ pub mod tests {
 
 		// Fifth call - exhausted
 		let batch5 = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
+			.range_next(
+				EntryKind::Multi,
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				3,
+			)
 			.unwrap();
 		assert!(batch5.entries.is_empty());
 	}
@@ -960,7 +1061,16 @@ pub mod tests {
 
 		// First batch of 3 (reverse)
 		let batch1 = storage
-			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
+			.range_rev_next(
+				EntryKind::Multi,
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				3,
+			)
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
@@ -971,7 +1081,16 @@ pub mod tests {
 
 		// Second batch
 		let batch2 = storage
-			.range_rev_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 3)
+			.range_rev_next(
+				EntryKind::Multi,
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				3,
+			)
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);

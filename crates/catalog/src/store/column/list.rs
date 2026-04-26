@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::column::ColumnKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result, store::column::shape::primitive_column};
 
@@ -29,7 +29,7 @@ impl CatalogStore {
 
 		let mut ids = Vec::new();
 		{
-			let stream = rx.range(ColumnKey::full_scan(shape), 1024)?;
+			let stream = rx.range(ColumnKey::full_scan(shape), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				let row = multi.row;

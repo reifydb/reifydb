@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, sumtype::SumType},
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::value::sumtype::SumTypeId;
 
 use super::sumtype_from_row;
@@ -26,7 +26,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<SumType>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_id = None;
 		for entry in stream.by_ref() {

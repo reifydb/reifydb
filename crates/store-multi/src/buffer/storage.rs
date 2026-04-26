@@ -11,7 +11,10 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 use super::memory::storage::MemoryPrimitiveStorage;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use super::sqlite::storage::SqlitePrimitiveStorage;
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage};
+use crate::{
+	MultiVersionScope,
+	tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage},
+};
 
 #[derive(Clone)]
 #[repr(u8)]
@@ -109,13 +112,13 @@ impl TierStorage for BufferStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => s.range_next(table, cursor, start, end, version, batch_size),
+			Self::Memory(s) => s.range_next(table, cursor, start, end, scope, batch_size),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.range_next(table, cursor, start, end, version, batch_size),
+			Self::Sqlite(s) => s.range_next(table, cursor, start, end, scope, batch_size),
 		}
 	}
 
@@ -126,13 +129,13 @@ impl TierStorage for BufferStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => s.range_rev_next(table, cursor, start, end, version, batch_size),
+			Self::Memory(s) => s.range_rev_next(table, cursor, start, end, scope, batch_size),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, version, batch_size),
+			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, scope, batch_size),
 		}
 	}
 
@@ -243,8 +246,11 @@ pub mod tests {
 		.unwrap();
 
 		let mut cursor = RangeCursor::new();
+		let scope = MultiVersionScope::AsOf {
+			read: version,
+		};
 		let batch = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, scope, 100)
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);
@@ -271,8 +277,11 @@ pub mod tests {
 		.unwrap();
 
 		let mut cursor = RangeCursor::new();
+		let scope = MultiVersionScope::AsOf {
+			read: version,
+		};
 		let batch = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 100)
+			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, scope, 100)
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);

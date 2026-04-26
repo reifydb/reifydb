@@ -36,7 +36,10 @@ use super::{
 		version_to_bytes,
 	},
 };
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
+use crate::{
+	MultiVersionScope,
+	tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage},
+};
 
 #[derive(Clone)]
 pub struct SqlitePrimitiveStorage {
@@ -224,30 +227,30 @@ impl TierStorage for SqlitePrimitiveStorage {
 		tx.commit().map_err(|e| error!(internal(format!("Failed to commit transaction: {}", e))))
 	}
 
-	#[instrument(name = "store::multi::sqlite::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, version = version.0))]
+	#[instrument(name = "store::multi::sqlite::range_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, scope = ?scope))]
 	fn range_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		self.range_next_directional(table, cursor, start, end, version, batch_size, false)
+		self.range_next_directional(table, cursor, start, end, scope, batch_size, false)
 	}
 
-	#[instrument(name = "store::multi::sqlite::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, version = version.0))]
+	#[instrument(name = "store::multi::sqlite::range_rev_next", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size, scope = ?scope))]
 	fn range_rev_next(
 		&self,
 		table: EntryKind,
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		self.range_next_directional(table, cursor, start, end, version, batch_size, true)
+		self.range_next_directional(table, cursor, start, end, scope, batch_size, true)
 	}
 
 	fn ensure_table(&self, table: EntryKind) -> Result<()> {
@@ -415,7 +418,7 @@ impl SqlitePrimitiveStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 		reverse: bool,
 	) -> Result<RangeBatch> {
@@ -497,12 +500,16 @@ impl SqlitePrimitiveStorage {
 		let historical_sql = build_get_historical_sql(&historical_name);
 
 		for (key, cur_version, cur_value) in raw_rows.into_iter().take(process_count) {
-			if cur_version <= version {
+			if scope.contains(cur_version) {
 				entries.push(RawEntry {
 					key,
 					version: cur_version,
 					value: cur_value,
 				});
+				continue;
+			}
+
+			if cur_version <= scope.read() {
 				continue;
 			}
 
@@ -521,7 +528,7 @@ impl SqlitePrimitiveStorage {
 
 			let stmt = historical_stmt.as_mut().unwrap();
 			let result = stmt.query_row(
-				params![key.as_slice(), version_to_bytes(version).as_slice()],
+				params![key.as_slice(), version_to_bytes(scope.read()).as_slice()],
 				decode_versioned_value_row,
 			);
 			match result {

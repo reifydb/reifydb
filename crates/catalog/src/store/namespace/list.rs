@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, namespace::Namespace},
 	key::{Key, namespace::NamespaceKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result, store::namespace::shape::namespace};
 
@@ -15,7 +15,7 @@ impl CatalogStore {
 
 		let namespace_range = NamespaceKey::full_scan();
 
-		let stream = rx.range(namespace_range, 1024)?;
+		let stream = rx.range(namespace_range, RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

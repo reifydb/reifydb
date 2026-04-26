@@ -15,6 +15,7 @@ use reifydb_core::{
 	interface::store::MultiVersionBatch,
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
+use reifydb_transaction::multi::RangeScope;
 use reifydb_type::{error::Error, util::cowvec::CowVec};
 
 use super::store_iterator::{self, StoreIteratorHandle};
@@ -209,7 +210,7 @@ pub(super) extern "C" fn host_store_range(
 
 		let range = EncodedKeyRange::new(start_bound, end_bound);
 		let result: Result<MultiVersionBatch, _> = (|| -> Result<_, Error> {
-			let iter = flow_txn.range(range, 1024);
+			let iter = flow_txn.range(range, RangeScope::All, 1024);
 			let mut items = Vec::new();
 			for res in iter {
 				items.push(res?);

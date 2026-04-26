@@ -204,6 +204,7 @@ pub mod tests {
 		key::namespace_table::NamespaceTableKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::multi::RangeScope;
 	use reifydb_type::fragment::Fragment;
 
 	use crate::{
@@ -262,7 +263,7 @@ pub mod tests {
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
 
 		let links: Vec<_> = txn
-			.range(NamespaceTableKey::full_scan(test_namespace.id()), 1024)
+			.range(NamespaceTableKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

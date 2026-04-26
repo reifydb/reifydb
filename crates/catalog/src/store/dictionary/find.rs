@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use crate::{
@@ -44,7 +44,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<Dictionary>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_dictionary_id = None;
 		for entry in stream.by_ref() {

@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::fragment::Fragment;
 use tracing::instrument;
 
@@ -91,7 +91,7 @@ impl QueryNode for ViewScanNode {
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
 
-		let mut stream = rx.range(range, batch_size as usize)?;
+		let mut stream = rx.range(range, RangeScope::All, batch_size as usize)?;
 		for _ in 0..batch_size {
 			match stream.next() {
 				Some(Ok(multi)) => {
