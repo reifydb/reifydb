@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_rql::{
 	ast::{
 		ast::{
-			Ast, AstFilter, AstFrom, AstInfix, AstJoin, AstMap, AstSkip, AstStatement, AstSubQuery,
-			AstTake, AstTakeValue, InfixOperator,
+			Ast, AstFilter, AstFrom, AstInfix, AstJoin, AstLiteral, AstLiteralBoolean, AstLiteralNumber,
+			AstLiteralText, AstMap, AstSkip, AstStatement, AstSubQuery, AstTake, AstTakeValue, InfixOperator,
 		},
 		identifier::{UnqualifiedIdentifier, UnresolvedShapeIdentifier},
 	},
+	bump::{BumpBox, BumpFragment},
 	token::token::{Literal as RqlLiteral, Token as RqlToken, TokenKind as RqlTokenKind},
 };
 use thiserror::Error;
 
 use crate::{
 	ast::ast::*,
-	bump::{Bump, BumpBox, BumpVec},
 	token::token::{Token as GqlToken, TokenKind as GqlTokenKind},
 };
 
@@ -170,13 +171,13 @@ impl<'bump> Compiler<'bump> {
 					field_name.to_string()
 				};
 				let ident = Ast::Identifier(UnqualifiedIdentifier::from_fragment(
-					reifydb_rql::bump::BumpFragment::Internal {
+					BumpFragment::Internal {
 						text: self.bump.alloc_str(&full_name),
 					},
 				));
 				if let Some(alias) = alias_name {
 					let alias_ident = Ast::Identifier(UnqualifiedIdentifier::from_fragment(
-						reifydb_rql::bump::BumpFragment::Internal {
+						BumpFragment::Internal {
 							text: self.bump.alloc_str(alias),
 						},
 					));
@@ -211,21 +212,21 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		let left = Ast::Identifier(UnqualifiedIdentifier::from_fragment(
-			reifydb_rql::bump::BumpFragment::Internal {
+			BumpFragment::Internal {
 				text: self.bump.alloc_str(column_name),
 			},
 		));
 
 		let right = match &field.value {
-			AstValue::Int(t) => Ast::Literal(reifydb_rql::ast::ast::AstLiteral::Number(
-				reifydb_rql::ast::ast::AstLiteralNumber(self.to_rql_token(*t)),
-			)),
-			AstValue::String(t) => Ast::Literal(reifydb_rql::ast::ast::AstLiteral::Text(
-				reifydb_rql::ast::ast::AstLiteralText(self.to_rql_token(*t)),
-			)),
-			AstValue::Boolean(t) => Ast::Literal(reifydb_rql::ast::ast::AstLiteral::Boolean(
-				reifydb_rql::ast::ast::AstLiteralBoolean(self.boolean_rql_token(*t)),
-			)),
+			AstValue::Int(t) => {
+				Ast::Literal(AstLiteral::Number(AstLiteralNumber(self.to_rql_token(*t))))
+			}
+			AstValue::String(t) => {
+				Ast::Literal(AstLiteral::Text(AstLiteralText(self.to_rql_token(*t))))
+			}
+			AstValue::Boolean(t) => {
+				Ast::Literal(AstLiteral::Boolean(AstLiteralBoolean(self.boolean_rql_token(*t))))
+			}
 			_ => return Err(CompilerError::UnsupportedOperation("Complex where values".to_string())),
 		};
 

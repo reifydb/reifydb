@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::collections::Vec as BumpVec;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::JoinType;
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +12,7 @@ use crate::{
 		ast::{Ast, AstFrom, AstInfix, AstJoin, AstSubQuery, AstUsingClause, InfixOperator, JoinConnector},
 		identifier::UnresolvedShapeIdentifier,
 	},
-	bump::{BumpBox, BumpFragment, BumpVec},
+	bump::{BumpBox, BumpFragment},
 	expression::{AndExpression, EqExpression, Expression, OrExpression, join::JoinConditionCompiler},
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,

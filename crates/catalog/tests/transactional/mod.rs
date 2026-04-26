@@ -9,6 +9,7 @@ mod identity;
 mod namespace;
 mod policy;
 mod procedure;
+mod relationship;
 mod ringbuffer;
 mod series;
 mod sumtype;

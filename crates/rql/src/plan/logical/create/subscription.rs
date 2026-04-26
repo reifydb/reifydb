@@ -4,10 +4,10 @@
 use reifydb_core::interface::catalog::subscription::HydrationConfig;
 use reifydb_transaction::transaction::Transaction;
 
+use bumpalo::collections::Vec as BumpVec;
 use crate::{
 	Result,
 	ast::ast::AstCreateSubscription,
-	bump::BumpVec,
 	convert_data_type_with_constraints,
 	nodes::SubscriptionColumnToCreate,
 	plan::logical::{Compiler, CreateSubscriptionNode, LogicalPlan},

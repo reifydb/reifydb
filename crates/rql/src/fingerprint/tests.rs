@@ -4,7 +4,8 @@
 use reifydb_core::fingerprint::{RequestFingerprint, StatementFingerprint};
 
 use super::{request::fingerprint_request, statement::fingerprint_statement};
-use crate::{ast::parse_str, bump::Bump};
+use bumpalo::Bump;
+use crate::{ast::parse_str};
 
 fn fp(query: &str) -> StatementFingerprint {
 	let bump = Bump::new();

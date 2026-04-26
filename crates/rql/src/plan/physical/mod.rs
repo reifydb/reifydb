@@ -8,6 +8,7 @@ pub mod mutate;
 
 use std::{collections, fmt, iter::once, marker, time::Duration};
 
+use bumpalo::Bump;
 use reifydb_catalog::catalog::{Catalog, table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	common::{JoinType, WindowKind},
@@ -41,7 +42,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	ast::ast::{AstAlterPolicyAction, AstPolicyScope, AstViewStorageKind},
-	bump::{Bump, BumpBox, FragmentInterner},
+	bump::{BumpBox, FragmentInterner},
 	error::RqlError,
 	expression::{
 		ConstantExpression, Expression, Expression::Constant, VariableExpression, extract_variable_names,

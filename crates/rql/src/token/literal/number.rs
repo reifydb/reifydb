@@ -122,11 +122,11 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use Literal::Number;
 
 	use super::*;
 	use crate::{
-		bump::Bump,
 		token::{operator::Operator, tokenize},
 	};
 

@@ -115,6 +115,7 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use reifydb_core::{common::IndexType, sort::SortDirection};
 
 	use crate::{
@@ -123,7 +124,6 @@ pub mod tests {
 			parse::Parser,
 			tokenize,
 		},
-		bump::Bump,
 	};
 
 	#[test]

@@ -54,6 +54,7 @@ pub mod window;
 
 use std::cmp::PartialOrd;
 
+use bumpalo::Bump;
 use Operator::*;
 use Separator::NewLine;
 
@@ -66,7 +67,7 @@ use crate::{
 		},
 		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
 	},
-	bump::{Bump, BumpBox},
+	bump::BumpBox,
 	diagnostic::AstError,
 	error::{OperationKind, RqlError},
 	token::{
@@ -818,12 +819,12 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use crate::{
 		ast::{
 			ast::{Ast, AstFrom},
 			parse::{Parser, Precedence, Precedence::Term, parse},
 		},
-		bump::Bump,
 		diagnostic::AstError,
 		token::{
 			operator::Operator::Plus,

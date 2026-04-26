@@ -193,12 +193,12 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use crate::{
 		ast::{
 			ast::{AstFrom, InfixOperator, InfixOperator::As},
 			parse::Parser,
 		},
-		bump::Bump,
 		token::tokenize,
 	};
 

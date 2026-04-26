@@ -80,7 +80,11 @@ pub enum KeyKind {
 	ProcedureParam = 0x46,
 	Binding = 0x47,
 	NamespaceBinding = 0x48,
+<<<<<<< HEAD
 	OperatorTtl = 0x49,
+=======
+	Relationship = 0x49,
+>>>>>>> 41b8195f0 (introduces relation to catalolg)
 }
 
 impl From<KeyKind> for u8 {
@@ -165,7 +169,11 @@ impl TryFrom<u8> for KeyKind {
 			0x46 => Ok(Self::ProcedureParam),
 			0x47 => Ok(Self::Binding),
 			0x48 => Ok(Self::NamespaceBinding),
+<<<<<<< HEAD
 			0x49 => Ok(Self::OperatorTtl),
+=======
+			0x49 => Ok(Self::Relationship),
+>>>>>>> 41b8195f0 (introduces relation to catalolg)
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

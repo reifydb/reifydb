@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::collections::Vec as BumpVec;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
@@ -11,7 +12,7 @@ use crate::{
 		AstLiteralNone, AstLoop, AstMatch, AstMatchArm, AstReturn, AstStatement, AstWhile,
 		LetValue as AstLetValue,
 	},
-	bump::{BumpBox, BumpFragment, BumpVec},
+	bump::{BumpBox, BumpFragment},
 	convert_data_type_with_constraints,
 	expression::{
 		AliasExpression, AndExpression, ColumnExpression, EqExpression, Expression, ExpressionCompiler,

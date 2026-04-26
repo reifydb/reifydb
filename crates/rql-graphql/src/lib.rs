@@ -2,17 +2,16 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod ast;
-pub mod bump;
 pub mod compiler;
 pub mod parse;
 pub mod reshape;
 pub mod token;
 
-pub use compiler::compiler::{Compiler, CompilerError};
-pub use parse::parser::{Parser, ParserError};
-pub use reshape::reshaper::Reshaper;
 use thiserror::Error;
-pub use token::lexer::{Lexer, LexerError};
+
+use crate::{
+	compiler::compiler::CompilerError, parse::parser::ParserError, token::lexer::LexerError,
+};
 
 #[derive(Error, Debug)]
 pub enum Error {

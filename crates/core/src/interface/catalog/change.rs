@@ -16,6 +16,7 @@ use crate::{
 		namespace::Namespace,
 		policy::Policy,
 		procedure::Procedure,
+		relationship::Relationship,
 		ringbuffer::RingBuffer,
 		series::Series,
 		shape::ShapeId,
@@ -41,6 +42,17 @@ pub trait CatalogTrackTableChangeOperations {
 	fn track_table_deleted(&mut self, table: Table) -> Result<()>;
 }
 
+<<<<<<< HEAD
+=======
+/// Trait for tracking relationship definition changes during a transaction.
+pub trait CatalogTrackRelationshipChangeOperations {
+	fn track_relationship_created(&mut self, relationship: Relationship) -> Result<()>;
+
+	fn track_relationship_deleted(&mut self, relationship: Relationship) -> Result<()>;
+}
+
+/// Trait for tracking namespace definition changes during a transaction.
+>>>>>>> 41b8195f0 (introduces relation to catalolg)
 pub trait CatalogTrackNamespaceChangeOperations {
 	fn track_namespace_created(&mut self, namespace: Namespace) -> Result<()>;
 
@@ -206,6 +218,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackMigrationEventChangeOperations
 	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackProcedureChangeOperations
+	+ CatalogTrackRelationshipChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
 	+ CatalogTrackRoleChangeOperations
 	+ CatalogTrackPolicyChangeOperations

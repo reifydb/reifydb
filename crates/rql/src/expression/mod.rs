@@ -11,13 +11,15 @@ pub mod join;
 pub mod json;
 pub mod name;
 
+use bumpalo::Bump;
+
 use crate::{
 	ast,
 	ast::{
 		ast::{Ast, AstFrom, AstInfix, AstLiteral, InfixOperator},
 		parse_str,
 	},
-	bump::{Bump, BumpBox},
+	bump::BumpBox,
 	convert_data_type,
 };
 

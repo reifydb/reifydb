@@ -26,6 +26,7 @@ pub mod operator_ttl;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
+pub mod relationship;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_shape;
@@ -54,7 +55,7 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			BindingId, HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId,
-			RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			RelationshipId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{GrantedRole, Identity, Role, RoleId},
 		key::PrimaryKey,
@@ -62,6 +63,7 @@ use reifydb_core::{
 		namespace::Namespace,
 		policy::{Policy, PolicyId, PolicyOperation},
 		procedure::Procedure,
+		relationship::Relationship,
 		ringbuffer::RingBuffer,
 		series::Series,
 		shape::ShapeId,
@@ -98,6 +100,7 @@ pub type MultiVersionTable = MultiVersionContainer<Table>;
 pub type MultiVersionView = MultiVersionContainer<View>;
 pub type MultiVersionFlow = MultiVersionContainer<Flow>;
 pub type MultiVersionPrimaryKey = MultiVersionContainer<PrimaryKey>;
+pub type MultiVersionRelationship = MultiVersionContainer<Relationship>;
 pub type MultiVersionRetentionStrategy = MultiVersionContainer<RetentionStrategy>;
 pub type MultiVersionDictionary = MultiVersionContainer<Dictionary>;
 pub type MultiVersionHandler = MultiVersionContainer<Handler>;
@@ -166,7 +169,17 @@ pub struct CatalogCacheInner {
 	pub(crate) tests_by_name: SkipMap<(NamespaceId, String), TestId>,
 
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKey>,
+<<<<<<< HEAD:crates/catalog/src/cache/mod.rs
 
+=======
+	/// MultiVersion relationship definitions indexed by relationship ID
+	pub(crate) relationships: SkipMap<RelationshipId, MultiVersionRelationship>,
+	/// Index from (namespace_id, source_table_id, name) to relationship ID for fast lookups
+	pub(crate) relationships_by_name: SkipMap<(NamespaceId, TableId, String), RelationshipId>,
+	/// Index from source table ID to relationship IDs originating from that table
+	pub(crate) relationships_by_source: SkipMap<TableId, Vec<RelationshipId>>,
+	/// MultiVersion source retention strategies indexed by source ID
+>>>>>>> 41b8195f0 (introduces relation to catalolg):crates/catalog/src/materialized/mod.rs
 	pub(crate) shape_retention_strategies: SkipMap<ShapeId, MultiVersionRetentionStrategy>,
 
 	pub(crate) operator_retention_strategies: SkipMap<FlowNodeId, MultiVersionRetentionStrategy>,
@@ -295,6 +308,9 @@ impl CatalogCache {
 			flows: SkipMap::new(),
 			flows_by_name: SkipMap::new(),
 			primary_keys: SkipMap::new(),
+			relationships: SkipMap::new(),
+			relationships_by_name: SkipMap::new(),
+			relationships_by_source: SkipMap::new(),
 			shape_retention_strategies: SkipMap::new(),
 			operator_retention_strategies: SkipMap::new(),
 			row_ttls: SkipMap::new(),

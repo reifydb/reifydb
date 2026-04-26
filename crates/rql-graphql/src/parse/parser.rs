@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::{Bump, collections::Vec as BumpVec};
+use reifydb_rql::bump::BumpBox;
 use thiserror::Error;
 
 use crate::{
 	ast::ast::*,
-	bump::{Bump, BumpBox, BumpVec},
 	token::token::{Token, TokenKind},
 };
 
@@ -186,21 +187,19 @@ impl<'bump> Parser<'bump> {
 		let token = self.peek();
 		if token.kind == kind {
 			Ok(self.consume())
+		} else if self.is_eof() {
+			Err(ParserError::UnexpectedEOF(
+				kind,
+				token.fragment.line().0,
+				token.fragment.column().0,
+			))
 		} else {
-			if self.is_eof() {
-				Err(ParserError::UnexpectedEOF(
-					kind,
-					token.fragment.line().0,
-					token.fragment.column().0,
-				))
-			} else {
-				Err(ParserError::UnexpectedToken(
-					token.kind,
-					kind,
-					token.fragment.line().0,
-					token.fragment.column().0,
-				))
-			}
+			Err(ParserError::UnexpectedToken(
+				token.kind,
+				kind,
+				token.fragment.line().0,
+				token.fragment.column().0,
+			))
 		}
 	}
 

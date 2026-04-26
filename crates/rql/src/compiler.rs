@@ -3,6 +3,7 @@
 
 use std::{collections::HashSet, fmt, fmt::Debug, sync::Arc, time};
 
+use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::query,
@@ -23,7 +24,7 @@ use crate::{
 		ast::{AstStatement, AstTimestampPrecision, AstViewStorageKind},
 		parse_str,
 	},
-	bump::{Bump, BumpBox, BumpVec},
+	bump::BumpBox,
 	error::RqlError,
 	expression::{Expression, ParameterExpression, PrefixOperator},
 	fingerprint::statement::{fingerprint_statement, normalize_statement},

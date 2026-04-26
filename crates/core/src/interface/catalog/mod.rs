@@ -30,6 +30,7 @@ pub mod namespace;
 pub mod policy;
 pub mod procedure;
 pub mod property;
+pub mod relationship;
 pub mod ringbuffer;
 pub mod series;
 pub mod shape;

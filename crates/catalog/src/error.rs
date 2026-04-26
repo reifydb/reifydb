@@ -41,6 +41,7 @@ pub enum CatalogObjectKind {
 	Procedure,
 	TestProcedure,
 	Binding,
+	Relationship,
 }
 
 impl Display for CatalogObjectKind {
@@ -68,6 +69,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Procedure => f.write_str("procedure"),
 			CatalogObjectKind::TestProcedure => f.write_str("test procedure"),
 			CatalogObjectKind::Binding => f.write_str("binding"),
+			CatalogObjectKind::Relationship => f.write_str("relationship"),
 		}
 	}
 }
@@ -172,6 +174,15 @@ pub enum CatalogError {
 	PrimaryKeyColumnNotFound {
 		fragment: Fragment,
 		column_id: u64,
+	},
+
+	#[error(
+		"relationship cardinality `{cardinality}` is inconsistent with the THROUGH clause (has_junction={has_junction})"
+	)]
+	RelationshipJunctionMismatch {
+		fragment: Fragment,
+		cardinality: String,
+		has_junction: bool,
 	},
 
 	#[error("subscription `{name}` already exists")]
@@ -387,6 +398,11 @@ impl IntoDiagnostic for CatalogError {
 						"binding",
 						"choose a different protocol key or drop the existing binding first",
 					),
+					CatalogObjectKind::Relationship => (
+						"CA_023",
+						"relationship",
+						"choose a different name or drop the existing relationship first",
+					),
 				};
 				let message = if matches!(
 					kind,
@@ -526,6 +542,11 @@ impl IntoDiagnostic for CatalogError {
 						"CA_088",
 						"binding",
 						"ensure the binding exists or create it first using `CREATE <PROTOCOL> BINDING`".to_string(),
+					),
+					CatalogObjectKind::Relationship => (
+						"CA_024",
+						"relationship",
+						"ensure the relationship exists or create it first using `CREATE RELATIONSHIP`".to_string(),
 					),
 				};
 				let message = match kind {
@@ -895,6 +916,36 @@ impl IntoDiagnostic for CatalogError {
 				label: Some("invalid column reference in primary key".to_string()),
 				help: Some(
 					"ensure all columns referenced in the primary key exist in the table or view"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::RelationshipJunctionMismatch {
+				fragment,
+				cardinality,
+				has_junction,
+			} => Diagnostic {
+				code: "CA_022".to_string(),
+				rql: None,
+				message: if has_junction {
+					format!(
+						"relationship cardinality `{}` is inconsistent with the THROUGH clause: junction provided but cardinality is not N:M",
+						cardinality
+					)
+				} else {
+					format!(
+						"relationship cardinality `{}` is inconsistent with the THROUGH clause: cardinality N:M requires a THROUGH junction",
+						cardinality
+					)
+				},
+				fragment,
+				label: Some("invalid relationship cardinality/junction combination".to_string()),
+				help: Some(
+					"use cardinality N:M only with a THROUGH clause, and use THROUGH only with cardinality N:M"
 						.to_string(),
 				),
 				column: None,

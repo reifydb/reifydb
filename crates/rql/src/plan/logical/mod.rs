@@ -20,6 +20,7 @@ use std::{
 	time::Duration,
 };
 
+use bumpalo::{Bump, collections::Vec as BumpVec};
 use query::window::WindowNode;
 use reifydb_catalog::catalog::{
 	Catalog, ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, table::TableColumnToCreate,
@@ -57,7 +58,7 @@ use crate::{
 			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
 		},
 	},
-	bump::{Bump, BumpBox, BumpFragment, BumpVec},
+	bump::{BumpBox, BumpFragment},
 	diagnostic::AstError,
 	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
 	nodes::{SubscriptionColumnToCreate, TakeLimit},

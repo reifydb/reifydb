@@ -18,6 +18,7 @@ pub mod namespace;
 pub mod operator_ttl;
 pub mod policy;
 pub mod procedure;
+pub mod relationship;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_ttl;

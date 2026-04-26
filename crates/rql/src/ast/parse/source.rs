@@ -94,9 +94,9 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 mod tests {
+	use bumpalo::Bump;
 	use crate::{
 		ast::{ast::AstCreate, parse::Parser},
-		bump::Bump,
 		token::tokenize,
 	};
 

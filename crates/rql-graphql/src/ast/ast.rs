@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use crate::{
-	bump::{BumpBox, BumpFragment, BumpVec},
-	token::token::Token,
-};
+use bumpalo::collections::Vec as BumpVec;
+use reifydb_rql::bump::{BumpBox, BumpFragment};
+
+use crate::token::token::Token;
 
 #[derive(Debug)]
 pub struct AstOperation<'bump> {

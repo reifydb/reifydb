@@ -418,8 +418,9 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use super::*;
-	use crate::{ast::parse::Parser, bump::Bump, token::tokenize};
+	use crate::{ast::parse::Parser, token::tokenize};
 
 	#[test]
 	fn test_drop_table_basic() {

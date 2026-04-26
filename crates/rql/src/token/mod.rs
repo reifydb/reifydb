@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_type::error::{AstErrorKind, Error, TypeError};
 
 pub mod cursor;
@@ -21,7 +22,6 @@ use variable::scan_variable;
 
 use crate::{
 	Result,
-	bump::{Bump, BumpVec},
 	token::{
 		identifier::{scan_digit_starting_identifier, scan_identifier, scan_quoted_identifier},
 		keyword::scan_keyword,
@@ -192,6 +192,7 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use super::{
 		keyword::Keyword,
 		operator::Operator,
@@ -199,7 +200,6 @@ pub mod tests {
 		token::{Literal, TokenKind},
 		tokenize,
 	};
-	use crate::bump::Bump;
 
 	#[test]
 	fn test_tokenize_simple() {

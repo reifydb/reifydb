@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_rql::bump::BumpFragment;
 use reifydb_type::fragment::{StatementColumn, StatementLine};
-
-use crate::bump::BumpFragment;
 
 /// A cursor over the input string that tracks position for tokenization
 pub struct Cursor<'bump> {

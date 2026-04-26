@@ -62,8 +62,9 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use super::*;
-	use crate::{ast::parse::Ast, bump::Bump, token::tokenize};
+	use crate::{ast::parse::Ast, token::tokenize};
 
 	#[test]
 	fn test_distinct_empty_braces() {

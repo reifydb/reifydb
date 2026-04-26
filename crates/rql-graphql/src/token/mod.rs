@@ -3,8 +3,5 @@
 
 pub mod cursor;
 pub mod lexer;
+#[allow(clippy::module_inception)]
 pub mod token;
-
-pub use cursor::Cursor;
-pub use lexer::Lexer;
-pub use token::{Token, TokenKind};

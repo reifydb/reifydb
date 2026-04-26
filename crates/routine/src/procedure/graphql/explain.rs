@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use bumpalo::Bump;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_rql::ast::ast::{Ast, AstFrom, AstJoin, AstLiteral, AstSkip, AstTake, AstTakeValue, InfixOperator};
-use reifydb_rql_graphql::{Compiler, Lexer, Parser};
+use reifydb_rql_graphql::{compiler::compiler::Compiler, parse::parser::Parser, token::lexer::Lexer};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,

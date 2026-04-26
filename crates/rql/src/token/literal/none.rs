@@ -28,9 +28,9 @@ pub fn scan_none<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use super::*;
 	use crate::{
-		bump::Bump,
 		token::{keyword::Keyword, tokenize},
 	};
 

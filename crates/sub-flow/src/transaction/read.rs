@@ -211,6 +211,7 @@ impl FlowTransaction {
 				KeyKind::ProcedureParam => ReadFrom::Query,
 				KeyKind::Binding => ReadFrom::Query,
 				KeyKind::NamespaceBinding => ReadFrom::Query,
+				KeyKind::Relationship => ReadFrom::Query,
 			},
 		}
 	}

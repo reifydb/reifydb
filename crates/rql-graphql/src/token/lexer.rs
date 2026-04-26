@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::{Bump, collections::Vec as BumpVec};
 use thiserror::Error;
 
-use crate::{
-	bump::{Bump, BumpVec},
-	token::{
-		cursor::Cursor,
-		token::{Token, TokenKind},
-	},
+use crate::token::{
+	cursor::Cursor,
+	token::{Token, TokenKind},
 };
 
 #[derive(Error, Debug)]
@@ -168,7 +166,7 @@ impl<'bump> Lexer<'bump> {
 		if self.cursor.peek() == Some('.') {
 			is_float = true;
 			self.cursor.consume();
-			if !self.cursor.peek().map_or(false, |ch| ch.is_ascii_digit()) {
+			if !self.cursor.peek().is_some_and(|ch| ch.is_ascii_digit()) {
 				return Err(LexerError::InvalidNumber(start_line, start_column));
 			}
 			self.cursor.consume_while(|ch| ch.is_ascii_digit());
@@ -180,7 +178,7 @@ impl<'bump> Lexer<'bump> {
 			if let Some('+') | Some('-') = self.cursor.peek() {
 				self.cursor.consume();
 			}
-			if !self.cursor.peek().map_or(false, |ch| ch.is_ascii_digit()) {
+			if !self.cursor.peek().is_some_and(|ch| ch.is_ascii_digit()) {
 				return Err(LexerError::InvalidNumber(start_line, start_column));
 			}
 			self.cursor.consume_while(|ch| ch.is_ascii_digit());

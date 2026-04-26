@@ -2,5 +2,3 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod parser;
-
-pub use parser::*;

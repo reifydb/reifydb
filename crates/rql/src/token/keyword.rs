@@ -329,8 +329,9 @@ pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use super::*;
-	use crate::{bump::Bump, token::tokenize};
+	use crate::{token::tokenize};
 
 	#[test]
 	fn test_desc() {

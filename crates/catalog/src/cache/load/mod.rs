@@ -14,6 +14,7 @@ pub mod operator_ttl;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
+pub mod relationship;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_shape;
@@ -39,6 +40,7 @@ use policy::load_policies;
 use primary_key::load_primary_keys;
 use procedure::load_procedures;
 use reifydb_transaction::transaction::Transaction;
+use relationship::load_relationships;
 use ringbuffer::load_ringbuffers;
 use role::load_roles;
 use row_shape::load_row_shapes;
@@ -64,6 +66,7 @@ impl CatalogCacheLoader {
 		load_row_shapes(rx, catalog)?;
 
 		load_tables(rx, catalog)?;
+		load_relationships(rx, catalog)?;
 		load_views(rx, catalog)?;
 		load_flows(rx, catalog)?;
 		load_ringbuffers(rx, catalog)?;

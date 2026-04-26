@@ -108,8 +108,8 @@ pub fn is_identifier_char(ch: char) -> bool {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use crate::{
-		bump::Bump,
 		token::{
 			token::{Literal, TokenKind},
 			tokenize,

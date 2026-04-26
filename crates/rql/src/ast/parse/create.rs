@@ -2720,6 +2720,7 @@ enum ViewStorageKindHint {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use crate::{
 		ast::{
 			ast::{
@@ -2730,7 +2731,6 @@ pub mod tests {
 			},
 			parse::Parser,
 		},
-		bump::Bump,
 		token::tokenize,
 	};
 

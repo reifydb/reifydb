@@ -16,14 +16,15 @@ use reifydb_core::{
 			flow::{Flow, FlowId, FlowNodeId},
 			handler::Handler,
 			id::{
-				BindingId, HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-				SinkId, SourceId, TableId, TestId, ViewId,
+				BindingId, HandlerId, MigrationId, NamespaceId, ProcedureId, RelationshipId,
+				RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 			},
 			identity::{GrantedRole, Identity, Role, RoleId},
 			migration::Migration,
 			namespace::Namespace,
 			policy::{Policy, PolicyId},
 			procedure::Procedure,
+			relationship::Relationship,
 			ringbuffer::RingBuffer,
 			series::Series,
 			shape::ShapeId,
@@ -51,8 +52,13 @@ use crate::{
 		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
 		TransactionalConfigChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityChanges,
+<<<<<<< HEAD
 		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalOperatorTtlChanges,
 		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
+=======
+		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalPolicyChanges,
+		TransactionalProcedureChanges, TransactionalRelationshipChanges, TransactionalRingBufferChanges,
+>>>>>>> 41b8195f0 (introduces relation to catalolg)
 		TransactionalRoleChanges, TransactionalRowTtlChanges, TransactionalSeriesChanges,
 		TransactionalSinkChanges, TransactionalSourceChanges, TransactionalSumTypeChanges,
 		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
@@ -321,6 +327,34 @@ impl TransactionalTableChanges for QueryTransaction {
 	}
 
 	fn is_table_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalRelationshipChanges for QueryTransaction {
+	fn find_relationship(&self, _id: RelationshipId) -> Option<&Relationship> {
+		None
+	}
+
+	fn find_relationship_by_name(
+		&self,
+		_namespace: NamespaceId,
+		_source_table: TableId,
+		_name: &str,
+	) -> Option<&Relationship> {
+		None
+	}
+
+	fn is_relationship_deleted(&self, _id: RelationshipId) -> bool {
+		false
+	}
+
+	fn is_relationship_deleted_by_name(
+		&self,
+		_namespace: NamespaceId,
+		_source_table: TableId,
+		_name: &str,
+	) -> bool {
 		false
 	}
 }

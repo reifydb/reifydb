@@ -5,10 +5,10 @@ use reifydb_catalog::catalog::view::ViewColumnToCreate;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
+use bumpalo::collections::Vec as BumpVec;
 use crate::{
 	Result,
 	ast::ast::AstCreateTransactionalView,
-	bump::BumpVec,
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateTransactionalViewNode, LogicalPlan},
 };

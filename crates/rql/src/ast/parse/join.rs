@@ -176,6 +176,7 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use reifydb_core::common::JoinType;
 
 	use crate::{
@@ -183,7 +184,6 @@ pub mod tests {
 			ast::{Ast, AstFrom, AstJoin, AstLiteral, InfixOperator},
 			parse::Parser,
 		},
-		bump::Bump,
 		token::tokenize,
 	};
 

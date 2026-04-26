@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::Bump;
 use reifydb_core::fingerprint::StatementFingerprint;
 use reifydb_runtime::hash::xxh3_128;
 
 use super::walk::{FingerprintBuffer, fingerprint_ast_slice};
 use crate::{
 	ast::ast::AstStatement,
-	bump::{Bump, BumpFragment},
+	bump::BumpFragment,
 	token::{token::TokenKind, tokenize},
 };
 

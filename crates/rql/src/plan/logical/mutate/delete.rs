@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::collections::Vec as BumpVec;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -12,8 +13,13 @@ use crate::{
 			MaybeQualifiedTableIdentifier, UnresolvedShapeIdentifier,
 		},
 	},
+<<<<<<< HEAD
 	bump::{BumpBox, BumpFragment, BumpVec},
 	expression::{Expression, ExpressionCompiler},
+=======
+	bump::BumpBox,
+	expression::ExpressionCompiler,
+>>>>>>> 41b8195f0 (introduces relation to catalolg)
 	plan::logical::{
 		Compiler, DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, FilterNode, LogicalPlan,
 		PipelineNode, mutate::compile_returning_clause,

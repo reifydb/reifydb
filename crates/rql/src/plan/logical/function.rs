@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::collections::Vec as BumpVec;
 use reifydb_type::value::constraint::TypeConstraint;
 
 use super::LogicalPlan;
-use crate::{
-	bump::{BumpFragment, BumpVec},
-	expression::Expression,
-};
+use crate::{bump::BumpFragment, expression::Expression};
 
 #[derive(Debug, Clone)]
 pub struct FunctionParameter<'bump> {
