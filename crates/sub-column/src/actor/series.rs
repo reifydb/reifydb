@@ -12,7 +12,7 @@ use reifydb_column::{
 	bucket::{Bucket, BucketId, bucket_for, is_closed},
 	compress::Compressor,
 	registry::SnapshotRegistry,
-	snapshot::{Snapshot, SnapshotId, SnapshotSource},
+	snapshot::{Snapshot, SnapshotId, SnapshotSource, SystemColumn},
 };
 use reifydb_core::interface::{
 	catalog::{
@@ -215,6 +215,7 @@ impl SeriesMaterializationActor {
 	) -> Result<()> {
 		let services = self.engine.services();
 		let catalog = self.engine.catalog();
+		let sealed_at_commit_version = query_txn.version();
 
 		let namespace_def = catalog
 			.find_namespace(&mut Transaction::Query(&mut *query_txn), series.namespace)?
@@ -264,6 +265,7 @@ impl SeriesMaterializationActor {
 				series_id: series.id,
 				bucket: *bucket,
 				sequence_counter: metadata.sequence_counter,
+				sealed_at_commit_version,
 			},
 			namespace: namespace_def.name().to_string(),
 			name: series.name.clone(),
@@ -284,13 +286,16 @@ fn scan_output_schema(series: &Series) -> Vec<(String, Type)> {
 		.map(|c| c.constraint.get_type())
 		.unwrap_or(Type::Uint8);
 
-	let mut schema = Vec::with_capacity(series.columns.len() + 1);
+	let mut schema = Vec::with_capacity(series.columns.len() + 1 + SystemColumn::ALL.len());
 	schema.push((key_name.clone(), key_ty));
 	if series.tag.is_some() {
 		schema.push(("tag".to_string(), Type::Uint1));
 	}
 	for col in series.data_columns() {
 		schema.push((col.name.clone(), col.constraint.get_type()));
+	}
+	for sc in SystemColumn::ALL {
+		schema.push((sc.name().to_string(), sc.ty()));
 	}
 	schema
 }

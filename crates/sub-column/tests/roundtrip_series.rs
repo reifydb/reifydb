@@ -76,7 +76,7 @@ fn series_materialization_produces_snapshot_in_registry() {
 		let snap = registry.get(&meta.id).expect("snapshot fetchable by id");
 
 		let schema_names: Vec<&str> = snap.block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
-		assert_eq!(schema_names, vec!["k", "value"]);
+		assert_eq!(schema_names, vec!["k", "value", "#rownum", "#created_at", "#updated_at"]);
 
 		let mut reader = SnapshotReader::new(Arc::clone(&snap), 100);
 		let batch = reader.next().expect("batch present").expect("read batch");
