@@ -21,7 +21,6 @@ pub enum TransactionKind {
 	TimeTravel(CommitVersion),
 }
 
-/// TransactionManagerQuery is a read-only transaction manager.
 pub struct TransactionManagerQuery<L>
 where
 	L: VersionProvider,
@@ -72,8 +71,9 @@ where
 	L: VersionProvider,
 {
 	fn drop(&mut self) {
-		// Time-travel transactions don't register a read snapshot with the
-		// watermark, so don't release one on drop.
+		// Only `Current` transactions registered a read snapshot via
+		// `query.begin`; time-travel ones did not, so they have no
+		// `done_query` to pair with.
 		if let TransactionKind::Current(version) = self.transaction {
 			self.engine.inner.done_query(version);
 		}

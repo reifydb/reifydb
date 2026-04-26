@@ -15,11 +15,9 @@ pub trait Write {
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
 	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()>;
 
-	/// Track a row change for post-commit event emission. No-op on
-	/// replicas.
+	/// Replicas implement this as a no-op (no CDC).
 	fn track_row_change(&mut self, change: RowChange);
 
-	/// Track a flow change for transactional view pre-commit
-	/// processing. No-op on replicas.
+	/// Replicas implement this as a no-op (no transactional view processing).
 	fn track_flow_change(&mut self, change: Change);
 }

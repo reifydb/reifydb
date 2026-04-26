@@ -32,7 +32,6 @@ use crate::{
 	change::{RowChange, TransactionalCatalogChanges, TransactionalChanges},
 	change_accumulator::ChangeAccumulator,
 	error::TransactionError,
-	transaction::write::Write,
 	interceptor::{
 		WithInterceptors,
 		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
@@ -100,7 +99,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, query::QueryTransaction},
+	transaction::{RqlExecutor, Transaction, query::QueryTransaction, write::Write},
 };
 
 /// An active admin transaction that supports Query + DML + DDL operations.

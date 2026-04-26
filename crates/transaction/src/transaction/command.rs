@@ -32,7 +32,6 @@ use crate::{
 	change::{RowChange, TransactionalCatalogChanges},
 	change_accumulator::ChangeAccumulator,
 	error::TransactionError,
-	transaction::write::Write,
 	interceptor::{
 		WithInterceptors,
 		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
@@ -100,7 +99,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, query::QueryTransaction},
+	transaction::{RqlExecutor, Transaction, query::QueryTransaction, write::Write},
 };
 
 /// An active command transaction that holds a multi command transaction

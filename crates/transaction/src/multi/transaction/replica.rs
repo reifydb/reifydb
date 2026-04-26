@@ -33,11 +33,9 @@ use crate::{
 	},
 };
 
-/// A multi-version write transaction for replica use.
-///
-/// Unlike `MultiWriteTransaction`, this type commits at a specific version
-/// provided by the primary, bypassing oracle conflict detection and version
-/// allocation entirely. It is the only write path on a replica node.
+/// Write transaction that commits at a version supplied by the primary,
+/// bypassing oracle conflict detection and CDC. The only write path on a
+/// replica node.
 pub struct MultiReplicaTransaction {
 	engine: MultiTransaction,
 
@@ -64,10 +62,6 @@ impl MultiReplicaTransaction {
 	pub fn new(engine: MultiTransaction, version: CommitVersion) -> Result<Self> {
 		let oracle = engine.tm.oracle().clone();
 		let snapshot = oracle.version()?;
-		// Register the read snapshot with the query watermark so cleanup
-		// of conflict-detection windows knows this version is still in
-		// flight. The matching `done` is called from `discard()` once the
-		// transaction terminates.
 		oracle.query.begin(snapshot);
 
 		let id = TransactionId::generate(oracle.metrics_clock(), oracle.rng());
@@ -75,8 +69,6 @@ impl MultiReplicaTransaction {
 			engine,
 			id,
 			version: snapshot,
-			// Read at the primary's exact version; pending writes within this
-			// transaction are always visible via MergePendingIterator.
 			read_version: Some(version),
 			size: 0,
 			count: 0,
@@ -136,11 +128,6 @@ impl MultiReplicaTransaction {
 }
 
 impl MultiReplicaTransaction {
-	/// Commit pending writes at the primary's exact version.
-	///
-	/// Bypasses oracle conflict detection and version allocation.
-	/// Registers with the command watermark so the system doesn't stall.
-	/// Does NOT emit PostCommitEvent - replicas do not generate CDC.
 	#[instrument(name = "transaction::replica::commit", level = "debug", skip(self), fields(version = %self.commit_version.0, pending_count = self.pending_writes.len()))]
 	pub fn commit_at_version(&mut self) -> Result<()> {
 		let version = self.commit_version;
@@ -150,7 +137,19 @@ impl MultiReplicaTransaction {
 			return Ok(());
 		}
 
-		// Take pending writes directly - bypass oracle entirely
+		let deltas = self.drain_deltas();
+
+		self.engine.tm.begin_commit(version);
+		MultiVersionCommit::commit(&self.engine.store, deltas, version)?;
+		self.engine.tm.done_commit(version);
+		self.engine.tm.advance_clock_to(version);
+		self.discard();
+
+		Ok(())
+	}
+
+	#[inline]
+	fn drain_deltas(&mut self) -> CowVec<Delta> {
 		let pending_writes = mem::take(&mut self.pending_writes);
 		let duplicate_writes = mem::take(&mut self.duplicates);
 
@@ -161,27 +160,7 @@ impl MultiReplicaTransaction {
 		});
 		duplicate_writes.into_iter().for_each(|item| raw_deltas.push(item.delta));
 
-		let optimized = optimize_deltas(raw_deltas.into_iter(), &self.preexisting_keys);
-		let deltas = CowVec::new(optimized);
-
-		// Register with command watermark BEFORE storage write
-		self.engine.tm.begin_commit(version);
-
-		// Write to multi-version store at the primary's exact version
-		MultiVersionCommit::commit(&self.engine.store, deltas, version)?;
-
-		// Signal watermark advancement AFTER storage write
-		self.engine.tm.done_commit(version);
-
-		// Advance the oracle's clock so clock.current() returns the right
-		// snapshot for subsequent query transactions
-		self.engine.tm.advance_clock_to(version);
-
-		// Release query watermark
-		self.discard();
-
-		// NO PostCommitEvent - replica does not generate CDC
-		Ok(())
+		CowVec::new(optimize_deltas(raw_deltas.into_iter(), &self.preexisting_keys))
 	}
 }
 
@@ -290,7 +269,6 @@ impl MultiReplicaTransaction {
 
 impl MultiReplicaTransaction {
 	fn modify(&mut self, pending: Pending) -> Result<()> {
-		// Caller has already checked `discarded`.
 		let cnt = self.count + 1;
 		let size = self.size + self.pending_writes.estimate_size(&pending);
 		if cnt >= self.pending_writes.max_batch_entries() || size >= self.pending_writes.max_batch_size() {

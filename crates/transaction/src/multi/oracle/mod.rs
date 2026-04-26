@@ -25,17 +25,11 @@ use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvi
 
 pub mod cleanup;
 
-/// Time window containing committed transactions
 pub(crate) struct CommittedWindow {
-	/// All transactions committed in this window
 	transactions: Vec<CommittedTxn>,
-	/// Set of all keys modified in this window for quick filtering
 	modified_keys: HashSet<EncodedKey>,
-	/// Bloom filter for fast negative checks
 	bloom: BloomFilter,
-	/// Maximum version in this window
 	max_version: CommitVersion,
-	/// Per-window lock for fine-grained synchronization
 	lock: RwLock<()>,
 }
 
@@ -53,8 +47,6 @@ impl CommittedWindow {
 	fn add_transaction(&mut self, txn: CommittedTxn) {
 		self.max_version = self.max_version.max(txn.version);
 
-		// Add all conflict keys to our modified keys set and bloom
-		// filter
 		if let Some(ref conflicts) = txn.conflict_manager {
 			for key in conflicts.get_write_keys() {
 				self.modified_keys.insert(key.clone());
@@ -66,11 +58,9 @@ impl CommittedWindow {
 	}
 
 	fn might_have_key(&self, key: &EncodedKey) -> bool {
-		// Quick check with bloom filter first
 		if !self.bloom.might_contain(key) {
 			return false;
 		}
-		// If bloom says maybe, check the actual set
 		self.modified_keys.contains(key)
 	}
 
@@ -79,18 +69,13 @@ impl CommittedWindow {
 	}
 }
 
-/// Oracle implementation with time-window based conflict detection
 pub(crate) struct OracleInner {
-	/// Time windows containing committed transactions, keyed by window
-	/// start version. Each window carries its own `modified_keys` set and
-	/// bloom filter, which together act as the conflict-lookup index.
-	/// (We previously kept a denormalized `key_to_windows` index here, but
-	/// it grew unbounded with every distinct write key - dropped in favour
-	/// of bloom-filter scans across the bounded `time_windows`.)
 	pub time_windows: BTreeMap<CommitVersion, CommittedWindow>,
 
-	/// Highest commit version present in any evicted window.
-	/// Any transaction with read-start version < this must be aborted.
+	/// Highest commit version present in any evicted window. Any
+	/// transaction with read-start version below this must be rejected
+	/// with TooOld - the conflict history needed to authorise its commit
+	/// is gone.
 	pub evicted_up_through: CommitVersion,
 }
 
@@ -106,7 +91,6 @@ pub(crate) enum CreateCommitResult {
 	TooOld,
 }
 
-/// Oracle with time-window based conflict detection
 pub(crate) struct Oracle<L>
 where
 	L: VersionProvider,
@@ -171,7 +155,6 @@ where
 		&self.rng
 	}
 
-	/// Efficient conflict detection using time windows and key indexing
 	#[instrument(name = "transaction::oracle::new_commit", level = "debug", skip(self, done_read, conflicts), fields(
 		%version,
 		read_keys = field::Empty,
@@ -194,36 +177,49 @@ where
 		version: CommitVersion,
 		conflicts: ConflictManager,
 	) -> Result<CreateCommitResult> {
-		// First, perform conflict detection with read lock for better
-		// concurrency
 		let lock_start = self.metrics_clock.instant();
 		let inner = self.inner.read();
 		Span::current().record("inner_read_lock_us", lock_start.elapsed().as_micros() as u64);
 
-		if version < inner.evicted_up_through {
-			return Ok(CreateCommitResult::TooOld);
+		if let Some(early) = self.check_too_old(&inner, version) {
+			return Ok(early);
 		}
 
-		// Get keys involved in this transaction for efficient filtering
-		// Use references to avoid cloning
+		if self.detect_conflicts(&inner, version, &conflicts) {
+			return Ok(CreateCommitResult::Conflict(conflicts));
+		}
+
+		drop(inner);
+
+		let commit_version = self.allocate_commit_version(done_read, version)?;
+		let needs_cleanup = self.register_committed(commit_version, conflicts);
+		if needs_cleanup {
+			self.cleanup_old_windows();
+		}
+
+		Ok(CreateCommitResult::Success(commit_version))
+	}
+
+	#[inline]
+	fn check_too_old(&self, inner: &OracleInner, version: CommitVersion) -> Option<CreateCommitResult> {
+		if version < inner.evicted_up_through {
+			Some(CreateCommitResult::TooOld)
+		} else {
+			None
+		}
+	}
+
+	fn detect_conflicts(&self, inner: &OracleInner, version: CommitVersion, conflicts: &ConflictManager) -> bool {
 		let read_keys = conflicts.get_read_keys();
 		let write_keys = conflicts.get_write_keys();
 		Span::current().record("read_keys", read_keys.len());
 		Span::current().record("write_keys", write_keys.len());
 		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
 
-		// Only check conflicts in windows that contain relevant keys.
-		// We scan the (bounded) `time_windows` and use each window's bloom
-		// filter to cheaply skip windows that can't possibly hold any of
-		// our keys. Range operations bypass the bloom filter and need a
-		// full window scan. The number of retained windows is bounded by
-		// `OracleWaterMark`, so this is O(retained_windows * keys * bloom).
 		let find_start = self.metrics_clock.instant();
 		let relevant_windows: Vec<CommitVersion> = if conflicts.has_range_operations() {
-			// Range operations can't be bloom-filtered; check all retained windows.
 			inner.time_windows.keys().copied().collect()
 		} else if !has_keys {
-			// No specific keys and no range ops -> nothing can conflict.
 			Vec::new()
 		} else {
 			inner.time_windows
@@ -237,26 +233,17 @@ where
 		Span::current().record("find_windows_us", find_start.elapsed().as_micros() as u64);
 		Span::current().record("relevant_windows", relevant_windows.len());
 
-		// Check for conflicts only in relevant windows
 		let conflict_start = self.metrics_clock.instant();
 		let mut windows_checked = 0u64;
 		let mut txns_checked = 0u64;
 		for window_version in &relevant_windows {
 			if let Some(window) = inner.time_windows.get(window_version) {
 				windows_checked += 1;
-				// OPTIMIZATION: Early skip if all transactions in window are older
-				// than our read version - no need to acquire lock
 				if window.max_version <= version {
 					continue;
 				}
 
-				// Quick bloom filter check first to potentially
-				// skip this window. But only if we don't
-				// have range operations (which can't be bloom filtered)
 				if !conflicts.has_range_operations() {
-					// We need to check both:
-					// 1. If any of our writes conflict with window's writes (write-write conflict)
-					// 2. If any of our reads overlap with window's writes (read-write conflict)
 					let needs_detailed_check = read_keys
 						.iter()
 						.chain(write_keys.iter())
@@ -267,16 +254,10 @@ where
 					}
 				}
 
-				// Acquire read lock on the window for conflict
-				// checking
 				let _window_lock = window.lock.read();
 
-				// Check conflicts with transactions in this
-				// window
 				for committed_txn in &window.transactions {
 					txns_checked += 1;
-					// Skip transactions that committed
-					// before we started reading
 					if committed_txn.version <= version {
 						continue;
 					}
@@ -291,7 +272,7 @@ where
 						Span::current().record("windows_checked", windows_checked);
 						Span::current().record("txns_checked", txns_checked);
 						Span::current().record("has_conflict", true);
-						return Ok(CreateCommitResult::Conflict(conflicts));
+						return true;
 					}
 				}
 			}
@@ -299,65 +280,50 @@ where
 		Span::current().record("conflict_check_us", conflict_start.elapsed().as_micros() as u64);
 		Span::current().record("windows_checked", windows_checked);
 		Span::current().record("txns_checked", txns_checked);
+		false
+	}
 
-		// Release read lock and acquire write lock for commit
-		drop(inner);
-
-		// No conflicts found, proceed with commit
+	#[inline]
+	fn allocate_commit_version(&self, done_read: &mut bool, version: CommitVersion) -> Result<CommitVersion> {
 		if !*done_read {
 			self.query.done(version);
 			*done_read = true;
 		}
 
-		// Get commit version - lock-free with gap-tolerant watermark
-		let commit_version = {
-			let clock = self.clock.clone();
+		let clock = self.clock.clone();
+		let clock_start = self.metrics_clock.instant();
+		let commit_version = clock.next()?;
+		Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
 
-			let clock_start = self.metrics_clock.instant();
-			let version = clock.next()?;
-			Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
-
-			// Register with watermark - can arrive out of order
-			// The gap-tolerant watermark processor handles this correctly
-			self.command.begin(version);
-
-			version
-		};
-
-		// Add this transaction to the appropriate window with write lock
-		let needs_cleanup = {
-			let write_lock_start = self.metrics_clock.instant();
-			let mut inner = self.inner.write();
-			Span::current().record("inner_write_lock_us", write_lock_start.elapsed().as_micros() as u64);
-
-			let add_start = self.metrics_clock.instant();
-			let window_size = self.config.get_config_uint8(ConfigKey::OracleWindowSize);
-			inner.add_committed_transaction(commit_version, conflicts, window_size);
-			Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
-			// Check if cleanup is needed
-			let water_mark = self.config.get_config_uint8(ConfigKey::OracleWaterMark) as usize;
-			inner.time_windows.len() > water_mark
-		};
-
-		if needs_cleanup {
-			let cleanup_start = self.metrics_clock.instant();
-			let safe_evict_below = self.query.done_until();
-			let mut inner = self.inner.write();
-			let inner = &mut *inner;
-			cleanup_old_windows(&mut inner.time_windows, &mut inner.evicted_up_through, safe_evict_below);
-			Span::current().record("cleanup_us", cleanup_start.elapsed().as_micros() as u64);
-		}
-
-		// DO NOT call done() here - watermark should only advance AFTER storage write completes
-		// done_commit() will be called after MultiVersionCommit::commit() finishes
-
-		Ok(CreateCommitResult::Success(commit_version))
+		self.command.begin(commit_version);
+		Ok(commit_version)
 	}
 
-	/// Clear the conflict detection window and mark the oracle as ready.
-	/// Called after bootstrap completes - bootstrap transactions committed
-	/// sequentially before any concurrent access and should not participate
-	/// in conflict detection.
+	#[inline]
+	fn register_committed(&self, commit_version: CommitVersion, conflicts: ConflictManager) -> bool {
+		let write_lock_start = self.metrics_clock.instant();
+		let mut inner = self.inner.write();
+		Span::current().record("inner_write_lock_us", write_lock_start.elapsed().as_micros() as u64);
+
+		let add_start = self.metrics_clock.instant();
+		let window_size = self.config.get_config_uint8(ConfigKey::OracleWindowSize);
+		inner.add_committed_transaction(commit_version, conflicts, window_size);
+		Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
+
+		let water_mark = self.config.get_config_uint8(ConfigKey::OracleWaterMark) as usize;
+		inner.time_windows.len() > water_mark
+	}
+
+	#[inline]
+	fn cleanup_old_windows(&self) {
+		let cleanup_start = self.metrics_clock.instant();
+		let safe_evict_below = self.query.done_until();
+		let mut inner = self.inner.write();
+		let inner = &mut *inner;
+		cleanup_old_windows(&mut inner.time_windows, &mut inner.evicted_up_through, safe_evict_below);
+		Span::current().record("cleanup_us", cleanup_start.elapsed().as_micros() as u64);
+	}
+
 	pub(crate) fn bootstrapping_completed(&self) {
 		let mut inner = self.inner.write();
 		inner.time_windows.clear();
@@ -368,54 +334,37 @@ where
 	}
 
 	pub fn stop(&mut self) {
-		// Signal shutdown - use blocking_write since this is called from Drop
 		{
 			let mut shutdown = self.shutdown_signal.write();
 			*shutdown = true;
 		}
-
-		// Clear accumulated window data to free memory before shutdown
 		{
 			let mut inner = self.inner.write();
 			inner.time_windows.clear();
 		}
-
 		self.actor_system.shutdown();
 	}
 
-	/// Mark a query as done
 	pub(crate) fn done_query(&self, version: CommitVersion) {
 		self.query.done(version);
 	}
 
-	/// Mark a commit as done
 	pub(crate) fn done_commit(&self, version: CommitVersion) {
 		self.command.done(version);
 	}
 
-	/// Advance the version provider for replica replication.
 	pub(crate) fn advance_version_for_replica(&self, version: CommitVersion) {
 		self.clock.advance_to(version);
 	}
 
 	/// Allocate the next commit version without registering the transaction
-	/// in the conflict-detection time-windows. Still rejects with `TooOld`
-	/// if the caller's read-version is already past `evicted_up_through`,
-	/// preserving the staleness invariant.
-	///
-	/// See `Engine::bulk_insert_unchecked` for the safety contract.
+	/// in the conflict-detection time-windows. Caller bypasses SSI conflict
+	/// detection; see `Engine::bulk_insert_unchecked` for the safety contract.
 	pub(crate) fn advance_unchecked(
 		&self,
 		done_read: &mut bool,
 		version: CommitVersion,
 	) -> Result<CreateCommitResult> {
-		// Hold the read lock across clock.next() so the TooOld check and
-		// version allocation observe the same evicted_up_through. The value
-		// is monotonic and we don't register a window, so the race would
-		// be benign even without the lock - but holding it removes that
-		// analysis from the hot path of any future reader. Unlike new_commit,
-		// advance_unchecked never reacquires the write lock, so holding the
-		// read lock across clock.next() is cheap.
 		let inner = self.inner.read();
 		if version < inner.evicted_up_through {
 			return Ok(CreateCommitResult::TooOld);
@@ -435,18 +384,12 @@ where
 }
 
 impl OracleInner {
-	/// Add a committed transaction to the appropriate time window
 	fn add_committed_transaction(&mut self, version: CommitVersion, conflicts: ConflictManager, window_size: u64) {
-		// Determine which window this transaction belongs to
 		let window_start = CommitVersion((version.0 / window_size) * window_size);
 
-		// Get or create the window
 		let window =
 			self.time_windows.entry(window_start).or_insert_with(|| CommittedWindow::new(window_start));
 
-		// Add transaction to window. The window's own `modified_keys` set
-		// and bloom filter are updated by `add_transaction`, which is now
-		// the sole index used by conflict-detection lookups.
 		let txn = CommittedTxn {
 			version,
 			conflict_manager: Some(conflicts),
