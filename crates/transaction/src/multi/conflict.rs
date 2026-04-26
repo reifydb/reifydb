@@ -358,6 +358,10 @@ impl ConflictManager {
 		self.read_ranges.clear();
 		self.read_all = false;
 		self.write_keys.clear();
+		// Reset `disabled` so a transaction reused after a failed unchecked
+		// path resumes normal conflict tracking instead of silently dropping
+		// every subsequent mark_*.
+		self.disabled = false;
 	}
 
 	/// Get all keys that were read by this transaction for efficient

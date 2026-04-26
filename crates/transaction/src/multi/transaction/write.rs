@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::ops::RangeBounds;
+use std::{collections::HashSet, ops::RangeBounds};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -27,7 +27,10 @@ use reifydb_type::{
 use tracing::instrument;
 
 use super::{MultiTransaction, TransactionManagerCommand, version::StandardVersionProvider};
-use crate::{delta::optimize_deltas, multi::types::TransactionValue};
+use crate::{
+	delta::optimize_deltas,
+	multi::{conflict::ConflictManager, types::TransactionValue},
+};
 
 /// Snapshot of write transaction state for savepoint/restore.
 pub struct WriteSavepoint {
@@ -35,6 +38,11 @@ pub struct WriteSavepoint {
 	pub(crate) count: u64,
 	pub(crate) size: u64,
 	pub(crate) duplicates: Vec<Pending>,
+	// `delta_log` is the source of truth at commit time; it is append-only,
+	// so a length is enough to roll back to the savepoint.
+	pub(crate) delta_log_len: usize,
+	pub(crate) conflicts: ConflictManager,
+	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
 }
 
 pub struct MultiWriteTransaction {
@@ -61,6 +69,9 @@ impl MultiWriteTransaction {
 			count: self.tm.count,
 			size: self.tm.size,
 			duplicates: self.tm.duplicates.clone(),
+			delta_log_len: self.tm.delta_log.len(),
+			conflicts: self.tm.conflicts.clone(),
+			preexisting_keys: self.tm.preexisting_keys.clone(),
 		}
 	}
 
@@ -70,6 +81,9 @@ impl MultiWriteTransaction {
 		self.tm.count = sp.count;
 		self.tm.size = sp.size;
 		self.tm.duplicates = sp.duplicates;
+		self.tm.delta_log.truncate(sp.delta_log_len);
+		self.tm.conflicts = sp.conflicts;
+		self.tm.preexisting_keys = sp.preexisting_keys;
 	}
 }
 

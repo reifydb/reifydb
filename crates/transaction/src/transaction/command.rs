@@ -283,13 +283,26 @@ impl CommandTransaction {
 	/// bypass path. This is the only public entry point that reaches
 	/// `commit_unchecked`; both halves it composes are crate-private.
 	///
+	/// On body failure the transaction is rolled back before the error is
+	/// returned. Without this, the conflict manager remains in its disabled
+	/// state and a subsequent `commit()` on the same transaction would
+	/// register an empty oracle window, silently bypassing SSI conflict
+	/// detection. `rollback` resets `ConflictManager.disabled` so a reused
+	/// transaction resumes normal tracking.
+	///
 	/// See `Engine::bulk_insert_unchecked` for the safety contract.
 	pub fn execute_bulk_unchecked<F, R>(&mut self, body: F) -> Result<R>
 	where
 		F: FnOnce(&mut CommandTransaction) -> Result<R>,
 	{
 		self.disable_conflict_tracking()?;
-		let r = body(self)?;
+		let r = match body(self) {
+			Ok(r) => r,
+			Err(e) => {
+				let _ = self.rollback();
+				return Err(e);
+			}
+		};
 		self.commit_unchecked()?;
 		Ok(r)
 	}

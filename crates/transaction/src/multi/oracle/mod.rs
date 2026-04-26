@@ -1171,4 +1171,51 @@ pub mod tests {
 			"Watermark should be at highest committed version"
 		);
 	}
+
+	#[test]
+	fn test_disabled_then_new_commit_skips_conflict_registration() {
+		// Start the clock at 1 so T1's commit version is 2; T2 then reads
+		// at version 1 (strictly before T1) and the per-window check
+		// `committed_txn.version <= read_version` will not short-circuit.
+		let oracle = create_test_oracle(1);
+		let key = create_test_key("shared");
+
+		// T1: disable() + rollback() must restore a usable manager.
+		// Subsequent mark_write must be recorded (the fix), not silently
+		// dropped (the bug).
+		let mut cm1 = ConflictManager::new();
+		cm1.disable();
+		cm1.rollback();
+		cm1.mark_write(&key);
+		assert!(
+			cm1.get_write_keys().contains(&key),
+			"rollback must reset ConflictManager.disabled; otherwise the reused \
+			 manager would silently drop mark_write and the oracle would register \
+			 an empty window for this transaction"
+		);
+
+		let mut done_read1 = false;
+		let v1 = match oracle.new_commit(&mut done_read1, CommitVersion(1), cm1).unwrap() {
+			CreateCommitResult::Success(v) => v,
+			other => panic!("T1 should commit, got variant {:?}", std::mem::discriminant(&other)),
+		};
+		assert!(v1.0 >= 2, "T1's commit version should be at least 2, got {}", v1.0);
+
+		// T2: reads at v=1 (strictly before T1's commit) and writes the same
+		// key. SSI must report a conflict against T1's write of `shared`.
+		// With the bug, T1's window had empty modified_keys and T2 would
+		// have been silently allowed through.
+		let mut cm2 = ConflictManager::new();
+		cm2.mark_read(&key);
+		cm2.mark_write(&key);
+		let mut done_read2 = false;
+		let r2 = oracle.new_commit(&mut done_read2, CommitVersion(1), cm2).unwrap();
+
+		assert!(
+			matches!(r2, CreateCommitResult::Conflict(_)),
+			"T2's read+write of `shared` (read_version=1) must conflict with T1's \
+			 write at v={}",
+			v1.0
+		);
+	}
 }
