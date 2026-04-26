@@ -286,6 +286,7 @@ impl<'bump> Parser<'bump> {
 #[cfg(test)]
 pub mod tests {
 	use bumpalo::Bump;
+
 	use crate::{
 		ast::{
 			ast::{AstAlter, AstAlterSequence, AstLiteral},

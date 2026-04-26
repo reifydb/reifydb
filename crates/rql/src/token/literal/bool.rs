@@ -39,11 +39,11 @@ pub fn scan_boolean<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 #[cfg(test)]
 pub mod tests {
-	use bumpalo::Bump;
 	use Literal::{False, True};
+	use bumpalo::Bump;
 
 	use super::*;
-	use crate::{token::tokenize};
+	use crate::token::tokenize;
 
 	#[test]
 	fn test_boolean_true() {

@@ -6,7 +6,8 @@ use reifydb_rql::{
 	ast::{
 		ast::{
 			Ast, AstFilter, AstFrom, AstInfix, AstJoin, AstLiteral, AstLiteralBoolean, AstLiteralNumber,
-			AstLiteralText, AstMap, AstSkip, AstStatement, AstSubQuery, AstTake, AstTakeValue, InfixOperator,
+			AstLiteralText, AstMap, AstSkip, AstStatement, AstSubQuery, AstTake, AstTakeValue,
+			InfixOperator,
 		},
 		identifier::{UnqualifiedIdentifier, UnresolvedShapeIdentifier},
 	},
@@ -170,11 +171,10 @@ impl<'bump> Compiler<'bump> {
 				} else {
 					field_name.to_string()
 				};
-				let ident = Ast::Identifier(UnqualifiedIdentifier::from_fragment(
-					BumpFragment::Internal {
+				let ident =
+					Ast::Identifier(UnqualifiedIdentifier::from_fragment(BumpFragment::Internal {
 						text: self.bump.alloc_str(&full_name),
-					},
-				));
+					}));
 				if let Some(alias) = alias_name {
 					let alias_ident = Ast::Identifier(UnqualifiedIdentifier::from_fragment(
 						BumpFragment::Internal {
@@ -211,19 +211,13 @@ impl<'bump> Compiler<'bump> {
 			(name, InfixOperator::Equal(rql_token))
 		};
 
-		let left = Ast::Identifier(UnqualifiedIdentifier::from_fragment(
-			BumpFragment::Internal {
-				text: self.bump.alloc_str(column_name),
-			},
-		));
+		let left = Ast::Identifier(UnqualifiedIdentifier::from_fragment(BumpFragment::Internal {
+			text: self.bump.alloc_str(column_name),
+		}));
 
 		let right = match &field.value {
-			AstValue::Int(t) => {
-				Ast::Literal(AstLiteral::Number(AstLiteralNumber(self.to_rql_token(*t))))
-			}
-			AstValue::String(t) => {
-				Ast::Literal(AstLiteral::Text(AstLiteralText(self.to_rql_token(*t))))
-			}
+			AstValue::Int(t) => Ast::Literal(AstLiteral::Number(AstLiteralNumber(self.to_rql_token(*t)))),
+			AstValue::String(t) => Ast::Literal(AstLiteral::Text(AstLiteralText(self.to_rql_token(*t)))),
 			AstValue::Boolean(t) => {
 				Ast::Literal(AstLiteral::Boolean(AstLiteralBoolean(self.boolean_rql_token(*t))))
 			}

@@ -169,17 +169,13 @@ pub struct CatalogCacheInner {
 	pub(crate) tests_by_name: SkipMap<(NamespaceId, String), TestId>,
 
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKey>,
-<<<<<<< HEAD:crates/catalog/src/cache/mod.rs
 
-=======
-	/// MultiVersion relationship definitions indexed by relationship ID
 	pub(crate) relationships: SkipMap<RelationshipId, MultiVersionRelationship>,
-	/// Index from (namespace_id, source_table_id, name) to relationship ID for fast lookups
+
 	pub(crate) relationships_by_name: SkipMap<(NamespaceId, TableId, String), RelationshipId>,
-	/// Index from source table ID to relationship IDs originating from that table
+
 	pub(crate) relationships_by_source: SkipMap<TableId, Vec<RelationshipId>>,
-	/// MultiVersion source retention strategies indexed by source ID
->>>>>>> 41b8195f0 (introduces relation to catalolg):crates/catalog/src/materialized/mod.rs
+
 	pub(crate) shape_retention_strategies: SkipMap<ShapeId, MultiVersionRetentionStrategy>,
 
 	pub(crate) operator_retention_strategies: SkipMap<FlowNodeId, MultiVersionRetentionStrategy>,

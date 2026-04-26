@@ -118,12 +118,10 @@ pub mod tests {
 	use bumpalo::Bump;
 	use reifydb_core::{common::IndexType, sort::SortDirection};
 
-	use crate::{
-		ast::{
-			ast::{AstCreate, AstCreateIndex},
-			parse::Parser,
-			tokenize,
-		},
+	use crate::ast::{
+		ast::{AstCreate, AstCreateIndex},
+		parse::Parser,
+		tokenize,
 	};
 
 	#[test]

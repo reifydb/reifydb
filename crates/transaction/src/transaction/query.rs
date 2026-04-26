@@ -52,13 +52,9 @@ use crate::{
 		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
 		TransactionalConfigChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityChanges,
-<<<<<<< HEAD
 		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalOperatorTtlChanges,
-		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
-=======
-		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalPolicyChanges,
-		TransactionalProcedureChanges, TransactionalRelationshipChanges, TransactionalRingBufferChanges,
->>>>>>> 41b8195f0 (introduces relation to catalolg)
+		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRelationshipChanges,
+		TransactionalRingBufferChanges,
 		TransactionalRoleChanges, TransactionalRowTtlChanges, TransactionalSeriesChanges,
 		TransactionalSinkChanges, TransactionalSourceChanges, TransactionalSumTypeChanges,
 		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,

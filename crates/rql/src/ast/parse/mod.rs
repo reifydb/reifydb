@@ -54,9 +54,9 @@ pub mod window;
 
 use std::cmp::PartialOrd;
 
-use bumpalo::Bump;
 use Operator::*;
 use Separator::NewLine;
+use bumpalo::Bump;
 
 use crate::{
 	Result,
@@ -820,6 +820,7 @@ impl<'bump> Parser<'bump> {
 #[cfg(test)]
 pub mod tests {
 	use bumpalo::Bump;
+
 	use crate::{
 		ast::{
 			ast::{Ast, AstFrom},

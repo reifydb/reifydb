@@ -55,6 +55,7 @@ impl<'bump> Parser<'bump> {
 #[cfg(test)]
 mod tests {
 	use bumpalo::Bump;
+
 	use crate::{
 		ast::{
 			ast::{Ast, AstCreate, AstDrop},

@@ -56,8 +56,9 @@ impl<'bump> Parser<'bump> {
 #[cfg(test)]
 pub mod tests {
 	use bumpalo::Bump;
+
 	use super::*;
-	use crate::{token::tokenize};
+	use crate::token::tokenize;
 
 	#[test]
 	fn test_take_with_braces() {

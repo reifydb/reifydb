@@ -193,6 +193,7 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 #[cfg(test)]
 pub mod tests {
 	use bumpalo::Bump;
+
 	use super::{
 		keyword::Keyword,
 		operator::Operator,

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::collections::Vec as BumpVec;
 use reifydb_core::interface::catalog::subscription::HydrationConfig;
 use reifydb_transaction::transaction::Transaction;
 
-use bumpalo::collections::Vec as BumpVec;
 use crate::{
 	Result,
 	ast::ast::AstCreateSubscription,

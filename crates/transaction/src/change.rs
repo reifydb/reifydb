@@ -319,13 +319,9 @@ pub struct TransactionalCatalogChanges {
 	pub namespace: Vec<Change<Namespace>>,
 
 	pub procedure: Vec<Change<Procedure>>,
-<<<<<<< HEAD
 
-=======
-	/// All relationship definition changes in order (no coalescing)
 	pub relationship: Vec<Change<Relationship>>,
-	/// All ring buffer definition changes in order (no coalescing)
->>>>>>> 41b8195f0 (introduces relation to catalolg)
+
 	pub ringbuffer: Vec<Change<RingBuffer>>,
 
 	pub series: Vec<Change<Series>>,

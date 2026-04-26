@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use bumpalo::Bump;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::JoinType;
 use reifydb_transaction::transaction::Transaction;
 
-use bumpalo::Bump;
 use crate::{
 	Result,
 	ast::{ast::AstAlterPolicyAction, parse_str},

@@ -363,15 +363,8 @@ impl Key {
 			KeyKind::NamespaceProcedure => NamespaceProcedureKey::decode(key).map(Self::NamespaceProcedure),
 			KeyKind::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
 			KeyKind::Binding => BindingKey::decode(key).map(Self::Binding),
-<<<<<<< HEAD
 			KeyKind::NamespaceBinding => None,
-=======
-			KeyKind::NamespaceBinding => {
-				// NamespaceBinding keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
 			KeyKind::Relationship => RelationshipKey::decode(key).map(Self::Relationship),
->>>>>>> 41b8195f0 (introduces relation to catalolg)
 		}
 	}
 }

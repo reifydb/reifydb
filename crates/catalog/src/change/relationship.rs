@@ -16,7 +16,7 @@ impl CatalogChangeApplier for RelationshipApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let rel = decode_relationship_row(row)?;
-		catalog.materialized.set_relationship(rel.id, txn.version(), Some(rel));
+		catalog.cache.set_relationship(rel.id, txn.version(), Some(rel));
 		Ok(())
 	}
 
@@ -27,7 +27,7 @@ impl CatalogChangeApplier for RelationshipApplier {
 				kind: KeyKind::Relationship,
 			},
 		)?;
-		catalog.materialized.set_relationship(id, txn.version(), None);
+		catalog.cache.set_relationship(id, txn.version(), None);
 		Ok(())
 	}
 }

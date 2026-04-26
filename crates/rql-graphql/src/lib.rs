@@ -9,9 +9,7 @@ pub mod token;
 
 use thiserror::Error;
 
-use crate::{
-	compiler::compiler::CompilerError, parse::parser::ParserError, token::lexer::LexerError,
-};
+use crate::{compiler::compiler::CompilerError, parse::parser::ParserError, token::lexer::LexerError};
 
 #[derive(Error, Debug)]
 pub enum Error {

@@ -13,13 +13,8 @@ use crate::{
 			MaybeQualifiedTableIdentifier, UnresolvedShapeIdentifier,
 		},
 	},
-<<<<<<< HEAD
-	bump::{BumpBox, BumpFragment, BumpVec},
+	bump::{BumpBox, BumpFragment},
 	expression::{Expression, ExpressionCompiler},
-=======
-	bump::BumpBox,
-	expression::ExpressionCompiler,
->>>>>>> 41b8195f0 (introduces relation to catalolg)
 	plan::logical::{
 		Compiler, FilterNode, LogicalPlan, PipelineNode, UpdateRingBufferNode, UpdateSeriesNode,
 		UpdateTableNode, mutate::compile_returning_clause,

@@ -9,9 +9,9 @@ use reifydb_core::{
 	},
 };
 
-use crate::materialized::{MaterializedCatalog, MultiVersionRelationship};
+use crate::cache::{CatalogCache, MultiVersionRelationship};
 
-impl MaterializedCatalog {
+impl CatalogCache {
 	pub fn find_relationship_at(&self, id: RelationshipId, version: CommitVersion) -> Option<Relationship> {
 		self.relationships.get(&id).and_then(|entry| entry.value().get(version))
 	}

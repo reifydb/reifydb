@@ -94,14 +94,14 @@ impl Catalog {
 	pub fn find_relationship(&self, txn: &mut Transaction<'_>, id: RelationshipId) -> Result<Option<Relationship>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(rel) = self.materialized.find_relationship_at(id, cmd.version()) {
+				if let Some(rel) = self.cache.find_relationship_at(id, cmd.version()) {
 					return Ok(Some(rel));
 				}
 				if let Some(rel) =
 					CatalogStore::find_relationship(&mut Transaction::Command(&mut *cmd), id)?
 				{
 					warn!(
-						"Relationship with ID {:?} found in storage but not in MaterializedCatalog",
+						"Relationship with ID {:?} found in storage but not in CatalogCache",
 						id
 					);
 					return Ok(Some(rel));
@@ -115,14 +115,14 @@ impl Catalog {
 				if TransactionalRelationshipChanges::is_relationship_deleted(admin, id) {
 					return Ok(None);
 				}
-				if let Some(rel) = self.materialized.find_relationship_at(id, admin.version()) {
+				if let Some(rel) = self.cache.find_relationship_at(id, admin.version()) {
 					return Ok(Some(rel));
 				}
 				if let Some(rel) =
 					CatalogStore::find_relationship(&mut Transaction::Admin(&mut *admin), id)?
 				{
 					warn!(
-						"Relationship with ID {:?} found in storage but not in MaterializedCatalog",
+						"Relationship with ID {:?} found in storage but not in CatalogCache",
 						id
 					);
 					return Ok(Some(rel));
@@ -130,14 +130,14 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(rel) = self.materialized.find_relationship_at(id, qry.version()) {
+				if let Some(rel) = self.cache.find_relationship_at(id, qry.version()) {
 					return Ok(Some(rel));
 				}
 				if let Some(rel) =
 					CatalogStore::find_relationship(&mut Transaction::Query(&mut *qry), id)?
 				{
 					warn!(
-						"Relationship with ID {:?} found in storage but not in MaterializedCatalog",
+						"Relationship with ID {:?} found in storage but not in CatalogCache",
 						id
 					);
 					return Ok(Some(rel));
@@ -160,14 +160,14 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(rel) = self.materialized.find_relationship_at(id, rep.version()) {
+				if let Some(rel) = self.cache.find_relationship_at(id, rep.version()) {
 					return Ok(Some(rel));
 				}
 				if let Some(rel) =
 					CatalogStore::find_relationship(&mut Transaction::Replica(&mut *rep), id)?
 				{
 					warn!(
-						"Relationship with ID {:?} found in storage but not in MaterializedCatalog",
+						"Relationship with ID {:?} found in storage but not in CatalogCache",
 						id
 					);
 					return Ok(Some(rel));
@@ -187,7 +187,7 @@ impl Catalog {
 	) -> Result<Option<Relationship>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(rel) = self.materialized.find_relationship_by_name_at(
+				if let Some(rel) = self.cache.find_relationship_by_name_at(
 					namespace,
 					source_table,
 					name,
@@ -202,7 +202,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Relationship '{}' for source_table {:?} in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Relationship '{}' for source_table {:?} in namespace {:?} found in storage but not in CatalogCache",
 						name, source_table, namespace
 					);
 					return Ok(Some(rel));
@@ -226,7 +226,7 @@ impl Catalog {
 				) {
 					return Ok(None);
 				}
-				if let Some(rel) = self.materialized.find_relationship_by_name_at(
+				if let Some(rel) = self.cache.find_relationship_by_name_at(
 					namespace,
 					source_table,
 					name,
@@ -241,7 +241,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Relationship '{}' for source_table {:?} in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Relationship '{}' for source_table {:?} in namespace {:?} found in storage but not in CatalogCache",
 						name, source_table, namespace
 					);
 					return Ok(Some(rel));
@@ -249,7 +249,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(rel) = self.materialized.find_relationship_by_name_at(
+				if let Some(rel) = self.cache.find_relationship_by_name_at(
 					namespace,
 					source_table,
 					name,
@@ -264,7 +264,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Relationship '{}' for source_table {:?} in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Relationship '{}' for source_table {:?} in namespace {:?} found in storage but not in CatalogCache",
 						name, source_table, namespace
 					);
 					return Ok(Some(rel));
@@ -299,7 +299,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(rel) = self.materialized.find_relationship_by_name_at(
+				if let Some(rel) = self.cache.find_relationship_by_name_at(
 					namespace,
 					source_table,
 					name,
@@ -314,7 +314,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Relationship '{}' for source_table {:?} in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Relationship '{}' for source_table {:?} in namespace {:?} found in storage but not in CatalogCache",
 						name, source_table, namespace
 					);
 					return Ok(Some(rel));
@@ -325,7 +325,7 @@ impl Catalog {
 	}
 
 	/// Lists all relationships in the catalog. This is a cold path that goes directly to storage;
-	/// it does not consult MaterializedCatalog or transactional changes (a global list is rarely
+	/// it does not consult CatalogCache or transactional changes (a global list is rarely
 	/// needed and merging tx-pending changes here would duplicate logic that callers can do).
 	#[instrument(name = "catalog::relationship::list", level = "debug", skip(self, txn))]
 	pub fn list_relationships(&self, txn: &mut Transaction<'_>) -> Result<Vec<Relationship>> {
@@ -340,17 +340,17 @@ impl Catalog {
 	) -> Result<Vec<Relationship>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				Ok(self.materialized.list_relationships_from_at(source_table, cmd.version()))
+				Ok(self.cache.list_relationships_from_at(source_table, cmd.version()))
 			}
 			Transaction::Query(qry) => {
-				Ok(self.materialized.list_relationships_from_at(source_table, qry.version()))
+				Ok(self.cache.list_relationships_from_at(source_table, qry.version()))
 			}
 			Transaction::Replica(rep) => {
-				Ok(self.materialized.list_relationships_from_at(source_table, rep.version()))
+				Ok(self.cache.list_relationships_from_at(source_table, rep.version()))
 			}
 			Transaction::Admin(admin) => {
 				let mut base =
-					self.materialized.list_relationships_from_at(source_table, admin.version());
+					self.cache.list_relationships_from_at(source_table, admin.version());
 
 				for change in admin.changes.relationship.iter() {
 					match (&change.pre, &change.post) {
@@ -368,7 +368,7 @@ impl Catalog {
 			}
 			Transaction::Test(mut t) => {
 				let mut base =
-					self.materialized.list_relationships_from_at(source_table, t.inner.version());
+					self.cache.list_relationships_from_at(source_table, t.inner.version());
 
 				for change in t.inner.changes.relationship.iter() {
 					match (&change.pre, &change.post) {

@@ -188,11 +188,7 @@ impl<'bump> Parser<'bump> {
 		if token.kind == kind {
 			Ok(self.consume())
 		} else if self.is_eof() {
-			Err(ParserError::UnexpectedEOF(
-				kind,
-				token.fragment.line().0,
-				token.fragment.column().0,
-			))
+			Err(ParserError::UnexpectedEOF(kind, token.fragment.line().0, token.fragment.column().0))
 		} else {
 			Err(ParserError::UnexpectedToken(
 				token.kind,

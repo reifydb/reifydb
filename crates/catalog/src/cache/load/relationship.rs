@@ -4,10 +4,10 @@
 use reifydb_core::key::relationship::RelationshipKey;
 use reifydb_transaction::transaction::Transaction;
 
-use super::MaterializedCatalog;
+use super::CatalogCache;
 use crate::{Result, store::relationship::list::decode_relationship_row};
 
-pub fn load_relationships(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
+pub fn load_relationships(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = RelationshipKey::full_scan();
 
 	let mut entries = Vec::new();

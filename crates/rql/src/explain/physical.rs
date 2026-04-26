@@ -3,11 +3,11 @@
 
 use std::fmt::Write;
 
+use bumpalo::Bump;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{common::JoinType, interface::resolved::ResolvedShape};
 use reifydb_transaction::transaction::Transaction;
 
-use bumpalo::Bump;
 use crate::{
 	Result,
 	ast::parse_str,

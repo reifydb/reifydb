@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use bumpalo::Bump;
+
 use crate::{
 	Result,
 	token::{

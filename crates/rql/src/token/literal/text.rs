@@ -47,10 +47,9 @@ pub fn scan_text<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 #[cfg(test)]
 pub mod tests {
 	use bumpalo::Bump;
+
 	use super::*;
-	use crate::{
-		token::{token::Literal::Number, tokenize},
-	};
+	use crate::token::{token::Literal::Number, tokenize};
 
 	#[test]
 	fn test_text_single_quotes() {
