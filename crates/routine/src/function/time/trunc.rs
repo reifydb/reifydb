@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, time::Time, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct TimeTrunc {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TimeTrunc {
@@ -19,28 +19,28 @@ impl Default for TimeTrunc {
 impl TimeTrunc {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("time::trunc"),
+			info: RoutineInfo::new("time::trunc"),
 		}
 	}
 }
 
-impl Function for TimeTrunc {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TimeTrunc {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Time
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -74,8 +74,8 @@ impl Function for TimeTrunc {
 									Time::new(t.hour(), t.minute(), t.second(), 0)
 								}
 								other => {
-									return Err(FunctionError::ExecutionFailed {
-										function: ctx.fragment.clone(),
+									return Err(RoutineError::FunctionExecutionFailed {
+										function: ctx.env.fragment.clone(),
 										reason: format!(
 											"invalid precision: '{}'",
 											other
@@ -99,16 +99,16 @@ impl Function for TimeTrunc {
 						bitvec: bv.clone(),
 					};
 				}
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
 			}
-			(ColumnBuffer::Time(_), other) => Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			(ColumnBuffer::Time(_), other) => Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
-			(other, _) => Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Time],
 				actual: other.get_type(),

@@ -10,7 +10,7 @@ use reifydb_core::{
 	error::CoreError,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_routine::function::{Accumulator, FunctionContext, error::FunctionError, registry::Functions};
+use reifydb_routine::routine::{Accumulator, FunctionContext, FunctionKind, RoutineEnv, RoutineError, Routines};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -79,7 +79,7 @@ impl QueryNode for AggregateNode {
 		}
 
 		let (keys, mut projections) =
-			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.functions, stored_ctx)?;
+			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.routines, stored_ctx)?;
 
 		let mut seen_groups = HashSet::<Vec<Value>>::new();
 		let mut group_key_order: Vec<Vec<Value>> = Vec::new();
@@ -167,7 +167,7 @@ impl QueryNode for AggregateNode {
 fn parse_keys_and_aggregates<'a>(
 	by: &'a [Expression],
 	project: &'a [Expression],
-	functions: &'a Functions,
+	routines: &'a Routines,
 	ctx: &QueryContext,
 ) -> Result<(Vec<&'a str>, Vec<Projection>)> {
 	let mut keys = Vec::new();
@@ -216,20 +216,24 @@ fn parse_keys_and_aggregates<'a>(
 		match actual_expr {
 			Expression::Call(call) => {
 				let func_name = call.func.0.text();
-				let function =
-					functions.get_aggregate(func_name).ok_or_else(|| FunctionError::NotFound {
+				let function = routines.get_aggregate_function(func_name).ok_or_else(|| {
+					RoutineError::FunctionNotFound {
 						function: call.func.0.clone(),
-					})?;
+					}
+				})?;
+				let _ = FunctionKind::Aggregate; // ensure kinds enum is in scope
 
-				let fn_ctx = FunctionContext::new(
-					call.func.0.clone(),
-					&ctx.services.runtime_context,
-					ctx.identity,
-					0,
-				);
+				let mut fn_ctx = FunctionContext {
+					env: RoutineEnv {
+						fragment: call.func.0.clone(),
+						identity: ctx.identity,
+						row_count: 0,
+						runtime_context: &ctx.services.runtime_context,
+					},
+				};
 
-				let accumulator = function.accumulator(&fn_ctx).ok_or_else(|| {
-					FunctionError::ExecutionFailed {
+				let accumulator = function.accumulator(&mut fn_ctx).ok_or_else(|| {
+					RoutineError::FunctionExecutionFailed {
 						function: call.func.0.clone(),
 						reason: format!("Function {} is not an aggregate", func_name),
 					}
@@ -254,7 +258,7 @@ fn parse_keys_and_aggregates<'a>(
 						});
 					}
 					None => {
-						return Err(FunctionError::ArityMismatch {
+						return Err(RoutineError::FunctionArityMismatch {
 							function: call.func.0.clone(),
 							expected: 1,
 							actual: 0,
@@ -263,13 +267,13 @@ fn parse_keys_and_aggregates<'a>(
 					}
 					Some(arg) => {
 						let actual_type = arg.infer_type().ok_or_else(|| {
-							FunctionError::ExecutionFailed {
+							RoutineError::FunctionExecutionFailed {
 								function: call.func.0.clone(),
 								reason: "aggregate function arguments must be column references".to_string(),
 							}
 						})?;
 						let expected = function.accepted_types().expected_at(0).to_vec();
-						return Err(FunctionError::InvalidArgumentType {
+						return Err(RoutineError::FunctionInvalidArgumentType {
 							function: call.func.0.clone(),
 							argument_index: 0,
 							expected,

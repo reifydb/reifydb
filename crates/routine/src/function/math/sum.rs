@@ -21,10 +21,10 @@ use reifydb_type::{
 	},
 };
 
-use crate::function::{Accumulator, Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Accumulator, FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct Sum {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Sum {
@@ -36,18 +36,18 @@ impl Default for Sum {
 impl Sum {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::sum"),
+			info: RoutineInfo::new("math::sum"),
 		}
 	}
 }
 
-impl Function for Sum {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Sum {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar, FunctionCapability::Aggregate]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
 	fn return_type(&self, input_types: &[Type]) -> Type {
@@ -58,11 +58,11 @@ impl Function for Sum {
 		InputTypes::numeric()
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		// SCALAR: Horizontal Sum (summing columns in each row)
 		if args.is_empty() {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 1,
 				actual: 0,
 			});
@@ -78,10 +78,10 @@ impl Function for Sum {
 			results.push(Box::new(val1));
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::any(results))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), ColumnBuffer::any(results))]))
 	}
 
-	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
+	fn accumulator(&self, _ctx: &mut FunctionContext<'a>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(SumAccumulator::new()))
 	}
 }
@@ -123,7 +123,7 @@ macro_rules! sum_arm {
 }
 
 impl Accumulator for SumAccumulator {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError> {
+	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let (data, _bitvec) = column.unwrap_option();
 
@@ -249,7 +249,7 @@ impl Accumulator for SumAccumulator {
 				}
 				Ok(())
 			}
-			other => Err(FunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: Fragment::internal("math::sum"),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
@@ -258,7 +258,7 @@ impl Accumulator for SumAccumulator {
 		}
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError> {
 		let ty = self.input_type.take().unwrap_or(Type::Int8);
 		let mut keys = Vec::with_capacity(self.sums.len());
 		let mut data = ColumnBuffer::with_capacity(ty, self.sums.len());

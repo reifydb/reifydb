@@ -12,7 +12,9 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_routine::{function::FunctionContext, procedure::context::ProcedureContext};
+use reifydb_routine::routine::{
+	FunctionContext as RoutineFunctionContext, ProcedureContext as RoutineProcedureContext, RoutineEnv,
+};
 use reifydb_rql::{
 	compiler::{CompilationResult, Compiled},
 	instruction::{CompiledClosure, CompiledFunction, Instruction, ScopeType},
@@ -486,18 +488,25 @@ impl<'a> Vm<'a> {
 				..
 			} => {
 				let native_name = native_name.clone();
-				if let Some(proc_impl) = ctx.services.procedures.get_procedure(&native_name) {
+				if let Some(routine) = ctx.services.routines.get_procedure(&native_name) {
 					let call_params = Params::Positional(Arc::new(args));
-					let proc_ctx = ProcedureContext {
+					let identity = ctx.tx.identity();
+					let mut proc_ctx = RoutineProcedureContext {
+						env: RoutineEnv {
+							fragment: name.clone(),
+							identity,
+							row_count: 1,
+							runtime_context: &ctx.services.runtime_context,
+						},
+						tx: ctx.tx,
 						params: &call_params,
 						catalog: &ctx.services.catalog,
-						functions: &ctx.services.functions,
-						runtime_context: &ctx.services.runtime_context,
 						ioc: &ctx.services.ioc,
 					};
-					let columns = proc_impl
-						.call(&proc_ctx, ctx.tx)
-						.map_err(|e| e.with_context(name.clone()))?;
+					let empty = Columns::empty();
+					let columns = routine
+						.call(&mut proc_ctx, &empty)
+						.map_err(|e| e.with_context(name.clone(), true))?;
 					self.stack.push(Variable::columns(columns));
 					Ok(())
 				} else {
@@ -654,16 +663,24 @@ impl<'a> Vm<'a> {
 		is_procedure_call: bool,
 	) -> Result<()> {
 		// Runtime-registered native procedure (no catalog entry needed)
-		if let Some(proc_impl) = ctx.services.get_procedure(func_name) {
+		if let Some(routine) = ctx.services.routines.get_procedure(func_name) {
 			let call_params = Params::Positional(Arc::new(args));
-			let proc_ctx = ProcedureContext {
+			let identity = ctx.tx.identity();
+			let mut proc_ctx = RoutineProcedureContext {
+				env: RoutineEnv {
+					fragment: name.clone(),
+					identity,
+					row_count: 1,
+					runtime_context: &ctx.services.runtime_context,
+				},
+				tx: ctx.tx,
 				params: &call_params,
 				catalog: &ctx.services.catalog,
-				functions: &ctx.services.functions,
-				runtime_context: &ctx.services.runtime_context,
 				ioc: &ctx.services.ioc,
 			};
-			let columns = proc_impl.call(&proc_ctx, ctx.tx).map_err(|e| e.with_context(name.clone()))?;
+			let empty = Columns::empty();
+			let columns =
+				routine.call(&mut proc_ctx, &empty).map_err(|e| e.with_context(name.clone(), true))?;
 
 			// Special handling: identity::inject updates the transaction's identity
 			if func_name == "identity::inject"
@@ -678,7 +695,7 @@ impl<'a> Vm<'a> {
 		}
 
 		// Generator function
-		if let Some(generator) = ctx.services.functions.get_generator(func_name) {
+		if let Some(generator) = ctx.services.routines.get_generator_function(func_name) {
 			let arg_columns: Vec<ColumnWithName> = args
 				.into_iter()
 				.enumerate()
@@ -690,13 +707,16 @@ impl<'a> Vm<'a> {
 				.collect();
 			let columns_args = Columns::new(arg_columns);
 			let identity = ctx.tx.identity();
-			let fn_ctx = FunctionContext::new(
-				name.clone(),
-				&ctx.services.runtime_context,
-				identity,
-				columns_args.row_count(),
-			);
-			let columns = generator.call(&fn_ctx, &columns_args)?;
+			let mut fn_ctx = RoutineFunctionContext {
+				env: RoutineEnv {
+					fragment: name.clone(),
+					identity,
+					row_count: columns_args.row_count(),
+					runtime_context: &ctx.services.runtime_context,
+				},
+			};
+			let columns =
+				generator.call(&mut fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone(), false))?;
 			self.stack.push(Variable::columns(columns));
 			return Ok(());
 		}
@@ -713,7 +733,7 @@ impl<'a> Vm<'a> {
 			.into());
 		}
 
-		let function = ctx.services.functions.get(func_name).ok_or_else(|| {
+		let function = ctx.services.routines.get_function(func_name).ok_or_else(|| {
 			ReifyError::from(EngineError::UnknownCallable {
 				name: func_name.to_string(),
 				fragment: name.clone(),
@@ -731,8 +751,16 @@ impl<'a> Vm<'a> {
 			.collect();
 		let columns_args = Columns::new(arg_columns);
 		let identity = ctx.tx.identity();
-		let fn_ctx = FunctionContext::new(name.clone(), &ctx.services.runtime_context, identity, 1);
-		let result_columns = function.call(&fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone()))?;
+		let mut fn_ctx = RoutineFunctionContext {
+			env: RoutineEnv {
+				fragment: name.clone(),
+				identity,
+				row_count: 1,
+				runtime_context: &ctx.services.runtime_context,
+			},
+		};
+		let result_columns =
+			function.call(&mut fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone(), false))?;
 		let value = if !result_columns.has_rows() {
 			Value::none()
 		} else {

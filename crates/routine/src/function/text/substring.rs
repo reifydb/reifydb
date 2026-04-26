@@ -7,10 +7,10 @@ use reifydb_type::{
 	value::{container::utf8::Utf8Container, r#type::Type},
 };
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct TextSubstring {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TextSubstring {
@@ -22,29 +22,29 @@ impl Default for TextSubstring {
 impl TextSubstring {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("text::substring"),
+			info: RoutineInfo::new("text::substring"),
 		}
 	}
 }
 
-impl Function for TextSubstring {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		// Validate exactly 3 arguments
 		if args.len() != 3 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 3,
 				actual: args.len(),
 			});
@@ -129,7 +129,7 @@ impl Function for TextSubstring {
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 			}
 			// Handle cases where start/length are different integer types
 			(
@@ -231,10 +231,10 @@ impl Function for TextSubstring {
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 			}
-			(other, _, _) => Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			(other, _, _) => Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),

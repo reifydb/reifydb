@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::LazyLock;
+
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_routine::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	value::{Value, r#type::Type},
 };
 use uuid::Uuid;
+
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("forge::run_pipeline"));
 
 /// Creates a new pipeline run with job_runs and step_runs for every job/step in the pipeline.
 ///
@@ -19,19 +22,37 @@ use uuid::Uuid;
 /// Jobs with dependencies get job_runs with status "blocked" (waiting on deps).
 pub struct RunPipelineProcedure;
 
-impl Procedure for RunPipelineProcedure {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
+impl RunPipelineProcedure {
+	pub fn new() -> Self {
+		Self
+	}
+}
+
+impl Default for RunPipelineProcedure {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RunPipelineProcedure {
+	fn info(&self) -> &RoutineInfo {
+		&INFO
+	}
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Any
+	}
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let pipeline_id = match ctx.params {
 			Params::Positional(args) if !args.is_empty() => args[0].clone(),
 			Params::Positional(args) => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("forge::run_pipeline"),
 					expected: 1,
 					actual: args.len(),
 				});
 			}
 			_ => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("forge::run_pipeline"),
 					expected: 1,
 					actual: 0,
@@ -43,7 +64,7 @@ impl Procedure for RunPipelineProcedure {
 			Value::Uuid4(u) => u.to_string(),
 			Value::Utf8(s) => s.clone(),
 			_ => {
-				return Err(ProcedureError::InvalidArgumentType {
+				return Err(RoutineError::ProcedureInvalidArgumentType {
 					procedure: Fragment::internal("forge::run_pipeline"),
 					argument_index: 0,
 					expected: vec![Type::Uuid4, Type::Utf8],
@@ -53,14 +74,15 @@ impl Procedure for RunPipelineProcedure {
 		};
 
 		// Validate pipeline exists
-		let pipelines = tx
+		let pipelines = ctx
+			.tx
 			.rql(
 				&format!("FROM forge::pipelines | FILTER id == uuid::v4(\"{pipeline_id_str}\")"),
 				Params::None,
 			)
 			.check()?;
 		if pipelines.is_empty() || pipelines[0].rows().next().is_none() {
-			return Err(ProcedureError::ExecutionFailed {
+			return Err(RoutineError::ProcedureExecutionFailed {
 				procedure: Fragment::internal("forge::run_pipeline"),
 				reason: format!("Pipeline not found: {}", pipeline_id_str),
 			});
@@ -68,7 +90,7 @@ impl Procedure for RunPipelineProcedure {
 
 		// Create the run
 		let run_id = Uuid::new_v4();
-		tx.rql(
+		ctx.tx.rql(
 			&format!(
 				"INSERT forge::runs [{{ id: uuid::v4(\"{run_id}\"), pipeline_id: uuid::v4(\"{pipeline_id_str}\"), \
 				 status: \"pending\", triggered_by: \"manual\", started_at: datetime::now() }}]"
@@ -78,7 +100,8 @@ impl Procedure for RunPipelineProcedure {
 		.check()?;
 
 		// Query all jobs for this pipeline
-		let jobs = tx
+		let jobs = ctx
+			.tx
 			.rql(
 				&format!(
 					"FROM forge::jobs | FILTER pipeline_id == uuid::v4(\"{pipeline_id_str}\") | SORT {{position:ASC}}"
@@ -90,14 +113,15 @@ impl Procedure for RunPipelineProcedure {
 		if let Some(job_frame) = jobs.first() {
 			for job_row in job_frame.rows() {
 				let job_id = job_row.get_value("id").map(|v| v.to_string()).ok_or_else(|| {
-					ProcedureError::ExecutionFailed {
+					RoutineError::ProcedureExecutionFailed {
 						procedure: Fragment::internal("forge::run_pipeline"),
 						reason: "jobs row is missing required field 'id'".to_string(),
 					}
 				})?;
 
 				// Check if this job has any dependencies
-				let deps = tx
+				let deps = ctx
+					.tx
 					.rql(
 						&format!(
 							"FROM forge::job_dependencies | FILTER job_id == uuid::v4(\"{job_id}\")"
@@ -115,16 +139,19 @@ impl Procedure for RunPipelineProcedure {
 
 				// Create job_run
 				let job_run_id = Uuid::new_v4();
-				tx.rql(
-					&format!("INSERT forge::job_runs [{{ id: uuid::v4(\"{job_run_id}\"), \
+				ctx.tx.rql(
+					&format!(
+						"INSERT forge::job_runs [{{ id: uuid::v4(\"{job_run_id}\"), \
 						 run_id: uuid::v4(\"{run_id}\"), job_id: uuid::v4(\"{job_id}\"), \
-						 status: \"{job_run_status}\" }}]"),
+						 status: \"{job_run_status}\" }}]"
+					),
 					Params::None,
 				)
 				.check()?;
 
 				// Query steps for this job and create step_runs
-				let steps = tx
+				let steps = ctx
+					.tx
 					.rql(
 						&format!(
 							"FROM forge::steps | FILTER job_id == uuid::v4(\"{job_id}\") | SORT {{position:ASC}}"
@@ -135,17 +162,15 @@ impl Procedure for RunPipelineProcedure {
 
 				if let Some(step_frame) = steps.first() {
 					for step_row in step_frame.rows() {
-						let step_id = step_row
-							.get_value("id")
-							.map(|v| v.to_string())
-							.ok_or_else(|| ProcedureError::ExecutionFailed {
+						let step_id = step_row.get_value("id").map(|v| v.to_string()).ok_or_else(
+							|| RoutineError::ProcedureExecutionFailed {
 								procedure: Fragment::internal("forge::run_pipeline"),
-								reason: "steps row is missing required field 'id'"
-									.to_string(),
-							})?;
+								reason: "steps row is missing required field 'id'".to_string(),
+							},
+						)?;
 						let step_run_id = Uuid::new_v4();
 
-						tx.rql(
+						ctx.tx.rql(
 							&format!(
 								"INSERT forge::step_runs [{{ id: uuid::v4(\"{step_run_id}\"), \
 								 run_id: uuid::v4(\"{run_id}\"), step_id: uuid::v4(\"{step_id}\"), \

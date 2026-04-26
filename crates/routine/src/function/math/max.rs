@@ -21,10 +21,10 @@ use reifydb_type::{
 	},
 };
 
-use crate::function::{Accumulator, Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Accumulator, FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct Max {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Max {
@@ -36,18 +36,18 @@ impl Default for Max {
 impl Max {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::max"),
+			info: RoutineInfo::new("math::max"),
 		}
 	}
 }
 
-impl Function for Max {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Max {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar, FunctionCapability::Aggregate]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
 	fn return_type(&self, input_types: &[Type]) -> Type {
@@ -58,10 +58,10 @@ impl Function for Max {
 		InputTypes::numeric()
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 1,
 				actual: 0,
 			});
@@ -69,8 +69,8 @@ impl Function for Max {
 
 		for (i, col) in args.iter().enumerate() {
 			if !col.get_type().is_number() {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: i,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
 					actual: col.get_type(),
@@ -97,10 +97,10 @@ impl Function for Max {
 			data.push_value(row_max.unwrap_or(Value::none()));
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), data)]))
 	}
 
-	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
+	fn accumulator(&self, _ctx: &mut FunctionContext<'a>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(MaxAccumulator::new()))
 	}
 }
@@ -144,7 +144,7 @@ macro_rules! max_arm {
 }
 
 impl Accumulator for MaxAccumulator {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError> {
+	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let (data, _bitvec) = column.unwrap_option();
 
@@ -310,7 +310,7 @@ impl Accumulator for MaxAccumulator {
 				}
 				Ok(())
 			}
-			other => Err(FunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: Fragment::internal("math::max"),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
@@ -319,7 +319,7 @@ impl Accumulator for MaxAccumulator {
 		}
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError> {
 		let ty = self.input_type.take().unwrap_or(Type::Float8);
 		let mut keys = Vec::with_capacity(self.maxs.len());
 		let mut data = ColumnBuffer::with_capacity(ty, self.maxs.len());

@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, duration::Duration, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct DurationMillis {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DurationMillis {
@@ -19,7 +19,7 @@ impl Default for DurationMillis {
 impl DurationMillis {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("duration::millis"),
+			info: RoutineInfo::new("duration::millis"),
 		}
 	}
 }
@@ -56,23 +56,23 @@ fn is_integer_type(data: &ColumnBuffer) -> bool {
 	)
 }
 
-impl Function for DurationMillis {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DurationMillis {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Duration
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -83,8 +83,8 @@ impl Function for DurationMillis {
 		let row_count = data.len();
 
 		if !is_integer_type(data) {
-			return Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
 					Type::Int1,
@@ -119,6 +119,6 @@ impl Function for DurationMillis {
 				bitvec: bv.clone(),
 			};
 		}
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
 	}
 }

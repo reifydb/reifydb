@@ -11,7 +11,7 @@ use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
 };
-use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
+use reifydb_routine::routine::RoutinesConfigurator;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -59,12 +59,10 @@ pub struct ServerBuilder {
 	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	request_interceptors: Vec<Arc<dyn RequestInterceptor>>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
-	functions_configurator:
-		Option<Box<dyn FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static>>,
-	procedures_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+	routines_configurator:
+		Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	handlers_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+		Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	#[cfg(feature = "sub_tracing")]
@@ -91,8 +89,7 @@ impl ServerBuilder {
 			#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 			request_interceptors: Vec::new(),
 			subsystem_factories: Vec::new(),
-			functions_configurator: None,
-			procedures_configurator: None,
+			routines_configurator: None,
 			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
@@ -150,25 +147,17 @@ impl ServerBuilder {
 		self
 	}
 
-	pub fn with_functions<F>(mut self, configurator: F) -> Self
+	pub fn with_routines<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
-		self.functions_configurator = Some(Box::new(configurator));
-		self
-	}
-
-	pub fn with_procedures<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
-	{
-		self.procedures_configurator = Some(Box::new(configurator));
+		self.routines_configurator = Some(Box::new(configurator));
 		self
 	}
 
 	pub fn with_handlers<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
 		self.handlers_configurator = Some(Box::new(configurator));
 		self
@@ -334,12 +323,8 @@ impl ServerBuilder {
 			database_builder = database_builder.with_configs(self.bootstrap_configs);
 		}
 
-		if let Some(configurator) = self.functions_configurator {
-			database_builder = database_builder.with_functions_configurator(configurator);
-		}
-
-		if let Some(configurator) = self.procedures_configurator {
-			database_builder = database_builder.with_procedures_configurator(configurator);
+		if let Some(configurator) = self.routines_configurator {
+			database_builder = database_builder.with_routines_configurator(configurator);
 		}
 
 		if let Some(configurator) = self.handlers_configurator {

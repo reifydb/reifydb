@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, datetime::DateTime, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct DateTimeSubtract {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateTimeSubtract {
@@ -19,28 +19,28 @@ impl Default for DateTimeSubtract {
 impl DateTimeSubtract {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("datetime::subtract"),
+			info: RoutineInfo::new("datetime::subtract"),
 		}
 	}
 }
 
-impl Function for DateTimeSubtract {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateTimeSubtract {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::DateTime
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -93,14 +93,14 @@ impl Function for DateTimeSubtract {
 										total_nanos as u64,
 									));
 								} else {
-									return Err(FunctionError::ExecutionFailed {
-										function: ctx.fragment.clone(),
+									return Err(RoutineError::FunctionExecutionFailed {
+										function: ctx.env.fragment.clone(),
 										reason: "datetime cannot be before Unix epoch".to_string(),
 									});
 								}
 							} else {
-								return Err(FunctionError::ExecutionFailed {
-									function: ctx.fragment.clone(),
+								return Err(RoutineError::FunctionExecutionFailed {
+									function: ctx.env.fragment.clone(),
 									reason: "datetime cannot be before Unix epoch"
 										.to_string(),
 								});
@@ -113,16 +113,16 @@ impl Function for DateTimeSubtract {
 				ColumnBuffer::DateTime(container)
 			}
 			(ColumnBuffer::DateTime(_), other) => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 1,
 					expected: vec![Type::Duration],
 					actual: other.get_type(),
 				});
 			}
 			(other, _) => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 0,
 					expected: vec![Type::DateTime],
 					actual: other.get_type(),
@@ -138,7 +138,7 @@ impl Function for DateTimeSubtract {
 			_ => result_data,
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 	}
 }
 

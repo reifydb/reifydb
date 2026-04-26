@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct DurationScale {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DurationScale {
@@ -19,7 +19,7 @@ impl Default for DurationScale {
 impl DurationScale {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("duration::scale"),
+			info: RoutineInfo::new("duration::scale"),
 		}
 	}
 }
@@ -56,23 +56,23 @@ fn is_integer_type(data: &ColumnBuffer) -> bool {
 	)
 }
 
-impl Function for DurationScale {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DurationScale {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Duration
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -87,8 +87,8 @@ impl Function for DurationScale {
 		match dur_data {
 			ColumnBuffer::Duration(dur_container) => {
 				if !is_integer_type(scalar_data) {
-					return Err(FunctionError::InvalidArgumentType {
-						function: ctx.fragment.clone(),
+					return Err(RoutineError::FunctionInvalidArgumentType {
+						function: ctx.env.fragment.clone(),
 						argument_index: 1,
 						expected: vec![
 							Type::Int1,
@@ -130,10 +130,10 @@ impl Function for DurationScale {
 						bitvec: bv.clone(),
 					};
 				}
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
 			}
-			other => Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			other => Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Duration],
 				actual: other.get_type(),

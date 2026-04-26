@@ -88,9 +88,7 @@ impl UdfEvalNode {
 impl QueryNode for UdfEvalNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		let compile_ctx = CompileContext {
-			functions: &ctx.services.functions,
-			symbols: &ctx.symbols,
+		let compile_ctx = CompileContext {			symbols: &ctx.symbols,
 		};
 
 		// Compile argument expressions for each UDF call
@@ -325,9 +323,7 @@ pub(crate) fn evaluate_udfs_no_input(
 		return Ok(None);
 	}
 
-	let compile_ctx = CompileContext {
-		functions: &ctx.services.functions,
-		symbols: &ctx.symbols,
+	let compile_ctx = CompileContext {		symbols: &ctx.symbols,
 	};
 	let session = EvalContext::from_query(ctx);
 	let mut result_columns = Vec::new();

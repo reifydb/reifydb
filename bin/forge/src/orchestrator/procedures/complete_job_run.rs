@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::LazyLock;
+
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use reifydb_routine::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	Result as TypeResult,
@@ -12,6 +14,8 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("forge::complete_job_run"));
+
 /// Completes a job_run and handles cascading effects:
 /// - On success: unblocks dependent jobs whose deps are all satisfied
 /// - On failure: skips remaining step_runs and transitively skips dependent jobs
@@ -20,15 +24,33 @@ use reifydb_type::{
 /// Expects 2 positional arguments: job_run_id (Uuid4), status ("succeeded" or "failed").
 pub struct CompleteJobRunProcedure;
 
-impl Procedure for CompleteJobRunProcedure {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
+impl CompleteJobRunProcedure {
+	pub fn new() -> Self {
+		Self
+	}
+}
+
+impl Default for CompleteJobRunProcedure {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for CompleteJobRunProcedure {
+	fn info(&self) -> &RoutineInfo {
+		&INFO
+	}
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Any
+	}
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let (job_run_id_str, status_str) = match ctx.params {
 			Params::Positional(args) if args.len() >= 2 => {
 				let id = match &args[0] {
 					Value::Uuid4(u) => u.to_string(),
 					Value::Utf8(s) => s.clone(),
 					_ => {
-						return Err(ProcedureError::InvalidArgumentType {
+						return Err(RoutineError::ProcedureInvalidArgumentType {
 							procedure: Fragment::internal("forge::complete_job_run"),
 							argument_index: 0,
 							expected: vec![Type::Uuid4, Type::Utf8],
@@ -39,7 +61,7 @@ impl Procedure for CompleteJobRunProcedure {
 				let status = match &args[1] {
 					Value::Utf8(s) => s.clone(),
 					_ => {
-						return Err(ProcedureError::InvalidArgumentType {
+						return Err(RoutineError::ProcedureInvalidArgumentType {
 							procedure: Fragment::internal("forge::complete_job_run"),
 							argument_index: 1,
 							expected: vec![Type::Utf8],
@@ -50,14 +72,14 @@ impl Procedure for CompleteJobRunProcedure {
 				(id, status)
 			}
 			Params::Positional(args) => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("forge::complete_job_run"),
 					expected: 2,
 					actual: args.len(),
 				});
 			}
 			_ => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("forge::complete_job_run"),
 					expected: 2,
 					actual: 0,
@@ -66,14 +88,14 @@ impl Procedure for CompleteJobRunProcedure {
 		};
 
 		if status_str != "succeeded" && status_str != "failed" {
-			return Err(ProcedureError::ExecutionFailed {
+			return Err(RoutineError::ProcedureExecutionFailed {
 				procedure: Fragment::internal("forge::complete_job_run"),
 				reason: format!("status must be \"succeeded\" or \"failed\", got \"{}\"", status_str),
 			});
 		}
 
 		// Get the job_run to find run_id and job_id
-		let job_run_result = tx
+		let job_run_result = ctx.tx
 			.rql(
 				&format!("FROM forge::job_runs | FILTER id == uuid::v4(\"{job_run_id_str}\")"),
 				Params::None,
@@ -81,27 +103,27 @@ impl Procedure for CompleteJobRunProcedure {
 			.check()?;
 
 		let job_run_row = job_run_result.first().and_then(|f| f.rows().next()).ok_or_else(|| {
-			ProcedureError::ExecutionFailed {
+			RoutineError::ProcedureExecutionFailed {
 				procedure: Fragment::internal("forge::complete_job_run"),
 				reason: format!("Job run not found: {}", job_run_id_str),
 			}
 		})?;
 
 		let run_id = job_run_row.get_value("run_id").map(|v| v.to_string()).ok_or_else(|| {
-			ProcedureError::ExecutionFailed {
+			RoutineError::ProcedureExecutionFailed {
 				procedure: Fragment::internal("forge::complete_job_run"),
 				reason: format!("job run {} is missing required field 'run_id'", job_run_id_str),
 			}
 		})?;
 		let job_id = job_run_row.get_value("job_id").map(|v| v.to_string()).ok_or_else(|| {
-			ProcedureError::ExecutionFailed {
+			RoutineError::ProcedureExecutionFailed {
 				procedure: Fragment::internal("forge::complete_job_run"),
 				reason: format!("job run {} is missing required field 'job_id'", job_run_id_str),
 			}
 		})?;
 
 		// Update the job_run status
-		tx.rql(
+		ctx.tx.rql(
 			&format!(
 				"UPDATE forge::job_runs {{ status: \"{status_str}\", finished_at: datetime::now() }} \
 				 FILTER id == uuid::v4(\"{job_run_id_str}\")"
@@ -112,10 +134,10 @@ impl Procedure for CompleteJobRunProcedure {
 
 		if status_str == "succeeded" {
 			// Check blocked job_runs in this run and unblock those whose deps are all satisfied
-			unblock_ready_jobs(tx, &run_id)?;
+			unblock_ready_jobs(ctx.tx, &run_id)?;
 		} else {
 			// Skip remaining pending step_runs in this job_run
-			tx.rql(
+			ctx.tx.rql(
 				&format!("UPDATE forge::step_runs {{ status: \"skipped\" }} \
 					 FILTER job_run_id == uuid::v4(\"{job_run_id_str}\") AND status == \"pending\""),
 				Params::None,
@@ -123,11 +145,11 @@ impl Procedure for CompleteJobRunProcedure {
 			.check()?;
 
 			// Transitively skip all dependent job_runs
-			skip_dependents(tx, &run_id, &job_id)?;
+			skip_dependents(ctx.tx, &run_id, &job_id)?;
 		}
 
 		// Check if all job_runs in this run are terminal → finalize the run
-		let non_terminal = tx.rql(
+		let non_terminal = ctx.tx.rql(
 			&format!(
 				"FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND status != \"succeeded\" AND status != \"failed\" AND status != \"skipped\""
 			),
@@ -138,7 +160,7 @@ impl Procedure for CompleteJobRunProcedure {
 
 		if all_terminal {
 			// Check if any job_run failed
-			let any_failed = tx
+			let any_failed = ctx.tx
 				.rql(
 					&format!(
 						"FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND status == \"failed\""
@@ -153,7 +175,7 @@ impl Procedure for CompleteJobRunProcedure {
 				"succeeded"
 			};
 
-			tx.rql(
+			ctx.tx.rql(
 				&format!(
 					"UPDATE forge::runs {{ status: \"{run_status}\", finished_at: datetime::now() }} \
 					 FILTER id == uuid::v4(\"{run_id}\")"
@@ -171,7 +193,7 @@ impl Procedure for CompleteJobRunProcedure {
 }
 
 fn missing_field(table: &str, field: &str) -> TypeError {
-	ProcedureError::ExecutionFailed {
+	RoutineError::ProcedureExecutionFailed {
 		procedure: Fragment::internal("forge::complete_job_run"),
 		reason: format!("{} row is missing required field '{}'", table, field),
 	}

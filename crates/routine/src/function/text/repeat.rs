@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct TextRepeat {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TextRepeat {
@@ -19,28 +19,28 @@ impl Default for TextRepeat {
 impl TextRepeat {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("text::repeat"),
+			info: RoutineInfo::new("text::repeat"),
 		}
 	}
 }
 
-impl Function for TextRepeat {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TextRepeat {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -75,8 +75,8 @@ impl Function for TextRepeat {
 						ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
 						ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
 						_ => {
-							return Err(FunctionError::InvalidArgumentType {
-								function: ctx.fragment.clone(),
+							return Err(RoutineError::FunctionInvalidArgumentType {
+								function: ctx.env.fragment.clone(),
 								argument_index: 1,
 								expected: vec![
 									Type::Int1,
@@ -122,10 +122,10 @@ impl Function for TextRepeat {
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 			}
-			other => Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			other => Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),

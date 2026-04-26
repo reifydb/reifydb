@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::LazyLock;
+
 use reifydb_core::value::column::columns::Columns;
 use reifydb_runtime::context::clock::Clock;
-use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	value::{Value, datetime::DateTime, r#type::Type},
 };
 
-use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use crate::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("clock::set"));
 
 /// Native procedure that sets the mock clock to a specific time.
 ///
@@ -29,19 +32,27 @@ impl ClockSetProcedure {
 	}
 }
 
-impl Procedure for ClockSetProcedure {
-	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
+	fn info(&self) -> &RoutineInfo {
+		&INFO
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
+
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let arg = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => &args[0],
 			Params::Positional(args) => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("clock::set"),
 					expected: 1,
 					actual: args.len(),
 				});
 			}
 			_ => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("clock::set"),
 					expected: 1,
 					actual: 0,
@@ -49,7 +60,7 @@ impl Procedure for ClockSetProcedure {
 			}
 		};
 
-		match &ctx.runtime_context.clock {
+		match &ctx.env.runtime_context.clock {
 			Clock::Mock(mock) => {
 				match arg {
 					Value::DateTime(dt) => {
@@ -62,7 +73,7 @@ impl Procedure for ClockSetProcedure {
 					}
 					other => {
 						let millis = extract_millis(other).ok_or_else(|| {
-							ProcedureError::InvalidArgumentType {
+							RoutineError::ProcedureInvalidArgumentType {
 								procedure: Fragment::internal("clock::set"),
 								argument_index: 0,
 								expected: EXPECTED_SET_TYPES.to_vec(),
@@ -76,7 +87,7 @@ impl Procedure for ClockSetProcedure {
 				let dt = DateTime::from_nanos(current_nanos);
 				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}
-			Clock::Real => Err(ProcedureError::ExecutionFailed {
+			Clock::Real => Err(RoutineError::ProcedureExecutionFailed {
 				procedure: Fragment::internal("clock::set"),
 				reason: "clock::set can only be used with a mock clock".to_string(),
 			}),

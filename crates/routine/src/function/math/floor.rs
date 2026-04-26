@@ -9,10 +9,10 @@ use reifydb_type::value::{
 	r#type::{Type, input_types::InputTypes},
 };
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct Floor {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Floor {
@@ -24,28 +24,28 @@ impl Default for Floor {
 impl Floor {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::floor"),
+			info: RoutineInfo::new("math::floor"),
 		}
 	}
 }
 
-impl Function for Floor {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Floor {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, input_types: &[Type]) -> Type {
 		input_types.first().cloned().unwrap_or(Type::Float8)
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -106,8 +106,8 @@ impl Function for Floor {
 			}
 			other if other.get_type().is_number() => data.clone(),
 			other => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 0,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
 					actual: other.get_type(),
@@ -124,6 +124,6 @@ impl Function for Floor {
 			result_data
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 	}
 }

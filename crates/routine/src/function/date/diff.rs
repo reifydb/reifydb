@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, duration::Duration, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct DateDiff {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateDiff {
@@ -19,28 +19,28 @@ impl Default for DateDiff {
 impl DateDiff {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("date::diff"),
+			info: RoutineInfo::new("date::diff"),
 		}
 	}
 }
 
-impl Function for DateDiff {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateDiff {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Duration
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -70,16 +70,16 @@ impl Function for DateDiff {
 				ColumnBuffer::Duration(container)
 			}
 			(ColumnBuffer::Date(_), other) => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 1,
 					expected: vec![Type::Date],
 					actual: other.get_type(),
 				});
 			}
 			(other, _) => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 0,
 					expected: vec![Type::Date],
 					actual: other.get_type(),
@@ -95,6 +95,6 @@ impl Function for DateDiff {
 			_ => result_data,
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 	}
 }

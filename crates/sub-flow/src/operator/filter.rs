@@ -18,7 +18,7 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::function::registry::Functions;
+use reifydb_routine::routine::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
@@ -39,7 +39,7 @@ pub struct FilterOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
 	compiled_conditions: Vec<CompiledExpr>,
-	functions: Functions,
+	routines: Routines,
 	runtime_context: RuntimeContext,
 }
 
@@ -48,12 +48,10 @@ impl FilterOperator {
 		parent: Arc<Operators>,
 		node: FlowNodeId,
 		conditions: Vec<Expression>,
-		functions: Functions,
+		routines: Routines,
 		runtime_context: RuntimeContext,
 	) -> Self {
-		let compile_ctx = CompileContext {
-			functions: &functions,
-			symbols: &EMPTY_SYMBOL_TABLE,
+		let compile_ctx = CompileContext {			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 		let compiled_conditions: Vec<CompiledExpr> = conditions
 			.iter()
@@ -64,8 +62,7 @@ impl FilterOperator {
 			parent,
 			node,
 			compiled_conditions,
-			functions,
-			runtime_context,
+			routines,			runtime_context,
 		}
 	}
 
@@ -77,10 +74,9 @@ impl FilterOperator {
 			return Ok(Vec::new());
 		}
 
-		let session = EvalContext {
+				let session = EvalContext {
 			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
-			functions: &self.functions,
+			symbols: &EMPTY_SYMBOL_TABLE,			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),

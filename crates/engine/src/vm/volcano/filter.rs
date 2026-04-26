@@ -60,9 +60,7 @@ impl QueryNode for FilterNode {
 		self.expressions = expressions;
 		self.udf_names = udf_names;
 
-		let compile_ctx = CompileContext {
-			functions: &ctx.services.functions,
-			symbols: &ctx.symbols,
+		let compile_ctx = CompileContext {			symbols: &ctx.symbols,
 		};
 		let compiled = self
 			.expressions
@@ -110,8 +108,7 @@ impl QueryNode for FilterNode {
 
 			// Fall back to materialized path
 			if let Some(columns) = self.input.next(rx, ctx)? {
-				let transform_ctx = TransformContext {
-					functions: &stored_ctx.services.functions,
+				let transform_ctx = TransformContext {			routines: &ctx.services.routines,
 					runtime_context: &stored_ctx.services.runtime_context,
 					params: &stored_ctx.params,
 				};

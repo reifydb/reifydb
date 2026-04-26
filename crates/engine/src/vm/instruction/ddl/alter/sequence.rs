@@ -56,8 +56,7 @@ pub(crate) fn alter_table_sequence(
 
 	let base = EvalContext {
 		params: &EMPTY_PARAMS,
-		symbols: &EMPTY_SYMBOL_TABLE,
-		functions: &services.functions,
+		symbols: &EMPTY_SYMBOL_TABLE,		routines: &services.routines,
 		runtime_context: &services.runtime_context,
 		arena: None,
 		identity: IdentityId::root(),

@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, time::Time, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct TimeNew {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TimeNew {
@@ -19,7 +19,7 @@ impl Default for TimeNew {
 impl TimeNew {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("time::new"),
+			info: RoutineInfo::new("time::new"),
 		}
 	}
 }
@@ -56,23 +56,23 @@ fn is_integer_type(data: &ColumnBuffer) -> bool {
 	)
 }
 
-impl Function for TimeNew {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TimeNew {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Time
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 3 && args.len() != 4 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 3,
 				actual: args.len(),
 			});
@@ -93,8 +93,8 @@ impl Function for TimeNew {
 		let nano_data = nano_col.map(|c| c.unwrap_option());
 
 		if !is_integer_type(hour_data) {
-			return Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
 					Type::Int1,
@@ -112,8 +112,8 @@ impl Function for TimeNew {
 			});
 		}
 		if !is_integer_type(min_data) {
-			return Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 1,
 				expected: vec![
 					Type::Int1,
@@ -131,8 +131,8 @@ impl Function for TimeNew {
 			});
 		}
 		if !is_integer_type(sec_data) {
-			return Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 2,
 				expected: vec![
 					Type::Int1,
@@ -152,8 +152,8 @@ impl Function for TimeNew {
 		if let Some((nd, _)) = &nano_data
 			&& !is_integer_type(nd)
 		{
-			return Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 3,
 				expected: vec![
 					Type::Int1,
@@ -197,6 +197,6 @@ impl Function for TimeNew {
 		}
 
 		let result_data = ColumnBuffer::Time(container);
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
 	}
 }

@@ -640,7 +640,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					arg_columns.push(compiled_arg.execute(ctx)?);
 				}
 				let arguments = Columns::new(arg_columns);
-				call_builtin(ctx, &expr, arguments, ctx.functions)
+				call_builtin(ctx, &expr, arguments)
 			})
 		}
 

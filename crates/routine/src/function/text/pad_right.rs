@@ -7,10 +7,10 @@ use reifydb_type::{
 	value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type},
 };
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct TextPadRight {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TextPadRight {
@@ -22,28 +22,28 @@ impl Default for TextPadRight {
 impl TextPadRight {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("text::pad_right"),
+			info: RoutineInfo::new("text::pad_right"),
 		}
 	}
 }
 
-impl Function for TextPadRight {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TextPadRight {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 3 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 3,
 				actual: args.len(),
 			});
@@ -64,8 +64,8 @@ impl Function for TextPadRight {
 				..
 			} => container,
 			other => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 2,
 					expected: vec![Type::Utf8],
 					actual: other.get_type(),
@@ -95,8 +95,8 @@ impl Function for TextPadRight {
 						ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
 						ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
 						_ => {
-							return Err(FunctionError::InvalidArgumentType {
-								function: ctx.fragment.clone(),
+							return Err(RoutineError::FunctionInvalidArgumentType {
+								function: ctx.env.fragment.clone(),
 								argument_index: 1,
 								expected: vec![
 									Type::Int1,
@@ -168,10 +168,10 @@ impl Function for TextPadRight {
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 			}
-			other => Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			other => Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),

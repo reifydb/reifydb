@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct TextChar {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TextChar {
@@ -19,28 +19,28 @@ impl Default for TextChar {
 impl TextChar {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("text::char"),
+			info: RoutineInfo::new("text::char"),
 		}
 	}
 }
 
-impl Function for TextChar {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TextChar {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -71,8 +71,8 @@ impl Function for TextChar {
 			}
 			ColumnBuffer::Uint4(c) => convert_to_char(row_count, c.data().len(), |i| c.get(i).copied()),
 			other => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 0,
 					expected: vec![Type::Int1, Type::Int2, Type::Int4, Type::Int8],
 					actual: other.get_type(),
@@ -87,7 +87,7 @@ impl Function for TextChar {
 			},
 			None => result_data,
 		};
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 	}
 }
 

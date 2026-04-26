@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct GenerateSeries {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for GenerateSeries {
@@ -19,60 +19,60 @@ impl Default for GenerateSeries {
 impl GenerateSeries {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("generate_series"),
+			info: RoutineInfo::new("generate_series"),
 		}
 	}
 }
 
-impl Function for GenerateSeries {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Generator]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Generator]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Any
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
 		}
 
 		// Get start value
-		let start_column = args.first().ok_or_else(|| FunctionError::ArityMismatch {
-			function: ctx.fragment.clone(),
+		let start_column = args.first().ok_or_else(|| RoutineError::FunctionArityMismatch {
+			function: ctx.env.fragment.clone(),
 			expected: 2,
 			actual: args.len(),
 		})?;
 		let start_value = match start_column.data() {
 			ColumnBuffer::Int4(container) => container.get(0).copied().unwrap_or(1),
 			_ => {
-				return Err(FunctionError::ExecutionFailed {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionExecutionFailed {
+					function: ctx.env.fragment.clone(),
 					reason: "start parameter must be an integer".to_string(),
 				});
 			}
 		};
 
 		// Get end value
-		let end_column = args.get(1).ok_or_else(|| FunctionError::ArityMismatch {
-			function: ctx.fragment.clone(),
+		let end_column = args.get(1).ok_or_else(|| RoutineError::FunctionArityMismatch {
+			function: ctx.env.fragment.clone(),
 			expected: 2,
 			actual: args.len(),
 		})?;
 		let end_value = match end_column.data() {
 			ColumnBuffer::Int4(container) => container.get(0).copied().unwrap_or(10),
 			_ => {
-				return Err(FunctionError::ExecutionFailed {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionExecutionFailed {
+					function: ctx.env.fragment.clone(),
 					reason: "end parameter must be an integer".to_string(),
 				});
 			}
@@ -87,7 +87,7 @@ impl Function for GenerateSeries {
 }
 
 pub struct Series {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Series {
@@ -99,7 +99,7 @@ impl Default for Series {
 impl Series {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("gen::series"),
+			info: RoutineInfo::new("gen::series"),
 		}
 	}
 }
@@ -117,43 +117,43 @@ fn extract_i32(data: &ColumnBuffer, index: usize) -> Option<i32> {
 	}
 }
 
-impl Function for Series {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Series {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Int4
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
 		}
 
-		let start_column = args.first().ok_or_else(|| FunctionError::ArityMismatch {
-			function: ctx.fragment.clone(),
+		let start_column = args.first().ok_or_else(|| RoutineError::FunctionArityMismatch {
+			function: ctx.env.fragment.clone(),
 			expected: 2,
 			actual: args.len(),
 		})?;
 		let start_value = extract_i32(start_column.data(), 0).unwrap_or(1);
 
-		let end_column = args.get(1).ok_or_else(|| FunctionError::ArityMismatch {
-			function: ctx.fragment.clone(),
+		let end_column = args.get(1).ok_or_else(|| RoutineError::FunctionArityMismatch {
+			function: ctx.env.fragment.clone(),
 			expected: 2,
 			actual: args.len(),
 		})?;
 		let end_value = extract_i32(end_column.data(), 0).unwrap_or(10);
 
 		let series: Vec<i32> = (start_value..=end_value).collect();
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::int4(series))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), ColumnBuffer::int4(series))]))
 	}
 }

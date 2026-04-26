@@ -21,7 +21,7 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::function::registry::Functions;
+use reifydb_routine::routine::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{
 	context::RuntimeContext,
@@ -186,7 +186,7 @@ pub struct DistinctOperator {
 	node: FlowNodeId,
 	compiled_expressions: Vec<CompiledExpr>,
 	shape: RowShape,
-	functions: Functions,
+	routines: Routines,
 	runtime_context: RuntimeContext,
 }
 
@@ -195,13 +195,11 @@ impl DistinctOperator {
 		parent: Arc<Operators>,
 		node: FlowNodeId,
 		expressions: Vec<Expression>,
-		functions: Functions,
+		routines: Routines,
 		runtime_context: RuntimeContext,
 	) -> Self {
 		let symbols = SymbolTable::new();
-		let compile_ctx = CompileContext {
-			functions: &functions,
-			symbols: &symbols,
+		let compile_ctx = CompileContext {			symbols: &symbols,
 		};
 		let compiled_expressions: Vec<CompiledExpr> = expressions
 			.iter()
@@ -214,8 +212,7 @@ impl DistinctOperator {
 			node,
 			compiled_expressions,
 			shape: RowShape::testing(&[Type::Blob]),
-			functions,
-			runtime_context,
+			routines,			runtime_context,
 		}
 	}
 
@@ -240,10 +237,9 @@ impl DistinctOperator {
 			}
 			Ok(hashes)
 		} else {
-			let session = EvalContext {
+						let session = EvalContext {
 				params: &EMPTY_PARAMS,
-				symbols: &EMPTY_SYMBOL_TABLE,
-				functions: &self.functions,
+				symbols: &EMPTY_SYMBOL_TABLE,				routines: &self.routines,
 				runtime_context: &self.runtime_context,
 				arena: None,
 				identity: IdentityId::root(),

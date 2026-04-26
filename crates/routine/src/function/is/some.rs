@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct IsSome {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for IsSome {
@@ -19,18 +19,18 @@ impl Default for IsSome {
 impl IsSome {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("is::some"),
+			info: RoutineInfo::new("is::some"),
 		}
 	}
 }
 
-impl Function for IsSome {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for IsSome {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
@@ -41,10 +41,10 @@ impl Function for IsSome {
 		false
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -54,6 +54,6 @@ impl Function for IsSome {
 		let row_count = column.len();
 		let data: Vec<bool> = (0..row_count).map(|i| column.is_defined(i)).collect();
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::bool(data))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), ColumnBuffer::bool(data))]))
 	}
 }

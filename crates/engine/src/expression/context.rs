@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_extension::transform::context::TransformContext;
-use reifydb_routine::function::registry::Functions;
+use reifydb_routine::routine::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_type::{params::Params, value::identity::IdentityId};
 
@@ -28,7 +28,7 @@ pub struct EvalContext<'a> {
 	pub params: &'a Params,
 	pub symbols: &'a SymbolTable,
 	pub is_aggregate_context: bool,
-	pub functions: &'a Functions,
+	pub routines: &'a Routines,
 	pub runtime_context: &'a RuntimeContext,
 	pub arena: Option<&'a QueryArena>,
 	pub identity: IdentityId,
@@ -38,7 +38,7 @@ impl<'a> EvalContext<'a> {
 	pub fn testing() -> EvalContext<'static> {
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
-		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
+		static EMPTY_ROUTINES: LazyLock<Routines> = LazyLock::new(Routines::empty);
 		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> =
 			LazyLock::new(|| RuntimeContext::with_clock(Clock::Real));
 
@@ -50,7 +50,7 @@ impl<'a> EvalContext<'a> {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
 			is_aggregate_context: false,
-			functions: &EMPTY_FUNCTIONS,
+			routines: &EMPTY_ROUTINES,
 			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			arena: None,
 			identity: IdentityId::root(),
@@ -67,7 +67,7 @@ impl<'a> EvalContext<'a> {
 			params: self.params,
 			symbols: self.symbols,
 			is_aggregate_context: self.is_aggregate_context,
-			functions: self.functions,
+			routines: self.routines,
 			runtime_context: self.runtime_context,
 			arena: self.arena,
 			identity: self.identity,
@@ -93,7 +93,7 @@ impl<'a> EvalContext<'a> {
 			params: &ctx.params,
 			symbols: &ctx.symbols,
 			is_aggregate_context: false,
-			functions: &ctx.services.functions,
+			routines: &ctx.services.routines,
 			runtime_context: &ctx.services.runtime_context,
 			arena: None,
 			identity: ctx.identity,
@@ -109,7 +109,7 @@ impl<'a> EvalContext<'a> {
 			params: ctx.params,
 			symbols: &stored.symbols,
 			is_aggregate_context: false,
-			functions: ctx.functions,
+			routines: &stored.services.routines,
 			runtime_context: ctx.runtime_context,
 			arena: None,
 			identity: stored.identity,
@@ -132,8 +132,7 @@ impl<'a> EvalContext<'a> {
 	}
 }
 
-/// Compile-time context for resolving functions and UDFs.
+/// Compile-time context for resolving UDFs.
 pub struct CompileContext<'a> {
-	pub functions: &'a Functions,
 	pub symbols: &'a SymbolTable,
 }

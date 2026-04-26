@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::column::Column,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_routine::function::registry::Functions;
+use reifydb_routine::routine::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
@@ -24,10 +24,11 @@ pub(super) fn coerce_columns(
 	num_rows: usize,
 ) -> Result<Vec<ColumnBuffer>> {
 	let runtime_ctx = RuntimeContext::with_clock(Clock::Real);
+	let routines = Routines::empty();
 	let ctx = EvalContext {
 		params: &Params::None,
 		symbols: &SymbolTable::new(),
-		functions: &Functions::empty(),
+		routines: &routines,
 		runtime_context: &runtime_ctx,
 		arena: None,
 		identity: IdentityId::root(),

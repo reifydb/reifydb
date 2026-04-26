@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct DateNew {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateNew {
@@ -19,7 +19,7 @@ impl Default for DateNew {
 impl DateNew {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("date::new"),
+			info: RoutineInfo::new("date::new"),
 		}
 	}
 }
@@ -56,23 +56,23 @@ fn is_integer_type(data: &ColumnBuffer) -> bool {
 	)
 }
 
-impl Function for DateNew {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateNew {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Date
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 3 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 3,
 				actual: args.len(),
 			});
@@ -87,8 +87,8 @@ impl Function for DateNew {
 		let row_count = year_data.len();
 
 		if !is_integer_type(year_data) {
-			return Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
 					Type::Int1,
@@ -106,8 +106,8 @@ impl Function for DateNew {
 			});
 		}
 		if !is_integer_type(month_data) {
-			return Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 1,
 				expected: vec![
 					Type::Int1,
@@ -125,8 +125,8 @@ impl Function for DateNew {
 			});
 		}
 		if !is_integer_type(day_data) {
-			return Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 2,
 				expected: vec![
 					Type::Int1,
@@ -166,6 +166,6 @@ impl Function for DateNew {
 			}
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::Date(container))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), ColumnBuffer::Date(container))]))
 	}
 }

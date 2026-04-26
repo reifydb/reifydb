@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct DateTimeNow {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateTimeNow {
@@ -19,28 +19,28 @@ impl Default for DateTimeNow {
 impl DateTimeNow {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("datetime::now"),
+			info: RoutineInfo::new("datetime::now"),
 		}
 	}
 }
 
-impl Function for DateTimeNow {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateTimeNow {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::DateTime
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if !args.is_empty() {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 0,
 				actual: args.len(),
 			});
@@ -48,7 +48,7 @@ impl Function for DateTimeNow {
 
 		let row_count = args.row_count().max(1);
 
-		let millis = ctx.runtime_context.clock.now_millis();
+		let millis = ctx.env.runtime_context.clock.now_millis();
 		let dt = DateTime::from_timestamp_millis(millis)?;
 
 		let mut container = TemporalContainer::with_capacity(row_count);
@@ -56,6 +56,6 @@ impl Function for DateTimeNow {
 			container.push(dt);
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::DateTime(container))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), ColumnBuffer::DateTime(container))]))
 	}
 }

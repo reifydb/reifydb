@@ -23,7 +23,7 @@ use reifydb_engine::{
 	},
 	vm::{executor::Executor, stack::SymbolTable},
 };
-use reifydb_routine::function::registry::Functions;
+use reifydb_routine::routine::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{
 	context::RuntimeContext,
@@ -76,7 +76,7 @@ pub struct JoinOperator {
 	shape: RowShape,
 	row_number_provider: RowNumberProvider,
 	executor: Executor,
-	functions: Functions,
+	routines: Routines,
 	runtime_context: RuntimeContext,
 }
 
@@ -100,9 +100,7 @@ impl JoinOperator {
 		let row_number_provider = RowNumberProvider::new(node);
 
 		// Create compile context with empty symbol table
-		let compile_ctx = CompileContext {
-			functions: &executor.functions,
-			symbols: &EMPTY_SYMBOL_TABLE,
+		let compile_ctx = CompileContext {			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 
 		// Compile expressions at construction time
@@ -119,7 +117,7 @@ impl JoinOperator {
 			.expect("Failed to compile right expressions");
 
 		// Extract Functions and RuntimeContext from executor
-		let functions = executor.functions.clone();
+		let routines = executor.routines.clone();
 		let runtime_context = executor.runtime_context.clone();
 
 		Self {
@@ -137,7 +135,7 @@ impl JoinOperator {
 			shape,
 			row_number_provider,
 			executor,
-			functions,
+			routines,
 			runtime_context,
 		}
 	}
@@ -158,10 +156,9 @@ impl JoinOperator {
 			return Ok(Vec::new());
 		}
 
-		let session = EvalContext {
+				let session = EvalContext {
 			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
-			functions: &self.functions,
+			symbols: &EMPTY_SYMBOL_TABLE,			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),

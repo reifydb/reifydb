@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct DateTrunc {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateTrunc {
@@ -19,28 +19,28 @@ impl Default for DateTrunc {
 impl DateTrunc {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("date::trunc"),
+			info: RoutineInfo::new("date::trunc"),
 		}
 	}
 }
 
-impl Function for DateTrunc {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Date
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -71,8 +71,8 @@ impl Function for DateTrunc {
 									"year" => Date::new(d.year(), 1, 1),
 									"month" => Date::new(d.year(), d.month(), 1),
 									other => {
-										return Err(FunctionError::ExecutionFailed {
-										function: ctx.fragment.clone(),
+										return Err(RoutineError::FunctionExecutionFailed {
+										function: ctx.env.fragment.clone(),
 										reason: format!("invalid precision: '{}'", other),
 									});
 									}
@@ -89,16 +89,16 @@ impl Function for DateTrunc {
 				ColumnBuffer::Date(container)
 			}
 			(ColumnBuffer::Date(_), other) => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 1,
 					expected: vec![Type::Utf8],
 					actual: other.get_type(),
 				});
 			}
 			(other, _) => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 0,
 					expected: vec![Type::Date],
 					actual: other.get_type(),
@@ -114,6 +114,6 @@ impl Function for DateTrunc {
 			_ => result_data,
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 	}
 }

@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{Value, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct IsType {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for IsType {
@@ -19,18 +19,18 @@ impl Default for IsType {
 impl IsType {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("is::type"),
+			info: RoutineInfo::new("is::type"),
 		}
 	}
 }
 
-impl Function for IsType {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for IsType {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
@@ -41,10 +41,10 @@ impl Function for IsType {
 		false
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -61,8 +61,8 @@ impl Function for IsType {
 			Value::Any(boxed) => match boxed.as_ref() {
 				Value::Type(t) => t.clone(),
 				_ => {
-					return Err(FunctionError::InvalidArgumentType {
-						function: ctx.fragment.clone(),
+					return Err(RoutineError::FunctionInvalidArgumentType {
+						function: ctx.env.fragment.clone(),
 						argument_index: 1,
 						expected: vec![Type::Any],
 						actual: boxed.get_type(),
@@ -73,8 +73,8 @@ impl Function for IsType {
 				..
 			} => Type::Option(Box::new(Type::Any)),
 			other => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 1,
 					expected: vec![Type::Any],
 					actual: other.get_type(),
@@ -94,6 +94,6 @@ impl Function for IsType {
 			})
 			.collect();
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::bool(data))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), ColumnBuffer::bool(data))]))
 	}
 }

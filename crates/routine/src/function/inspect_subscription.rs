@@ -6,11 +6,11 @@ use reifydb_type::value::r#type::Type;
 
 use crate::function::{
 	Function, FunctionCapability, FunctionContext, FunctionInfo,
-	error::{ScalarFunctionResult, FunctionError},
+	error::{ScalarFunctionResult, RoutineError},
 };
 
 pub struct InspectSubscription {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for InspectSubscription {
@@ -22,18 +22,18 @@ impl Default for InspectSubscription {
 impl InspectSubscription {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("inspect_subscription"),
+			info: RoutineInfo::new("inspect_subscription"),
 		}
 	}
 }
 
-impl Function for InspectSubscription {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for InspectSubscription {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Generator]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Generator]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
@@ -43,8 +43,8 @@ impl Function for InspectSubscription {
 	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> ScalarFunctionResult<Columns> {
 		// This generator function is expected to be called with no arguments.
 		if !args.is_empty() {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 0,
 				actual: args.len(),
 			});

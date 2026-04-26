@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct TimeFormat {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TimeFormat {
@@ -19,7 +19,7 @@ impl Default for TimeFormat {
 impl TimeFormat {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("time::format"),
+			info: RoutineInfo::new("time::format"),
 		}
 	}
 }
@@ -87,23 +87,23 @@ fn format_time(hour: u32, minute: u32, second: u32, nanosecond: u32, fmt: &str) 
 	Ok(result)
 }
 
-impl Function for TimeFormat {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -141,8 +141,8 @@ impl Function for TimeFormat {
 									result_data.push(formatted);
 								}
 								Err(reason) => {
-									return Err(FunctionError::ExecutionFailed {
-										function: ctx.fragment.clone(),
+									return Err(RoutineError::FunctionExecutionFailed {
+										function: ctx.env.fragment.clone(),
 										reason,
 									});
 								}
@@ -164,16 +164,16 @@ impl Function for TimeFormat {
 						bitvec: bv.clone(),
 					};
 				}
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 			}
-			(ColumnBuffer::Time(_), other) => Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			(ColumnBuffer::Time(_), other) => Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
-			(other, _) => Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Time],
 				actual: other.get_type(),

@@ -40,8 +40,9 @@ use reifydb_extension::{
 	transform::registry::{Transforms, TransformsConfigurator},
 };
 use reifydb_routine::{
-	function::{default_functions, registry::FunctionsConfigurator},
-	procedure::{default_procedures, registry::ProceduresConfigurator},
+	function::default_native_functions,
+	procedure::default_native_procedures,
+	routine::{Routines, RoutinesConfigurator},
 };
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, context::RuntimeContext};
@@ -95,12 +96,10 @@ pub struct DatabaseBuilder {
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
 	actor_system: Option<ActorSystem>,
-	functions_configurator:
-		Option<Box<dyn FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static>>,
-	procedures_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+	routines_configurator:
+		Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	handlers_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+		Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,
@@ -142,8 +141,7 @@ impl DatabaseBuilder {
 			factories: Vec::new(),
 			ioc,
 			actor_system: None,
-			functions_configurator: None,
-			procedures_configurator: None,
+			routines_configurator: None,
 			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
@@ -230,25 +228,17 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn with_functions_configurator<F>(mut self, configurator: F) -> Self
+	pub fn with_routines_configurator<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
-		self.functions_configurator = Some(Box::new(configurator));
-		self
-	}
-
-	pub fn with_procedures_configurator<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
-	{
-		self.procedures_configurator = Some(Box::new(configurator));
+		self.routines_configurator = Some(Box::new(configurator));
 		self
 	}
 
 	pub fn with_handlers_configurator<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
 		self.handlers_configurator = Some(Box::new(configurator));
 		self
@@ -324,7 +314,6 @@ impl DatabaseBuilder {
 	}
 
 	pub fn build(mut self) -> Result<Database> {
-		let default_builder = default_functions();
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
 
@@ -381,39 +370,35 @@ impl DatabaseBuilder {
 		self.ioc = self.ioc.register(single_store);
 		self.ioc = self.ioc.register(multi_store.clone());
 
-		let functions = if let Some(configurator) = self.functions_configurator {
-			configurator(default_builder).configure()
-		} else {
-			default_builder.configure()
-		};
-
 		let transforms = if let Some(configurator) = self.transforms_configurator {
 			configurator(Transforms::builder()).configure()
 		} else {
 			Transforms::empty()
 		};
 
-		let procedures = {
-			let mut procedures_builder = default_procedures();
+		let routines = {
+			let mut routines_builder = Routines::builder();
+			routines_builder = default_native_functions(routines_builder);
+			routines_builder = default_native_procedures(routines_builder);
 
 			#[cfg(reifydb_target = "native")]
 			if let Some(dir) = &self.procedure_dir {
-				procedures_builder = register_procedures_from_dir(dir, procedures_builder)?;
+				routines_builder = register_procedures_from_dir(dir, routines_builder)?;
 			}
 
 			if let Some(dir) = &self.wasm_procedure_dir {
-				procedures_builder = register_wasm_procedures_from_dir(dir, procedures_builder)?;
+				routines_builder = register_wasm_procedures_from_dir(dir, routines_builder)?;
 			}
 
-			if let Some(configurator) = self.procedures_configurator {
-				procedures_builder = configurator(procedures_builder);
+			if let Some(configurator) = self.routines_configurator {
+				routines_builder = configurator(routines_builder);
 			}
 
 			if let Some(configurator) = self.handlers_configurator {
-				procedures_builder = configurator(procedures_builder);
+				routines_builder = configurator(routines_builder);
 			}
 
-			procedures_builder.configure()
+			routines_builder.configure()
 		};
 
 		// Create RemoteRegistry for forwarding queries to remote namespaces
@@ -430,8 +415,7 @@ impl DatabaseBuilder {
 			Catalog::new(catalog.clone()),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-				functions,
-				procedures,
+				routines,
 				transforms,
 				ioc: self.ioc.clone(),
 				#[cfg(not(reifydb_single_threaded))]

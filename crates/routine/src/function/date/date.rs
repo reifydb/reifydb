@@ -6,7 +6,7 @@ use reifydb_type::value::r#type::{Type, input_types::InputTypes};
 
 use crate::function::{
 	Function, FunctionCapability, FunctionContext, FunctionInfo,
-	error::{ScalarFunctionResult, FunctionError},
+	error::{ScalarFunctionResult, RoutineError},
 };
 
 pub struct DateDate;
@@ -23,8 +23,8 @@ impl DateDate {
 	}
 }
 
-impl Function for DateDate {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateDate {
+	fn info(&self) -> &RoutineInfo {
 		static INFO: FunctionInfo = FunctionInfo {
 			name: "date::date".to_string(),
 			description: None,
@@ -32,8 +32,8 @@ impl Function for DateDate {
 		&INFO
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
@@ -46,8 +46,8 @@ impl Function for DateDate {
 
 	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> ScalarFunctionResult<Columns> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -58,8 +58,8 @@ impl Function for DateDate {
 		let row_count = data.len();
 
 		if !data.get_type().is_datetime() {
-			return Err(FunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.env.fragment.clone(),
 				argument_index: 0,
 				expected: InputTypes::DateTime.expected_at(0).to_vec(),
 				actual: data.get_type(),
@@ -77,6 +77,6 @@ impl Function for DateDate {
 			}
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
 	}
 }

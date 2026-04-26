@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct DateTimeDayOfWeek {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateTimeDayOfWeek {
@@ -19,28 +19,28 @@ impl Default for DateTimeDayOfWeek {
 impl DateTimeDayOfWeek {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("datetime::day_of_week"),
+			info: RoutineInfo::new("datetime::day_of_week"),
 		}
 	}
 }
 
-impl Function for DateTimeDayOfWeek {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateTimeDayOfWeek {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Int4
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -75,8 +75,8 @@ impl Function for DateTimeDayOfWeek {
 				ColumnBuffer::int4_with_bitvec(result, res_bitvec)
 			}
 			other => {
-				return Err(FunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.env.fragment.clone(),
 					argument_index: 0,
 					expected: vec![Type::DateTime],
 					actual: other.get_type(),
@@ -93,6 +93,6 @@ impl Function for DateTimeDayOfWeek {
 			result_data
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
 	}
 }

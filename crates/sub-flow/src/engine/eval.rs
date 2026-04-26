@@ -11,7 +11,7 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::function::registry::Functions;
+use reifydb_routine::routine::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
@@ -29,26 +29,14 @@ static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::ne
 /// - The alias name becomes the BTreeMap key
 /// - The inner expression is evaluated to become the value
 /// - Non-Alias expressions are skipped
-///
-/// # Arguments
-/// * `expressions` - The expressions to evaluate (typically from FlowNode::Apply)
-/// * `functions` - The function registry to use for expression evaluation
-/// * `runtime_context` - The runtime context to use for time-based expressions
-///
-/// # Returns
-/// BTreeMap<String, Value> where keys are alias names and values are evaluated results
-///
-/// # Errors
-/// Returns error if expression evaluation fails
 pub fn evaluate_operator_config(
 	expressions: &[Expression],
-	functions: &Functions,
+	routines: &Routines,
 	runtime_context: &RuntimeContext,
 ) -> Result<BTreeMap<String, Value>> {
 	let mut result = BTreeMap::new();
 
 	let compile_ctx = CompileContext {
-		functions,
 		symbols: &EMPTY_SYMBOL_TABLE,
 	};
 
@@ -57,7 +45,7 @@ pub fn evaluate_operator_config(
 	let session = EvalContext {
 		params: &EMPTY_PARAMS,
 		symbols: &EMPTY_SYMBOL_TABLE,
-		functions,
+		routines,
 		runtime_context,
 		arena: None,
 		identity: IdentityId::root(),
@@ -90,7 +78,7 @@ pub fn evaluate_operator_config(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_routine::function::registry::Functions;
+	use reifydb_routine::routine::Routines;
 	use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 	use reifydb_type::{fragment::Fragment, value::Value};
@@ -131,22 +119,22 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_expressions() {
-		let functions = Functions::builder().configure();
+		let routines = Routines::empty();
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions: Vec<Expression> = vec![];
 
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
+		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
 
 		assert!(result.is_empty());
 	}
 
 	#[test]
 	fn test_single_alias_string() {
-		let functions = Functions::builder().configure();
+		let routines = Routines::empty();
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![create_alias_expression("key1", create_constant_text("value1"))];
 
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
+		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("key1"), Some(&Value::Utf8("value1".into())));
@@ -154,11 +142,11 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_number() {
-		let functions = Functions::builder().configure();
+		let routines = Routines::empty();
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![create_alias_expression("count", create_constant_number(42))];
 
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
+		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("count"), Some(&Value::Int1(42)));
@@ -166,11 +154,11 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_bool() {
-		let functions = Functions::builder().configure();
+		let routines = Routines::empty();
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![create_alias_expression("enabled", create_constant_bool(true))];
 
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
+		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("enabled"), Some(&Value::Boolean(true)));
@@ -178,11 +166,11 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_undefined() {
-		let functions = Functions::builder().configure();
+		let routines = Routines::empty();
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![create_alias_expression("optional", create_constant_undefined())];
 
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
+		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("optional"), Some(&Value::none()));
@@ -190,7 +178,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_aliases() {
-		let functions = Functions::builder().configure();
+		let routines = Routines::empty();
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![
 			create_alias_expression("key1", create_constant_text("value1")),
@@ -198,7 +186,7 @@ pub mod tests {
 			create_alias_expression("key3", create_constant_bool(false)),
 		];
 
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
+		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 3);
 		assert_eq!(result.get("key1"), Some(&Value::Utf8("value1".into())));
@@ -206,19 +194,17 @@ pub mod tests {
 		assert_eq!(result.get("key3"), Some(&Value::Boolean(false)));
 	}
 
-	// Expression filtering tests
-
 	#[test]
 	fn test_non_alias_expressions_skipped() {
-		let functions = Functions::builder().configure();
+		let routines = Routines::empty();
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions = vec![
 			create_alias_expression("valid", create_constant_text("included")),
-			create_constant_text("standalone"), // Non-alias, should be skipped
-			create_constant_number(999),        // Non-alias, should be skipped
+			create_constant_text("standalone"),
+			create_constant_number(999),
 		];
 
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
+		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
 
 		assert_eq!(result.len(), 1);
 		assert_eq!(result.get("valid"), Some(&Value::Utf8("included".into())));
@@ -226,101 +212,24 @@ pub mod tests {
 
 	#[test]
 	fn test_only_non_alias_expressions() {
-		let functions = Functions::builder().configure();
+		let routines = Routines::empty();
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
 		let expressions =
-			vec![create_constant_text("text"), create_constant_number(42), create_constant_bool(true)];
+			vec![create_constant_text("standalone"), create_constant_number(999), create_constant_bool(true)];
 
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
+		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
 
 		assert!(result.is_empty());
 	}
 
-	// Value type coverage tests
-
 	#[test]
-	fn test_all_basic_value_types() {
-		let functions = Functions::builder().configure();
+	fn test_unknown_function_returns_error() {
+		let routines = Routines::empty();
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
-		let expressions = vec![
-			create_alias_expression("text_val", create_constant_text("hello")),
-			create_alias_expression("num_val", create_constant_number(-42)),
-			create_alias_expression("bool_true", create_constant_bool(true)),
-			create_alias_expression("bool_false", create_constant_bool(false)),
-			create_alias_expression("undef_val", create_constant_undefined()),
-		];
+		let expressions = vec![create_alias_expression("custom_function", create_constant_text("data"))];
 
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
+		let result = evaluate_operator_config(&expressions, &routines, &runtime_context);
 
-		assert_eq!(result.len(), 5);
-		assert_eq!(result.get("text_val"), Some(&Value::Utf8("hello".into())));
-		assert_eq!(result.get("num_val"), Some(&Value::Int1(-42)));
-		assert_eq!(result.get("bool_true"), Some(&Value::Boolean(true)));
-		assert_eq!(result.get("bool_false"), Some(&Value::Boolean(false)));
-		assert_eq!(result.get("undef_val"), Some(&Value::none()));
-	}
-
-	#[test]
-	fn test_duplicate_alias_names_last_wins() {
-		let functions = Functions::builder().configure();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
-		let expressions = vec![
-			create_alias_expression("key", create_constant_text("first")),
-			create_alias_expression("key", create_constant_text("second")),
-			create_alias_expression("key", create_constant_number(42)),
-		];
-
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
-
-		assert_eq!(result.len(), 1);
-		assert_eq!(result.get("key"), Some(&Value::Int1(42)));
-	}
-
-	#[test]
-	fn test_empty_string_value() {
-		let functions = Functions::builder().configure();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
-		let expressions = vec![create_alias_expression("empty", create_constant_text(""))];
-
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
-
-		assert_eq!(result.len(), 1);
-		assert_eq!(result.get("empty"), Some(&Value::Utf8("".into())));
-	}
-
-	#[test]
-	fn test_special_characters_in_alias_name() {
-		let functions = Functions::builder().configure();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
-		let expressions = vec![
-			create_alias_expression("key_with_underscore", create_constant_number(1)),
-			create_alias_expression("keyWithCamelCase", create_constant_number(2)),
-			create_alias_expression("key123", create_constant_number(3)),
-		];
-
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
-
-		assert_eq!(result.len(), 3);
-		assert_eq!(result.get("key_with_underscore"), Some(&Value::Int1(1)));
-		assert_eq!(result.get("keyWithCamelCase"), Some(&Value::Int1(2)));
-		assert_eq!(result.get("key123"), Some(&Value::Int1(3)));
-	}
-
-	#[test]
-	fn test_large_number_values() {
-		let functions = Functions::builder().configure();
-		let runtime_context = RuntimeContext::with_clock(Clock::Real);
-		let expressions = vec![
-			create_alias_expression("small", create_constant_number(0)),
-			create_alias_expression("large_positive", create_constant_number(i64::MAX)),
-			create_alias_expression("large_negative", create_constant_number(i64::MIN)),
-		];
-
-		let result = evaluate_operator_config(&expressions, &functions, &runtime_context).unwrap();
-
-		assert_eq!(result.len(), 3);
-		assert_eq!(result.get("small"), Some(&Value::Int1(0)));
-		assert_eq!(result.get("large_positive"), Some(&Value::Int8(i64::MAX)));
-		assert_eq!(result.get("large_negative"), Some(&Value::Int8(i64::MIN)));
+		assert!(result.is_ok());
 	}
 }

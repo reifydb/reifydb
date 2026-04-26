@@ -320,7 +320,7 @@ impl FlowEngine {
 						parent,
 						node.id,
 						conditions,
-						self.executor.functions.clone(),
+						self.executor.routines.clone(),
 						self.runtime_context.clone(),
 					))),
 				);
@@ -339,7 +339,7 @@ impl FlowEngine {
 						parent,
 						node.id,
 						conditions,
-						self.executor.functions.clone(),
+						self.executor.routines.clone(),
 						self.runtime_context.clone(),
 					))),
 				);
@@ -358,7 +358,7 @@ impl FlowEngine {
 						parent,
 						node.id,
 						expressions,
-						self.executor.functions.clone(),
+						self.executor.routines.clone(),
 						self.runtime_context.clone(),
 					))),
 				);
@@ -462,7 +462,7 @@ impl FlowEngine {
 						parent,
 						node.id,
 						expressions,
-						self.executor.functions.clone(),
+						self.executor.routines.clone(),
 						self.runtime_context.clone(),
 					))),
 				);
@@ -506,7 +506,7 @@ impl FlowEngine {
 			} => {
 				let config = evaluate_operator_config(
 					expressions.as_slice(),
-					&self.executor.functions,
+					&self.executor.routines,
 					&self.runtime_context,
 				)?;
 
@@ -572,7 +572,7 @@ impl FlowEngine {
 					aggregations: aggregations.clone(),
 					ts: ts.clone(),
 					runtime_context: self.runtime_context.clone(),
-					functions: self.executor.functions.clone(),
+					routines: self.executor.routines.clone(),
 				});
 				self.operators.insert(node.id, Arc::new(Operators::Window(operator)));
 			}

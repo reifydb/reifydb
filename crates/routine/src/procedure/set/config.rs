@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::str::FromStr;
+use std::{str::FromStr, sync::LazyLock};
 
 use reifydb_catalog::error::CatalogError;
 use reifydb_core::{interface::catalog::config::ConfigKey, value::column::columns::Columns};
@@ -13,7 +13,9 @@ use reifydb_type::{
 	value::{Value, duration::Duration, r#type::Type},
 };
 
-use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use crate::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("system::config::set"));
 
 /// Native procedure that sets a configuration value.
 ///
@@ -32,19 +34,27 @@ impl SetConfigProcedure {
 	}
 }
 
-impl Procedure for SetConfigProcedure {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
+	fn info(&self) -> &RoutineInfo {
+		&INFO
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Any
+	}
+
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let (key, value) = match ctx.params {
 			Params::Positional(args) if args.len() == 2 => (args[0].clone(), args[1].clone()),
 			Params::Positional(args) => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("system::config::set"),
 					expected: 2,
 					actual: args.len(),
 				});
 			}
 			_ => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("system::config::set"),
 					expected: 2,
 					actual: 0,
@@ -55,7 +65,7 @@ impl Procedure for SetConfigProcedure {
 		let key_str = match &key {
 			Value::Utf8(s) => s.as_str().to_string(),
 			_ => {
-				return Err(ProcedureError::InvalidArgumentType {
+				return Err(RoutineError::ProcedureInvalidArgumentType {
 					procedure: Fragment::internal("system::config::set"),
 					argument_index: 0,
 					expected: vec![Type::Utf8],
@@ -76,15 +86,15 @@ impl Procedure for SetConfigProcedure {
 		};
 
 		let coerced_value = coerce_config_value(config_key, value)
-			.map_err(|e| ProcedureError::Wrapped(Box::new(TypeError::from(*e))))?;
+			.map_err(|e| RoutineError::Wrapped(Box::new(TypeError::from(*e))))?;
 
 		let value_clone = coerced_value.clone();
 
-		match tx {
+		match ctx.tx {
 			Transaction::Admin(admin) => ctx.catalog.set_config(admin, config_key, coerced_value)?,
 			Transaction::Test(t) => ctx.catalog.set_config(t.inner, config_key, coerced_value)?,
 			_ => {
-				return Err(ProcedureError::ExecutionFailed {
+				return Err(RoutineError::ProcedureExecutionFailed {
 					procedure: Fragment::internal("system::config::set"),
 					reason: "must run in an admin transaction".to_string(),
 				});

@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct TimeNow {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TimeNow {
@@ -19,34 +19,34 @@ impl Default for TimeNow {
 impl TimeNow {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("time::now"),
+			info: RoutineInfo::new("time::now"),
 		}
 	}
 }
 
-impl Function for TimeNow {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TimeNow {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Time
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if !args.is_empty() {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 0,
 				actual: args.len(),
 			});
 		}
 
-		let millis = ctx.runtime_context.clock.now_millis();
+		let millis = ctx.env.runtime_context.clock.now_millis();
 		let dt = DateTime::from_timestamp_millis(millis)?;
 		let time = dt.time();
 
@@ -55,6 +55,6 @@ impl Function for TimeNow {
 		container.push(time);
 
 		let result_data = ColumnBuffer::Time(container);
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
 	}
 }

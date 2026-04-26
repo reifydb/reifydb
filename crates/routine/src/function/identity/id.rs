@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
 
 pub struct Id {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Id {
@@ -19,44 +19,44 @@ impl Default for Id {
 impl Id {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("identity::id"),
+			info: RoutineInfo::new("identity::id"),
 		}
 	}
 }
 
-impl Function for Id {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Id {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::IdentityId
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if !args.is_empty() {
-			return Err(FunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.env.fragment.clone(),
 				expected: 0,
 				actual: args.len(),
 			});
 		}
 
-		let identity = ctx.identity;
-		let row_count = ctx.row_count.max(1);
+		let identity = ctx.env.identity;
+		let row_count = ctx.env.row_count.max(1);
 		if identity.is_anonymous() {
 			return Ok(Columns::new(vec![ColumnWithName::new(
-				ctx.fragment.clone(),
+				ctx.env.fragment.clone(),
 				ColumnBuffer::none_typed(Type::IdentityId, row_count),
 			)]));
 		}
 
 		Ok(Columns::new(vec![ColumnWithName::new(
-			ctx.fragment.clone(),
+			ctx.env.fragment.clone(),
 			ColumnBuffer::identity_id(vec![identity; row_count]),
 		)]))
 	}
