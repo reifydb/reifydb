@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::LazyLock;
+
 use reifydb_core::{
 	internal_error,
 	testing::CapturedEvent,
@@ -13,7 +15,9 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
-use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
+
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("testing::events::dispatched"));
 
 pub struct TestingEventsDispatched;
 
@@ -29,9 +33,17 @@ impl TestingEventsDispatched {
 	}
 }
 
-impl Procedure for TestingEventsDispatched {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
-		let events = match tx {
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingEventsDispatched {
+	fn info(&self) -> &RoutineInfo {
+		&INFO
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Any
+	}
+
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+		let events = match ctx.tx {
 			Transaction::Test(t) => &**t.events,
 			_ => {
 				return Err(internal_error!(

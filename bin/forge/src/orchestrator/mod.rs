@@ -4,7 +4,7 @@
 mod procedures;
 mod seed;
 
-use std::{fs, path::PathBuf, thread};
+use std::{fs, path::PathBuf, sync::Arc, thread};
 
 use axum::{
 	Router,
@@ -34,11 +34,11 @@ pub fn start(cli: &Cli) {
 		.with_ws(|ws| ws.bind_addr(ws_addr))
 		.with_tracing(tracing_configuration)
 		.with_migrations(shape::migrations())
-		.with_procedures(|builder| {
-			builder.with_procedure("forge::run_pipeline", || procedures::RunPipelineProcedure)
-				.with_procedure("forge::cancel_run", || procedures::CancelRunProcedure)
-				.with_procedure("forge::complete_job_run", || procedures::CompleteJobRunProcedure)
-				.with_procedure("forge::exec", || procedures::ExecProcedure)
+		.with_routines(|builder| {
+			builder.register_procedure(Arc::new(procedures::RunPipelineProcedure::new()))
+				.register_procedure(Arc::new(procedures::CancelRunProcedure::new()))
+				.register_procedure(Arc::new(procedures::CompleteJobRunProcedure::new()))
+				.register_procedure(Arc::new(procedures::ExecProcedure::new()))
 		})
 		.build()
 		.unwrap();

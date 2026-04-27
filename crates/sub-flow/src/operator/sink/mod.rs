@@ -26,7 +26,7 @@ use reifydb_engine::{
 	expression::{cast::cast_column_data, context::EvalContext},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::function::registry::Functions;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_type::{
 	Result,
@@ -42,7 +42,7 @@ use crate::transaction::FlowTransaction;
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
-static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
+static EMPTY_ROUTINES: LazyLock<Routines> = LazyLock::new(Routines::empty);
 static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(|| RuntimeContext::with_clock(Clock::Real));
 
 /// Coerce columns to match target shape types
@@ -68,7 +68,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		let session = EvalContext {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
-			functions: &EMPTY_FUNCTIONS,
+			routines: &EMPTY_ROUTINES,
 			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			arena: None,
 			identity: IdentityId::root(),

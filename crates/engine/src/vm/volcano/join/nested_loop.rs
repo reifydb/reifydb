@@ -76,7 +76,6 @@ impl QueryNode for NestedLoopJoinNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
-			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
 		};
 		self.context.compiled =

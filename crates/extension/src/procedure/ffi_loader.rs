@@ -7,7 +7,7 @@ use std::{
 	collections::HashMap,
 	fs,
 	path::{Path, PathBuf},
-	sync::{OnceLock, RwLock},
+	sync::{Arc, OnceLock, RwLock},
 };
 
 use libloading::Symbol;
@@ -15,7 +15,7 @@ use reifydb_abi::procedure::{
 	descriptor::ProcedureDescriptorFFI,
 	types::{PROCEDURE_MAGIC, ProcedureCreateFnFFI},
 };
-use reifydb_routine::procedure::registry::{Procedures, ProceduresConfigurator};
+use reifydb_routine::routine::registry::RoutinesConfigurator;
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 
 use super::ffi::NativeProcedureFFI;
@@ -133,7 +133,8 @@ impl ProcedureLoader {
 			return Err(FFIError::Other("Failed to create procedure instance".to_string()));
 		}
 
-		Ok(Some(NativeProcedureFFI::new(descriptor, instance)))
+		let name = unsafe { buffer_to_string(&descriptor.name) };
+		Ok(Some(NativeProcedureFFI::new(name, descriptor, instance)))
 	}
 
 	/// Create a procedure instance from an already loaded library by name
@@ -171,11 +172,8 @@ impl Default for ProcedureLoader {
 }
 
 /// Scan a directory for FFI procedure shared libraries and register them
-/// onto an existing `ProceduresConfigurator`.
-pub fn register_procedures_from_dir(
-	dir: &Path,
-	mut builder: ProceduresConfigurator,
-) -> FFIResult<ProceduresConfigurator> {
+/// onto an existing `RoutinesConfigurator`.
+pub fn register_procedures_from_dir(dir: &Path, mut builder: RoutinesConfigurator) -> FFIResult<RoutinesConfigurator> {
 	let loader = ffi_procedure_loader();
 	let mut loader_guard = loader.write().unwrap();
 
@@ -208,22 +206,12 @@ pub fn register_procedures_from_dir(
 		}
 	}
 
-	drop(loader_guard);
-
 	for name in names {
-		let name_clone = name.clone();
-		builder = builder.with_procedure(&name, move || {
-			let loader = ffi_procedure_loader();
-			let mut loader_guard = loader.write().unwrap();
-			loader_guard.create_procedure_by_name(&name_clone, &[]).unwrap()
-		});
+		let proc = loader_guard
+			.create_procedure_by_name(&name, &[])
+			.map_err(|e| FFIError::Other(format!("Failed to instantiate procedure '{}': {}", name, e)))?;
+		builder = builder.register_procedure(Arc::new(proc));
 	}
 
 	Ok(builder)
-}
-
-/// Scan a directory for FFI procedure shared libraries, register them,
-/// and return a `Procedures` registry with factory functions for each.
-pub fn load_procedures_from_dir(dir: &Path) -> FFIResult<Procedures> {
-	Ok(register_procedures_from_dir(dir, Procedures::builder())?.configure())
 }

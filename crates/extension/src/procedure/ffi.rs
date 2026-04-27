@@ -4,11 +4,11 @@
 //! FFI procedure implementation that bridges native shared-library procedures with ReifyDB
 
 use std::{
-	cell::RefCell,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 	ptr,
+	sync::Mutex,
 };
 
 use reifydb_abi::{
@@ -22,36 +22,39 @@ use reifydb_abi::{
 	procedure::{descriptor::ProcedureDescriptorFFI, vtable::ProcedureVTableFFI},
 };
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_sdk::ffi::arena::Arena;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::value::r#type::Type;
 use tracing::{error, instrument};
 
 use super::ffi_callbacks::{logging, memory, rql};
 
 /// FFI procedure that wraps an external procedure implementation
 pub struct NativeProcedureFFI {
+	info: RoutineInfo,
 	/// Procedure descriptor from the FFI library
 	#[allow(dead_code)]
 	descriptor: ProcedureDescriptorFFI,
 	/// Virtual function table for calling FFI functions
 	vtable: ProcedureVTableFFI,
-	/// Pointer to the FFI procedure instance
-	instance: *mut c_void,
-	/// Arena for type conversions
-	arena: RefCell<Arena>,
+	/// Pointer to the FFI procedure instance.
+	/// Wrapped in a Mutex because the FFI vtable's `call` is not declared
+	/// thread-safe at the ABI level  - the host serialises invocations.
+	instance: Mutex<*mut c_void>,
 }
 
 impl NativeProcedureFFI {
 	/// Create a new FFI procedure
-	pub fn new(descriptor: ProcedureDescriptorFFI, instance: *mut c_void) -> Self {
+	pub fn new(name: impl Into<String>, descriptor: ProcedureDescriptorFFI, instance: *mut c_void) -> Self {
 		let vtable = descriptor.vtable;
+		let name = name.into();
 
 		Self {
+			info: RoutineInfo::new(&name),
 			descriptor,
 			vtable,
-			instance,
-			arena: RefCell::new(Arena::new()),
+			instance: Mutex::new(instance),
 		}
 	}
 }
@@ -62,8 +65,9 @@ unsafe impl Sync for NativeProcedureFFI {}
 
 impl Drop for NativeProcedureFFI {
 	fn drop(&mut self) {
-		if !self.instance.is_null() {
-			unsafe { (self.vtable.destroy)(self.instance) };
+		let instance = *self.instance.get_mut().unwrap();
+		if !instance.is_null() {
+			unsafe { (self.vtable.destroy)(instance) };
 		}
 	}
 }
@@ -91,17 +95,27 @@ fn create_procedure_host_callbacks() -> HostCallbacks {
 	}
 }
 
-impl Procedure for NativeProcedureFFI {
-	#[instrument(name = "procedure::ffi::call", level = "debug", skip_all)]
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
-		let mut arena = self.arena.borrow_mut();
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Any
+	}
+
+	#[instrument(name = "procedure::ffi::execute", level = "debug", skip_all)]
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+		let mut arena = Arena::new();
 
 		// Set thread-local arena for host_alloc
-		memory::set_current_arena(&mut *arena as *mut Arena);
+		memory::set_current_arena(&mut arena as *mut Arena);
+		let instance_guard = self.instance.lock().unwrap();
+		let instance = *instance_guard;
 
 		// Serialize params to postcard bytes
 		let params_bytes = to_stdvec(ctx.params).map_err(|e| {
-			ProcedureError::Wrapped(Box::new(
+			RoutineError::Wrapped(Box::new(
 				FFIError::Other(format!("Failed to serialize params: {}", e)).into(),
 			))
 		})?;
@@ -109,7 +123,7 @@ impl Procedure for NativeProcedureFFI {
 		// Build ContextFFI with real callbacks
 		let callbacks = create_procedure_host_callbacks();
 		let mut ctx_ffi = ContextFFI {
-			txn_ptr: tx as *mut Transaction<'_> as *mut c_void,
+			txn_ptr: ctx.tx as *mut Transaction<'_> as *mut c_void,
 			executor_ptr: ptr::null(),
 			operator_id: 0,
 			callbacks,
@@ -119,7 +133,7 @@ impl Procedure for NativeProcedureFFI {
 
 		let result = catch_unwind(AssertUnwindSafe(|| unsafe {
 			(self.vtable.call)(
-				self.instance,
+				instance,
 				&mut ctx_ffi,
 				params_bytes.as_ptr(),
 				params_bytes.len(),
@@ -144,8 +158,8 @@ impl Procedure for NativeProcedureFFI {
 
 		if result_code != 0 {
 			memory::clear_current_arena();
-			arena.clear();
-			return Err(ProcedureError::Wrapped(Box::new(
+			drop(instance_guard);
+			return Err(RoutineError::Wrapped(Box::new(
 				FFIError::Other(format!("FFI procedure call failed with code: {}", result_code)).into(),
 			)));
 		}
@@ -153,7 +167,7 @@ impl Procedure for NativeProcedureFFI {
 		let columns = arena.unmarshal_columns(&ffi_output);
 
 		memory::clear_current_arena();
-		arena.clear();
+		drop(instance_guard);
 
 		Ok(columns)
 	}

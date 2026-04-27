@@ -94,7 +94,6 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 		identity: IdentityId,
 	) -> Result<bool> {
 		let compile_ctx = CompileContext {
-			functions: &self.services.functions,
 			symbols: self.symbols,
 		};
 		let compiled = compile_expression(&compile_ctx, expr)?;
@@ -102,7 +101,7 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 		let base = EvalContext {
 			params: &Params::None,
 			symbols: self.symbols,
-			functions: &self.services.functions,
+			routines: &self.services.routines,
 			runtime_context: &self.services.runtime_context,
 			arena: None,
 			identity,

@@ -13,7 +13,7 @@ use reifydb_type::{error::Error, value::r#type::Type};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string, to_value};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 /// JSON-serializable version of FlowNodeType that uses JsonExpression
 /// for clean expression serialization without Fragment metadata.
@@ -211,7 +211,7 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 }
 
 pub struct FlowNodeToJson {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for FlowNodeToJson {
@@ -223,25 +223,21 @@ impl Default for FlowNodeToJson {
 impl FlowNodeToJson {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("flow_node::to_json"),
+			info: RoutineInfo::new("flow_node::to_json"),
 		}
 	}
 }
 
-impl Function for FlowNodeToJson {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
 			return Ok(Columns::new(vec![ColumnWithName::new(
 				ctx.fragment.clone(),
@@ -250,7 +246,7 @@ impl Function for FlowNodeToJson {
 		}
 
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
@@ -330,10 +326,16 @@ impl Function for FlowNodeToJson {
 				};
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			_ => Err(FunctionError::ExecutionFailed {
+			_ => Err(RoutineError::FunctionExecutionFailed {
 				function: ctx.fragment.clone(),
 				reason: "flow_node::to_json only supports Blob input".to_string(),
 			}),
 		}
+	}
+}
+
+impl Function for FlowNodeToJson {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

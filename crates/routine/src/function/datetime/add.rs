@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DateTimeAdd {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateTimeAdd {
@@ -19,27 +19,23 @@ impl Default for DateTimeAdd {
 impl DateTimeAdd {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("datetime::add"),
+			info: RoutineInfo::new("datetime::add"),
 		}
 	}
 }
 
-impl Function for DateTimeAdd {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateTimeAdd {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::DateTime
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
@@ -61,7 +57,7 @@ impl Function for DateTimeAdd {
 						(Some(dt), Some(dur)) => match dt.add_duration(dur) {
 							Ok(result) => container.push(result),
 							Err(err) => {
-								return Err(FunctionError::ExecutionFailed {
+								return Err(RoutineError::FunctionExecutionFailed {
 									function: ctx.fragment.clone(),
 									reason: format!("{}", err),
 								});
@@ -74,7 +70,7 @@ impl Function for DateTimeAdd {
 				ColumnBuffer::DateTime(container)
 			}
 			(ColumnBuffer::DateTime(_), other) => {
-				return Err(FunctionError::InvalidArgumentType {
+				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 1,
 					expected: vec![Type::Duration],
@@ -82,7 +78,7 @@ impl Function for DateTimeAdd {
 				});
 			}
 			(other, _) => {
-				return Err(FunctionError::InvalidArgumentType {
+				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![Type::DateTime],
@@ -100,5 +96,11 @@ impl Function for DateTimeAdd {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTimeAdd {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

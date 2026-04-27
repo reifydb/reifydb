@@ -14,10 +14,10 @@ use reifydb_type::{
 	},
 };
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Clamp {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Clamp {
@@ -29,7 +29,7 @@ impl Default for Clamp {
 impl Clamp {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::clamp"),
+			info: RoutineInfo::new("math::clamp"),
 		}
 	}
 }
@@ -436,13 +436,9 @@ fn promote_numeric_types(a: Type, b: Type, c: Type) -> Type {
 	promote_two(promote_two(a, b), c)
 }
 
-impl Function for Clamp {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Clamp {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, input_types: &[Type]) -> Type {
@@ -457,9 +453,9 @@ impl Function for Clamp {
 		}
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 3 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 3,
 				actual: args.len(),
@@ -797,7 +793,7 @@ impl Function for Clamp {
 				let hi_type = hi_data.get_type();
 
 				if !v_type.is_number() {
-					return Err(FunctionError::InvalidArgumentType {
+					return Err(RoutineError::FunctionInvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: 0,
 						expected: InputTypes::numeric().expected_at(0).to_vec(),
@@ -805,7 +801,7 @@ impl Function for Clamp {
 					});
 				}
 				if !lo_type.is_number() {
-					return Err(FunctionError::InvalidArgumentType {
+					return Err(RoutineError::FunctionInvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: 1,
 						expected: InputTypes::numeric().expected_at(0).to_vec(),
@@ -813,7 +809,7 @@ impl Function for Clamp {
 					});
 				}
 				if !hi_type.is_number() {
-					return Err(FunctionError::InvalidArgumentType {
+					return Err(RoutineError::FunctionInvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: 2,
 						expected: InputTypes::numeric().expected_at(0).to_vec(),
@@ -856,5 +852,11 @@ impl Function for Clamp {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for Clamp {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

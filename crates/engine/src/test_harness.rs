@@ -22,7 +22,9 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_routine::{function::default_functions, procedure::registry::Procedures};
+use reifydb_routine::{
+	function::default_native_functions, procedure::default_native_procedures, routine::registry::Routines,
+};
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::system::ActorSystem,
@@ -232,8 +234,11 @@ impl TestEngineBuilder {
 			Catalog::new(materialized_catalog),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-				functions: default_functions().configure(),
-				procedures: Procedures::empty(),
+				routines: {
+					let b = Routines::builder();
+					let b = default_native_functions(b);
+					default_native_procedures(b).configure()
+				},
 				transforms: Transforms::empty(),
 				ioc,
 				#[cfg(not(reifydb_single_threaded))]

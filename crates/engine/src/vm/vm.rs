@@ -4,7 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
-use reifydb_routine::function::registry::Functions;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
@@ -95,7 +95,7 @@ pub struct Vm<'a> {
 	/// rather than a nested `EvalContext` because the latter would need
 	/// `&self.symbols` and would be self-referential.
 	pub(crate) params: &'a Params,
-	pub(crate) functions: &'a Functions,
+	pub(crate) routines: &'a Routines,
 	pub(crate) runtime_context: &'a RuntimeContext,
 	pub(crate) identity: IdentityId,
 }
@@ -107,7 +107,7 @@ impl<'a> Vm<'a> {
 		params: &'a Params,
 		identity: IdentityId,
 	) -> Self {
-		Self::build(symbols, 1, params, &services.functions, &services.runtime_context, identity)
+		Self::build(symbols, 1, params, &services.routines, &services.runtime_context, identity)
 	}
 
 	pub fn with_batch_size_from_services(
@@ -117,14 +117,14 @@ impl<'a> Vm<'a> {
 		params: &'a Params,
 		identity: IdentityId,
 	) -> Self {
-		Self::build(symbols, batch_size, params, &services.functions, &services.runtime_context, identity)
+		Self::build(symbols, batch_size, params, &services.routines, &services.runtime_context, identity)
 	}
 
 	fn build(
 		symbols: SymbolTable,
 		batch_size: usize,
 		params: &'a Params,
-		functions: &'a Functions,
+		routines: &'a Routines,
 		runtime_context: &'a RuntimeContext,
 		identity: IdentityId,
 	) -> Self {
@@ -140,7 +140,7 @@ impl<'a> Vm<'a> {
 			mask_stack: Vec::new(),
 			loop_mask_stack: Vec::new(),
 			params,
-			functions,
+			routines,
 			runtime_context,
 			identity,
 		}
@@ -150,7 +150,7 @@ impl<'a> Vm<'a> {
 		EvalContext {
 			params: self.params,
 			symbols: &self.symbols,
-			functions: self.functions,
+			routines: self.routines,
 			runtime_context: self.runtime_context,
 			arena: None,
 			identity: self.identity,

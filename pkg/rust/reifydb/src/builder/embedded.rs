@@ -7,7 +7,7 @@ use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_extension::transform::registry::TransformsConfigurator;
-use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
+use reifydb_routine::routine::registry::RoutinesConfigurator;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -33,12 +33,8 @@ pub struct EmbeddedBuilder {
 	runtime_config: Option<SharedRuntimeConfig>,
 	interceptors: InterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
-	functions_configurator:
-		Option<Box<dyn FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static>>,
-	procedures_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
-	handlers_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,
@@ -63,8 +59,7 @@ impl EmbeddedBuilder {
 			runtime_config: None,
 			interceptors: InterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
-			functions_configurator: None,
-			procedures_configurator: None,
+			routines_configurator: None,
 			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
@@ -99,25 +94,17 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	pub fn with_functions<F>(mut self, configurator: F) -> Self
+	pub fn with_routines<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
-		self.functions_configurator = Some(Box::new(configurator));
-		self
-	}
-
-	pub fn with_procedures<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
-	{
-		self.procedures_configurator = Some(Box::new(configurator));
+		self.routines_configurator = Some(Box::new(configurator));
 		self
 	}
 
 	pub fn with_handlers<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
 		self.handlers_configurator = Some(Box::new(configurator));
 		self
@@ -201,12 +188,8 @@ impl EmbeddedBuilder {
 			builder = builder.with_auth(configurator);
 		}
 
-		if let Some(configurator) = self.functions_configurator {
-			builder = builder.with_functions_configurator(configurator);
-		}
-
-		if let Some(configurator) = self.procedures_configurator {
-			builder = builder.with_procedures_configurator(configurator);
+		if let Some(configurator) = self.routines_configurator {
+			builder = builder.with_routines_configurator(configurator);
 		}
 
 		if let Some(configurator) = self.handlers_configurator {

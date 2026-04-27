@@ -14,24 +14,34 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
-use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 /// Identifies the primitive type category for a `testing::*::changed()` procedure.
 pub struct TestingChanged {
 	pub shape_type: &'static str,
+	info: RoutineInfo,
 }
 
 impl TestingChanged {
 	pub fn new(shape_type: &'static str) -> Self {
 		Self {
 			shape_type,
+			info: RoutineInfo::new(&format!("testing::{}::changed", shape_type)),
 		}
 	}
 }
 
-impl Procedure for TestingChanged {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
-		let t = match tx {
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingChanged {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Any
+	}
+
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+		let t = match ctx.tx {
 			Transaction::Test(t) => t,
 			_ => {
 				return Err(internal_error!("testing::*::changed() requires a test transaction").into());

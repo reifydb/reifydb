@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DateTimeDayOfWeek {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateTimeDayOfWeek {
@@ -19,27 +19,23 @@ impl Default for DateTimeDayOfWeek {
 impl DateTimeDayOfWeek {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("datetime::day_of_week"),
+			info: RoutineInfo::new("datetime::day_of_week"),
 		}
 	}
 }
 
-impl Function for DateTimeDayOfWeek {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateTimeDayOfWeek {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Int4
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
@@ -75,7 +71,7 @@ impl Function for DateTimeDayOfWeek {
 				ColumnBuffer::int4_with_bitvec(result, res_bitvec)
 			}
 			other => {
-				return Err(FunctionError::InvalidArgumentType {
+				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![Type::DateTime],
@@ -94,5 +90,11 @@ impl Function for DateTimeDayOfWeek {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTimeDayOfWeek {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

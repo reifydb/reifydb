@@ -6,10 +6,10 @@ use std::f64::consts::PI;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Pi {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Pi {
@@ -21,27 +21,23 @@ impl Default for Pi {
 impl Pi {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::pi"),
+			info: RoutineInfo::new("math::pi"),
 		}
 	}
 }
 
-impl Function for Pi {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Pi {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Float8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if !args.is_empty() {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,
 				actual: args.len(),
@@ -49,5 +45,11 @@ impl Function for Pi {
 		}
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::float8(vec![PI]))]))
+	}
+}
+
+impl Function for Pi {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DurationFormat {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DurationFormat {
@@ -19,7 +19,7 @@ impl Default for DurationFormat {
 impl DurationFormat {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("duration::format"),
+			info: RoutineInfo::new("duration::format"),
 		}
 	}
 }
@@ -60,22 +60,18 @@ fn format_duration(months: i32, days: i32, nanos: i64, fmt: &str) -> Result<Stri
 	Ok(result)
 }
 
-impl Function for DurationFormat {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DurationFormat {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
@@ -113,10 +109,12 @@ impl Function for DurationFormat {
 									result_data.push(formatted);
 								}
 								Err(reason) => {
-									return Err(FunctionError::ExecutionFailed {
-										function: ctx.fragment.clone(),
-										reason,
-									});
+									return Err(
+										RoutineError::FunctionExecutionFailed {
+											function: ctx.fragment.clone(),
+											reason,
+										},
+									);
 								}
 							}
 						}
@@ -138,18 +136,24 @@ impl Function for DurationFormat {
 				}
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			(ColumnBuffer::Duration(_), other) => Err(FunctionError::InvalidArgumentType {
+			(ColumnBuffer::Duration(_), other) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
-			(other, _) => Err(FunctionError::InvalidArgumentType {
+			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Duration],
 				actual: other.get_type(),
 			}),
 		}
+	}
+}
+
+impl Function for DurationFormat {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -7,10 +7,10 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct JsonArray {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for JsonArray {
@@ -22,25 +22,21 @@ impl Default for JsonArray {
 impl JsonArray {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("json::array"),
+			info: RoutineInfo::new("json::array"),
 		}
 	}
 }
 
-impl Function for JsonArray {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for JsonArray {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Any
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
 			return Ok(Columns::new(vec![ColumnWithName::new(
 				ctx.fragment.clone(),
@@ -84,5 +80,11 @@ impl Function for JsonArray {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for JsonArray {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

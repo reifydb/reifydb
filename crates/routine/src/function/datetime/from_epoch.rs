@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DateTimeFromEpoch {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateTimeFromEpoch {
@@ -19,7 +19,7 @@ impl Default for DateTimeFromEpoch {
 impl DateTimeFromEpoch {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("datetime::from_epoch"),
+			info: RoutineInfo::new("datetime::from_epoch"),
 		}
 	}
 }
@@ -56,22 +56,18 @@ fn is_integer_type(data: &ColumnBuffer) -> bool {
 	)
 }
 
-impl Function for DateTimeFromEpoch {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpoch {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::DateTime
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
@@ -83,7 +79,7 @@ impl Function for DateTimeFromEpoch {
 		let row_count = data.len();
 
 		if !is_integer_type(data) {
-			return Err(FunctionError::InvalidArgumentType {
+			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
@@ -107,7 +103,7 @@ impl Function for DateTimeFromEpoch {
 		for i in 0..row_count {
 			if let Some(ts) = extract_i64(data, i) {
 				if ts < 0 {
-					return Err(FunctionError::ExecutionFailed {
+					return Err(RoutineError::FunctionExecutionFailed {
 						function: ctx.fragment.clone(),
 						reason: format!(
 							"datetime::from_epoch does not support negative timestamps: {}",
@@ -136,5 +132,11 @@ impl Function for DateTimeFromEpoch {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTimeFromEpoch {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

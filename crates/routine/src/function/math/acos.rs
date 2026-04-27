@@ -5,10 +5,10 @@ use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::{Type, input_types::InputTypes};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Acos {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Acos {
@@ -20,7 +20,7 @@ impl Default for Acos {
 impl Acos {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::acos"),
+			info: RoutineInfo::new("math::acos"),
 		}
 	}
 }
@@ -55,22 +55,18 @@ fn numeric_to_f64(data: &ColumnBuffer, i: usize) -> Option<f64> {
 	}
 }
 
-impl Function for Acos {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Acos {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Float8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
@@ -82,7 +78,7 @@ impl Function for Acos {
 		let row_count = data.len();
 
 		if !data.get_type().is_number() {
-			return Err(FunctionError::InvalidArgumentType {
+			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
@@ -117,5 +113,11 @@ impl Function for Acos {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for Acos {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -21,10 +21,12 @@ use reifydb_type::{
 	},
 };
 
-use crate::function::{Accumulator, Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{
+	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 
 pub struct Min {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Min {
@@ -36,18 +38,14 @@ impl Default for Min {
 impl Min {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::min"),
+			info: RoutineInfo::new("math::min"),
 		}
 	}
 }
 
-impl Function for Min {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Min {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar, FunctionCapability::Aggregate]
 	}
 
 	fn return_type(&self, input_types: &[Type]) -> Type {
@@ -58,9 +56,9 @@ impl Function for Min {
 		InputTypes::numeric()
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: 0,
@@ -69,7 +67,7 @@ impl Function for Min {
 
 		for (i, col) in args.iter().enumerate() {
 			if !col.get_type().is_number() {
-				return Err(FunctionError::InvalidArgumentType {
+				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: i,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
@@ -99,8 +97,14 @@ impl Function for Min {
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
 	}
+}
 
-	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
+impl Function for Min {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar, FunctionKind::Aggregate]
+	}
+
+	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(MinAccumulator::new()))
 	}
 }
@@ -144,7 +148,7 @@ macro_rules! min_arm {
 }
 
 impl Accumulator for MinAccumulator {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError> {
+	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let (data, _bitvec) = column.unwrap_option();
 
@@ -310,7 +314,7 @@ impl Accumulator for MinAccumulator {
 				}
 				Ok(())
 			}
-			other => Err(FunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: Fragment::internal("math::min"),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
@@ -319,7 +323,7 @@ impl Accumulator for MinAccumulator {
 		}
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError> {
 		let ty = self.input_type.take().unwrap_or(Type::Float8);
 		let mut keys = Vec::with_capacity(self.mins.len());
 		let mut data = ColumnBuffer::with_capacity(ty, self.mins.len());

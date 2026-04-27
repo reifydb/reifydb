@@ -15,10 +15,12 @@ use reifydb_type::value::{
 	r#type::{Type, input_types::InputTypes},
 };
 
-use crate::function::{Accumulator, Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{
+	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 
 pub struct Count {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Count {
@@ -30,18 +32,14 @@ impl Default for Count {
 impl Count {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::count"),
+			info: RoutineInfo::new("math::count"),
 		}
 	}
 }
 
-impl Function for Count {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Count {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar, FunctionCapability::Aggregate]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
@@ -56,7 +54,7 @@ impl Function for Count {
 		false
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		// SCALAR: Horizontal Count (count of non-null arguments in each row)
 		let row_count = args.row_count();
 		let mut counts = vec![0i64; row_count];
@@ -71,8 +69,14 @@ impl Function for Count {
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::int8(counts))]))
 	}
+}
 
-	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
+impl Function for Count {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar, FunctionKind::Aggregate]
+	}
+
+	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(CountAccumulator::new()))
 	}
 }
@@ -90,7 +94,7 @@ impl CountAccumulator {
 }
 
 impl Accumulator for CountAccumulator {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError> {
+	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let column_name = args.name_at(0);
 
@@ -111,7 +115,7 @@ impl Accumulator for CountAccumulator {
 		Ok(())
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError> {
 		let mut keys = Vec::with_capacity(self.counts.len());
 		let mut data = ColumnBuffer::int8_with_capacity(self.counts.len());
 

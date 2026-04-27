@@ -7,10 +7,10 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct JsonObject {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for JsonObject {
@@ -22,25 +22,21 @@ impl Default for JsonObject {
 impl JsonObject {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("json::object"),
+			info: RoutineInfo::new("json::object"),
 		}
 	}
 }
 
-impl Function for JsonObject {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for JsonObject {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Any
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		// Check for any option columns and unwrap them
 		let mut unwrapped: Vec<_> = Vec::with_capacity(args.len());
 		let mut combined_bv: Option<BitVec> = None;
@@ -57,7 +53,7 @@ impl Function for JsonObject {
 		}
 
 		if !unwrapped.len().is_multiple_of(2) {
-			return Err(FunctionError::ExecutionFailed {
+			return Err(RoutineError::FunctionExecutionFailed {
 				function: ctx.fragment.clone(),
 				reason: "json::object requires an even number of arguments (key-value pairs)"
 					.to_string(),
@@ -72,7 +68,7 @@ impl Function for JsonObject {
 					..
 				} => {}
 				other => {
-					return Err(FunctionError::InvalidArgumentType {
+					return Err(RoutineError::FunctionInvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: i,
 						expected: vec![Type::Utf8],
@@ -114,5 +110,11 @@ impl Function for JsonObject {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for JsonObject {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

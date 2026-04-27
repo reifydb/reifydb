@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct TextStartsWith {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TextStartsWith {
@@ -19,27 +19,23 @@ impl Default for TextStartsWith {
 impl TextStartsWith {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("text::starts_with"),
+			info: RoutineInfo::new("text::starts_with"),
 		}
 	}
 }
 
-impl Function for TextStartsWith {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TextStartsWith {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Boolean
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
@@ -102,18 +98,24 @@ impl Function for TextStartsWith {
 					..
 				},
 				other,
-			) => Err(FunctionError::InvalidArgumentType {
+			) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
-			(other, _) => Err(FunctionError::InvalidArgumentType {
+			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
 		}
+	}
+}
+
+impl Function for TextStartsWith {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

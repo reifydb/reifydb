@@ -63,7 +63,6 @@ impl QueryNode for PatchNode {
 		self.udf_names = udf_names;
 
 		let compile_ctx = CompileContext {
-			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
 		};
 		let compiled = self
@@ -83,7 +82,7 @@ impl QueryNode for PatchNode {
 		if let Some(columns) = self.input.next(rx, ctx)? {
 			let stored_ctx = &self.context.as_ref().unwrap().0;
 			let transform_ctx = TransformContext {
-				functions: &stored_ctx.services.functions,
+				routines: &ctx.services.routines,
 				runtime_context: &stored_ctx.services.runtime_context,
 				params: &stored_ctx.params,
 			};

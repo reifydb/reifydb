@@ -19,10 +19,12 @@ use reifydb_type::{
 	},
 };
 
-use crate::function::{Accumulator, Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{
+	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 
 pub struct Avg {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Avg {
@@ -34,18 +36,14 @@ impl Default for Avg {
 impl Avg {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::avg"),
+			info: RoutineInfo::new("math::avg"),
 		}
 	}
 }
 
-impl Function for Avg {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Avg {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar, FunctionCapability::Aggregate]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
@@ -56,9 +54,9 @@ impl Function for Avg {
 		InputTypes::numeric()
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: 0,
@@ -202,7 +200,7 @@ impl Function for Avg {
 					}
 				}
 				other => {
-					return Err(FunctionError::InvalidArgumentType {
+					return Err(RoutineError::FunctionInvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: col_idx,
 						expected: self.accepted_types().expected_at(0).to_vec(),
@@ -230,8 +228,14 @@ impl Function for Avg {
 			ColumnBuffer::float8_with_bitvec(data, valids),
 		)]))
 	}
+}
 
-	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
+impl Function for Avg {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar, FunctionKind::Aggregate]
+	}
+
+	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(AvgAccumulator::new()))
 	}
 }
@@ -275,7 +279,7 @@ macro_rules! avg_arm {
 }
 
 impl Accumulator for AvgAccumulator {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError> {
+	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
 		let column = &args[0];
 		let (data, _bitvec) = column.unwrap_option();
 
@@ -412,7 +416,7 @@ impl Accumulator for AvgAccumulator {
 				}
 				Ok(())
 			}
-			other => Err(FunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: Fragment::internal("math::avg"),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
@@ -421,7 +425,7 @@ impl Accumulator for AvgAccumulator {
 		}
 	}
 
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError> {
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError> {
 		let mut keys = Vec::with_capacity(self.sums.len());
 		let mut data = ColumnBuffer::float8_with_capacity(self.sums.len());
 

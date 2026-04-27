@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
-use reifydb_routine::{
-	function::{Function, FunctionContext},
-	procedure::{Procedure, context::ProcedureContext},
+use reifydb_routine::routine::{
+	Function, Procedure,
+	context::{FunctionContext, ProcedureContext},
 };
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
@@ -21,7 +21,7 @@ use crate::{
 
 enum GeneratorImpl {
 	Function(Arc<dyn Function>),
-	Procedure(Box<dyn Procedure>),
+	Procedure(Arc<dyn Procedure>),
 }
 
 pub(crate) struct GeneratorNode {
@@ -49,9 +49,9 @@ impl QueryNode for GeneratorNode {
 		self.context = Some(Arc::new(ctx.clone()));
 
 		let name = self.function_name.text();
-		if let Some(func) = ctx.services.functions.get_generator(name) {
+		if let Some(func) = ctx.services.routines.get_generator_function(name) {
 			self.generator = Some(GeneratorImpl::Function(func));
-		} else if let Some(proc) = ctx.services.procedures.get_procedure(name) {
+		} else if let Some(proc) = ctx.services.routines.get_procedure(name) {
 			self.generator = Some(GeneratorImpl::Procedure(proc));
 		} else {
 			return Err(EngineError::GeneratorNotFound {
@@ -85,26 +85,30 @@ impl QueryNode for GeneratorNode {
 		let columns = match self.generator.as_ref().unwrap() {
 			GeneratorImpl::Function(generator) => {
 				let evaluated_params = Columns::new(evaluated_columns);
-				let fn_ctx = FunctionContext::new(
-					self.function_name.clone(),
-					&stored_ctx.services.runtime_context,
-					stored_ctx.identity,
-					evaluated_params.row_count(),
-				);
-				generator.call(&fn_ctx, &evaluated_params)?
+				let mut fn_ctx = FunctionContext {
+					fragment: self.function_name.clone(),
+					identity: stored_ctx.identity,
+					row_count: evaluated_params.row_count(),
+					runtime_context: &stored_ctx.services.runtime_context,
+				};
+				generator.call(&mut fn_ctx, &evaluated_params)?
 			}
 			GeneratorImpl::Procedure(procedure) => {
 				let values: Vec<Value> =
 					evaluated_columns.iter().map(|col| col.data().get_value(0)).collect();
 				let params = Params::Positional(Arc::new(values));
-				let proc_ctx = ProcedureContext {
+				let mut proc_ctx = ProcedureContext {
+					fragment: self.function_name.clone(),
+					identity: stored_ctx.identity,
+					row_count: 1,
+					runtime_context: &stored_ctx.services.runtime_context,
+					tx: txn,
 					params: &params,
 					catalog: &stored_ctx.services.catalog,
-					functions: &stored_ctx.services.functions,
-					runtime_context: &stored_ctx.services.runtime_context,
 					ioc: &stored_ctx.services.ioc,
 				};
-				procedure.call(&proc_ctx, txn)?
+				let empty = Columns::empty();
+				procedure.call(&mut proc_ctx, &empty)?
 			}
 		};
 

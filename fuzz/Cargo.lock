@@ -807,12 +807,23 @@ name = "reifydb-sql"
 version = "0.4.12"
 
 [[package]]
+name = "reifydb-sqlite"
+version = "0.4.12"
+dependencies = [
+ "reifydb-build",
+ "rusqlite",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "reifydb-store-multi"
 version = "0.4.12"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-type",
  "rusqlite",
  "tracing",
@@ -826,6 +837,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-type",
  "rusqlite",
  "tracing",

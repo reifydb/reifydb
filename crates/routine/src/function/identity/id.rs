@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Id {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Id {
@@ -19,27 +19,23 @@ impl Default for Id {
 impl Id {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("identity::id"),
+			info: RoutineInfo::new("identity::id"),
 		}
 	}
 }
 
-impl Function for Id {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Id {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::IdentityId
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if !args.is_empty() {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,
 				actual: args.len(),
@@ -59,5 +55,11 @@ impl Function for Id {
 			ctx.fragment.clone(),
 			ColumnBuffer::identity_id(vec![identity; row_count]),
 		)]))
+	}
+}
+
+impl Function for Id {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

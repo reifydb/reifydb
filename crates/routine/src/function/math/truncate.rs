@@ -9,10 +9,10 @@ use reifydb_type::value::{
 	r#type::{Type, input_types::InputTypes},
 };
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Truncate {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Truncate {
@@ -24,27 +24,23 @@ impl Default for Truncate {
 impl Truncate {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::truncate"),
+			info: RoutineInfo::new("math::truncate"),
 		}
 	}
 }
 
-impl Function for Truncate {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Truncate {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, input_types: &[Type]) -> Type {
 		input_types.first().cloned().unwrap_or(Type::Float8)
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
@@ -106,7 +102,7 @@ impl Function for Truncate {
 			}
 			other if other.get_type().is_number() => data.clone(),
 			other => {
-				return Err(FunctionError::InvalidArgumentType {
+				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
@@ -125,5 +121,11 @@ impl Function for Truncate {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for Truncate {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

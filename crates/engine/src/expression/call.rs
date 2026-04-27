@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{
 	ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupByView,
 };
-use reifydb_routine::function::{FunctionCapability, FunctionContext, error::FunctionError, registry::Functions};
+use reifydb_routine::routine::{FunctionKind, context::FunctionContext, error::RoutineError};
 use reifydb_rql::expression::CallExpression;
 use reifydb_type::{
 	error::Error,
@@ -14,12 +14,7 @@ use reifydb_type::{
 
 use crate::{Result, error::EngineError, expression::context::EvalContext};
 
-pub(crate) fn call_builtin(
-	ctx: &EvalContext,
-	call: &CallExpression,
-	arguments: Columns,
-	functions: &Functions,
-) -> Result<ColumnWithName> {
+pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: Columns) -> Result<ColumnWithName> {
 	let function_name = call.func.0.text();
 	let fn_fragment = call.func.0.clone();
 
@@ -31,7 +26,7 @@ pub(crate) fn call_builtin(
 		function_name
 	);
 
-	let function = functions.get(function_name).ok_or_else(|| -> Error {
+	let routine = ctx.routines.get_function(function_name).ok_or_else(|| -> Error {
 		EngineError::UnknownFunction {
 			name: function_name.to_string(),
 			fragment: fn_fragment.clone(),
@@ -39,14 +34,22 @@ pub(crate) fn call_builtin(
 		.into()
 	})?;
 
-	let fn_ctx = FunctionContext::new(fn_fragment.clone(), ctx.runtime_context, ctx.identity, ctx.row_count);
+	let mut fn_ctx = FunctionContext {
+		fragment: fn_fragment.clone(),
+		identity: ctx.identity,
+		row_count: ctx.row_count,
+		runtime_context: ctx.runtime_context,
+	};
 
-	// Check if we're in aggregation context and if function exists as aggregate
-	if ctx.is_aggregate_context && function.capabilities().contains(&FunctionCapability::Aggregate) {
-		let mut accumulator = function.accumulator(&fn_ctx).ok_or_else(|| FunctionError::ExecutionFailed {
-			function: fn_fragment.clone(),
-			reason: format!("Function {} is not an aggregate", function_name),
-		})?;
+	// Aggregate scalar-context fast path (e.g. `sum(x)` inside a SELECT projection
+	// during GROUP-BY-less aggregation). Mirrors today's behaviour: build a single
+	// group, run the accumulator, return the finalised value.
+	if ctx.is_aggregate_context && routine.kinds().contains(&FunctionKind::Aggregate) {
+		let mut accumulator =
+			routine.accumulator(&mut fn_ctx).ok_or_else(|| RoutineError::FunctionExecutionFailed {
+				function: fn_fragment.clone(),
+				reason: format!("Function {} is not an aggregate", function_name),
+			})?;
 
 		let column = if call.args.is_empty() {
 			ColumnWithName {
@@ -63,18 +66,18 @@ pub(crate) fn call_builtin(
 
 		accumulator
 			.update(&Columns::new(vec![column]), &group_view)
-			.map_err(|e| e.with_context(fn_fragment.clone()))?;
+			.map_err(|e| e.with_context(fn_fragment.clone(), false))?;
 
-		let (_keys, result_data) = accumulator.finalize().map_err(|e| e.with_context(fn_fragment))?;
+		let (_keys, result_data) = accumulator.finalize().map_err(|e| e.with_context(fn_fragment, false))?;
 
 		return Ok(ColumnWithName::new(call.full_fragment_owned(), result_data));
 	}
 
-	let result_columns = function.call(&fn_ctx, &arguments).map_err(|e| e.with_context(fn_fragment))?;
+	let result_columns = routine.call(&mut fn_ctx, &arguments).map_err(|e| e.with_context(fn_fragment, false))?;
 
 	// For scalar, we expect 1 column. For generator in scalar context, we take the first column.
 	if result_columns.is_empty() {
-		return Err(FunctionError::ExecutionFailed {
+		return Err(RoutineError::FunctionExecutionFailed {
 			function: call.func.0.clone(),
 			reason: "Function returned no columns".to_string(),
 		}

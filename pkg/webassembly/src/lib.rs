@@ -40,7 +40,9 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
-use reifydb_routine::{function::default_functions, procedure::default_procedures};
+use reifydb_routine::{
+	function::default_native_functions, procedure::default_native_procedures, routine::registry::Routines,
+};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock};
 use reifydb_store_multi::{
@@ -253,7 +255,11 @@ impl WasmDB {
 		bootstrap_system_objects(&multi, &single, &materialized_catalog, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
 
-		let procedures = default_procedures().configure();
+		let routines = {
+			let b = Routines::builder();
+			let b = default_native_functions(b);
+			default_native_procedures(b).configure()
+		};
 
 		// Build engine with bootstrap-initialized catalog
 		let eventbus_clone = eventbus.clone();
@@ -265,8 +271,7 @@ impl WasmDB {
 			Catalog::new(materialized_catalog),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-				functions: default_functions().configure(),
-				procedures,
+				routines,
 				transforms: Transforms::empty(),
 				ioc,
 				#[cfg(not(target_arch = "wasm32"))]

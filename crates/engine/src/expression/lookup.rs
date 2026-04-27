@@ -169,7 +169,7 @@ pub mod tests {
 		interface::identifier::{ColumnIdentifier, ColumnShape},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_routine::function::registry::Functions;
+	use reifydb_routine::routine::registry::Routines;
 	use reifydb_rql::expression::ColumnExpression;
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
@@ -186,10 +186,11 @@ pub mod tests {
 		)]);
 
 		let runtime_ctx = RuntimeContext::with_clock(Clock::Real);
+		let routines = Routines::empty();
 		let base = EvalContext {
 			params: &Params::None,
 			symbols: &SymbolTable::new(),
-			functions: &Functions::empty(),
+			routines: &routines,
 			runtime_context: &runtime_ctx,
 			arena: None,
 			identity: IdentityId::root(),

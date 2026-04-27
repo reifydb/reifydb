@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct TextIndexOf {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TextIndexOf {
@@ -19,27 +19,23 @@ impl Default for TextIndexOf {
 impl TextIndexOf {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("text::index_of"),
+			info: RoutineInfo::new("text::index_of"),
 		}
 	}
 }
 
-impl Function for TextIndexOf {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Int4
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
@@ -109,18 +105,24 @@ impl Function for TextIndexOf {
 					..
 				},
 				other,
-			) => Err(FunctionError::InvalidArgumentType {
+			) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
-			(other, _) => Err(FunctionError::InvalidArgumentType {
+			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
 		}
+	}
+}
+
+impl Function for TextIndexOf {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

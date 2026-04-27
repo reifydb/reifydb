@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Lcm {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for Lcm {
@@ -19,7 +19,7 @@ impl Default for Lcm {
 impl Lcm {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("math::lcm"),
+			info: RoutineInfo::new("math::lcm"),
 		}
 	}
 }
@@ -57,22 +57,18 @@ fn compute_lcm(a: i64, b: i64) -> i64 {
 	(a.abs() / compute_gcd(a, b)) * b.abs()
 }
 
-impl Function for Lcm {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for Lcm {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Int8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
@@ -97,7 +93,7 @@ impl Function for Lcm {
 			Type::Uint8,
 		];
 		if !a_data.get_type().is_number() {
-			return Err(FunctionError::InvalidArgumentType {
+			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: expected_types,
@@ -105,7 +101,7 @@ impl Function for Lcm {
 			});
 		}
 		if !b_data.get_type().is_number() {
-			return Err(FunctionError::InvalidArgumentType {
+			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: expected_types,
@@ -147,5 +143,11 @@ impl Function for Lcm {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for Lcm {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

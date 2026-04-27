@@ -1,15 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::LazyLock;
+
 use reifydb_core::{
 	internal_error,
 	testing::CapturedInvocation,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::Error, params::Params, value::Value};
+use reifydb_type::{
+	error::Error,
+	params::Params,
+	value::{Value, r#type::Type},
+};
 
-use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
+
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("testing::handlers::invoked"));
 
 pub struct TestingHandlersInvoked;
 
@@ -25,9 +33,17 @@ impl TestingHandlersInvoked {
 	}
 }
 
-impl Procedure for TestingHandlersInvoked {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
-		let invocations = match tx {
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingHandlersInvoked {
+	fn info(&self) -> &RoutineInfo {
+		&INFO
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Any
+	}
+
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+		let invocations = match ctx.tx {
 			Transaction::Test(t) => &**t.invocations,
 			_ => {
 				return Err(internal_error!(

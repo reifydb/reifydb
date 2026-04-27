@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-pub mod error;
-pub mod registry;
-
 pub mod blob;
 pub mod clock;
 pub mod date;
@@ -23,160 +20,14 @@ pub mod uuid;
 
 use std::sync::Arc;
 
-use error::FunctionError;
-use reifydb_core::value::column::{
-	ColumnWithName,
-	buffer::ColumnBuffer,
-	columns::Columns,
-	view::group_by::{GroupByView, GroupKey},
-};
-use reifydb_runtime::context::RuntimeContext;
-use reifydb_type::{
-	fragment::Fragment,
-	util::bitvec::BitVec,
-	value::{
-		identity::IdentityId,
-		r#type::{Type, input_types::InputTypes},
-	},
+use crate::{
+	function::uuid::{v4::UuidV4, v7::UuidV7},
+	routine::registry::RoutinesConfigurator,
 };
 
-use crate::function::uuid::{v4::UuidV4, v7::UuidV7};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum FunctionCapability {
-	Scalar,
-	Aggregate,
-	Generator,
-}
-
-#[derive(Debug, Clone)]
-pub struct FunctionInfo {
-	pub name: String,
-	pub description: Option<String>,
-}
-
-impl FunctionInfo {
-	pub fn new(name: &str) -> Self {
-		Self {
-			name: name.to_string(),
-			description: None,
-		}
-	}
-}
-
-pub struct FunctionContext<'a> {
-	pub fragment: Fragment,
-	pub runtime_context: &'a RuntimeContext,
-	pub identity: IdentityId,
-	pub row_count: usize,
-}
-
-impl<'a> FunctionContext<'a> {
-	pub fn new(
-		fragment: Fragment,
-		runtime_context: &'a RuntimeContext,
-		identity: IdentityId,
-		row_count: usize,
-	) -> Self {
-		Self {
-			fragment,
-			runtime_context,
-			identity,
-			row_count,
-		}
-	}
-}
-
-pub trait Function: Send + Sync {
-	fn info(&self) -> &FunctionInfo;
-	fn capabilities(&self) -> &[FunctionCapability];
-
-	fn return_type(&self, input_types: &[Type]) -> Type;
-	fn accepted_types(&self) -> InputTypes {
-		InputTypes::any()
-	}
-
-	fn propagates_options(&self) -> bool {
-		true
-	}
-
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError>;
-
-	/// Calls the function, automatically propagating Option columns if
-	/// `propagates_options()` returns true.
-	fn call(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
-		if !self.propagates_options() {
-			return self.execute(ctx, args);
-		}
-
-		let has_option = args.iter().any(|c| matches!(c.data(), ColumnBuffer::Option { .. }));
-		if !has_option {
-			return self.execute(ctx, args);
-		}
-
-		let mut combined_bv: Option<BitVec> = None;
-		let mut unwrapped = Vec::with_capacity(args.len());
-		for col in args.iter() {
-			let (inner, bv) = col.data().unwrap_option();
-			if let Some(bv) = bv {
-				combined_bv = Some(match combined_bv {
-					Some(existing) => existing.and(bv),
-					None => bv.clone(),
-				});
-			}
-			unwrapped.push(ColumnWithName::new(col.name().clone(), inner.clone()));
-		}
-
-		// Short-circuit: when all combined values are None, skip the inner function
-		// call entirely to avoid type-validation errors on placeholder inner types.
-		if let Some(ref bv) = combined_bv
-			&& bv.count_ones() == 0
-		{
-			let row_count = args.row_count();
-			let input_types: Vec<Type> = unwrapped.iter().map(|c| c.data.get_type()).collect();
-			let result_type = self.return_type(&input_types);
-			let result_data = ColumnBuffer::none_typed(result_type, row_count);
-			return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]));
-		}
-
-		let unwrapped_args = Columns::new(unwrapped);
-		let result = self.execute(ctx, &unwrapped_args)?;
-
-		match combined_bv {
-			Some(bv) => {
-				let wrapped_cols: Vec<ColumnWithName> = result
-					.names
-					.iter()
-					.zip(result.columns.iter())
-					.map(|(name, data)| {
-						ColumnWithName::new(
-							name.clone(),
-							ColumnBuffer::Option {
-								inner: Box::new(data.clone()),
-								bitvec: bv.clone(),
-							},
-						)
-					})
-					.collect();
-				Ok(Columns::new(wrapped_cols))
-			}
-			None => Ok(result),
-		}
-	}
-
-	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
-		None
-	}
-}
-
-pub trait Accumulator: Send + Sync {
-	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError>;
-	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), FunctionError>;
-}
-
-pub fn default_functions() -> registry::FunctionsConfigurator {
-	registry::Functions::builder()
-		.register_function(Arc::new(math::sum::Sum::new()))
+/// Register all built-in native functions directly into a `Routines` builder.
+pub fn default_native_functions(builder: RoutinesConfigurator) -> RoutinesConfigurator {
+	builder.register_function(Arc::new(math::sum::Sum::new()))
 		.register_function(Arc::new(math::avg::Avg::new()))
 		.register_function(Arc::new(math::count::Count::new()))
 		.register_function(Arc::new(math::min::Min::new()))
@@ -287,13 +138,13 @@ pub fn default_functions() -> registry::FunctionsConfigurator {
 		.register_function(Arc::new(duration::scale::DurationScale::new()))
 		.register_function(Arc::new(duration::trunc::DurationTrunc::new()))
 		.register_function(Arc::new(duration::format::DurationFormat::new()))
-		.register_alias("duration::year", "duration::years")
-		.register_alias("duration::month", "duration::months")
-		.register_alias("duration::week", "duration::weeks")
-		.register_alias("duration::day", "duration::days")
-		.register_alias("duration::hour", "duration::hours")
-		.register_alias("duration::minute", "duration::minutes")
-		.register_alias("duration::second", "duration::seconds")
+		.register_function_alias("duration::year", "duration::years")
+		.register_function_alias("duration::month", "duration::months")
+		.register_function_alias("duration::week", "duration::weeks")
+		.register_function_alias("duration::day", "duration::days")
+		.register_function_alias("duration::hour", "duration::hours")
+		.register_function_alias("duration::minute", "duration::minutes")
+		.register_function_alias("duration::second", "duration::seconds")
 		.register_function(Arc::new(text::ascii::TextAscii::new()))
 		.register_function(Arc::new(text::char::TextChar::new()))
 		.register_function(Arc::new(text::concat::TextConcat::new()))

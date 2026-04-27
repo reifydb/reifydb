@@ -15,7 +15,6 @@ use crate::{
 
 pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<ColumnWithName> {
 	let compile_ctx = CompileContext {
-		functions: ctx.functions,
 		symbols: ctx.symbols,
 	};
 	let compiled = compile_expression(&compile_ctx, expr)?;

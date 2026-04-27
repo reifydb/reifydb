@@ -50,7 +50,7 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::function::registry::Functions;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{
 	Expression,
 	name::{collect_all_column_names, column_name_from_expression},
@@ -158,7 +158,7 @@ pub struct WindowConfig {
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
 	pub runtime_context: RuntimeContext,
-	pub functions: Functions,
+	pub routines: Routines,
 }
 
 /// The main window operator
@@ -172,7 +172,7 @@ pub struct WindowOperator {
 	pub compiled_group_by: Vec<CompiledExpr>,
 	pub compiled_aggregations: Vec<CompiledExpr>,
 	pub layout: RowShape,
-	pub functions: Functions,
+	pub routines: Routines,
 	pub row_number_provider: RowNumberProvider,
 	pub runtime_context: RuntimeContext,
 	/// Column names needed by group_by + aggregations expressions.
@@ -184,7 +184,6 @@ impl WindowOperator {
 	pub fn new(config: WindowConfig) -> Self {
 		let symbols = SymbolTable::new();
 		let compile_ctx = CompileContext {
-			functions: &config.functions,
 			symbols: &symbols,
 		};
 
@@ -217,7 +216,7 @@ impl WindowOperator {
 			compiled_group_by,
 			compiled_aggregations,
 			layout: RowShape::testing(&[Type::Blob]),
-			functions: config.functions,
+			routines: config.routines,
 			row_number_provider: RowNumberProvider::new(config.node),
 			runtime_context: config.runtime_context,
 			projected_columns,
@@ -256,7 +255,7 @@ impl WindowOperator {
 		EvalContext {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
-			functions: &self.functions,
+			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),

@@ -7,10 +7,10 @@ use reifydb_type::{
 	value::{container::utf8::Utf8Container, r#type::Type},
 };
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct TextSubstring {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for TextSubstring {
@@ -22,28 +22,24 @@ impl Default for TextSubstring {
 impl TextSubstring {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("text::substring"),
+			info: RoutineInfo::new("text::substring"),
 		}
 	}
 }
 
-impl Function for TextSubstring {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		// Validate exactly 3 arguments
 		if args.len() != 3 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 3,
 				actual: args.len(),
@@ -233,12 +229,18 @@ impl Function for TextSubstring {
 				};
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			(other, _, _) => Err(FunctionError::InvalidArgumentType {
+			(other, _, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
 		}
+	}
+}
+
+impl Function for TextSubstring {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

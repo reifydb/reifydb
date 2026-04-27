@@ -12,8 +12,9 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::storage::metric::MetricReader;
 use reifydb_routine::{
-	function::{default_functions, registry::Functions},
-	procedure::{Procedure, registry::Procedures},
+	function::default_native_functions,
+	procedure::default_native_procedures,
+	routine::{Procedure, registry::Routines},
 };
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
@@ -29,8 +30,7 @@ use crate::remote::RemoteRegistry;
 /// `StandardEngine::new` -> `Executor::new` -> `Services::new`.
 pub struct EngineConfig {
 	pub runtime_context: RuntimeContext,
-	pub functions: Functions,
-	pub procedures: Procedures,
+	pub routines: Routines,
 	pub transforms: Transforms,
 	pub ioc: IocContainer,
 	#[cfg(not(reifydb_single_threaded))]
@@ -45,8 +45,7 @@ pub struct Services {
 	pub catalog: Catalog,
 	pub runtime_context: RuntimeContext,
 	pub compiler: Compiler,
-	pub functions: Functions,
-	pub procedures: Procedures,
+	pub routines: Routines,
 	pub transforms: Transforms,
 	pub flow_operator_store: SystemFlowOperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
@@ -69,8 +68,7 @@ impl Services {
 			compiler: Compiler::new(catalog.clone()),
 			catalog,
 			runtime_context: config.runtime_context,
-			functions: config.functions,
-			procedures: config.procedures,
+			routines: config.routines,
 			transforms: config.transforms,
 			flow_operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
@@ -82,23 +80,28 @@ impl Services {
 		}
 	}
 
-	pub fn get_handlers(&self, variant: VariantRef) -> Vec<Box<dyn Procedure>> {
-		self.procedures.get_handlers(&self.catalog.materialized, variant)
+	pub fn get_handlers(&self, variant: VariantRef) -> Vec<Arc<dyn Procedure>> {
+		self.routines.get_handlers(&self.catalog.materialized, variant)
 	}
 
-	pub fn get_procedure(&self, name: &str) -> Option<Box<dyn Procedure>> {
-		self.procedures.get_procedure(name)
+	pub fn get_procedure(&self, name: &str) -> Option<Arc<dyn Procedure>> {
+		self.routines.get_procedure(name)
 	}
 
 	#[allow(dead_code)]
 	pub fn testing() -> Arc<Self> {
 		let store = SingleStore::testing_memory();
+		// Build the default Routines registry: native functions + native procedures.
+		let routines_builder = Routines::builder();
+		let routines_builder = default_native_functions(routines_builder);
+		let routines_builder = default_native_procedures(routines_builder);
+		let routines = routines_builder.configure();
+
 		let mut services = Self::new(
 			Catalog::testing(),
 			EngineConfig {
 				runtime_context: RuntimeContext::with_clock(Clock::Real),
-				functions: default_functions().configure(),
-				procedures: Procedures::empty(),
+				routines,
 				transforms: Transforms::empty(),
 				ioc: IocContainer::new(),
 				#[cfg(not(reifydb_single_threaded))]

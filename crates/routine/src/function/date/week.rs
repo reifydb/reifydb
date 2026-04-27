@@ -7,10 +7,10 @@ use reifydb_type::{
 	value::{date::Date, r#type::Type},
 };
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DateWeek {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateWeek {
@@ -22,7 +22,7 @@ impl Default for DateWeek {
 impl DateWeek {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("date::week"),
+			info: RoutineInfo::new("date::week"),
 		}
 	}
 }
@@ -35,7 +35,7 @@ impl DateWeek {
 /// - A year has 52 or 53 weeks
 /// - Jan 1-3 may belong to week 52/53 of the previous year
 /// - Dec 29-31 may belong to week 1 of the next year
-fn iso_week_number(date: &Date) -> Result<i32, FunctionError> {
+fn iso_week_number(date: &Date) -> Result<i32, RoutineError> {
 	let days = date.to_days_since_epoch();
 
 	// ISO day of week: Mon=1..Sun=7
@@ -46,13 +46,13 @@ fn iso_week_number(date: &Date) -> Result<i32, FunctionError> {
 
 	// Find Jan 1 of the year containing that Thursday
 	let thursday_ymd = {
-		let d = Date::from_days_since_epoch(thursday).ok_or_else(|| FunctionError::ExecutionFailed {
+		let d = Date::from_days_since_epoch(thursday).ok_or_else(|| RoutineError::FunctionExecutionFailed {
 			function: Fragment::internal("date::week"),
 			reason: "failed to compute date from days since epoch".to_string(),
 		})?;
 		d.year()
 	};
-	let jan1 = Date::new(thursday_ymd, 1, 1).ok_or_else(|| FunctionError::ExecutionFailed {
+	let jan1 = Date::new(thursday_ymd, 1, 1).ok_or_else(|| RoutineError::FunctionExecutionFailed {
 		function: Fragment::internal("date::week"),
 		reason: "failed to construct Jan 1 date".to_string(),
 	})?;
@@ -63,22 +63,18 @@ fn iso_week_number(date: &Date) -> Result<i32, FunctionError> {
 	Ok((thursday - jan1_days) / 7 + 1)
 }
 
-impl Function for DateWeek {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateWeek {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Int4
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
@@ -107,7 +103,7 @@ impl Function for DateWeek {
 				ColumnBuffer::int4_with_bitvec(result, res_bitvec)
 			}
 			other => {
-				return Err(FunctionError::InvalidArgumentType {
+				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![Type::Date],
@@ -126,5 +122,11 @@ impl Function for DateWeek {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateWeek {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

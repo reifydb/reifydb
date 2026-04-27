@@ -88,7 +88,6 @@ pub(crate) fn evaluate_returning(
 	}
 
 	let compile_ctx = CompileContext {
-		functions: &services.functions,
 		symbols,
 	};
 
@@ -101,7 +100,7 @@ pub(crate) fn evaluate_returning(
 	let base = EvalContext {
 		params: &Params::None,
 		symbols,
-		functions: &services.functions,
+		routines: &services.routines,
 		runtime_context: &services.runtime_context,
 		arena: None,
 		identity: IdentityId::root(),

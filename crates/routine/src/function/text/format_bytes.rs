@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 const IEC_UNITS: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
@@ -105,7 +105,7 @@ macro_rules! process_decimal_column {
 
 /// Formats bytes using binary units (1024-based: B, KiB, MiB, GiB, TiB, PiB)
 pub struct FormatBytes {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for FormatBytes {
@@ -117,27 +117,23 @@ impl Default for FormatBytes {
 impl FormatBytes {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("text::format_bytes"),
+			info: RoutineInfo::new("text::format_bytes"),
 		}
 	}
 }
 
-impl Function for FormatBytes {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for FormatBytes {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
@@ -170,7 +166,7 @@ impl Function for FormatBytes {
 				process_decimal_column!(container, row_count, 1024.0, &IEC_UNITS)
 			}
 			other => {
-				return Err(FunctionError::InvalidArgumentType {
+				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![
@@ -199,6 +195,12 @@ impl Function for FormatBytes {
 			None => result_data,
 		};
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for FormatBytes {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }
 

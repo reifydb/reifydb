@@ -4,10 +4,10 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, r#type::Type};
 
-use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DateFormat {
-	info: FunctionInfo,
+	info: RoutineInfo,
 }
 
 impl Default for DateFormat {
@@ -19,7 +19,7 @@ impl Default for DateFormat {
 impl DateFormat {
 	pub fn new() -> Self {
 		Self {
-			info: FunctionInfo::new("date::format"),
+			info: RoutineInfo::new("date::format"),
 		}
 	}
 }
@@ -56,22 +56,18 @@ fn compute_day_of_year(year: i32, month: u32, day: u32) -> u32 {
 	doy + day
 }
 
-impl Function for DateFormat {
-	fn info(&self) -> &FunctionInfo {
+impl<'a> Routine<FunctionContext<'a>> for DateFormat {
+	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn capabilities(&self) -> &[FunctionCapability] {
-		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
 
-	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
-			return Err(FunctionError::ArityMismatch {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
@@ -104,10 +100,12 @@ impl Function for DateFormat {
 									result.push(formatted);
 								}
 								Err(reason) => {
-									return Err(FunctionError::ExecutionFailed {
-										function: ctx.fragment.clone(),
-										reason,
-									});
+									return Err(
+										RoutineError::FunctionExecutionFailed {
+											function: ctx.fragment.clone(),
+											reason,
+										},
+									);
 								}
 							}
 						}
@@ -123,7 +121,7 @@ impl Function for DateFormat {
 				}
 			}
 			(ColumnBuffer::Date(_), other) => {
-				return Err(FunctionError::InvalidArgumentType {
+				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 1,
 					expected: vec![Type::Utf8],
@@ -131,7 +129,7 @@ impl Function for DateFormat {
 				});
 			}
 			(other, _) => {
-				return Err(FunctionError::InvalidArgumentType {
+				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![Type::Date],
@@ -149,5 +147,11 @@ impl Function for DateFormat {
 		};
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateFormat {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }
