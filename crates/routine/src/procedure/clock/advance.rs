@@ -12,7 +12,7 @@ use reifydb_type::{
 };
 
 use super::set::extract_millis;
-use crate::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("clock::advance"));
 
@@ -61,7 +61,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockAdvanceProcedure {
 			}
 		};
 
-		match &ctx.env.runtime_context.clock {
+		match &ctx.runtime_context.clock {
 			Clock::Mock(mock) => {
 				match arg {
 					Value::Duration(dur) => {

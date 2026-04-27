@@ -21,7 +21,9 @@ use reifydb_type::{
 	},
 };
 
-use crate::routine::{Accumulator, FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{
+	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 
 pub struct Max {
 	info: RoutineInfo,
@@ -46,10 +48,6 @@ impl<'a> Routine<FunctionContext<'a>> for Max {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar, FunctionKind::Aggregate]
-	}
-
 	fn return_type(&self, input_types: &[Type]) -> Type {
 		input_types.first().cloned().unwrap_or(Type::Float8)
 	}
@@ -61,7 +59,7 @@ impl<'a> Routine<FunctionContext<'a>> for Max {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: 0,
 			});
@@ -70,7 +68,7 @@ impl<'a> Routine<FunctionContext<'a>> for Max {
 		for (i, col) in args.iter().enumerate() {
 			if !col.get_type().is_number() {
 				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.env.fragment.clone(),
+					function: ctx.fragment.clone(),
 					argument_index: i,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
 					actual: col.get_type(),
@@ -97,10 +95,16 @@ impl<'a> Routine<FunctionContext<'a>> for Max {
 			data.push_value(row_max.unwrap_or(Value::none()));
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
+	}
+}
+
+impl Function for Max {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
-	fn accumulator(&self, _ctx: &mut FunctionContext<'a>) -> Option<Box<dyn Accumulator>> {
+	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(MaxAccumulator::new()))
 	}
 }

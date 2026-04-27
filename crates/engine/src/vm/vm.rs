@@ -4,7 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
-use reifydb_routine::routine::Routines;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
@@ -149,7 +149,8 @@ impl<'a> Vm<'a> {
 	pub(crate) fn eval_ctx(&self) -> EvalContext<'_> {
 		EvalContext {
 			params: self.params,
-			symbols: &self.symbols,			routines: self.routines,
+			symbols: &self.symbols,
+			routines: self.routines,
 			runtime_context: self.runtime_context,
 			arena: None,
 			identity: self.identity,

@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, time::Time, r#type::Type};
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct TimeNew {
 	info: RoutineInfo,
@@ -61,10 +61,6 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Time
 	}
@@ -72,7 +68,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 3 && args.len() != 4 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 3,
 				actual: args.len(),
 			});
@@ -94,7 +90,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 
 		if !is_integer_type(hour_data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
 					Type::Int1,
@@ -113,7 +109,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 		}
 		if !is_integer_type(min_data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![
 					Type::Int1,
@@ -132,7 +128,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 		}
 		if !is_integer_type(sec_data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 2,
 				expected: vec![
 					Type::Int1,
@@ -153,7 +149,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 			&& !is_integer_type(nd)
 		{
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 3,
 				expected: vec![
 					Type::Int1,
@@ -197,6 +193,12 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 		}
 
 		let result_data = ColumnBuffer::Time(container);
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+	}
+}
+
+impl Function for TimeNew {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

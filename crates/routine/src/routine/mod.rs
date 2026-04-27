@@ -7,20 +7,20 @@
 //! `Columns`. Functions and procedures are both routines; they differ only in
 //! the execution context they accept:
 //!
-//! - **Functions** implement `Routine<FunctionContext>`. `FunctionContext` does
-//!   not carry a transaction, so the type system guarantees a function cannot
-//!   mutate transactional state.
-//! - **Procedures** implement `Routine<ProcedureContext>`. `ProcedureContext`
-//!   carries `&mut Transaction`, so procedures can read and mutate state.
+//! - **Functions** implement `Routine<FunctionContext>`. `FunctionContext` does not carry a transaction, so the type
+//!   system guarantees a function cannot mutate transactional state.
+//! - **Procedures** implement `Routine<ProcedureContext>`. `ProcedureContext` carries `&mut Transaction`, so procedures
+//!   can read and mutate state.
 //!
 //! There is one trait declaration. The function-vs-procedure distinction lives
-//! entirely in which context the implementor writes against — and in catalog
+//! entirely in which context the implementor writes against  - and in catalog
 //! metadata exposed to the user.
 
 pub mod context;
 pub mod error;
 pub mod registry;
 
+use error::RoutineError;
 use reifydb_core::value::column::{
 	ColumnWithName,
 	buffer::ColumnBuffer,
@@ -28,14 +28,11 @@ use reifydb_core::value::column::{
 	view::group_by::{GroupByView, GroupKey},
 };
 use reifydb_type::{
+	fragment::Fragment,
 	util::bitvec::BitVec,
 	value::r#type::{Type, input_types::InputTypes},
 };
 use serde::{Deserialize, Serialize};
-
-pub use context::{FunctionContext, ProcedureContext, RoutineEnv};
-pub use error::RoutineError;
-pub use registry::{Routines, RoutinesConfigurator};
 
 mod sealed {
 	pub trait Sealed {}
@@ -73,9 +70,14 @@ impl RoutineInfo {
 	}
 }
 
-/// The single trait. Implementors pick a context type (`FunctionContext` or
-/// `ProcedureContext`); that choice IS the function-vs-procedure declaration
-/// and statically determines whether the routine can access the transaction.
+/// The generic, function-and-procedure-agnostic contract. Implementors pick a
+/// context type (`FunctionContext` or `ProcedureContext`); that choice IS the
+/// function-vs-procedure declaration and statically determines whether the
+/// routine can access the transaction.
+///
+/// Function-only concerns (`kinds`, `accumulator`) live on the `Function`
+/// sub-trait. Procedures get a marker sub-trait `Procedure` with a blanket
+/// impl, so existing procedure impls require no extra boilerplate.
 pub trait Routine<C: Context>: Send + Sync {
 	fn info(&self) -> &RoutineInfo;
 
@@ -89,25 +91,17 @@ pub trait Routine<C: Context>: Send + Sync {
 		true
 	}
 
-	/// Function-only metadata. Default `&[]` — procedures leave this alone.
-	/// The default `&[]` is meaningful: a registry user can call `kinds()`
-	/// uniformly without having to know whether the routine is a function.
-	fn kinds(&self) -> &[FunctionKind] {
-		&[]
-	}
-
 	/// Execute the routine.
 	///
 	/// Takes `ctx` by `&mut` so procedure routines can reborrow
 	/// `ctx.tx` as `&mut Transaction`. Function routines don't mutate the
-	/// context — the `&mut` is a no-op for them, since the env fields are
+	/// context  - the `&mut` is a no-op for them, since the env fields are
 	/// shared references whose mutability isn't projected through.
 	fn execute(&self, ctx: &mut C, args: &Columns) -> Result<Columns, RoutineError>;
 
 	/// Calls the routine, automatically propagating Option columns if
-	/// `propagates_options()` returns true. Lifted from the previous
-	/// `Function::call` and made generic over `C` — the option-propagation
-	/// behaviour is identical for both contexts.
+	/// `propagates_options()` returns true. The option-propagation behaviour
+	/// is identical for both contexts, hence the shared default.
 	fn call(&self, ctx: &mut C, args: &Columns) -> Result<Columns, RoutineError> {
 		if !self.propagates_options() {
 			return self.execute(ctx, args);
@@ -141,7 +135,7 @@ pub trait Routine<C: Context>: Send + Sync {
 			let result_type = self.return_type(&input_types);
 			let result_data = ColumnBuffer::none_typed(result_type, row_count);
 			return Ok(Columns::new(vec![ColumnWithName::new(
-				reifydb_type::fragment::Fragment::internal(self.info().name.clone()),
+				Fragment::internal(self.info().name.clone()),
 				result_data,
 			)]));
 		}
@@ -170,20 +164,33 @@ pub trait Routine<C: Context>: Send + Sync {
 			None => Ok(result),
 		}
 	}
+}
 
-	/// Aggregate accumulator factory. Only function-context routines whose
-	/// `kinds()` includes `FunctionKind::Aggregate` should override this.
-	fn accumulator(&self, _ctx: &mut C) -> Option<Box<dyn Accumulator>> {
+/// Function-specific extension of `Routine`. Carries the kind discriminator
+/// and the optional aggregate accumulator factory. Procedures do not see these
+/// methods.
+pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
+	/// The execution shapes this function supports (Scalar, Aggregate,
+	/// Generator). Required: every function declares at least one kind.
+	fn kinds(&self) -> &[FunctionKind];
+
+	/// Aggregate accumulator factory. Only functions whose `kinds()` includes
+	/// `FunctionKind::Aggregate` need to override this.
+	fn accumulator(&self, _ctx: &mut context::FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		None
 	}
 }
 
+/// Procedure marker. Empty: every implementor of
+/// `Routine<ProcedureContext<'_, '_>>` is automatically a `Procedure` via the
+/// blanket impl below. Exists so `dyn Procedure` is a real type and so
+/// procedure-only methods have an obvious home if we add any later.
+pub trait Procedure: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}
+
+impl<T: ?Sized> Procedure for T where T: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}
+
 /// Aggregate accumulator. Stateful per-group reducer that consumes column
 /// batches via `update` and produces final group results via `finalize`.
-///
-/// (Same trait shape as the legacy `function::Accumulator` — re-declared here
-/// so the new `Routine` trait can reference it without depending on the legacy
-/// function module. The legacy module re-exports this from step 9 onward.)
 pub trait Accumulator: Send + Sync {
 	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError>;
 	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError>;

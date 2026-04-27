@@ -9,7 +9,7 @@ use reifydb_type::value::{
 	r#type::{Type, input_types::InputTypes},
 };
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Round {
 	info: RoutineInfo,
@@ -34,10 +34,6 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, input_types: &[Type]) -> Type {
 		input_types.first().cloned().unwrap_or(Type::Float8)
 	}
@@ -45,7 +41,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: 0,
 			});
@@ -163,7 +159,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 			other if other.get_type().is_number() => val_data.clone(),
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.env.fragment.clone(),
+					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: InputTypes::numeric().expected_at(0).to_vec(),
 					actual: other.get_type(),
@@ -180,6 +176,12 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 			result_data
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for Round {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct TimeNow {
 	info: RoutineInfo,
@@ -29,10 +29,6 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNow {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Time
 	}
@@ -40,13 +36,13 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNow {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if !args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 0,
 				actual: args.len(),
 			});
 		}
 
-		let millis = ctx.env.runtime_context.clock.now_millis();
+		let millis = ctx.runtime_context.clock.now_millis();
 		let dt = DateTime::from_timestamp_millis(millis)?;
 		let time = dt.time();
 
@@ -55,6 +51,12 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNow {
 		container.push(time);
 
 		let result_data = ColumnBuffer::Time(container);
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+	}
+}
+
+impl Function for TimeNow {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

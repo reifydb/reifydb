@@ -7,7 +7,7 @@ use reifydb_type::{
 	value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type},
 };
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct TextPadLeft {
 	info: RoutineInfo,
@@ -32,10 +32,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadLeft {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
@@ -43,7 +39,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadLeft {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 3 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 3,
 				actual: args.len(),
 			});
@@ -65,7 +61,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadLeft {
 			} => container,
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.env.fragment.clone(),
+					function: ctx.fragment.clone(),
 					argument_index: 2,
 					expected: vec![Type::Utf8],
 					actual: other.get_type(),
@@ -96,7 +92,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadLeft {
 						ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
 						_ => {
 							return Err(RoutineError::FunctionInvalidArgumentType {
-								function: ctx.env.fragment.clone(),
+								function: ctx.fragment.clone(),
 								argument_index: 1,
 								expected: vec![
 									Type::Int1,
@@ -168,14 +164,20 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadLeft {
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
 		}
+	}
+}
+
+impl Function for TextPadLeft {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -11,7 +11,7 @@ use reifydb_type::{
 	value::{Value, datetime::DateTime, r#type::Type},
 };
 
-use crate::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("clock::set"));
 
@@ -60,7 +60,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
 			}
 		};
 
-		match &ctx.env.runtime_context.clock {
+		match &ctx.runtime_context.clock {
 			Clock::Mock(mock) => {
 				match arg {
 					Value::DateTime(dt) => {

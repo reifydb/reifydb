@@ -33,7 +33,7 @@ pub use reifydb_core::{event::EventBus, interface::catalog::config::ConfigKey};
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
-pub use reifydb_routine::{function, procedure};
+pub use reifydb_routine::{function, procedure, routine};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,

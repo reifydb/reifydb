@@ -5,7 +5,7 @@ use num_traits::sign::Signed;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::number::NumberContainer, decimal::Decimal, int::Int, r#type::Type, uint::Uint};
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Abs {
 	info: RoutineInfo,
@@ -30,10 +30,6 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, input_types: &[Type]) -> Type {
 		input_types.first().cloned().unwrap_or(Type::Float8)
 	}
@@ -41,7 +37,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -275,7 +271,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 			}
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.env.fragment.clone(),
+					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![
 						Type::Int1,
@@ -308,6 +304,12 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 			result_data
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for Abs {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

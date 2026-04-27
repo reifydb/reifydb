@@ -15,7 +15,9 @@ use reifydb_type::value::{
 	r#type::{Type, input_types::InputTypes},
 };
 
-use crate::routine::{Accumulator, FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{
+	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 
 pub struct Count {
 	info: RoutineInfo,
@@ -38,10 +40,6 @@ impl Count {
 impl<'a> Routine<FunctionContext<'a>> for Count {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
-	}
-
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
@@ -69,10 +67,16 @@ impl<'a> Routine<FunctionContext<'a>> for Count {
 			}
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), ColumnBuffer::int8(counts))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::int8(counts))]))
+	}
+}
+
+impl Function for Count {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
-	fn accumulator(&self, _ctx: &mut FunctionContext<'a>) -> Option<Box<dyn Accumulator>> {
+	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(CountAccumulator::new()))
 	}
 }

@@ -7,7 +7,7 @@ use reifydb_type::{
 	value::{blob::Blob, r#type::Type},
 };
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct BlobB64 {
 	info: RoutineInfo,
@@ -32,10 +32,6 @@ impl<'a> Routine<FunctionContext<'a>> for BlobB64 {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Blob
 	}
@@ -43,7 +39,7 @@ impl<'a> Routine<FunctionContext<'a>> for BlobB64 {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -81,14 +77,20 @@ impl<'a> Routine<FunctionContext<'a>> for BlobB64 {
 					},
 					None => result_col_data,
 				};
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			other => Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
 		}
+	}
+}
+
+impl Function for BlobB64 {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

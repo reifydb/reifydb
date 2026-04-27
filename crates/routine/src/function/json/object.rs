@@ -7,7 +7,7 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct JsonObject {
 	info: RoutineInfo,
@@ -32,10 +32,6 @@ impl<'a> Routine<FunctionContext<'a>> for JsonObject {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Any
 	}
@@ -58,7 +54,7 @@ impl<'a> Routine<FunctionContext<'a>> for JsonObject {
 
 		if !unwrapped.len().is_multiple_of(2) {
 			return Err(RoutineError::FunctionExecutionFailed {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				reason: "json::object requires an even number of arguments (key-value pairs)"
 					.to_string(),
 			});
@@ -73,7 +69,7 @@ impl<'a> Routine<FunctionContext<'a>> for JsonObject {
 				} => {}
 				other => {
 					return Err(RoutineError::FunctionInvalidArgumentType {
-						function: ctx.env.fragment.clone(),
+						function: ctx.fragment.clone(),
 						argument_index: i,
 						expected: vec![Type::Utf8],
 						actual: other.get_type(),
@@ -113,6 +109,12 @@ impl<'a> Routine<FunctionContext<'a>> for JsonObject {
 			None => result_data,
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for JsonObject {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

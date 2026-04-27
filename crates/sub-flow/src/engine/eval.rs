@@ -11,7 +11,7 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::routine::Routines;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
@@ -78,7 +78,7 @@ pub fn evaluate_operator_config(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_routine::routine::Routines;
+	use reifydb_routine::routine::registry::Routines;
 	use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 	use reifydb_type::{fragment::Fragment, value::Value};
@@ -214,8 +214,11 @@ pub mod tests {
 	fn test_only_non_alias_expressions() {
 		let routines = Routines::empty();
 		let runtime_context = RuntimeContext::with_clock(Clock::Real);
-		let expressions =
-			vec![create_constant_text("standalone"), create_constant_number(999), create_constant_bool(true)];
+		let expressions = vec![
+			create_constant_text("standalone"),
+			create_constant_number(999),
+			create_constant_bool(true),
+		];
 
 		let result = evaluate_operator_config(&expressions, &routines, &runtime_context).unwrap();
 

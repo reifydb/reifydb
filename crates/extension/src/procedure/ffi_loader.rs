@@ -15,7 +15,7 @@ use reifydb_abi::procedure::{
 	descriptor::ProcedureDescriptorFFI,
 	types::{PROCEDURE_MAGIC, ProcedureCreateFnFFI},
 };
-use reifydb_routine::routine::RoutinesConfigurator;
+use reifydb_routine::routine::registry::RoutinesConfigurator;
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 
 use super::ffi::NativeProcedureFFI;
@@ -173,10 +173,7 @@ impl Default for ProcedureLoader {
 
 /// Scan a directory for FFI procedure shared libraries and register them
 /// onto an existing `RoutinesConfigurator`.
-pub fn register_procedures_from_dir(
-	dir: &Path,
-	mut builder: RoutinesConfigurator,
-) -> FFIResult<RoutinesConfigurator> {
+pub fn register_procedures_from_dir(dir: &Path, mut builder: RoutinesConfigurator) -> FFIResult<RoutinesConfigurator> {
 	let loader = ffi_procedure_loader();
 	let mut loader_guard = loader.write().unwrap();
 

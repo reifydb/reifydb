@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, duration::Duration, r#type::Type};
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DurationWeeks {
 	info: RoutineInfo,
@@ -61,10 +61,6 @@ impl<'a> Routine<FunctionContext<'a>> for DurationWeeks {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Duration
 	}
@@ -72,7 +68,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationWeeks {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -84,7 +80,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationWeeks {
 
 		if !is_integer_type(data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
 					Type::Int1,
@@ -119,6 +115,12 @@ impl<'a> Routine<FunctionContext<'a>> for DurationWeeks {
 				bitvec: bv.clone(),
 			};
 		}
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+	}
+}
+
+impl Function for DurationWeeks {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

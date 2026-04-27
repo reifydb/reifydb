@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_routine::routine::Routines;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::params::Params;
 

@@ -42,7 +42,7 @@ use reifydb_extension::{
 use reifydb_routine::{
 	function::default_native_functions,
 	procedure::default_native_procedures,
-	routine::{Routines, RoutinesConfigurator},
+	routine::registry::{Routines, RoutinesConfigurator},
 };
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, context::RuntimeContext};
@@ -96,10 +96,8 @@ pub struct DatabaseBuilder {
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
 	actor_system: Option<ActorSystem>,
-	routines_configurator:
-		Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
-	handlers_configurator:
-		Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,

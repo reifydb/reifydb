@@ -18,7 +18,7 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::routine::Routines;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
@@ -55,7 +55,8 @@ impl GateOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 	) -> Self {
-		let compile_ctx = CompileContext {			symbols: &EMPTY_SYMBOL_TABLE,
+		let compile_ctx = CompileContext {
+			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 		let compiled_conditions: Vec<CompiledExpr> = conditions
 			.iter()
@@ -66,7 +67,8 @@ impl GateOperator {
 			parent,
 			node,
 			compiled_conditions,
-			routines,			runtime_context,
+			routines,
+			runtime_context,
 		}
 	}
 
@@ -78,9 +80,10 @@ impl GateOperator {
 			return Ok(Vec::new());
 		}
 
-				let session = EvalContext {
+		let session = EvalContext {
 			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,			routines: &self.routines,
+			symbols: &EMPTY_SYMBOL_TABLE,
+			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),

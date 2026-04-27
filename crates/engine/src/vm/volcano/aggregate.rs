@@ -10,7 +10,9 @@ use reifydb_core::{
 	error::CoreError,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_routine::routine::{Accumulator, FunctionContext, FunctionKind, RoutineEnv, RoutineError, Routines};
+use reifydb_routine::routine::{
+	Accumulator, FunctionKind, context::FunctionContext, error::RoutineError, registry::Routines,
+};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -224,12 +226,10 @@ fn parse_keys_and_aggregates<'a>(
 				let _ = FunctionKind::Aggregate; // ensure kinds enum is in scope
 
 				let mut fn_ctx = FunctionContext {
-					env: RoutineEnv {
-						fragment: call.func.0.clone(),
-						identity: ctx.identity,
-						row_count: 0,
-						runtime_context: &ctx.services.runtime_context,
-					},
+					fragment: call.func.0.clone(),
+					identity: ctx.identity,
+					row_count: 0,
+					runtime_context: &ctx.services.runtime_context,
 				};
 
 				let accumulator = function.accumulator(&mut fn_ctx).ok_or_else(|| {

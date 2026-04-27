@@ -5,7 +5,7 @@
 
 use std::{fs, path::Path, sync::Arc};
 
-use reifydb_routine::routine::RoutinesConfigurator;
+use reifydb_routine::routine::registry::RoutinesConfigurator;
 use reifydb_sdk::error::FFIError;
 use reifydb_type::Result;
 

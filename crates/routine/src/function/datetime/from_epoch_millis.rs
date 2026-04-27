@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DateTimeFromEpochMillis {
 	info: RoutineInfo,
@@ -61,10 +61,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpochMillis {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::DateTime
 	}
@@ -72,7 +68,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpochMillis {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -84,7 +80,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpochMillis {
 
 		if !is_integer_type(data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
 					Type::Int1,
@@ -108,7 +104,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpochMillis {
 			if let Some(millis) = extract_i64(data, i) {
 				if millis < 0 {
 					return Err(RoutineError::FunctionExecutionFailed {
-						function: ctx.env.fragment.clone(),
+						function: ctx.fragment.clone(),
 						reason: format!(
 							"datetime::from_epoch_millis does not support negative timestamps: {}",
 							millis
@@ -132,6 +128,12 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpochMillis {
 			result_data
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTimeFromEpochMillis {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

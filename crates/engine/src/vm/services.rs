@@ -14,7 +14,7 @@ use reifydb_metric::storage::metric::MetricReader;
 use reifydb_routine::{
 	function::default_native_functions,
 	procedure::default_native_procedures,
-	routine::{Routines, registry::DynProcedure},
+	routine::{Procedure, registry::Routines},
 };
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
@@ -80,11 +80,11 @@ impl Services {
 		}
 	}
 
-	pub fn get_handlers(&self, variant: VariantRef) -> Vec<Arc<DynProcedure>> {
+	pub fn get_handlers(&self, variant: VariantRef) -> Vec<Arc<dyn Procedure>> {
 		self.routines.get_handlers(&self.catalog.materialized, variant)
 	}
 
-	pub fn get_procedure(&self, name: &str) -> Option<Arc<DynProcedure>> {
+	pub fn get_procedure(&self, name: &str) -> Option<Arc<dyn Procedure>> {
 		self.routines.get_procedure(name)
 	}
 

@@ -184,9 +184,8 @@ impl IntoDiagnostic for RoutineError {
 					column: None,
 					fragment: function,
 					label: Some("unknown generator function".to_string()),
-					help: Some(
-						"Check the generator function name and ensure it is registered".to_string(),
-					),
+					help: Some("Check the generator function name and ensure it is registered"
+						.to_string()),
 					notes: vec![],
 					cause: None,
 					operator_chain: None,

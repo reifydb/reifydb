@@ -47,7 +47,8 @@ impl QueryNode for TakeNode {
 			if columns.row_count() == 0 {
 				continue;
 			}
-			let transform_ctx = TransformContext {			routines: &ctx.services.routines,
+			let transform_ctx = TransformContext {
+				routines: &ctx.services.routines,
 				runtime_context: &ctx.services.runtime_context,
 				params: &ctx.params,
 			};

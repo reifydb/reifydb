@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Id {
 	info: RoutineInfo,
@@ -29,10 +29,6 @@ impl<'a> Routine<FunctionContext<'a>> for Id {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::IdentityId
 	}
@@ -40,24 +36,30 @@ impl<'a> Routine<FunctionContext<'a>> for Id {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if !args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 0,
 				actual: args.len(),
 			});
 		}
 
-		let identity = ctx.env.identity;
-		let row_count = ctx.env.row_count.max(1);
+		let identity = ctx.identity;
+		let row_count = ctx.row_count.max(1);
 		if identity.is_anonymous() {
 			return Ok(Columns::new(vec![ColumnWithName::new(
-				ctx.env.fragment.clone(),
+				ctx.fragment.clone(),
 				ColumnBuffer::none_typed(Type::IdentityId, row_count),
 			)]));
 		}
 
 		Ok(Columns::new(vec![ColumnWithName::new(
-			ctx.env.fragment.clone(),
+			ctx.fragment.clone(),
 			ColumnBuffer::identity_id(vec![identity; row_count]),
 		)]))
+	}
+}
+
+impl Function for Id {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, r#type::Type};
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DateTimeFormat {
 	info: RoutineInfo,
@@ -128,10 +128,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
@@ -139,7 +135,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -151,69 +147,70 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
 		let (fmt_data, fmt_bitvec) = fmt_col.unwrap_option();
 		let row_count = dt_data.len();
 
-		let result_data = match (dt_data, fmt_data) {
-			(
-				ColumnBuffer::DateTime(dt_container),
-				ColumnBuffer::Utf8 {
-					container: fmt_container,
-					..
-				},
-			) => {
-				let mut result = Vec::with_capacity(row_count);
+		let result_data =
+			match (dt_data, fmt_data) {
+				(
+					ColumnBuffer::DateTime(dt_container),
+					ColumnBuffer::Utf8 {
+						container: fmt_container,
+						..
+					},
+				) => {
+					let mut result = Vec::with_capacity(row_count);
 
-				for i in 0..row_count {
-					match (dt_container.get(i), fmt_container.is_defined(i)) {
-						(Some(dt), true) => {
-							let fmt_str = &fmt_container[i];
-							match format_datetime(
-								dt.year(),
-								dt.month(),
-								dt.day(),
-								dt.hour(),
-								dt.minute(),
-								dt.second(),
-								dt.nanosecond(),
-								fmt_str,
-							) {
-								Ok(formatted) => {
-									result.push(formatted);
-								}
-								Err(reason) => {
-									return Err(RoutineError::FunctionExecutionFailed {
-										function: ctx.env.fragment.clone(),
+					for i in 0..row_count {
+						match (dt_container.get(i), fmt_container.is_defined(i)) {
+							(Some(dt), true) => {
+								let fmt_str = &fmt_container[i];
+								match format_datetime(
+									dt.year(),
+									dt.month(),
+									dt.day(),
+									dt.hour(),
+									dt.minute(),
+									dt.second(),
+									dt.nanosecond(),
+									fmt_str,
+								) {
+									Ok(formatted) => {
+										result.push(formatted);
+									}
+									Err(reason) => {
+										return Err(RoutineError::FunctionExecutionFailed {
+										function: ctx.fragment.clone(),
 										reason,
 									});
+									}
 								}
 							}
-						}
-						_ => {
-							result.push(String::new());
+							_ => {
+								result.push(String::new());
+							}
 						}
 					}
-				}
 
-				ColumnBuffer::Utf8 {
-					container: Utf8Container::new(result),
-					max_bytes: MaxBytes::MAX,
+					ColumnBuffer::Utf8 {
+						container: Utf8Container::new(result),
+						max_bytes: MaxBytes::MAX,
+					}
 				}
-			}
-			(ColumnBuffer::DateTime(_), other) => {
-				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.env.fragment.clone(),
-					argument_index: 1,
-					expected: vec![Type::Utf8],
-					actual: other.get_type(),
-				});
-			}
-			(other, _) => {
-				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.env.fragment.clone(),
-					argument_index: 0,
-					expected: vec![Type::DateTime],
-					actual: other.get_type(),
-				});
-			}
-		};
+				(ColumnBuffer::DateTime(_), other) => {
+					return Err(RoutineError::FunctionInvalidArgumentType {
+						function: ctx.fragment.clone(),
+						argument_index: 1,
+						expected: vec![Type::Utf8],
+						actual: other.get_type(),
+					});
+				}
+				(other, _) => {
+					return Err(RoutineError::FunctionInvalidArgumentType {
+						function: ctx.fragment.clone(),
+						argument_index: 0,
+						expected: vec![Type::DateTime],
+						actual: other.get_type(),
+					});
+				}
+			};
 
 		let final_data = match (dt_bitvec, fmt_bitvec) {
 			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
@@ -223,6 +220,12 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
 			_ => result_data,
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTimeFormat {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

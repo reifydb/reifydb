@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DateTrunc {
 	info: RoutineInfo,
@@ -29,10 +29,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Date
 	}
@@ -40,7 +36,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -72,7 +68,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 									"month" => Date::new(d.year(), d.month(), 1),
 									other => {
 										return Err(RoutineError::FunctionExecutionFailed {
-										function: ctx.env.fragment.clone(),
+										function: ctx.fragment.clone(),
 										reason: format!("invalid precision: '{}'", other),
 									});
 									}
@@ -90,7 +86,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 			}
 			(ColumnBuffer::Date(_), other) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.env.fragment.clone(),
+					function: ctx.fragment.clone(),
 					argument_index: 1,
 					expected: vec![Type::Utf8],
 					actual: other.get_type(),
@@ -98,7 +94,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 			}
 			(other, _) => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.env.fragment.clone(),
+					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![Type::Date],
 					actual: other.get_type(),
@@ -114,6 +110,12 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 			_ => result_data,
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTrunc {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

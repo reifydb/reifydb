@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_routine::routine::{
-	FunctionContext, ProcedureContext, RoutineEnv,
-	registry::{DynFunction, DynProcedure},
+	Function, Procedure,
+	context::{FunctionContext, ProcedureContext},
 };
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
@@ -20,8 +20,8 @@ use crate::{
 };
 
 enum GeneratorImpl {
-	Function(Arc<DynFunction>),
-	Procedure(Arc<DynProcedure>),
+	Function(Arc<dyn Function>),
+	Procedure(Arc<dyn Procedure>),
 }
 
 pub(crate) struct GeneratorNode {
@@ -86,12 +86,10 @@ impl QueryNode for GeneratorNode {
 			GeneratorImpl::Function(generator) => {
 				let evaluated_params = Columns::new(evaluated_columns);
 				let mut fn_ctx = FunctionContext {
-					env: RoutineEnv {
-						fragment: self.function_name.clone(),
-						identity: stored_ctx.identity,
-						row_count: evaluated_params.row_count(),
-						runtime_context: &stored_ctx.services.runtime_context,
-					},
+					fragment: self.function_name.clone(),
+					identity: stored_ctx.identity,
+					row_count: evaluated_params.row_count(),
+					runtime_context: &stored_ctx.services.runtime_context,
 				};
 				generator.call(&mut fn_ctx, &evaluated_params)?
 			}
@@ -100,12 +98,10 @@ impl QueryNode for GeneratorNode {
 					evaluated_columns.iter().map(|col| col.data().get_value(0)).collect();
 				let params = Params::Positional(Arc::new(values));
 				let mut proc_ctx = ProcedureContext {
-					env: RoutineEnv {
-						fragment: self.function_name.clone(),
-						identity: stored_ctx.identity,
-						row_count: 1,
-						runtime_context: &stored_ctx.services.runtime_context,
-					},
+					fragment: self.function_name.clone(),
+					identity: stored_ctx.identity,
+					row_count: 1,
+					runtime_context: &stored_ctx.services.runtime_context,
 					tx: txn,
 					params: &params,
 					catalog: &stored_ctx.services.catalog,

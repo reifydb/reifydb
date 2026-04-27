@@ -15,7 +15,7 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
-use crate::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("testing::handlers::invoked"));
 
@@ -46,9 +46,10 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingHandlersInvoked {
 		let invocations = match ctx.tx {
 			Transaction::Test(t) => &**t.invocations,
 			_ => {
-				return Err(
-					internal_error!("testing::handlers::invoked() requires a test transaction").into()
-				);
+				return Err(internal_error!(
+					"testing::handlers::invoked() requires a test transaction"
+				)
+				.into());
 			}
 		};
 		let filter_arg = extract_optional_string_param(ctx.params);

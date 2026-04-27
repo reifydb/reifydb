@@ -32,10 +32,6 @@ impl<'a> Routine<FunctionContext<'a>> for InspectSubscription {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Generator]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Any // This generator returns a complex structure
 	}
@@ -44,7 +40,7 @@ impl<'a> Routine<FunctionContext<'a>> for InspectSubscription {
 		// This generator function is expected to be called with no arguments.
 		if !args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 0,
 				actual: args.len(),
 			});
@@ -57,5 +53,11 @@ impl<'a> Routine<FunctionContext<'a>> for InspectSubscription {
 		let dummy_column = ColumnWithName::text("subscription_info", dummy_data);
 
 		Ok(Columns::new(vec![dummy_column]))
+	}
+}
+
+impl Function for InspectSubscription {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Generator]
 	}
 }

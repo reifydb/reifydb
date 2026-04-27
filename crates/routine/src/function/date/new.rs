@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct DateNew {
 	info: RoutineInfo,
@@ -61,10 +61,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Date
 	}
@@ -72,7 +68,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 3 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 3,
 				actual: args.len(),
 			});
@@ -88,7 +84,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 
 		if !is_integer_type(year_data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
 					Type::Int1,
@@ -107,7 +103,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 		}
 		if !is_integer_type(month_data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![
 					Type::Int1,
@@ -126,7 +122,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 		}
 		if !is_integer_type(day_data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 2,
 				expected: vec![
 					Type::Int1,
@@ -166,6 +162,12 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 			}
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), ColumnBuffer::Date(container))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::Date(container))]))
+	}
+}
+
+impl Function for DateNew {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

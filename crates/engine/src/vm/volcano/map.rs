@@ -59,7 +59,8 @@ impl QueryNode for MapNode {
 		self.expressions = expressions;
 		self.udf_names = udf_names;
 
-		let compile_ctx = CompileContext {			symbols: &ctx.symbols,
+		let compile_ctx = CompileContext {
+			symbols: &ctx.symbols,
 		};
 		let compiled = self
 			.expressions
@@ -81,7 +82,8 @@ impl QueryNode for MapNode {
 
 		if let Some(columns) = self.input.next(rx, ctx)? {
 			let stored_ctx = &self.context.as_ref().unwrap().0;
-			let transform_ctx = TransformContext {			routines: &ctx.services.routines,
+			let transform_ctx = TransformContext {
+				routines: &ctx.services.routines,
 				runtime_context: &stored_ctx.services.runtime_context,
 				params: &stored_ctx.params,
 			};
@@ -181,7 +183,8 @@ impl QueryNode for MapWithoutInputNode {
 			self.udf_columns = Some(udf_cols);
 		}
 
-		let compile_ctx = CompileContext {			symbols: &ctx.symbols,
+		let compile_ctx = CompileContext {
+			symbols: &ctx.symbols,
 		};
 		let compiled = self
 			.expressions

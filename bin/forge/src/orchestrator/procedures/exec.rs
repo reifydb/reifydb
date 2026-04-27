@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{fs, process::Command};
-
-use std::sync::LazyLock;
+use std::{fs, process::Command, sync::LazyLock};
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,

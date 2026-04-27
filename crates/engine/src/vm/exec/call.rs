@@ -12,8 +12,8 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_routine::routine::{
-	FunctionContext as RoutineFunctionContext, ProcedureContext as RoutineProcedureContext, RoutineEnv,
+use reifydb_routine::routine::context::{
+	FunctionContext as RoutineFunctionContext, ProcedureContext as RoutineProcedureContext,
 };
 use reifydb_rql::{
 	compiler::{CompilationResult, Compiled},
@@ -492,12 +492,10 @@ impl<'a> Vm<'a> {
 					let call_params = Params::Positional(Arc::new(args));
 					let identity = ctx.tx.identity();
 					let mut proc_ctx = RoutineProcedureContext {
-						env: RoutineEnv {
-							fragment: name.clone(),
-							identity,
-							row_count: 1,
-							runtime_context: &ctx.services.runtime_context,
-						},
+						fragment: name.clone(),
+						identity,
+						row_count: 1,
+						runtime_context: &ctx.services.runtime_context,
 						tx: ctx.tx,
 						params: &call_params,
 						catalog: &ctx.services.catalog,
@@ -667,12 +665,10 @@ impl<'a> Vm<'a> {
 			let call_params = Params::Positional(Arc::new(args));
 			let identity = ctx.tx.identity();
 			let mut proc_ctx = RoutineProcedureContext {
-				env: RoutineEnv {
-					fragment: name.clone(),
-					identity,
-					row_count: 1,
-					runtime_context: &ctx.services.runtime_context,
-				},
+				fragment: name.clone(),
+				identity,
+				row_count: 1,
+				runtime_context: &ctx.services.runtime_context,
 				tx: ctx.tx,
 				params: &call_params,
 				catalog: &ctx.services.catalog,
@@ -708,15 +704,14 @@ impl<'a> Vm<'a> {
 			let columns_args = Columns::new(arg_columns);
 			let identity = ctx.tx.identity();
 			let mut fn_ctx = RoutineFunctionContext {
-				env: RoutineEnv {
-					fragment: name.clone(),
-					identity,
-					row_count: columns_args.row_count(),
-					runtime_context: &ctx.services.runtime_context,
-				},
+				fragment: name.clone(),
+				identity,
+				row_count: columns_args.row_count(),
+				runtime_context: &ctx.services.runtime_context,
 			};
-			let columns =
-				generator.call(&mut fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone(), false))?;
+			let columns = generator
+				.call(&mut fn_ctx, &columns_args)
+				.map_err(|e| e.with_context(name.clone(), false))?;
 			self.stack.push(Variable::columns(columns));
 			return Ok(());
 		}
@@ -752,12 +747,10 @@ impl<'a> Vm<'a> {
 		let columns_args = Columns::new(arg_columns);
 		let identity = ctx.tx.identity();
 		let mut fn_ctx = RoutineFunctionContext {
-			env: RoutineEnv {
-				fragment: name.clone(),
-				identity,
-				row_count: 1,
-				runtime_context: &ctx.services.runtime_context,
-			},
+			fragment: name.clone(),
+			identity,
+			row_count: 1,
+			runtime_context: &ctx.services.runtime_context,
 		};
 		let result_columns =
 			function.call(&mut fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone(), false))?;

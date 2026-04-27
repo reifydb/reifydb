@@ -4,7 +4,7 @@
 use std::sync::LazyLock;
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -71,39 +71,31 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for CancelRunProcedure {
 
 		// Update run status to cancelled
 		ctx.tx.rql(
-			&format!(
-				"UPDATE forge::runs {{ status: \"cancelled\", finished_at: datetime::now() }} \
-				 FILTER id == uuid::v4(\"{run_id_str}\")"
-			),
+			&format!("UPDATE forge::runs {{ status: \"cancelled\", finished_at: datetime::now() }} \
+				 FILTER id == uuid::v4(\"{run_id_str}\")"),
 			Params::None,
 		)
 		.check()?;
 
 		// Skip all pending and blocked job_runs
 		ctx.tx.rql(
-			&format!(
-				"UPDATE forge::job_runs {{ status: \"skipped\" }} \
-				 FILTER run_id == uuid::v4(\"{run_id_str}\") AND status == \"pending\""
-			),
+			&format!("UPDATE forge::job_runs {{ status: \"skipped\" }} \
+				 FILTER run_id == uuid::v4(\"{run_id_str}\") AND status == \"pending\""),
 			Params::None,
 		)
 		.check()?;
 
 		ctx.tx.rql(
-			&format!(
-				"UPDATE forge::job_runs {{ status: \"skipped\" }} \
-				 FILTER run_id == uuid::v4(\"{run_id_str}\") AND status == \"blocked\""
-			),
+			&format!("UPDATE forge::job_runs {{ status: \"skipped\" }} \
+				 FILTER run_id == uuid::v4(\"{run_id_str}\") AND status == \"blocked\""),
 			Params::None,
 		)
 		.check()?;
 
 		// Skip all pending step_runs
 		ctx.tx.rql(
-			&format!(
-				"UPDATE forge::step_runs {{ status: \"skipped\" }} \
-				 FILTER run_id == uuid::v4(\"{run_id_str}\") AND status == \"pending\""
-			),
+			&format!("UPDATE forge::step_runs {{ status: \"skipped\" }} \
+				 FILTER run_id == uuid::v4(\"{run_id_str}\") AND status == \"pending\""),
 			Params::None,
 		)
 		.check()?;

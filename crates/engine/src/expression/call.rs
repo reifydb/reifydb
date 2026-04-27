@@ -4,9 +4,7 @@
 use reifydb_core::value::column::{
 	ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupByView,
 };
-use reifydb_routine::routine::{
-	FunctionContext, FunctionKind, RoutineEnv, RoutineError,
-};
+use reifydb_routine::routine::{FunctionKind, context::FunctionContext, error::RoutineError};
 use reifydb_rql::expression::CallExpression;
 use reifydb_type::{
 	error::Error,
@@ -37,22 +35,21 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 	})?;
 
 	let mut fn_ctx = FunctionContext {
-		env: RoutineEnv {
-			fragment: fn_fragment.clone(),
-			identity: ctx.identity,
-			row_count: ctx.row_count,
-			runtime_context: ctx.runtime_context,
-		},
+		fragment: fn_fragment.clone(),
+		identity: ctx.identity,
+		row_count: ctx.row_count,
+		runtime_context: ctx.runtime_context,
 	};
 
 	// Aggregate scalar-context fast path (e.g. `sum(x)` inside a SELECT projection
 	// during GROUP-BY-less aggregation). Mirrors today's behaviour: build a single
 	// group, run the accumulator, return the finalised value.
 	if ctx.is_aggregate_context && routine.kinds().contains(&FunctionKind::Aggregate) {
-		let mut accumulator = routine.accumulator(&mut fn_ctx).ok_or_else(|| RoutineError::FunctionExecutionFailed {
-			function: fn_fragment.clone(),
-			reason: format!("Function {} is not an aggregate", function_name),
-		})?;
+		let mut accumulator =
+			routine.accumulator(&mut fn_ctx).ok_or_else(|| RoutineError::FunctionExecutionFailed {
+				function: fn_fragment.clone(),
+				reason: format!("Function {} is not an aggregate", function_name),
+			})?;
 
 		let column = if call.args.is_empty() {
 			ColumnWithName {

@@ -26,7 +26,7 @@ use reifydb_engine::{
 	expression::{cast::cast_column_data, context::EvalContext},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::routine::Routines;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_type::{
 	Result,

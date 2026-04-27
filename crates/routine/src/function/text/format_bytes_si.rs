@@ -8,7 +8,7 @@ use crate::{
 	function::text::format_bytes::{
 		format_bytes_internal, process_decimal_column, process_float_column, process_int_column,
 	},
-	routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo},
+	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
 };
 
 const SI_UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -37,10 +37,6 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
@@ -48,7 +44,7 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -81,7 +77,7 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 			}
 			other => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
-					function: ctx.env.fragment.clone(),
+					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![
 						Type::Int1,
@@ -108,6 +104,12 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 			},
 			None => result_data,
 		};
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for FormatBytesSi {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

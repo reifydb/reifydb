@@ -14,7 +14,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Clamp {
 	info: RoutineInfo,
@@ -441,10 +441,6 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, input_types: &[Type]) -> Type {
 		if input_types.len() >= 3
 			&& input_types[0].is_number()
@@ -460,7 +456,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 3 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 3,
 				actual: args.len(),
 			});
@@ -798,7 +794,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 
 				if !v_type.is_number() {
 					return Err(RoutineError::FunctionInvalidArgumentType {
-						function: ctx.env.fragment.clone(),
+						function: ctx.fragment.clone(),
 						argument_index: 0,
 						expected: InputTypes::numeric().expected_at(0).to_vec(),
 						actual: v_type,
@@ -806,7 +802,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				}
 				if !lo_type.is_number() {
 					return Err(RoutineError::FunctionInvalidArgumentType {
-						function: ctx.env.fragment.clone(),
+						function: ctx.fragment.clone(),
 						argument_index: 1,
 						expected: InputTypes::numeric().expected_at(0).to_vec(),
 						actual: lo_type,
@@ -814,7 +810,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				}
 				if !hi_type.is_number() {
 					return Err(RoutineError::FunctionInvalidArgumentType {
-						function: ctx.env.fragment.clone(),
+						function: ctx.fragment.clone(),
 						argument_index: 2,
 						expected: InputTypes::numeric().expected_at(0).to_vec(),
 						actual: hi_type,
@@ -855,6 +851,12 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 			result_data
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for Clamp {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

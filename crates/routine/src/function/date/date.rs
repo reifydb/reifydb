@@ -32,10 +32,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateDate {
 		&INFO
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Date // Returns the Date part of a DateTime
 	}
@@ -47,7 +43,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateDate {
 	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> ScalarFunctionResult<Columns> {
 		if args.len() != 1 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -59,7 +55,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateDate {
 
 		if !data.get_type().is_datetime() {
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: InputTypes::DateTime.expected_at(0).to_vec(),
 				actual: data.get_type(),
@@ -77,6 +73,12 @@ impl<'a> Routine<FunctionContext<'a>> for DateDate {
 			}
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+	}
+}
+
+impl Function for DateDate {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

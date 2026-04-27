@@ -10,7 +10,7 @@ pub mod set;
 
 use std::sync::Arc;
 
-use crate::routine::RoutinesConfigurator;
+use crate::routine::registry::RoutinesConfigurator;
 
 /// Register all built-in native procedures directly into a `Routines` builder.
 pub fn default_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfigurator {

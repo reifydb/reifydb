@@ -21,7 +21,9 @@ use reifydb_type::{
 	},
 };
 
-use crate::routine::{Accumulator, FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{
+	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 
 pub struct Sum {
 	info: RoutineInfo,
@@ -46,10 +48,6 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar, FunctionKind::Aggregate]
-	}
-
 	fn return_type(&self, input_types: &[Type]) -> Type {
 		input_types.first().cloned().unwrap_or(Type::Int8)
 	}
@@ -62,7 +60,7 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 		// SCALAR: Horizontal Sum (summing columns in each row)
 		if args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: 0,
 			});
@@ -78,10 +76,16 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 			results.push(Box::new(val1));
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), ColumnBuffer::any(results))]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::any(results))]))
+	}
+}
+
+impl Function for Sum {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar, FunctionKind::Aggregate]
 	}
 
-	fn accumulator(&self, _ctx: &mut FunctionContext<'a>) -> Option<Box<dyn Accumulator>> {
+	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(SumAccumulator::new()))
 	}
 }

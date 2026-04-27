@@ -5,7 +5,7 @@ use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::{Type, input_types::InputTypes};
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Log10 {
 	info: RoutineInfo,
@@ -60,10 +60,6 @@ impl<'a> Routine<FunctionContext<'a>> for Log10 {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Float8
 	}
@@ -71,7 +67,7 @@ impl<'a> Routine<FunctionContext<'a>> for Log10 {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 1 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: args.len(),
 			});
@@ -83,7 +79,7 @@ impl<'a> Routine<FunctionContext<'a>> for Log10 {
 
 		if !data.get_type().is_number() {
 			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: InputTypes::numeric().expected_at(0).to_vec(),
 				actual: data.get_type(),
@@ -116,6 +112,12 @@ impl<'a> Routine<FunctionContext<'a>> for Log10 {
 			result_data
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for Log10 {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

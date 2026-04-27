@@ -50,7 +50,7 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::routine::Routines;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{
 	Expression,
 	name::{collect_all_column_names, column_name_from_expression},
@@ -183,7 +183,8 @@ pub struct WindowOperator {
 impl WindowOperator {
 	pub fn new(config: WindowConfig) -> Self {
 		let symbols = SymbolTable::new();
-		let compile_ctx = CompileContext {			symbols: &symbols,
+		let compile_ctx = CompileContext {
+			symbols: &symbols,
 		};
 
 		// Compile group_by expressions
@@ -253,7 +254,8 @@ impl WindowOperator {
 	fn eval_session(&self, is_aggregate: bool) -> EvalContext<'_> {
 		EvalContext {
 			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,			routines: &self.routines,
+			symbols: &EMPTY_SYMBOL_TABLE,
+			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),

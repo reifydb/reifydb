@@ -11,7 +11,7 @@ use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
 };
-use reifydb_routine::routine::RoutinesConfigurator;
+use reifydb_routine::routine::registry::RoutinesConfigurator;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -59,10 +59,8 @@ pub struct ServerBuilder {
 	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	request_interceptors: Vec<Arc<dyn RequestInterceptor>>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
-	routines_configurator:
-		Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
-	handlers_configurator:
-		Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	#[cfg(feature = "sub_tracing")]

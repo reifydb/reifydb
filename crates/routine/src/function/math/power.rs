@@ -14,7 +14,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Power {
 	info: RoutineInfo,
@@ -450,10 +450,6 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, input_types: &[Type]) -> Type {
 		if input_types.len() >= 2 {
 			promote_two(input_types[0].clone(), input_types[1].clone())
@@ -465,7 +461,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -805,7 +801,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 
 				if !base_type.is_number() || !exp_type.is_number() {
 					return Err(RoutineError::FunctionInvalidArgumentType {
-						function: ctx.env.fragment.clone(),
+						function: ctx.fragment.clone(),
 						argument_index: 0,
 						expected: InputTypes::numeric().expected_at(0).to_vec(),
 						actual: base_type,
@@ -840,6 +836,12 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 			result_data
 		};
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for Power {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -87,7 +87,8 @@ pub(crate) fn evaluate_returning(
 		return Ok(columns);
 	}
 
-	let compile_ctx = CompileContext {		symbols,
+	let compile_ctx = CompileContext {
+		symbols,
 	};
 
 	let compiled: Vec<CompiledExpr> = returning_exprs
@@ -98,7 +99,8 @@ pub(crate) fn evaluate_returning(
 	let row_count = input.row_count();
 	let base = EvalContext {
 		params: &Params::None,
-		symbols,		routines: &services.routines,
+		symbols,
+		routines: &services.routines,
 		runtime_context: &services.runtime_context,
 		arena: None,
 		identity: IdentityId::root(),

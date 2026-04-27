@@ -77,7 +77,8 @@ impl QueryNode for SortNode {
 			None => return Ok(None),
 		};
 
-		let transform_ctx = TransformContext {			routines: &ctx.services.routines,
+		let transform_ctx = TransformContext {
+			routines: &ctx.services.routines,
 			runtime_context: &ctx.services.runtime_context,
 			params: &ctx.params,
 		};

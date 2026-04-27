@@ -4,7 +4,7 @@
 use std::sync::LazyLock;
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	Result as TypeResult,
@@ -95,8 +95,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for CompleteJobRunProcedure {
 		}
 
 		// Get the job_run to find run_id and job_id
-		let job_run_result = ctx.tx
-			.rql(
+		let job_run_result =
+			ctx.tx.rql(
 				&format!("FROM forge::job_runs | FILTER id == uuid::v4(\"{job_run_id_str}\")"),
 				Params::None,
 			)
@@ -160,8 +160,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for CompleteJobRunProcedure {
 
 		if all_terminal {
 			// Check if any job_run failed
-			let any_failed = ctx.tx
-				.rql(
+			let any_failed =
+				ctx.tx.rql(
 					&format!(
 						"FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND status == \"failed\""
 					),

@@ -19,7 +19,9 @@ use reifydb_type::{
 	},
 };
 
-use crate::routine::{Accumulator, FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{
+	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 
 pub struct Avg {
 	info: RoutineInfo,
@@ -44,10 +46,6 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar, FunctionKind::Aggregate]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Float8
 	}
@@ -59,7 +57,7 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 1,
 				actual: 0,
 			});
@@ -203,7 +201,7 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 				}
 				other => {
 					return Err(RoutineError::FunctionInvalidArgumentType {
-						function: ctx.env.fragment.clone(),
+						function: ctx.fragment.clone(),
 						argument_index: col_idx,
 						expected: self.accepted_types().expected_at(0).to_vec(),
 						actual: other.get_type(),
@@ -226,12 +224,18 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 		}
 
 		Ok(Columns::new(vec![ColumnWithName::new(
-			ctx.env.fragment.clone(),
+			ctx.fragment.clone(),
 			ColumnBuffer::float8_with_bitvec(data, valids),
 		)]))
 	}
+}
 
-	fn accumulator(&self, _ctx: &mut FunctionContext<'a>) -> Option<Box<dyn Accumulator>> {
+impl Function for Avg {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar, FunctionKind::Aggregate]
+	}
+
+	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(AvgAccumulator::new()))
 	}
 }

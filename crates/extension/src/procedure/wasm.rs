@@ -5,7 +5,7 @@
 
 use postcard::to_stdvec;
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_sdk::{error::FFIError, marshal::wasm::unmarshal_columns_from_bytes};
 use reifydb_type::{error::Error, value::r#type::Type};
 

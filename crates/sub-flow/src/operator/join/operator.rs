@@ -23,7 +23,7 @@ use reifydb_engine::{
 	},
 	vm::{executor::Executor, stack::SymbolTable},
 };
-use reifydb_routine::routine::Routines;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{
 	context::RuntimeContext,
@@ -100,7 +100,8 @@ impl JoinOperator {
 		let row_number_provider = RowNumberProvider::new(node);
 
 		// Create compile context with empty symbol table
-		let compile_ctx = CompileContext {			symbols: &EMPTY_SYMBOL_TABLE,
+		let compile_ctx = CompileContext {
+			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 
 		// Compile expressions at construction time
@@ -156,9 +157,10 @@ impl JoinOperator {
 			return Ok(Vec::new());
 		}
 
-				let session = EvalContext {
+		let session = EvalContext {
 			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,			routines: &self.routines,
+			symbols: &EMPTY_SYMBOL_TABLE,
+			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),

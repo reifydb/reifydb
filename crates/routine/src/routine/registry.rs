@@ -11,28 +11,14 @@ use std::{
 use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_type::value::sumtype::VariantRef;
 
-use super::{
-	FunctionKind, Routine,
-	context::{FunctionContext, ProcedureContext},
-};
-
-/// Trait-object alias for a function routine.
-///
-/// `for<'a> Routine<FunctionContext<'a>>` reads as "implements Routine for
-/// every choice of `'a`" — required because `FunctionContext<'a>` carries
-/// borrowed catalog/runtime/IOC handles whose lifetime is determined by the
-/// dispatch site, not the registration site.
-pub type DynFunction = dyn for<'a> Routine<FunctionContext<'a>>;
-
-/// Trait-object alias for a procedure routine.
-pub type DynProcedure = dyn for<'a, 'tx> Routine<ProcedureContext<'a, 'tx>>;
+use super::{Function, FunctionKind, Procedure};
 
 /// Unified registry for all routines (functions and procedures).
 ///
-/// Internally splits by context type because `Routine<FunctionContext>` and
-/// `Routine<ProcedureContext>` are different trait-object types — there is no
-/// way to put both in a single map. Callers see one `Routines` handle with one
-/// public API; the split is invisible above this module.
+/// Internally splits by trait-object type because `dyn Function` and
+/// `dyn Procedure` are distinct  - there is no way to put both in a single
+/// map. Callers see one `Routines` handle with one public API; the split is
+/// invisible above this module.
 #[derive(Clone)]
 pub struct Routines(Arc<RoutinesInner>);
 
@@ -59,22 +45,22 @@ impl Deref for Routines {
 }
 
 pub struct RoutinesInner {
-	functions: HashMap<String, Arc<DynFunction>>,
-	procedures: HashMap<String, Arc<DynProcedure>>,
+	functions: HashMap<String, Arc<dyn Function>>,
+	procedures: HashMap<String, Arc<dyn Procedure>>,
 	handlers: RwLock<EventHandlerState>,
 }
 
 struct EventHandlerState {
-	resolved: HashMap<VariantRef, Vec<Arc<DynProcedure>>>,
-	deferred: Vec<(String, Arc<DynProcedure>)>,
+	resolved: HashMap<VariantRef, Vec<Arc<dyn Procedure>>>,
+	deferred: Vec<(String, Arc<dyn Procedure>)>,
 }
 
 impl RoutinesInner {
-	pub fn get_function(&self, name: &str) -> Option<Arc<DynFunction>> {
+	pub fn get_function(&self, name: &str) -> Option<Arc<dyn Function>> {
 		self.functions.get(name).cloned()
 	}
 
-	pub fn get_procedure(&self, name: &str) -> Option<Arc<DynProcedure>> {
+	pub fn get_procedure(&self, name: &str) -> Option<Arc<dyn Procedure>> {
 		self.procedures.get(name).cloned()
 	}
 
@@ -86,15 +72,15 @@ impl RoutinesInner {
 		self.procedures.contains_key(name)
 	}
 
-	pub fn get_scalar_function(&self, name: &str) -> Option<Arc<DynFunction>> {
+	pub fn get_scalar_function(&self, name: &str) -> Option<Arc<dyn Function>> {
 		self.functions.get(name).cloned().filter(|f| f.kinds().contains(&FunctionKind::Scalar))
 	}
 
-	pub fn get_aggregate_function(&self, name: &str) -> Option<Arc<DynFunction>> {
+	pub fn get_aggregate_function(&self, name: &str) -> Option<Arc<dyn Function>> {
 		self.functions.get(name).cloned().filter(|f| f.kinds().contains(&FunctionKind::Aggregate))
 	}
 
-	pub fn get_generator_function(&self, name: &str) -> Option<Arc<DynFunction>> {
+	pub fn get_generator_function(&self, name: &str) -> Option<Arc<dyn Function>> {
 		self.functions.get(name).cloned().filter(|f| f.kinds().contains(&FunctionKind::Generator))
 	}
 
@@ -133,7 +119,7 @@ impl RoutinesInner {
 	/// Resolve event handlers bound to a sumtype variant. Lazy: deferred
 	/// handlers are resolved on first dispatch using the materialized catalog
 	/// to look up their target `VariantRef`.
-	pub fn get_handlers(&self, catalog: &MaterializedCatalog, variant: VariantRef) -> Vec<Arc<DynProcedure>> {
+	pub fn get_handlers(&self, catalog: &MaterializedCatalog, variant: VariantRef) -> Vec<Arc<dyn Procedure>> {
 		{
 			let mut state = self.handlers.write().unwrap();
 			if !state.deferred.is_empty() {
@@ -156,9 +142,9 @@ impl RoutinesInner {
 }
 
 pub struct RoutinesConfigurator {
-	functions: HashMap<String, Arc<DynFunction>>,
-	procedures: HashMap<String, Arc<DynProcedure>>,
-	deferred_handlers: Vec<(String, Arc<DynProcedure>)>,
+	functions: HashMap<String, Arc<dyn Function>>,
+	procedures: HashMap<String, Arc<dyn Procedure>>,
+	deferred_handlers: Vec<(String, Arc<dyn Procedure>)>,
 }
 
 impl RoutinesConfigurator {
@@ -172,14 +158,14 @@ impl RoutinesConfigurator {
 
 	/// Register a function. The impl block (`impl Routine<FunctionContext>`)
 	/// determines that this is a function rather than a procedure.
-	pub fn register_function(mut self, routine: Arc<DynFunction>) -> Self {
+	pub fn register_function(mut self, routine: Arc<dyn Function>) -> Self {
 		self.functions.insert(routine.info().name.clone(), routine);
 		self
 	}
 
 	/// Register a procedure. The impl block (`impl Routine<ProcedureContext>`)
 	/// determines that this is a procedure rather than a function.
-	pub fn register_procedure(mut self, routine: Arc<DynProcedure>) -> Self {
+	pub fn register_procedure(mut self, routine: Arc<dyn Procedure>) -> Self {
 		self.procedures.insert(routine.info().name.clone(), routine);
 		self
 	}
@@ -187,8 +173,8 @@ impl RoutinesConfigurator {
 	/// Register an event handler procedure by sumtype-variant path.
 	///
 	/// `event_path` uses the format `"namespace::event_name::VariantName"`.
-	/// Resolution is lazy — the handler is resolved on first dispatch.
-	pub fn register_handler(mut self, event_path: &str, routine: Arc<DynProcedure>) -> Self {
+	/// Resolution is lazy  - the handler is resolved on first dispatch.
+	pub fn register_handler(mut self, event_path: &str, routine: Arc<dyn Procedure>) -> Self {
 		self.deferred_handlers.push((event_path.to_string(), routine));
 		self
 	}

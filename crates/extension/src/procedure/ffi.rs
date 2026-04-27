@@ -22,7 +22,7 @@ use reifydb_abi::{
 	procedure::{descriptor::ProcedureDescriptorFFI, vtable::ProcedureVTableFFI},
 };
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_sdk::ffi::arena::Arena;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::r#type::Type;
@@ -40,7 +40,7 @@ pub struct NativeProcedureFFI {
 	vtable: ProcedureVTableFFI,
 	/// Pointer to the FFI procedure instance.
 	/// Wrapped in a Mutex because the FFI vtable's `call` is not declared
-	/// thread-safe at the ABI level — the host serialises invocations.
+	/// thread-safe at the ABI level  - the host serialises invocations.
 	instance: Mutex<*mut c_void>,
 }
 

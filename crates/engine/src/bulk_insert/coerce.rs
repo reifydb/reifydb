@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::column::Column,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_routine::routine::Routines;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 

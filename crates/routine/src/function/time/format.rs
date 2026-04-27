@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct TimeFormat {
 	info: RoutineInfo,
@@ -92,10 +92,6 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
 	}
@@ -103,7 +99,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if args.len() != 2 {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 2,
 				actual: args.len(),
 			});
@@ -141,10 +137,12 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 									result_data.push(formatted);
 								}
 								Err(reason) => {
-									return Err(RoutineError::FunctionExecutionFailed {
-										function: ctx.env.fragment.clone(),
-										reason,
-									});
+									return Err(
+										RoutineError::FunctionExecutionFailed {
+											function: ctx.fragment.clone(),
+											reason,
+										},
+									);
 								}
 							}
 						}
@@ -164,20 +162,26 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 						bitvec: bv.clone(),
 					};
 				}
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), final_data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			(ColumnBuffer::Time(_), other) => Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
 			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Time],
 				actual: other.get_type(),
 			}),
 		}
+	}
+}
+
+impl Function for TimeFormat {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

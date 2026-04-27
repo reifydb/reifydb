@@ -8,7 +8,7 @@ use reifydb_core::{
 	testing::CapturedInvocation,
 	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_routine::routine::{ProcedureContext, RoutineEnv};
+use reifydb_routine::routine::context::ProcedureContext;
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -73,7 +73,8 @@ pub(crate) fn dispatch(
 	// Evaluate dispatch fields into a Columns payload
 	let base = EvalContext {
 		params,
-		symbols: &vm.symbols,		routines: &services.routines,
+		symbols: &vm.symbols,
+		routines: &services.routines,
 		runtime_context: &services.runtime_context,
 		arena: None,
 		identity: tx.identity(),
@@ -178,20 +179,19 @@ pub(crate) fn dispatch(
 				Fragment::internal(format!("handler for {}::{}", sumtype.name, plan.variant_name));
 			let identity = tx.identity();
 			let mut ctx = ProcedureContext {
-				env: RoutineEnv {
-					fragment: handler_fragment.clone(),
-					identity,
-					row_count: 1,
-					runtime_context: &services.runtime_context,
-				},
+				fragment: handler_fragment.clone(),
+				identity,
+				row_count: 1,
+				runtime_context: &services.runtime_context,
 				tx,
 				params: &call_params,
 				catalog: &services.catalog,
 				ioc: &services.ioc,
 			};
 			let empty = Columns::empty();
-			let _result =
-				native_proc.call(&mut ctx, &empty).map_err(|e| e.with_context(handler_fragment, true))?;
+			let _result = native_proc
+				.call(&mut ctx, &empty)
+				.map_err(|e| e.with_context(handler_fragment, true))?;
 		}
 	}
 

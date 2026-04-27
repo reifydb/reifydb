@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Now {
 	info: RoutineInfo,
@@ -29,10 +29,6 @@ impl<'a> Routine<FunctionContext<'a>> for Now {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Int8
 	}
@@ -40,18 +36,24 @@ impl<'a> Routine<FunctionContext<'a>> for Now {
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
 		if !args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {
-				function: ctx.env.fragment.clone(),
+				function: ctx.fragment.clone(),
 				expected: 0,
 				actual: args.len(),
 			});
 		}
 
-		let millis = ctx.env.runtime_context.clock.now_millis() as i64;
-		let row_count = ctx.env.row_count.max(1);
+		let millis = ctx.runtime_context.clock.now_millis() as i64;
+		let row_count = ctx.row_count.max(1);
 		let data = vec![millis; row_count];
 		let bitvec = vec![true; row_count];
 
 		let result_data = ColumnBuffer::int8_with_bitvec(data, bitvec);
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), result_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
+	}
+}
+
+impl Function for Now {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

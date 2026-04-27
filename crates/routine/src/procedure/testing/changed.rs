@@ -14,7 +14,7 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
-use crate::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 /// Identifies the primitive type category for a `testing::*::changed()` procedure.
 pub struct TestingChanged {

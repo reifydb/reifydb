@@ -7,7 +7,7 @@ use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_extension::transform::registry::TransformsConfigurator;
-use reifydb_routine::routine::RoutinesConfigurator;
+use reifydb_routine::routine::registry::RoutinesConfigurator;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -33,10 +33,8 @@ pub struct EmbeddedBuilder {
 	runtime_config: Option<SharedRuntimeConfig>,
 	interceptors: InterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
-	routines_configurator:
-		Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
-	handlers_configurator:
-		Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,

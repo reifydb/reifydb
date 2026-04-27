@@ -20,12 +20,14 @@ pub mod uuid;
 
 use std::sync::Arc;
 
-use crate::function::uuid::{v4::UuidV4, v7::UuidV7};
+use crate::{
+	function::uuid::{v4::UuidV4, v7::UuidV7},
+	routine::registry::RoutinesConfigurator,
+};
 
 /// Register all built-in native functions directly into a `Routines` builder.
-pub fn default_native_functions(builder: crate::routine::RoutinesConfigurator) -> crate::routine::RoutinesConfigurator {
-	builder
-		.register_function(Arc::new(math::sum::Sum::new()))
+pub fn default_native_functions(builder: RoutinesConfigurator) -> RoutinesConfigurator {
+	builder.register_function(Arc::new(math::sum::Sum::new()))
 		.register_function(Arc::new(math::avg::Avg::new()))
 		.register_function(Arc::new(math::count::Count::new()))
 		.register_function(Arc::new(math::min::Min::new()))

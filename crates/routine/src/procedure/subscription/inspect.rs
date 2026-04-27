@@ -13,7 +13,7 @@ use reifydb_type::{
 	value::{Value, r#type::Type},
 };
 
-use crate::routine::{ProcedureContext, Routine, RoutineError, RoutineInfo};
+use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("inspect_subscription"));
 
@@ -44,10 +44,12 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for InspectSubscription {
 		let subscription_id_value = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => match &args[0] {
 				Value::Uint8(id) => *id,
-				Value::Utf8(s) => s.parse::<u64>().map_err(|_| RoutineError::ProcedureExecutionFailed {
-					procedure: Fragment::internal("inspect_subscription"),
-					reason: "Invalid subscription_id format".to_string(),
-				})?,
+				Value::Utf8(s) => {
+					s.parse::<u64>().map_err(|_| RoutineError::ProcedureExecutionFailed {
+						procedure: Fragment::internal("inspect_subscription"),
+						reason: "Invalid subscription_id format".to_string(),
+					})?
+				}
 				_ => {
 					return Err(RoutineError::ProcedureExecutionFailed {
 						procedure: Fragment::internal("inspect_subscription"),
@@ -71,7 +73,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for InspectSubscription {
 
 		// Resolve SubscriptionInspector from IoC (registered by sub-subscription factory)
 		let inspector =
-			ctx.ioc.resolve::<SubscriptionInspectorRef>().expect("SubscriptionInspector not registered in IoC");
+			ctx.ioc.resolve::<SubscriptionInspectorRef>()
+				.expect("SubscriptionInspector not registered in IoC");
 
 		match inspector.inspect(subscription_id) {
 			Some(columns) => Ok(columns),

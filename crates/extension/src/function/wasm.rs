@@ -4,7 +4,9 @@
 //! WASM scalar function implementation that executes WebAssembly modules as scalar functions
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_routine::routine::{FunctionContext, FunctionKind, Routine, RoutineError, RoutineInfo};
+use reifydb_routine::routine::{
+	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 use reifydb_sdk::marshal::wasm::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
@@ -57,10 +59,6 @@ impl<'a> Routine<FunctionContext<'a>> for WasmScalarFunction {
 		&self.info
 	}
 
-	fn kinds(&self) -> &[FunctionKind] {
-		&[FunctionKind::Scalar]
-	}
-
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Any
 	}
@@ -78,12 +76,18 @@ impl<'a> Routine<FunctionContext<'a>> for WasmScalarFunction {
 		match output_columns.first() {
 			Some(col) => {
 				let data = col.data().clone();
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
 			}
 			None => {
 				let data = ColumnBuffer::none_typed(Type::Any, args.row_count());
-				Ok(Columns::new(vec![ColumnWithName::new(ctx.env.fragment.clone(), data)]))
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
 			}
 		}
+	}
+}
+
+impl Function for WasmScalarFunction {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

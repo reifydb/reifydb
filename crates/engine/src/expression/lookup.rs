@@ -169,7 +169,7 @@ pub mod tests {
 		interface::identifier::{ColumnIdentifier, ColumnShape},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_routine::routine::Routines;
+	use reifydb_routine::routine::registry::Routines;
 	use reifydb_rql::expression::ColumnExpression;
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
