@@ -2207,7 +2207,7 @@ impl<'bump> Parser<'bump> {
 						},
 						message: "ringbuffer view requires 'capacity' in WITH clause"
 							.to_string(),
-						fragment: Fragment::internal("".to_string()),
+						fragment: Fragment::internal(""),
 					})
 				})?;
 

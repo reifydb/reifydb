@@ -66,9 +66,9 @@ pub fn resolve_unresolved_source(
 		});
 	}
 
-	let namespace_fragment = Fragment::internal(ns_def.name().to_string());
+	let namespace_fragment = Fragment::internal(ns_def.name());
 	let namespace = ResolvedNamespace::new(namespace_fragment, ns_def.clone());
-	let name_fragment = Fragment::internal(name_str.to_string());
+	let name_fragment = Fragment::internal(name_str);
 	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::internal(a.text()));
 
 	// Check for user-defined virtual tables first (in any namespace)

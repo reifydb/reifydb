@@ -87,7 +87,7 @@ pub mod tests {
 
 	fn create_alias_expression(alias_name: &str, inner_expression: Expression) -> Expression {
 		Expression::Alias(AliasExpression {
-			alias: IdentExpression(Fragment::internal(alias_name.to_string())),
+			alias: IdentExpression(Fragment::internal(alias_name)),
 			expression: Box::new(inner_expression),
 			fragment: Fragment::testing_empty(),
 		})
@@ -95,7 +95,7 @@ pub mod tests {
 
 	fn create_constant_text(text: &str) -> Expression {
 		Expression::Constant(ConstantExpression::Text {
-			fragment: Fragment::internal(text.to_string()),
+			fragment: Fragment::internal(text),
 		})
 	}
 
@@ -113,7 +113,7 @@ pub mod tests {
 
 	fn create_constant_undefined() -> Expression {
 		Expression::Constant(ConstantExpression::None {
-			fragment: Fragment::internal("none".to_string()),
+			fragment: Fragment::internal("none"),
 		})
 	}
 

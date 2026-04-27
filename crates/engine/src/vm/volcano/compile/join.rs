@@ -23,7 +23,7 @@ use crate::vm::volcano::{
 
 fn effective_alias(alias: Option<Fragment>, right: &QueryPlan) -> Option<Fragment> {
 	let source_name = extract_source_name_from_query(right);
-	alias.or(source_name).or_else(|| Some(Fragment::internal("other".to_string())))
+	alias.or(source_name).or_else(|| Some(Fragment::internal("other")))
 }
 
 fn compile_equi_or_nested<'a>(

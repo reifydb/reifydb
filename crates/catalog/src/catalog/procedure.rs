@@ -359,7 +359,7 @@ impl Catalog {
 			return Err(CatalogError::CannotDropEphemeralProcedure {
 				kind: pre.kind().as_str().to_string(),
 				name: pre.name().to_string(),
-				fragment: Fragment::internal(pre.name().to_string()),
+				fragment: Fragment::internal(pre.name()),
 			}
 			.into());
 		}

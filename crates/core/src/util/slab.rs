@@ -136,11 +136,14 @@ mod tests {
 	#[test]
 	fn release_at_cap_drops_overflow() {
 		let slab: Slab<Buf> = Slab::new(2);
-		slab.release(slab.acquire());
-		slab.release(slab.acquire());
+		let a = slab.acquire();
+		let b = slab.acquire();
+		let c = slab.acquire();
+		slab.release(a);
+		slab.release(b);
 		assert_eq!(slab.len(), 2);
 		// Third release exceeds cap; slab is dropped.
-		slab.release(slab.acquire());
+		slab.release(c);
 		assert_eq!(slab.len(), 2);
 	}
 

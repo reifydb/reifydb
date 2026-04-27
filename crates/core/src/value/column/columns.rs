@@ -3,6 +3,7 @@
 
 use std::{
 	hash::Hash,
+	mem,
 	ops::{Index, IndexMut},
 };
 
@@ -18,7 +19,9 @@ use crate::{
 	encoded::shape::{RowShape, RowShapeField},
 	interface::catalog::column::Column as CatalogColumn,
 	row::Row,
-	value::column::{ColumnBuffer, ColumnWithName, array::Column, headers::ColumnHeaders},
+	value::column::{
+		ColumnBuffer, ColumnWithName, array::Column, buffer::pool::ColumnBufferPool, headers::ColumnHeaders,
+	},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,7 +187,7 @@ impl Columns {
 		let mut names = Vec::new();
 		let mut buffers = Vec::new();
 		for (name, value) in rows {
-			names.push(Fragment::internal(name.to_string()));
+			names.push(Fragment::internal(name));
 			buffers.push(value_to_buffer(value));
 		}
 		Self {
@@ -332,8 +335,7 @@ impl Columns {
 	pub fn from_rows(names: &[&str], result_rows: &[Vec<Value>]) -> Self {
 		let column_count = names.len();
 
-		let mut name_vec: Vec<Fragment> =
-			names.iter().map(|name| Fragment::internal(name.to_string())).collect();
+		let mut name_vec: Vec<Fragment> = names.iter().map(Fragment::internal).collect();
 		let mut buffers: Vec<ColumnBuffer> =
 			(0..column_count).map(|_| ColumnBuffer::none_typed(Type::Boolean, 0)).collect();
 
@@ -358,11 +360,11 @@ impl Columns {
 impl Columns {
 	pub fn empty() -> Self {
 		Self {
-			row_numbers: CowVec::new(vec![]),
-			created_at: CowVec::new(vec![]),
-			updated_at: CowVec::new(vec![]),
-			columns: CowVec::new(vec![]),
-			names: CowVec::new(vec![]),
+			row_numbers: CowVec::with_capacity(1),
+			created_at: CowVec::with_capacity(1),
+			updated_at: CowVec::with_capacity(1),
+			columns: CowVec::with_capacity(16),
+			names: CowVec::with_capacity(16),
 		}
 	}
 }
@@ -597,11 +599,7 @@ impl Columns {
 	/// the pool and replaced with `pool.acquire(...)`. New columns
 	/// (slab last held a narrower row) come from `pool.acquire`. Excess
 	/// columns (slab last held a wider row) are released to the pool.
-	pub fn reset_from_row_with_pool(
-		&mut self,
-		row: &Row,
-		pool: &crate::value::column::buffer::pool::ColumnBufferPool,
-	) {
+	pub fn reset_from_row_with_pool(&mut self, row: &Row, pool: &ColumnBufferPool) {
 		let field_count = row.shape.fields().len();
 
 		self.row_numbers.clear();
@@ -645,7 +643,7 @@ impl Columns {
 					} else {
 						pool.acquire(&column_type, 1)
 					};
-					let old = std::mem::replace(&mut columns_vec[idx], replacement);
+					let old = mem::replace(&mut columns_vec[idx], replacement);
 					pool.release(old);
 				}
 			} else {

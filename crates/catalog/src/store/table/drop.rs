@@ -62,7 +62,7 @@ pub mod tests {
 		let namespace = CatalogStore::create_namespace(
 			&mut txn,
 			NamespaceToCreate {
-				namespace_fragment: Some(Fragment::internal("test_ns".to_string())),
+				namespace_fragment: Some(Fragment::internal("test_ns")),
 				name: "test_ns".to_string(),
 				local_name: "test_ns".to_string(),
 				parent_id: NamespaceId::ROOT,

@@ -121,7 +121,7 @@ fn is_poolable(t: &Type) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_type::value::{Value, r#type::Type};
 
 	use super::{ColumnBufferPool, is_poolable};
 	use crate::value::column::buffer::ColumnBuffer;
@@ -142,7 +142,7 @@ mod tests {
 		// Push then clear to mark the buffer non-empty before release
 		// (so the capacity assertion below checks reuse, not freshness).
 		for i in 0..8i64 {
-			buf.push_value(reifydb_type::value::Value::Int8(i));
+			buf.push_value(Value::Int8(i));
 		}
 		let original_capacity = buf.capacity();
 		pool.release(buf);

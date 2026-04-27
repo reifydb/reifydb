@@ -26,7 +26,7 @@ impl Catalog {
 		namespace_id: NamespaceId,
 	) -> Result<ResolvedNamespace> {
 		let def = self.get_namespace(txn, namespace_id)?;
-		let ident = Fragment::internal(def.name().to_string());
+		let ident = Fragment::internal(def.name());
 		Ok(ResolvedNamespace::new(ident, def))
 	}
 
@@ -45,7 +45,7 @@ impl Catalog {
 	pub fn resolve_view(&self, txn: &mut Transaction<'_>, view_id: ViewId) -> Result<ResolvedView> {
 		let view = self.get_view(txn, view_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, view.namespace())?;
-		let view_ident = Fragment::internal(view.name().to_string());
+		let view_ident = Fragment::internal(view.name());
 
 		Ok(ResolvedView::new(view_ident, resolved_namespace, view))
 	}

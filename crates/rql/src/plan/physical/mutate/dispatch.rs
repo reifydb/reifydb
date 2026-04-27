@@ -46,7 +46,7 @@ impl<'bump> Compiler<'bump> {
 				kind: CatalogObjectKind::Event,
 				namespace: ns_name.clone(),
 				name: event_name.to_string(),
-				fragment: Fragment::internal(event_name.to_string()),
+				fragment: Fragment::internal(event_name),
 			}
 			.into());
 		};

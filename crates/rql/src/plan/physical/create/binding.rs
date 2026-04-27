@@ -54,7 +54,7 @@ impl<'bump> Compiler<'bump> {
 				kind: CatalogObjectKind::Procedure,
 				namespace: proc_ns_segments.join("::"),
 				name: proc_name.to_string(),
-				fragment: Fragment::internal(proc_name.to_string()),
+				fragment: Fragment::internal(proc_name),
 			}
 			.into());
 		};
@@ -64,7 +64,7 @@ impl<'bump> Compiler<'bump> {
 				let method_frag = create.protocol.method.as_ref().ok_or_else(|| {
 					CatalogError::InvalidBindingConfig {
 						reason: "HTTP binding requires `method`".to_string(),
-						fragment: Fragment::internal("method".to_string()),
+						fragment: Fragment::internal("method"),
 					}
 				})?;
 				let method_str = method_frag.text().to_ascii_uppercase();
@@ -80,7 +80,7 @@ impl<'bump> Compiler<'bump> {
 				let path_frag = create.protocol.path.as_ref().ok_or_else(|| {
 					CatalogError::InvalidBindingConfig {
 						reason: "HTTP binding requires `path`".to_string(),
-						fragment: Fragment::internal("path".to_string()),
+						fragment: Fragment::internal("path"),
 					}
 				})?;
 				let path = path_frag.text().to_string();
@@ -100,7 +100,7 @@ impl<'bump> Compiler<'bump> {
 				let rpc_name_frag = create.protocol.rpc_name.as_ref().ok_or_else(|| {
 					CatalogError::InvalidBindingConfig {
 						reason: "gRPC binding requires `name`".to_string(),
-						fragment: Fragment::internal("name".to_string()),
+						fragment: Fragment::internal("name"),
 					}
 				})?;
 				BindingProtocol::Grpc {
@@ -111,7 +111,7 @@ impl<'bump> Compiler<'bump> {
 				let rpc_name_frag = create.protocol.rpc_name.as_ref().ok_or_else(|| {
 					CatalogError::InvalidBindingConfig {
 						reason: "WS binding requires `name`".to_string(),
-						fragment: Fragment::internal("name".to_string()),
+						fragment: Fragment::internal("name"),
 					}
 				})?;
 				BindingProtocol::Ws {

@@ -51,7 +51,12 @@ pub struct SqliteConfig {
 }
 
 impl SqliteConfig {
-	/// Create a new `SqliteConfig` with the specified database path.
+	/// Balanced production defaults.
+	/// - WAL journal + NORMAL synchronous: durable across crashes, one fsync per commit
+	/// - 8 MiB page cache (2000 pages * 4 KiB) covers a typical hot working set
+	/// - 64 MiB mmap window for fast cold reads
+	/// - 4 KiB pages match the kernel page size
+	/// - Override `cache_size` / `mmap_size` via the fluent builder for unusual workloads.
 	pub fn new<P: AsRef<Path>>(path: P) -> Self {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
@@ -59,17 +64,18 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Normal,
 			temp_store: TempStore::Memory,
-			cache_size: 20000,
+			cache_size: 2000,
 			wal_autocheckpoint: 1000,
 			page_size: 4096,
-			mmap_size: 0,
+			mmap_size: 64 * 1024 * 1024,
 		}
 	}
 
 	/// Safety-first configuration optimized for data integrity.
 	/// - WAL journal mode for crash recovery
-	/// - FULL synchronous mode for maximum durability
-	/// - FILE temp store for persistence
+	/// - FULL synchronous mode forces fsync on every commit
+	/// - FILE temp store so a big sort cannot blow up RSS
+	/// - mmap disabled: reads must go through the fsync-respecting page cache
 	pub fn safe<P: AsRef<Path>>(path: P) -> Self {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
@@ -77,33 +83,37 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Full,
 			temp_store: TempStore::File,
-			cache_size: 20000,
+			cache_size: 2000,
 			wal_autocheckpoint: 1000,
 			page_size: 4096,
 			mmap_size: 0,
 		}
 	}
 
-	/// High-performance configuration optimized for speed.
-	/// - MEMORY journal mode for fastest writes
-	/// - OFF synchronous mode for minimal disk I/O
-	/// - MEMORY temp store for fastest temp operations
+	/// High-performance configuration optimized for throughput.
+	/// - WAL journal so a crash can still replay batched writes
+	/// - OFF synchronous mode skips fsync entirely (data may be lost on power loss)
+	/// - 16 KiB pages cut per-page metadata overhead for large tables
+	/// - 160 MiB page cache (10000 pages * 16 KiB) and 256 MiB mmap window
+	/// - WAL allowed to grow up to 10000 pages before checkpoint
 	pub fn fast<P: AsRef<Path>>(path: P) -> Self {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
-			journal_mode: JournalMode::Memory,
+			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
 			cache_size: 10000,
 			wal_autocheckpoint: 10000,
 			page_size: 16384,
-			mmap_size: 268435456,
+			mmap_size: 256 * 1024 * 1024,
 		}
 	}
 
-	/// Tmpfs-backed configuration for temporary database storage.
-	/// Uses /tmp which may or may not be tmpfs (system-dependent).
+	/// Tmpfs-backed configuration for ephemeral database storage.
+	/// Uses /tmp (often tmpfs). The DB file already lives in RAM, so mmap is
+	/// disabled; mmap'ing a tmpfs file would just give the process a second
+	/// resident copy of every page.
 	pub fn tmpfs() -> Self {
 		Self {
 			path: DbPath::Tmpfs(PathBuf::from(format!("/tmp/reifydb_{}.db", Uuid::new_v4()))),
@@ -111,15 +121,16 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
-			cache_size: 20000,
+			cache_size: 2000,
 			wal_autocheckpoint: 10000,
 			page_size: 16384,
-			mmap_size: 268435456,
+			mmap_size: 0,
 		}
 	}
 
-	/// In-memory configuration for production use.
-	/// Uses /dev/shm on Linux, temp dir on other platforms.
+	/// In-memory configuration backed by /dev/shm on Linux, temp dir elsewhere.
+	/// Same reasoning as `tmpfs`: the file lives in RAM, so mmap is disabled
+	/// to avoid the second resident copy.
 	pub fn in_memory() -> Self {
 		Self {
 			path: DbPath::Memory(memory_dir().join(format!("reifydb_{}.db", Uuid::new_v4()))),
@@ -127,14 +138,14 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
-			cache_size: 20000,
+			cache_size: 2000,
 			wal_autocheckpoint: 10000,
 			page_size: 16384,
-			mmap_size: 268435456,
+			mmap_size: 0,
 		}
 	}
 
-	/// Test configuration with an in-memory database.
+	/// Test configuration with an in-memory database and minimal cache.
 	/// Uses /dev/shm on Linux, temp dir on other platforms.
 	pub fn test() -> Self {
 		Self {
@@ -143,7 +154,7 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
-			cache_size: 10000,
+			cache_size: 1000,
 			wal_autocheckpoint: 10000,
 			page_size: 4096,
 			mmap_size: 0,
@@ -427,7 +438,7 @@ mod tests {
 			let config = SqliteConfig::fast(&db_file);
 
 			assert_eq!(config.path, DbPath::File(db_file));
-			assert_eq!(config.journal_mode, JournalMode::Memory);
+			assert_eq!(config.journal_mode, JournalMode::Wal);
 			assert_eq!(config.synchronous_mode, SynchronousMode::Off);
 			assert_eq!(config.temp_store, TempStore::Memory);
 			Ok(())
@@ -450,7 +461,7 @@ mod tests {
 		assert_eq!(config.journal_mode, JournalMode::Wal);
 		assert_eq!(config.synchronous_mode, SynchronousMode::Off);
 		assert_eq!(config.temp_store, TempStore::Memory);
-		assert_eq!(config.cache_size, 20000);
+		assert_eq!(config.cache_size, 2000);
 		assert_eq!(config.wal_autocheckpoint, 10000);
 	}
 

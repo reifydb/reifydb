@@ -59,8 +59,8 @@ impl<'bump> Compiler<'bump> {
 				}
 
 				let col = TableColumnToCreate {
-					name: Fragment::internal(column.name.text().to_string()),
-					fragment: Fragment::internal(column.name.text().to_string()),
+					name: Fragment::internal(column.name.text()),
+					fragment: Fragment::internal(column.name.text()),
 					constraint,
 					properties: vec![],
 					auto_increment,

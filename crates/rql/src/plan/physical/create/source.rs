@@ -27,7 +27,7 @@ impl<'bump> Compiler<'bump> {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(ns_segments.join("::"))
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Namespace,
@@ -45,7 +45,7 @@ impl<'bump> Compiler<'bump> {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(target_ns_segments.join("::"))
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Namespace,

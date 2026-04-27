@@ -54,7 +54,7 @@ impl<'bump> Compiler<'bump> {
 			.clone();
 
 		// Create resolved namespace
-		let namespace_fragment = Fragment::internal(namespace.name().to_string());
+		let namespace_fragment = Fragment::internal(namespace.name());
 		let resolved_namespace = ResolvedNamespace::new(namespace_fragment, namespace.clone());
 
 		// Create resolved sequence (using table name as sequence name)
@@ -70,7 +70,7 @@ impl<'bump> Compiler<'bump> {
 		);
 
 		// Create resolved table
-		let table_fragment = Fragment::internal(table_name.to_string());
+		let table_fragment = Fragment::internal(table_name);
 		let resolved_table = ResolvedTable::new(table_fragment, resolved_namespace, table);
 
 		// Create resolved source and column
