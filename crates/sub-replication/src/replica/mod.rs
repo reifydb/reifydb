@@ -4,3 +4,4 @@
 pub mod applier;
 #[cfg(not(reifydb_single_threaded))]
 pub mod client;
+pub mod watermark;

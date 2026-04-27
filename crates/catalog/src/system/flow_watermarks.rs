@@ -10,20 +10,20 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-use super::ids::{columns::flow_lags::*, vtable::FLOW_LAGS};
+use super::ids::{columns::flow_watermarks::*, vtable::FLOW_WATERMARKS};
 
-/// Returns the static definition for the system.flow_lags virtual table.
+/// Returns the static definition for the system.flow_watermarks virtual table.
 ///
-/// This table exposes per-source lag information for each flow,
+/// This table exposes per-source watermark information for each flow,
 /// showing how far behind each flow is for each of its subscribed sources.
-pub fn flow_lags() -> Arc<VTable> {
+pub fn flow_watermarks() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
-			id: FLOW_LAGS,
+			id: FLOW_WATERMARKS,
 			namespace: NamespaceId::SYSTEM,
-			name: "flow_lags".to_string(),
+			name: "flow_watermarks".to_string(),
 			columns: vec![
 				Column {
 					id: FLOW_ID,

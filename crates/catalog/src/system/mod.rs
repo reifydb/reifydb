@@ -20,12 +20,12 @@ pub mod enums;
 pub mod event_variants;
 pub mod events;
 pub mod flow_edges;
-pub mod flow_lags;
 pub mod flow_node_types;
 pub mod flow_nodes;
 pub mod flow_operator_inputs;
 pub mod flow_operator_outputs;
 pub mod flow_operators;
+pub mod flow_watermarks;
 pub mod flows;
 pub mod granted_roles;
 pub mod handlers;
@@ -69,12 +69,12 @@ use enums::enums;
 use event_variants::event_variants;
 use events::events;
 use flow_edges::flow_edges;
-use flow_lags::flow_lags;
 use flow_node_types::flow_node_types;
 use flow_nodes::flow_nodes;
 use flow_operator_inputs::flow_operator_inputs;
 use flow_operator_outputs::flow_operator_outputs;
 use flow_operators::flow_operators;
+use flow_watermarks::flow_watermarks;
 use flows::flows;
 use granted_roles::granted_roles;
 use handlers::handlers;
@@ -643,7 +643,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, KIND];
 		}
 
-		pub mod flow_lags {
+		pub mod flow_watermarks {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const FLOW_ID: ColumnId = ColumnId(1);
@@ -849,7 +849,7 @@ pub mod ids {
 		pub const FLOW_OPERATOR_INPUTS: VTableId = VTableId(21);
 		pub const FLOW_OPERATOR_OUTPUTS: VTableId = VTableId(22);
 		pub const RINGBUFFERS: VTableId = VTableId(23);
-		pub const FLOW_LAGS: VTableId = VTableId(31);
+		pub const FLOW_WATERMARKS: VTableId = VTableId(31);
 		pub const SHAPES: VTableId = VTableId(32);
 		pub const SHAPE_FIELDS: VTableId = VTableId(33);
 		pub const ENUMS: VTableId = VTableId(34);
@@ -929,7 +929,7 @@ pub mod ids {
 			FLOW_OPERATOR_INPUTS,
 			FLOW_OPERATOR_OUTPUTS,
 			RINGBUFFERS,
-			FLOW_LAGS,
+			FLOW_WATERMARKS,
 			SHAPES,
 			SHAPE_FIELDS,
 			ENUMS,
@@ -1027,9 +1027,9 @@ impl SystemCatalog {
 		flows()
 	}
 
-	/// Get the flow_lags virtual table definition
-	pub fn get_system_flow_lags_table() -> Arc<VTable> {
-		flow_lags()
+	/// Get the flow_watermarks virtual table definition
+	pub fn get_system_flow_watermarks_table() -> Arc<VTable> {
+		flow_watermarks()
 	}
 
 	/// Get the subscriptions virtual table definition

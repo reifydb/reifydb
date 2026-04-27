@@ -10,20 +10,27 @@ use reifydb_transaction::transaction::{Transaction, replica::ReplicaTransaction}
 use reifydb_type::Result;
 use tracing::debug;
 
-use crate::{convert::proto_entry_to_system_changes, error::ReplicationError, generated::CdcEntry};
+use crate::{
+	convert::proto_entry_to_system_changes, error::ReplicationError, generated::CdcEntry,
+	replica::watermark::ReplicaWatermark,
+};
 
 /// Applies replicated CDC entries to local storage.
 pub struct ReplicaApplier {
 	engine: StandardEngine,
 	last_applied: AtomicU64,
+	watermark: ReplicaWatermark,
 }
 
 impl ReplicaApplier {
-	pub fn new(engine: StandardEngine) -> Self {
-		let last_applied = AtomicU64::new(engine.multi().done_until().0);
+	pub fn new(engine: StandardEngine, watermark: ReplicaWatermark) -> Self {
+		let initial = engine.multi().done_until();
+		watermark.store(initial);
+		let last_applied = AtomicU64::new(initial.0);
 		Self {
 			engine,
 			last_applied,
+			watermark,
 		}
 	}
 
@@ -43,6 +50,7 @@ impl ReplicaApplier {
 		if system_changes.is_empty() {
 			self.engine.multi().advance_version_for_replica(version);
 			self.last_applied.store(version.0, Ordering::Release);
+			self.watermark.store(version);
 			return Ok(());
 		}
 
@@ -55,6 +63,7 @@ impl ReplicaApplier {
 		self.engine.multi().advance_version_for_replica(version);
 
 		self.last_applied.store(version.0, Ordering::Release);
+		self.watermark.store(version);
 		debug!(version = version.0, "Replica applied CDC entry");
 		Ok(())
 	}

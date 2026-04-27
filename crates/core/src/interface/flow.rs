@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Flow lag tracking interface for virtual table support.
+//! Flow watermark interface for virtual table support.
+
+use std::sync::Arc;
 
 use crate::interface::catalog::{flow::FlowId, shape::ShapeId};
 
-/// A row in the system.flow_lags virtual table.
+/// A row in the system.flow_watermarks virtual table.
 #[derive(Debug, Clone)]
-pub struct FlowLagRow {
+pub struct FlowWatermarkRow {
 	/// The flow ID.
 	pub flow_id: FlowId,
 	/// The shape this flow subscribes to.
@@ -16,17 +18,31 @@ pub struct FlowLagRow {
 	pub lag: u64,
 }
 
-/// Trait for providing flow lag data to virtual tables.
+/// Concrete IoC service that yields flow watermark rows.
 ///
-/// This trait is defined in the core crate to allow the engine crate
-/// to use it without depending on the sub-flow crate.
+/// The flow subsystem constructs one of these during startup with a closure
+/// that captures its internal state (tracker, engine, flow catalog). The
+/// `system.flow_watermarks` virtual table and `db.watermarks().flow()`
+/// resolve it from IoC by concrete type.
 ///
-/// Implemented by `FlowLagsProvider` in the sub-flow crate.
-/// Used by the `FlowLags` virtual table in the engine crate.
-pub trait FlowLagsProvider: Send + Sync {
-	/// Get all flow lag rows.
-	///
-	/// Returns one row per (flow, source) pair, showing how far behind
-	/// each flow is for each of its subscribed sources.
-	fn all_lags(&self) -> Vec<FlowLagRow>;
+/// Lives in `core` so downstream crates (catalog, pkg/reifydb) can name it
+/// without depending on `sub-flow` directly.
+#[derive(Clone)]
+pub struct FlowWatermarkSampler {
+	fetch: Arc<dyn Fn() -> Vec<FlowWatermarkRow> + Send + Sync>,
+}
+
+impl FlowWatermarkSampler {
+	pub fn new<F>(fetch: F) -> Self
+	where
+		F: Fn() -> Vec<FlowWatermarkRow> + Send + Sync + 'static,
+	{
+		Self {
+			fetch: Arc::new(fetch),
+		}
+	}
+
+	pub fn all(&self) -> Vec<FlowWatermarkRow> {
+		(self.fetch)()
+	}
 }

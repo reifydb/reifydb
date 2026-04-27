@@ -15,6 +15,7 @@ mod session;
 pub mod subsystem;
 pub mod system;
 pub mod vendor;
+pub mod watermarks;
 
 pub use api::{migration::Migration, *};
 pub use builder::{

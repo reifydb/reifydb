@@ -25,7 +25,7 @@ use reifydb_core::{
 	interface::{
 		WithEventBus,
 		cdc::{Cdc, CdcConsumerId},
-		flow::FlowLagsProvider,
+		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	key::{EncodableKey, cdc_consumer::CdcConsumerKey},
@@ -47,9 +47,9 @@ use crate::{
 	catalog::FlowCatalog,
 	deferred::{
 		coordinator::{CoordinatorActor, FlowConsumeRef, extract_new_flow_ids},
-		lag::FlowLags,
 		pool::PoolActor,
 		tracker::ShapeVersionTracker,
+		watermark::compute_flow_watermarks,
 		worker::FlowWorkerActor,
 	},
 	engine::FlowEngine,
@@ -310,11 +310,12 @@ impl FlowSubsystem {
 			}));
 		}
 
-		ioc.register_service::<Arc<dyn FlowLagsProvider>>(Arc::new(FlowLags::new(
-			primitive_tracker,
-			engine.clone(),
-			flow_catalog.clone(),
-		)));
+		ioc.register_service::<FlowWatermarkSampler>(FlowWatermarkSampler::new({
+			let tracker = primitive_tracker.clone();
+			let engine = engine.clone();
+			let flow_catalog = flow_catalog.clone();
+			move || compute_flow_watermarks(&tracker, &engine, &flow_catalog)
+		}));
 
 		let poll_config =
 			PollConsumerConfig::new(consumer_id, "flow-cdc-poll", Duration::from_millis(10), Some(100));

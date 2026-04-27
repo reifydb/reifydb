@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{catalog::vtable::VTable, flow::FlowLagsProvider},
+	interface::{catalog::vtable::VTable, flow::FlowWatermarkSampler},
 	util::ioc::IocContainer,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -17,26 +17,26 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes per-source lag for each flow.
+/// Virtual table that exposes per-source watermark for each flow.
 ///
 /// Each row shows how far behind a flow is for a specific source primitive.
-pub struct SystemFlowLags {
+pub struct SystemFlowWatermarks {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 	ioc: IocContainer,
 }
 
-impl SystemFlowLags {
+impl SystemFlowWatermarks {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_flow_lags_table().clone(),
+			vtable: SystemCatalog::get_system_flow_watermarks_table().clone(),
 			exhausted: false,
 			ioc,
 		}
 	}
 }
 
-impl BaseVTable for SystemFlowLags {
+impl BaseVTable for SystemFlowWatermarks {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -47,8 +47,8 @@ impl BaseVTable for SystemFlowLags {
 			return Ok(None);
 		}
 
-		let rows = match self.ioc.resolve::<Arc<dyn FlowLagsProvider>>() {
-			Ok(provider) => provider.all_lags(),
+		let rows = match self.ioc.resolve::<FlowWatermarkSampler>() {
+			Ok(source) => source.all(),
 			Err(_) => vec![],
 		};
 

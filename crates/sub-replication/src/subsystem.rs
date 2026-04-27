@@ -32,7 +32,7 @@ use crate::{
 	builder::{PrimaryConfig, ReplicaConfig, ReplicationConfig},
 	generated::reify_db_replication_server::ReifyDbReplicationServer,
 	primary::{CdcNotifyListener, service::ReplicationService},
-	replica::{applier::ReplicaApplier, client::ReplicationClient},
+	replica::{applier::ReplicaApplier, client::ReplicationClient, watermark::ReplicaWatermark},
 };
 
 pub struct ReplicationSubsystem {
@@ -185,7 +185,9 @@ impl ReplicationSubsystem {
 		let reconnect_interval = config.reconnect_interval;
 		let batch_size = config.batch_size;
 
-		let applier = ReplicaApplier::new(engine.clone());
+		let watermark = ReplicaWatermark::new();
+		engine.ioc().register_service(watermark.clone());
+		let applier = ReplicaApplier::new(engine.clone(), watermark);
 		let client = ReplicationClient::new(primary_addr, applier, reconnect_interval, batch_size);
 
 		let (shutdown_tx, shutdown_rx) = watch::channel(false);

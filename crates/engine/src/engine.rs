@@ -35,6 +35,7 @@ use reifydb_core::{
 		},
 	},
 	metric::ExecutionMetrics,
+	util::ioc::IocContainer,
 };
 use reifydb_metric::storage::metric::MetricReader;
 use reifydb_runtime::{
@@ -573,6 +574,14 @@ impl StandardEngine {
 	#[inline]
 	pub fn executor(&self) -> Executor {
 		self.executor.clone()
+	}
+
+	/// Borrow the IoC container backing this engine. Used by callers that need
+	/// to resolve services registered during construction (e.g. observability
+	/// providers).
+	#[inline]
+	pub fn ioc(&self) -> &IocContainer {
+		&self.executor.ioc
 	}
 
 	/// Get the CDC store from the IoC container.
