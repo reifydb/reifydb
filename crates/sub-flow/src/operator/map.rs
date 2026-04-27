@@ -18,7 +18,7 @@ use reifydb_engine::{
 	vm::stack::SymbolTable,
 };
 use reifydb_routine::routine::registry::Routines;
-use reifydb_rql::expression::Expression;
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	Result,
@@ -97,12 +97,7 @@ impl MapOperator {
 			let evaluated_col = compiled_expr.execute(&exec_ctx)?;
 
 			let expr = &self.expressions[i];
-			let field_name = match expr {
-				Expression::Alias(alias_expr) => alias_expr.alias.name().to_string(),
-				Expression::Column(col_expr) => col_expr.0.name.text().to_string(),
-				Expression::AccessSource(access_expr) => access_expr.column.name.text().to_string(),
-				_ => expr.full_fragment_owned().text().to_string(),
-			};
+			let field_name = display_label(expr).text().to_string();
 
 			let named_column =
 				ColumnWithName::new(Fragment::internal(field_name), evaluated_col.data().clone());

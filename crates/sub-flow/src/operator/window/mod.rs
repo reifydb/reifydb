@@ -53,7 +53,7 @@ use reifydb_engine::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{
 	Expression,
-	name::{collect_all_column_names, column_name_from_expression},
+	name::{collect_all_column_names, display_label},
 };
 use reifydb_runtime::{
 	context::RuntimeContext,
@@ -601,7 +601,7 @@ impl WindowOperator {
 		for (i, compiled_expr) in self.compiled_group_by.iter().enumerate() {
 			let col = compiled_expr.execute(&exec_ctx)?;
 			values.push(col.data().get_value(0).clone());
-			names.push(column_name_from_expression(&self.group_by[i]).text().to_string());
+			names.push(display_label(&self.group_by[i]).text().to_string());
 		}
 
 		Ok((values, names))
@@ -684,7 +684,7 @@ impl WindowOperator {
 
 			let value = agg_column.data().get_value(0);
 			result_values.push(value.clone());
-			result_names.push(column_name_from_expression(&self.aggregations[i]).text().to_string());
+			result_names.push(display_label(&self.aggregations[i]).text().to_string());
 			result_types.push(value.get_type());
 		}
 

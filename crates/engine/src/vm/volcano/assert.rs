@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
-use reifydb_rql::expression::Expression;
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
@@ -57,6 +57,7 @@ impl QueryNode for AssertNode {
 				let result = evaluate(&eval_ctx, assert_expr)?;
 
 				let frag = assert_expr.full_fragment_owned();
+				let label = display_label(assert_expr);
 				match result.data() {
 					ColumnBuffer::Bool(container) => {
 						for i in 0..row_count {
@@ -69,7 +70,7 @@ impl QueryNode for AssertNode {
 										.message
 										.clone()
 										.unwrap_or_default(),
-									expression: Some(frag.text().to_string()),
+									expression: Some(label.text().to_string()),
 								}
 								.into());
 							}
@@ -91,7 +92,7 @@ impl QueryNode for AssertNode {
 											.message
 											.clone()
 											.unwrap_or_default(),
-										expression: Some(frag
+										expression: Some(label
 											.text()
 											.to_string()),
 									}
@@ -104,7 +105,7 @@ impl QueryNode for AssertNode {
 								fragment: frag.clone(),
 								message: "assert expression must evaluate to a boolean"
 									.to_string(),
-								expression: Some(frag.text().to_string()),
+								expression: Some(label.text().to_string()),
 							}
 							.into());
 						}
@@ -114,7 +115,7 @@ impl QueryNode for AssertNode {
 							fragment: frag.clone(),
 							message: "assert expression must evaluate to a boolean"
 								.to_string(),
-							expression: Some(frag.text().to_string()),
+							expression: Some(label.text().to_string()),
 						}
 						.into());
 					}
@@ -175,6 +176,7 @@ impl QueryNode for AssertWithoutInputNode {
 			let result = evaluate(&eval_ctx, assert_expr)?;
 
 			let frag = assert_expr.full_fragment_owned();
+			let label = display_label(assert_expr);
 			match result.data() {
 				ColumnBuffer::Bool(container) => {
 					let valid = container.is_defined(0);
@@ -183,7 +185,7 @@ impl QueryNode for AssertWithoutInputNode {
 						return Err(EngineError::AssertionFailed {
 							fragment: frag.clone(),
 							message: self.message.clone().unwrap_or_default(),
-							expression: Some(frag.text().to_string()),
+							expression: Some(label.text().to_string()),
 						}
 						.into());
 					}
@@ -200,7 +202,7 @@ impl QueryNode for AssertWithoutInputNode {
 							return Err(EngineError::AssertionFailed {
 								fragment: frag.clone(),
 								message: self.message.clone().unwrap_or_default(),
-								expression: Some(frag.text().to_string()),
+								expression: Some(label.text().to_string()),
 							}
 							.into());
 						}
@@ -210,7 +212,7 @@ impl QueryNode for AssertWithoutInputNode {
 							fragment: frag.clone(),
 							message: "assert expression must evaluate to a boolean"
 								.to_string(),
-							expression: Some(frag.text().to_string()),
+							expression: Some(label.text().to_string()),
 						}
 						.into());
 					}
@@ -219,7 +221,7 @@ impl QueryNode for AssertWithoutInputNode {
 					return Err(EngineError::AssertionFailed {
 						fragment: frag.clone(),
 						message: "assert expression must evaluate to a boolean".to_string(),
-						expression: Some(frag.text().to_string()),
+						expression: Some(label.text().to_string()),
 					}
 					.into());
 				}

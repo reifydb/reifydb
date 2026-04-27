@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_rql::expression::{Expression, name::column_name_from_expression};
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, util::cowvec::CowVec};
 use tracing::instrument;
@@ -68,7 +68,7 @@ impl QueryNode for MapNode {
 			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
 			.collect();
 		self.context = Some((Arc::new(ctx.clone()), compiled));
-		let column_names = self.expressions.iter().map(column_name_from_expression).collect();
+		let column_names = self.expressions.iter().map(display_label).collect();
 		self.headers = Some(ColumnHeaders {
 			columns: column_names,
 		});

@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_rql::expression::Expression;
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{util::bitvec::BitVec, value::constraint::Constraint};
 use tracing::instrument;
@@ -262,7 +262,7 @@ pub(crate) fn resolve_is_variant_tags(
 		Expression::IsVariant(e) => {
 			let col_name = match e.expression.as_ref() {
 				Expression::Column(c) => c.0.name.text().to_string(),
-				other => other.full_fragment_owned().text().to_string(),
+				other => display_label(other).text().to_string(),
 			};
 
 			let tag_col_name = format!("{}_tag", col_name);

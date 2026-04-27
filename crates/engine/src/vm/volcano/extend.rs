@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_rql::expression::{Expression, name::column_name_from_expression};
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error, util::cowvec::CowVec};
 use tracing::instrument;
@@ -94,8 +94,7 @@ impl QueryNode for ExtendNode {
 					result.iter().take(input_column_count).map(|c| c.name().clone()).collect()
 				};
 
-				let new_names: Vec<Fragment> =
-					self.expressions.iter().map(column_name_from_expression).collect();
+				let new_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 				all_headers.extend(new_names);
 
 				self.headers = Some(ColumnHeaders {
@@ -111,8 +110,7 @@ impl QueryNode for ExtendNode {
 			&& let Some(input_headers) = self.input.headers()
 		{
 			let mut all_headers = input_headers.columns.clone();
-			let new_names: Vec<Fragment> =
-				self.expressions.iter().map(column_name_from_expression).collect();
+			let new_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 
 			for new_name in &new_names {
 				for existing_name in &all_headers {
@@ -191,7 +189,7 @@ impl Transform for ExtendNode {
 			}
 
 			new_columns.push(column);
-			new_names.push(column_name_from_expression(expr));
+			new_names.push(display_label(expr));
 		}
 
 		// Validate no duplicate column names against existing columns
@@ -291,7 +289,7 @@ impl QueryNode for ExtendWithoutInputNode {
 			new_columns.push(column);
 		}
 
-		let column_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
+		let column_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 
 		// Check for duplicate column names within the new columns
 		for i in 0..column_names.len() {

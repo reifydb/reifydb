@@ -6,202 +6,302 @@ use std::collections::HashSet;
 use reifydb_core::interface::identifier::ColumnShape;
 use reifydb_type::fragment::Fragment;
 
-use crate::expression::{ConstantExpression, Expression};
+use crate::expression::{AccessShapeExpression, ConstantExpression, Expression, ParameterExpression, PrefixOperator};
 
-/// Get the column name for an expression
-pub fn column_name_from_expression(expr: &Expression) -> Fragment {
+/// Deterministic, normalized name for an expression.
+///
+/// Two expressions that are semantically equal modulo source whitespace
+/// produce the same `canonical_name`. Used as HashMap keys, for plan
+/// equality, and (when the optimizer lands) for common-subexpression
+/// elimination. Synthesized expressions use this name everywhere.
+///
+/// Format: single space around binary operators, lowercase keywords,
+/// parseable RQL, identifiers preserved verbatim. Precedence-driven
+/// parens on children only when their precedence is lower than the
+/// parent's.
+///
+/// Note: commutative-op sorting (e.g. `a + b` vs `b + a`) is intentionally
+/// NOT performed here. Sorting belongs in a future canonicalizer pass that
+/// runs after constant folding and CSE; doing it now would silently reorder
+/// user headers on every commutative op.
+pub fn canonical_name(expr: &Expression) -> Fragment {
+	Fragment::internal(canonical_text(expr))
+}
+
+/// User-visible label for an expression.
+///
+/// For parsed expressions whose top-level node carries a single source
+/// span (constants, columns, variables, parameters, types, aliases), the
+/// label is that source slice. For everything else, the label falls back
+/// to `canonical_name` - we deliberately do NOT merge child fragments,
+/// because adjacent literal text + operator fragments produce nonsense
+/// like `Hello +World` for `"Hello " + "World"`.
+pub fn display_label(expr: &Expression) -> Fragment {
 	match expr {
 		Expression::Alias(alias_expr) => alias_expr.alias.0.clone(),
 		Expression::Column(col_expr) => col_expr.0.name.clone(),
-		Expression::AccessSource(access_expr) => access_expr.column.name.clone(),
-		_ => simplified_name(expr),
+		Expression::AccessSource(access_expr) => access_source_name(access_expr),
+		Expression::Constant(const_expr) => constant_label(const_expr),
+		Expression::Variable(var) => var.fragment.clone(),
+		Expression::Parameter(param) => match param {
+			ParameterExpression::Positional {
+				fragment,
+			}
+			| ParameterExpression::Named {
+				fragment,
+			} => fragment.clone(),
+		},
+		Expression::Type(t) => t.fragment.clone(),
+		_ => canonical_name(expr),
 	}
 }
 
-fn simplified_name(expr: &Expression) -> Fragment {
-	match expr {
-		Expression::Add(expr) => Fragment::internal(format!(
-			"{}+{}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::Sub(expr) => Fragment::internal(format!(
-			"{}-{}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::Mul(expr) => Fragment::internal(format!(
-			"{}*{}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::Div(expr) => Fragment::internal(format!(
-			"{}/{}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::Rem(expr) => Fragment::internal(format!(
-			"{}%{}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::Column(col_expr) => col_expr.0.name.clone(),
-		Expression::Constant(const_expr) => match const_expr {
-			ConstantExpression::Number {
-				fragment,
-			} => fragment.clone(),
-			ConstantExpression::Text {
-				fragment,
-			} => fragment.clone(),
-			ConstantExpression::Bool {
-				fragment,
-			} => fragment.clone(),
-			ConstantExpression::Temporal {
-				fragment,
-			} => fragment.clone(),
-			ConstantExpression::None {
-				..
-			} => Fragment::internal("none"),
-		},
-		Expression::AccessSource(access_expr) => {
-			// Extract primitive name based on the ColumnShape type
-			let shape_name = match &access_expr.column.shape {
-				ColumnShape::Qualified {
-					name,
-					..
-				} => name.text(),
-				ColumnShape::Alias(alias) => alias.text(),
-			};
+/// Backwards-compat shim. New code should call `display_label`.
+#[deprecated(note = "use display_label for header naming or canonical_name for identity")]
+pub fn column_name_from_expression(expr: &Expression) -> Fragment {
+	display_label(expr)
+}
 
-			Fragment::internal(format!("{}.{}", shape_name, access_expr.column.name.text()))
-		}
-		Expression::Call(call_expr) => Fragment::internal(format!(
-			"{}({})",
-			call_expr.func.name(),
-			call_expr
-				.args
-				.iter()
-				.map(|arg| simplified_name(arg).text().to_string())
-				.collect::<Vec<_>>()
-				.join(",")
-		)),
-		Expression::Prefix(prefix_expr) => Fragment::internal(format!(
-			"{}{}",
-			prefix_expr.operator,
-			simplified_name(&prefix_expr.expression).text()
-		)),
-		Expression::Cast(cast_expr) => simplified_name(&cast_expr.expression),
-		Expression::Alias(alias_expr) => Fragment::internal(alias_expr.alias.name()),
-		Expression::Tuple(tuple_expr) => Fragment::internal(format!(
-			"({})",
-			tuple_expr
-				.expressions
-				.iter()
-				.map(|e| simplified_name(e).text().to_string())
-				.collect::<Vec<_>>()
-				.join(",")
-		)),
-		Expression::List(list_expr) => Fragment::internal(format!(
-			"[{}]",
-			list_expr
-				.expressions
-				.iter()
-				.map(|e| simplified_name(e).text().to_string())
-				.collect::<Vec<_>>()
-				.join(",")
-		)),
-		Expression::GreaterThan(expr) => Fragment::internal(format!(
-			"{}>{}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::GreaterThanEqual(expr) => Fragment::internal(format!(
-			"{}>={}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::LessThan(expr) => Fragment::internal(format!(
-			"{}<{}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::LessThanEqual(expr) => Fragment::internal(format!(
-			"{}<={}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::Equal(expr) => Fragment::internal(format!(
-			"{}=={}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::NotEqual(expr) => Fragment::internal(format!(
-			"{}!={}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::Between(expr) => Fragment::internal(format!(
-			"{} BETWEEN {} AND {}",
-			simplified_name(&expr.value).text(),
-			simplified_name(&expr.lower).text(),
-			simplified_name(&expr.upper).text()
-		)),
-		Expression::And(expr) => Fragment::internal(format!(
-			"{}and{}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::Or(expr) => Fragment::internal(format!(
-			"{}or{}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::Xor(expr) => Fragment::internal(format!(
-			"{}xor{}",
-			simplified_name(&expr.left).text(),
-			simplified_name(&expr.right).text()
-		)),
-		Expression::Type(type_expr) => type_expr.fragment.clone(),
-		Expression::Parameter(_) => Fragment::internal("parameter"),
-		Expression::Variable(var) => Fragment::internal(format!("var_{}", var.name())),
-		Expression::If(if_expr) => Fragment::internal(format!(
-			"if({},{}{})",
-			simplified_name(&if_expr.condition).text(),
-			simplified_name(&if_expr.then_expr).text(),
-			if let Some(else_expr) = &if_expr.else_expr {
-				format!(",{}", simplified_name(else_expr).text())
-			} else {
-				String::new()
+fn canonical_text(expr: &Expression) -> String {
+	match expr {
+		Expression::Alias(alias_expr) => canonical_text(&alias_expr.expression),
+
+		Expression::Column(col_expr) => col_expr.0.name.text().to_string(),
+
+		Expression::AccessSource(access_expr) => access_source_name(access_expr).text().to_string(),
+
+		Expression::Constant(const_expr) => constant_canonical(const_expr),
+
+		Expression::Variable(var) => var.fragment.text().to_string(),
+
+		Expression::Parameter(param) => match param {
+			ParameterExpression::Positional {
+				fragment,
 			}
-		)),
-		Expression::Map(_map_expr) => Fragment::internal("map"),
-		Expression::Extend(_extend_expr) => Fragment::internal("extend"),
-		Expression::In(in_expr) => Fragment::internal(format!(
-			"{} IN {}",
-			simplified_name(&in_expr.value).text(),
-			simplified_name(&in_expr.list).text()
-		)),
-		Expression::Contains(c) => Fragment::internal(format!(
-			"{} CONTAINS {}",
-			simplified_name(&c.value).text(),
-			simplified_name(&c.list).text()
-		)),
-		Expression::SumTypeConstructor(ctor) => {
-			Fragment::internal(format!("{}::{}", ctor.sumtype_name.text(), ctor.variant_name.text()))
+			| ParameterExpression::Named {
+				fragment,
+			} => fragment.text().to_string(),
+		},
+
+		Expression::Type(t) => t.fragment.text().to_string(),
+
+		Expression::Add(e) => binary(expr, &e.left, "+", &e.right),
+		Expression::Sub(e) => binary(expr, &e.left, "-", &e.right),
+		Expression::Mul(e) => binary(expr, &e.left, "*", &e.right),
+		Expression::Div(e) => binary(expr, &e.left, "/", &e.right),
+		Expression::Rem(e) => binary(expr, &e.left, "%", &e.right),
+
+		Expression::GreaterThan(e) => binary(expr, &e.left, ">", &e.right),
+		Expression::GreaterThanEqual(e) => binary(expr, &e.left, ">=", &e.right),
+		Expression::LessThan(e) => binary(expr, &e.left, "<", &e.right),
+		Expression::LessThanEqual(e) => binary(expr, &e.left, "<=", &e.right),
+		Expression::Equal(e) => binary(expr, &e.left, "==", &e.right),
+		Expression::NotEqual(e) => binary(expr, &e.left, "!=", &e.right),
+
+		Expression::And(e) => binary(expr, &e.left, "and", &e.right),
+		Expression::Or(e) => binary(expr, &e.left, "or", &e.right),
+		Expression::Xor(e) => binary(expr, &e.left, "xor", &e.right),
+
+		Expression::Between(e) => format!(
+			"{} between {} and {}",
+			child_text(expr, &e.value),
+			child_text(expr, &e.lower),
+			child_text(expr, &e.upper)
+		),
+
+		Expression::In(e) => {
+			let kw = if e.negated {
+				"not in"
+			} else {
+				"in"
+			};
+			format!("{} {} {}", child_text(expr, &e.value), kw, child_text(expr, &e.list))
 		}
-		Expression::IsVariant(e) => Fragment::internal(format!(
-			"{} IS {}{}::{}",
-			simplified_name(&e.expression).text(),
-			match &e.namespace {
-				Some(ns) => format!("{}.", ns.text()),
+
+		Expression::Contains(e) => {
+			format!("{} contains {}", child_text(expr, &e.value), child_text(expr, &e.list))
+		}
+
+		Expression::IsVariant(e) => {
+			let ns = match &e.namespace {
+				Some(n) => format!("{}.", n.text()),
 				None => String::new(),
-			},
-			e.sumtype_name.text(),
-			e.variant_name.text()
-		)),
-		Expression::FieldAccess(fa) => {
-			Fragment::internal(format!("{}.{}", simplified_name(&fa.object).text(), fa.field.text()))
+			};
+			format!(
+				"{} is {}{}::{}",
+				child_text(expr, &e.expression),
+				ns,
+				e.sumtype_name.text(),
+				e.variant_name.text()
+			)
 		}
+
+		Expression::Prefix(e) => {
+			let op = match &e.operator {
+				PrefixOperator::Minus(_) => "-",
+				PrefixOperator::Plus(_) => "+",
+				PrefixOperator::Not(_) => "not",
+			};
+			let inner = child_text(expr, &e.expression);
+			match e.operator {
+				PrefixOperator::Not(_) => format!("{} {}", op, inner),
+				_ => format!("{}{}", op, inner),
+			}
+		}
+
+		Expression::Cast(e) => {
+			format!("cast({}, {})", canonical_text(&e.expression), e.to.fragment.text())
+		}
+
+		Expression::Call(call) => {
+			let args = call.args.iter().map(canonical_text).collect::<Vec<_>>().join(", ");
+			format!("{}({})", call.func.0.text(), args)
+		}
+
+		Expression::Tuple(t) => {
+			let items = t.expressions.iter().map(canonical_text).collect::<Vec<_>>().join(", ");
+			format!("({})", items)
+		}
+
+		Expression::List(l) => {
+			let items = l.expressions.iter().map(canonical_text).collect::<Vec<_>>().join(", ");
+			format!("[{}]", items)
+		}
+
+		Expression::Map(m) => {
+			let items = m.expressions.iter().map(canonical_text).collect::<Vec<_>>().join(", ");
+			format!("map({})", items)
+		}
+
+		Expression::Extend(e) => {
+			let items = e.expressions.iter().map(canonical_text).collect::<Vec<_>>().join(", ");
+			format!("extend({})", items)
+		}
+
+		Expression::SumTypeConstructor(ctor) => {
+			let fields = ctor
+				.columns
+				.iter()
+				.map(|(name, value)| format!("{}: {}", name.text(), canonical_text(value)))
+				.collect::<Vec<_>>()
+				.join(", ");
+			format!("{}::{}({})", ctor.sumtype_name.text(), ctor.variant_name.text(), fields)
+		}
+
+		Expression::FieldAccess(fa) => {
+			format!("{}.{}", canonical_text(&fa.object), fa.field.text())
+		}
+
+		Expression::If(if_expr) => {
+			let mut s = format!(
+				"if {} then {}",
+				canonical_text(&if_expr.condition),
+				canonical_text(&if_expr.then_expr)
+			);
+			for else_if in &if_expr.else_ifs {
+				s.push_str(&format!(
+					" else if {} then {}",
+					canonical_text(&else_if.condition),
+					canonical_text(&else_if.then_expr)
+				));
+			}
+			if let Some(else_expr) = &if_expr.else_expr {
+				s.push_str(&format!(" else {}", canonical_text(else_expr)));
+			}
+			s
+		}
+	}
+}
+
+fn binary(parent: &Expression, left: &Expression, op: &str, right: &Expression) -> String {
+	format!("{} {} {}", child_text(parent, left), op, child_text(parent, right))
+}
+
+fn child_text(parent: &Expression, child: &Expression) -> String {
+	let inner = canonical_text(child);
+	if needs_parens(parent, child) {
+		format!("({})", inner)
+	} else {
+		inner
+	}
+}
+
+fn needs_parens(parent: &Expression, child: &Expression) -> bool {
+	let p_prec = precedence(parent);
+	let c_prec = precedence(child);
+	c_prec < p_prec
+}
+
+fn precedence(expr: &Expression) -> u8 {
+	match expr {
+		Expression::Or(_) | Expression::Xor(_) => 1,
+		Expression::And(_) => 2,
+		Expression::Equal(_)
+		| Expression::NotEqual(_)
+		| Expression::GreaterThan(_)
+		| Expression::GreaterThanEqual(_)
+		| Expression::LessThan(_)
+		| Expression::LessThanEqual(_)
+		| Expression::Between(_)
+		| Expression::In(_)
+		| Expression::Contains(_)
+		| Expression::IsVariant(_) => 3,
+		Expression::Add(_) | Expression::Sub(_) => 4,
+		Expression::Mul(_) | Expression::Div(_) | Expression::Rem(_) => 5,
+		Expression::Prefix(_) => 6,
+		Expression::Alias(a) => precedence(&a.expression),
+		_ => 7,
+	}
+}
+
+fn access_source_name(access_expr: &AccessShapeExpression) -> Fragment {
+	let shape_name = match &access_expr.column.shape {
+		ColumnShape::Qualified {
+			name,
+			..
+		} => name.text(),
+		ColumnShape::Alias(alias) => alias.text(),
+	};
+	Fragment::internal(format!("{}_{}", shape_name, access_expr.column.name.text()))
+}
+
+fn constant_canonical(c: &ConstantExpression) -> String {
+	match c {
+		ConstantExpression::None {
+			..
+		} => "none".to_string(),
+		ConstantExpression::Bool {
+			fragment,
+		}
+		| ConstantExpression::Number {
+			fragment,
+		}
+		| ConstantExpression::Temporal {
+			fragment,
+		} => fragment.text().to_string(),
+		ConstantExpression::Text {
+			fragment,
+		} => format!("\"{}\"", fragment.text()),
+	}
+}
+
+fn constant_label(c: &ConstantExpression) -> Fragment {
+	match c {
+		ConstantExpression::None {
+			..
+		} => Fragment::internal("none"),
+		ConstantExpression::Bool {
+			fragment,
+		}
+		| ConstantExpression::Number {
+			fragment,
+		}
+		| ConstantExpression::Temporal {
+			fragment,
+		} => fragment.clone(),
+		ConstantExpression::Text {
+			fragment,
+		} => Fragment::internal(format!("\"{}\"", fragment.text())),
 	}
 }
 
@@ -349,13 +449,15 @@ mod tests {
 	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
 	use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
-	use super::{collect_all_column_names, collect_column_names};
+	use super::{canonical_name, collect_all_column_names, collect_column_names, display_label};
 	use crate::expression::{
-		AccessShapeExpression, AddExpression, AliasExpression, BetweenExpression, CallExpression,
-		CastExpression, ColumnExpression, ConstantExpression, ElseIfExpression, Expression,
-		FieldAccessExpression, IdentExpression, IfExpression, InExpression, IsVariantExpression,
-		ListExpression, ParameterExpression, PrefixExpression, PrefixOperator, SumTypeConstructorExpression,
-		TupleExpression, TypeExpression, VariableExpression,
+		AccessShapeExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
+		CallExpression, CastExpression, ColumnExpression, ConstantExpression, ContainsExpression,
+		ElseIfExpression, EqExpression, Expression, ExtendExpression, FieldAccessExpression,
+		GreaterThanExpression, IdentExpression, IfExpression, InExpression, IsVariantExpression,
+		LessThanExpression, ListExpression, MapExpression, MulExpression, NotEqExpression, OrExpression,
+		ParameterExpression, PrefixExpression, PrefixOperator, SubExpression, SumTypeConstructorExpression,
+		TupleExpression, TypeExpression, VariableExpression, XorExpression,
 	};
 
 	fn frag(text: &str) -> Fragment {
@@ -380,10 +482,506 @@ mod tests {
 		})
 	}
 
+	fn text(val: &str) -> Expression {
+		Expression::Constant(ConstantExpression::Text {
+			fragment: frag(val),
+		})
+	}
+
+	fn add(l: Expression, r: Expression) -> Expression {
+		Expression::Add(AddExpression {
+			left: Box::new(l),
+			right: Box::new(r),
+			fragment: frag("+"),
+		})
+	}
+
+	fn sub(l: Expression, r: Expression) -> Expression {
+		Expression::Sub(SubExpression {
+			left: Box::new(l),
+			right: Box::new(r),
+			fragment: frag("-"),
+		})
+	}
+
+	fn mul(l: Expression, r: Expression) -> Expression {
+		Expression::Mul(MulExpression {
+			left: Box::new(l),
+			right: Box::new(r),
+			fragment: frag("*"),
+		})
+	}
+
+	fn and_e(l: Expression, r: Expression) -> Expression {
+		Expression::And(AndExpression {
+			left: Box::new(l),
+			right: Box::new(r),
+			fragment: frag("and"),
+		})
+	}
+
+	fn or_e(l: Expression, r: Expression) -> Expression {
+		Expression::Or(OrExpression {
+			left: Box::new(l),
+			right: Box::new(r),
+			fragment: frag("or"),
+		})
+	}
+
+	fn xor_e(l: Expression, r: Expression) -> Expression {
+		Expression::Xor(XorExpression {
+			left: Box::new(l),
+			right: Box::new(r),
+			fragment: frag("xor"),
+		})
+	}
+
+	fn gt(l: Expression, r: Expression) -> Expression {
+		Expression::GreaterThan(GreaterThanExpression {
+			left: Box::new(l),
+			right: Box::new(r),
+			fragment: frag(">"),
+		})
+	}
+
+	fn lt(l: Expression, r: Expression) -> Expression {
+		Expression::LessThan(LessThanExpression {
+			left: Box::new(l),
+			right: Box::new(r),
+			fragment: frag("<"),
+		})
+	}
+
+	fn eq(l: Expression, r: Expression) -> Expression {
+		Expression::Equal(EqExpression {
+			left: Box::new(l),
+			right: Box::new(r),
+			fragment: frag("=="),
+		})
+	}
+
+	fn neq(l: Expression, r: Expression) -> Expression {
+		Expression::NotEqual(NotEqExpression {
+			left: Box::new(l),
+			right: Box::new(r),
+			fragment: frag("!="),
+		})
+	}
+
 	fn collect(expr: &Expression) -> HashSet<String> {
 		let mut names = HashSet::new();
 		collect_column_names(expr, &mut names);
 		names
+	}
+
+	#[test]
+	fn canonical_column() {
+		assert_eq!(canonical_name(&col("age")).text(), "age");
+	}
+
+	#[test]
+	fn canonical_constant_number() {
+		assert_eq!(canonical_name(&num("42")).text(), "42");
+	}
+
+	#[test]
+	fn canonical_constant_text_keeps_quotes() {
+		assert_eq!(canonical_name(&text("hello")).text(), "\"hello\"");
+	}
+
+	#[test]
+	fn canonical_constant_none() {
+		let none = Expression::Constant(ConstantExpression::None {
+			fragment: frag("none"),
+		});
+		assert_eq!(canonical_name(&none).text(), "none");
+	}
+
+	#[test]
+	fn canonical_add() {
+		assert_eq!(canonical_name(&add(col("a"), col("b"))).text(), "a + b");
+	}
+
+	#[test]
+	fn canonical_sub() {
+		assert_eq!(canonical_name(&sub(col("a"), col("b"))).text(), "a - b");
+	}
+
+	#[test]
+	fn canonical_and_lowercase_spaced() {
+		// Regression: was "aandb" with no spaces.
+		assert_eq!(canonical_name(&and_e(col("a"), col("b"))).text(), "a and b");
+	}
+
+	#[test]
+	fn canonical_or_lowercase_spaced() {
+		assert_eq!(canonical_name(&or_e(col("a"), col("b"))).text(), "a or b");
+	}
+
+	#[test]
+	fn canonical_xor_lowercase_spaced() {
+		assert_eq!(canonical_name(&xor_e(col("a"), col("b"))).text(), "a xor b");
+	}
+
+	#[test]
+	fn canonical_comparison_operators() {
+		assert_eq!(canonical_name(&gt(col("a"), num("0"))).text(), "a > 0");
+		assert_eq!(canonical_name(&lt(col("a"), num("0"))).text(), "a < 0");
+		assert_eq!(canonical_name(&eq(col("a"), num("0"))).text(), "a == 0");
+		assert_eq!(canonical_name(&neq(col("a"), num("0"))).text(), "a != 0");
+	}
+
+	#[test]
+	fn canonical_precedence_no_parens_when_higher_child() {
+		// a + b * c - mul has higher prec than add, no parens needed
+		let e = add(col("a"), mul(col("b"), col("c")));
+		assert_eq!(canonical_name(&e).text(), "a + b * c");
+	}
+
+	#[test]
+	fn canonical_precedence_parens_when_lower_child() {
+		// (a + b) * c - add has lower prec than mul, parens needed
+		let e = mul(add(col("a"), col("b")), col("c"));
+		assert_eq!(canonical_name(&e).text(), "(a + b) * c");
+	}
+
+	#[test]
+	fn canonical_precedence_chained_and_or() {
+		// a and b or c - or is lower than and, no parens around `a and b`
+		let e = or_e(and_e(col("a"), col("b")), col("c"));
+		assert_eq!(canonical_name(&e).text(), "a and b or c");
+	}
+
+	#[test]
+	fn canonical_precedence_or_inside_and() {
+		// a and (b or c) - or is lower than and, parens needed
+		let e = and_e(col("a"), or_e(col("b"), col("c")));
+		assert_eq!(canonical_name(&e).text(), "a and (b or c)");
+	}
+
+	#[test]
+	fn canonical_between_symmetric() {
+		let e = Expression::Between(BetweenExpression {
+			value: Box::new(col("x")),
+			lower: Box::new(num("1")),
+			upper: Box::new(num("10")),
+			fragment: frag("between"),
+		});
+		assert_eq!(canonical_name(&e).text(), "x between 1 and 10");
+	}
+
+	#[test]
+	fn canonical_in_and_not_in() {
+		let in_e = Expression::In(InExpression {
+			value: Box::new(col("status")),
+			list: Box::new(Expression::List(ListExpression {
+				expressions: vec![text("a"), text("b")],
+				fragment: frag("[]"),
+			})),
+			negated: false,
+			fragment: frag("in"),
+		});
+		assert_eq!(canonical_name(&in_e).text(), "status in [\"a\", \"b\"]");
+
+		let not_in = Expression::In(InExpression {
+			value: Box::new(col("status")),
+			list: Box::new(Expression::List(ListExpression {
+				expressions: vec![text("a")],
+				fragment: frag("[]"),
+			})),
+			negated: true,
+			fragment: frag("in"),
+		});
+		assert_eq!(canonical_name(&not_in).text(), "status not in [\"a\"]");
+	}
+
+	#[test]
+	fn canonical_contains() {
+		let e = Expression::Contains(ContainsExpression {
+			value: Box::new(col("tags")),
+			list: Box::new(text("urgent")),
+			fragment: frag("contains"),
+		});
+		assert_eq!(canonical_name(&e).text(), "tags contains \"urgent\"");
+	}
+
+	#[test]
+	fn canonical_cast_preserves_type() {
+		// Regression: was dropping the cast and returning just the inner name.
+		let e = Expression::Cast(CastExpression {
+			fragment: frag("cast"),
+			expression: Box::new(col("y")),
+			to: TypeExpression {
+				fragment: frag("Int4"),
+				ty: Type::Int4,
+			},
+		});
+		assert_eq!(canonical_name(&e).text(), "cast(y, Int4)");
+	}
+
+	#[test]
+	fn canonical_call_with_space_after_comma() {
+		let e = Expression::Call(CallExpression {
+			func: IdentExpression(frag("count")),
+			args: vec![col("price"), col("qty")],
+			fragment: frag("count()"),
+		});
+		assert_eq!(canonical_name(&e).text(), "count(price, qty)");
+	}
+
+	#[test]
+	fn canonical_map_not_hardcoded() {
+		// Regression: was hardcoded "map", losing inner expression detail.
+		let e = Expression::Map(MapExpression {
+			expressions: vec![col("a"), col("b")],
+			fragment: frag("{}"),
+		});
+		assert_eq!(canonical_name(&e).text(), "map(a, b)");
+	}
+
+	#[test]
+	fn canonical_extend_not_hardcoded() {
+		let e = Expression::Extend(ExtendExpression {
+			expressions: vec![col("x")],
+			fragment: frag("{}"),
+		});
+		assert_eq!(canonical_name(&e).text(), "extend(x)");
+	}
+
+	#[test]
+	fn canonical_tuple() {
+		let e = Expression::Tuple(TupleExpression {
+			expressions: vec![col("a"), num("1")],
+			fragment: frag("()"),
+		});
+		assert_eq!(canonical_name(&e).text(), "(a, 1)");
+	}
+
+	#[test]
+	fn canonical_list() {
+		let e = Expression::List(ListExpression {
+			expressions: vec![num("1"), num("2"), num("3")],
+			fragment: frag("[]"),
+		});
+		assert_eq!(canonical_name(&e).text(), "[1, 2, 3]");
+	}
+
+	#[test]
+	fn canonical_parameter_positional() {
+		// Regression: was hardcoded "parameter".
+		let e = Expression::Parameter(ParameterExpression::Positional {
+			fragment: frag("$1"),
+		});
+		assert_eq!(canonical_name(&e).text(), "$1");
+	}
+
+	#[test]
+	fn canonical_parameter_named() {
+		let e = Expression::Parameter(ParameterExpression::Named {
+			fragment: frag(":foo"),
+		});
+		assert_eq!(canonical_name(&e).text(), ":foo");
+	}
+
+	#[test]
+	fn canonical_variable_dollar() {
+		// Regression: was "var_x".
+		let e = Expression::Variable(VariableExpression {
+			fragment: frag("$x"),
+		});
+		assert_eq!(canonical_name(&e).text(), "$x");
+	}
+
+	#[test]
+	fn canonical_prefix_minus_no_space() {
+		let e = Expression::Prefix(PrefixExpression {
+			operator: PrefixOperator::Minus(frag("-")),
+			expression: Box::new(col("x")),
+			fragment: frag("-"),
+		});
+		assert_eq!(canonical_name(&e).text(), "-x");
+	}
+
+	#[test]
+	fn canonical_prefix_not_with_space() {
+		let e = Expression::Prefix(PrefixExpression {
+			operator: PrefixOperator::Not(frag("not")),
+			expression: Box::new(col("x")),
+			fragment: frag("not"),
+		});
+		assert_eq!(canonical_name(&e).text(), "not x");
+	}
+
+	#[test]
+	fn canonical_if_else_chain() {
+		let e = Expression::If(IfExpression {
+			condition: Box::new(col("c")),
+			then_expr: Box::new(col("t")),
+			else_ifs: vec![ElseIfExpression {
+				condition: Box::new(col("c2")),
+				then_expr: Box::new(col("t2")),
+				fragment: frag("else if"),
+			}],
+			else_expr: Some(Box::new(col("e"))),
+			fragment: frag("if"),
+		});
+		assert_eq!(canonical_name(&e).text(), "if c then t else if c2 then t2 else e");
+	}
+
+	#[test]
+	fn canonical_if_no_else() {
+		let e = Expression::If(IfExpression {
+			condition: Box::new(col("c")),
+			then_expr: Box::new(col("t")),
+			else_ifs: vec![],
+			else_expr: None,
+			fragment: frag("if"),
+		});
+		assert_eq!(canonical_name(&e).text(), "if c then t");
+	}
+
+	#[test]
+	fn canonical_alias_transparent() {
+		// Aliasing does NOT change canonical_name - the alias is purely
+		// for display.
+		let inner = add(col("a"), col("b"));
+		let aliased = Expression::Alias(AliasExpression {
+			alias: IdentExpression(frag("sum")),
+			expression: Box::new(inner.clone()),
+			fragment: frag("as"),
+		});
+		assert_eq!(canonical_name(&aliased).text(), canonical_name(&inner).text());
+		assert_eq!(canonical_name(&aliased).text(), "a + b");
+	}
+
+	#[test]
+	fn canonical_access_source_flat_underscore() {
+		let e = Expression::AccessSource(AccessShapeExpression {
+			column: ColumnIdentifier {
+				shape: ColumnShape::Alias(frag("u")),
+				name: frag("col"),
+			},
+		});
+		// Flat - underscore separator, no dot.
+		assert_eq!(canonical_name(&e).text(), "u_col");
+	}
+
+	#[test]
+	fn canonical_access_source_qualified_uses_table_name() {
+		let e = Expression::AccessSource(AccessShapeExpression {
+			column: ColumnIdentifier {
+				shape: ColumnShape::Qualified {
+					namespace: frag("ns"),
+					name: frag("users"),
+				},
+				name: frag("id"),
+			},
+		});
+		assert_eq!(canonical_name(&e).text(), "users_id");
+	}
+
+	#[test]
+	fn canonical_field_access_keeps_dot() {
+		// FieldAccess (struct field) is syntactically dotted - this is
+		// distinct from AccessSource (which is flat in column names).
+		let e = Expression::FieldAccess(FieldAccessExpression {
+			object: Box::new(col("record")),
+			field: frag("name"),
+			fragment: frag("."),
+		});
+		assert_eq!(canonical_name(&e).text(), "record.name");
+	}
+
+	#[test]
+	fn canonical_sumtype_constructor() {
+		let e = Expression::SumTypeConstructor(SumTypeConstructorExpression {
+			namespace: frag("ns"),
+			sumtype_name: frag("Status"),
+			variant_name: frag("Active"),
+			columns: vec![(frag("amount"), num("100"))],
+			fragment: frag("Status::Active"),
+		});
+		assert_eq!(canonical_name(&e).text(), "Status::Active(amount: 100)");
+	}
+
+	#[test]
+	fn canonical_is_variant_with_namespace() {
+		let e = Expression::IsVariant(IsVariantExpression {
+			expression: Box::new(col("x")),
+			namespace: Some(frag("ns")),
+			sumtype_name: frag("Status"),
+			variant_name: frag("Active"),
+			tag: None,
+			fragment: frag("is"),
+		});
+		assert_eq!(canonical_name(&e).text(), "x is ns.Status::Active");
+	}
+
+	#[test]
+	fn canonical_is_variant_without_namespace() {
+		let e = Expression::IsVariant(IsVariantExpression {
+			expression: Box::new(col("x")),
+			namespace: None,
+			sumtype_name: frag("Status"),
+			variant_name: frag("Active"),
+			tag: None,
+			fragment: frag("is"),
+		});
+		assert_eq!(canonical_name(&e).text(), "x is Status::Active");
+	}
+
+	#[test]
+	fn display_alias_visible() {
+		// Aliasing DOES change display_label.
+		let e = Expression::Alias(AliasExpression {
+			alias: IdentExpression(frag("sum")),
+			expression: Box::new(add(col("a"), col("b"))),
+			fragment: frag("as"),
+		});
+		assert_eq!(display_label(&e).text(), "sum");
+	}
+
+	#[test]
+	fn display_column_returns_name() {
+		assert_eq!(display_label(&col("age")).text(), "age");
+	}
+
+	#[test]
+	fn display_constant_text_with_quotes() {
+		assert_eq!(display_label(&text("hello")).text(), "\"hello\"");
+	}
+
+	#[test]
+	fn display_constant_number_verbatim() {
+		assert_eq!(display_label(&num("42")).text(), "42");
+	}
+
+	#[test]
+	fn display_compound_falls_back_to_canonical() {
+		// Display does NOT merge child fragments. For compound exprs it
+		// returns canonical (deterministic) instead.
+		let e = add(text("Hello "), text("World"));
+		assert_eq!(display_label(&e).text(), "\"Hello \" + \"World\"");
+		// Notably NOT "Hello +World" which is what full_fragment_owned() produces.
+	}
+
+	#[test]
+	fn display_access_source_flat() {
+		let e = Expression::AccessSource(AccessShapeExpression {
+			column: ColumnIdentifier {
+				shape: ColumnShape::Alias(frag("u")),
+				name: frag("col"),
+			},
+		});
+		assert_eq!(display_label(&e).text(), "u_col");
+	}
+
+	#[test]
+	fn display_variable_includes_dollar() {
+		let e = Expression::Variable(VariableExpression {
+			fragment: frag("$x"),
+		});
+		assert_eq!(display_label(&e).text(), "$x");
 	}
 
 	#[test]
@@ -430,12 +1028,7 @@ mod tests {
 
 	#[test]
 	fn binary_op_collects_from_both_sides() {
-		let expr = Expression::Add(AddExpression {
-			left: Box::new(col("a")),
-			right: Box::new(col("b")),
-			fragment: frag("+"),
-		});
-		let result = collect(&expr);
+		let result = collect(&add(col("a"), col("b")));
 		assert_eq!(result, HashSet::from(["a".to_string(), "b".to_string()]));
 	}
 
@@ -584,16 +1177,7 @@ mod tests {
 
 	#[test]
 	fn nested_expression_deduplicates() {
-		// a + a + b => {"a", "b"}
-		let expr = Expression::Add(AddExpression {
-			left: Box::new(Expression::Add(AddExpression {
-				left: Box::new(col("a")),
-				right: Box::new(col("a")),
-				fragment: frag("+"),
-			})),
-			right: Box::new(col("b")),
-			fragment: frag("+"),
-		});
+		let expr = add(add(col("a"), col("a")), col("b"));
 		let result = collect(&expr);
 		assert_eq!(result, HashSet::from(["a".to_string(), "b".to_string()]));
 	}

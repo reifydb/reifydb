@@ -13,7 +13,7 @@ use reifydb_core::{
 use reifydb_routine::routine::{
 	Accumulator, FunctionKind, context::FunctionContext, error::RoutineError, registry::Routines,
 };
-use reifydb_rql::expression::Expression;
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	error,
@@ -214,9 +214,8 @@ fn parse_keys_and_aggregates<'a>(
 				(alias_expr.expression.as_ref(), alias_expr.alias.0.clone())
 			}
 			expr => {
-				// Non-aliased expression, use the expression's
-				// fragment as alias
-				(expr, expr.full_fragment_owned())
+				// Non-aliased expression, derive a deterministic display label.
+				(expr, display_label(expr))
 			}
 		};
 

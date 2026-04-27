@@ -4,7 +4,7 @@
 use std::{mem::discriminant, slice::from_ref};
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_rql::expression::Expression;
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_type::{
 	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
@@ -98,27 +98,31 @@ impl CompiledExpr {
 }
 
 macro_rules! compile_arith {
-	($ctx:expr, $e:expr, $op_fn:path) => {{
+	($ctx:expr, $parent:expr, $e:expr, $op_fn:path) => {{
 		let left = compile_expression($ctx, &$e.left)?;
 		let right = compile_expression($ctx, &$e.right)?;
 		let fragment = $e.full_fragment_owned();
+		let label = display_label($parent);
 		CompiledExpr::new(move |ctx| {
 			let l = left.execute(ctx)?;
 			let r = right.execute(ctx)?;
-			$op_fn(ctx, &l, &r, || fragment.clone())
+			let mut col = $op_fn(ctx, &l, &r, || fragment.clone())?;
+			col.name = label.clone();
+			Ok(col)
 		})
 	}};
 }
 
 macro_rules! compile_compare {
-	($ctx:expr, $e:expr, $cmp_type:ty, $binary_op:expr) => {{
+	($ctx:expr, $parent:expr, $e:expr, $cmp_type:ty, $binary_op:expr) => {{
 		let left = compile_expression($ctx, &$e.left)?;
 		let right = compile_expression($ctx, &$e.right)?;
 		let fragment = $e.full_fragment_owned();
+		let label = display_label($parent);
 		CompiledExpr::new(move |ctx| {
 			let l = left.execute(ctx)?;
 			let r = right.execute(ctx)?;
-			compare_columns::<$cmp_type>(&l, &r, fragment.clone(), |f, l, r| {
+			let mut col = compare_columns::<$cmp_type>(&l, &r, fragment.clone(), |f, l, r| {
 				TypeError::BinaryOperatorNotApplicable {
 					operator: $binary_op,
 					left: l,
@@ -126,7 +130,9 @@ macro_rules! compile_compare {
 					fragment: f,
 				}
 				.into_diagnostic()
-			})
+			})?;
+			col.name = label.clone();
+			Ok(col)
 		})
 	}};
 }
@@ -137,12 +143,13 @@ macro_rules! compile_compare {
 pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<CompiledExpr> {
 	Ok(match expr {
 		Expression::Constant(e) => {
-			let expr = e.clone();
+			let constant = e.clone();
+			let label = display_label(expr);
 			CompiledExpr::new(move |ctx| {
 				let row_count = ctx.take.unwrap_or(ctx.row_count);
 				Ok(ColumnWithName {
-					name: expr.full_fragment_owned(),
-					data: constant_value(&expr, row_count)?,
+					name: label.clone(),
+					data: constant_value(&constant, row_count)?,
 				})
 			})
 		}
@@ -243,32 +250,36 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			})
 		}
 
-		Expression::Add(e) => compile_arith!(_ctx, e, add_columns),
-		Expression::Sub(e) => compile_arith!(_ctx, e, sub_columns),
-		Expression::Mul(e) => compile_arith!(_ctx, e, mul_columns),
-		Expression::Div(e) => compile_arith!(_ctx, e, div_columns),
-		Expression::Rem(e) => compile_arith!(_ctx, e, rem_columns),
+		Expression::Add(e) => compile_arith!(_ctx, expr, e, add_columns),
+		Expression::Sub(e) => compile_arith!(_ctx, expr, e, sub_columns),
+		Expression::Mul(e) => compile_arith!(_ctx, expr, e, mul_columns),
+		Expression::Div(e) => compile_arith!(_ctx, expr, e, div_columns),
+		Expression::Rem(e) => compile_arith!(_ctx, expr, e, rem_columns),
 
-		Expression::Equal(e) => compile_compare!(_ctx, e, Equal, BinaryOp::Equal),
-		Expression::NotEqual(e) => compile_compare!(_ctx, e, NotEqual, BinaryOp::NotEqual),
-		Expression::GreaterThan(e) => compile_compare!(_ctx, e, GreaterThan, BinaryOp::GreaterThan),
+		Expression::Equal(e) => compile_compare!(_ctx, expr, e, Equal, BinaryOp::Equal),
+		Expression::NotEqual(e) => compile_compare!(_ctx, expr, e, NotEqual, BinaryOp::NotEqual),
+		Expression::GreaterThan(e) => compile_compare!(_ctx, expr, e, GreaterThan, BinaryOp::GreaterThan),
 		Expression::GreaterThanEqual(e) => {
-			compile_compare!(_ctx, e, GreaterThanEqual, BinaryOp::GreaterThanEqual)
+			compile_compare!(_ctx, expr, e, GreaterThanEqual, BinaryOp::GreaterThanEqual)
 		}
-		Expression::LessThan(e) => compile_compare!(_ctx, e, LessThan, BinaryOp::LessThan),
-		Expression::LessThanEqual(e) => compile_compare!(_ctx, e, LessThanEqual, BinaryOp::LessThanEqual),
+		Expression::LessThan(e) => compile_compare!(_ctx, expr, e, LessThan, BinaryOp::LessThan),
+		Expression::LessThanEqual(e) => compile_compare!(_ctx, expr, e, LessThanEqual, BinaryOp::LessThanEqual),
 
 		Expression::And(e) => {
 			let left = compile_expression(_ctx, &e.left)?;
 			let right = compile_expression(_ctx, &e.right)?;
 			let fragment = e.full_fragment_owned();
+			let label = display_label(expr);
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
-				if let Some(short) = try_short_circuit_and(&l, &fragment, l.data().len()) {
+				if let Some(mut short) = try_short_circuit_and(&l, &fragment, l.data().len()) {
+					short.name = label.clone();
 					return Ok(short);
 				}
 				let r = right.execute(ctx)?;
-				execute_logical_op(&l, &r, &fragment, LogicalOp::And, |a, b| a && b)
+				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::And, |a, b| a && b)?;
+				col.name = label.clone();
+				Ok(col)
 			})
 		}
 
@@ -276,13 +287,17 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let left = compile_expression(_ctx, &e.left)?;
 			let right = compile_expression(_ctx, &e.right)?;
 			let fragment = e.full_fragment_owned();
+			let label = display_label(expr);
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
-				if let Some(short) = try_short_circuit_or(&l, &fragment, l.data().len()) {
+				if let Some(mut short) = try_short_circuit_or(&l, &fragment, l.data().len()) {
+					short.name = label.clone();
 					return Ok(short);
 				}
 				let r = right.execute(ctx)?;
-				execute_logical_op(&l, &r, &fragment, LogicalOp::Or, |a, b| a || b)
+				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::Or, |a, b| a || b)?;
+				col.name = label.clone();
+				Ok(col)
 			})
 		}
 
@@ -290,10 +305,13 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let left = compile_expression(_ctx, &e.left)?;
 			let right = compile_expression(_ctx, &e.right)?;
 			let fragment = e.full_fragment_owned();
+			let label = display_label(expr);
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				execute_logical_op(&l, &r, &fragment, LogicalOp::Xor, |a, b| a != b)
+				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::Xor, |a, b| a != b)?;
+				col.name = label.clone();
+				Ok(col)
 			})
 		}
 
@@ -301,9 +319,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let inner = compile_expression(_ctx, &e.expression)?;
 			let operator = e.operator.clone();
 			let fragment = e.full_fragment_owned();
+			let label = display_label(expr);
 			CompiledExpr::new(move |ctx| {
 				let column = inner.execute(ctx)?;
-				prefix_apply(&column, &operator, &fragment)
+				let mut col = prefix_apply(&column, &operator, &fragment)?;
+				col.name = label.clone();
+				Ok(col)
 			})
 		}
 
@@ -568,6 +589,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		}
 
 		Expression::Cast(e) => {
+			let label = display_label(expr);
 			if let Expression::Constant(const_expr) = e.expression.as_ref() {
 				let const_expr = const_expr.clone();
 				let target_type = e.to.ty.clone();
@@ -579,7 +601,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					} else {
 						constant_value_of(&const_expr, target_type.clone(), row_count)?
 					};
-					Ok(ColumnWithName::new(const_expr.full_fragment_owned(), casted))
+					Ok(ColumnWithName::new(label.clone(), casted))
 				})
 			} else {
 				let inner = compile_expression(_ctx, &e.expression)?;
@@ -598,7 +620,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 							cause: e.diagnostic(),
 						})
 					})?;
-					Ok(ColumnWithName::new(column.name_owned(), casted))
+					Ok(ColumnWithName::new(label.clone(), casted))
 				})
 			}
 		}
@@ -659,7 +681,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		Expression::IsVariant(e) => {
 			let col_name = match e.expression.as_ref() {
 				Expression::Column(c) => c.0.name.text().to_string(),
-				other => other.full_fragment_owned().text().to_string(),
+				other => display_label(other).text().to_string(),
 			};
 			let tag_col_name = format!("{}_tag", col_name);
 			let tag = e.tag.expect("IS variant tag must be resolved before compilation");

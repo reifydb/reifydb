@@ -5,7 +5,7 @@ use reifydb_core::value::column::{
 	ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupByView,
 };
 use reifydb_routine::routine::{FunctionKind, context::FunctionContext, error::RoutineError};
-use reifydb_rql::expression::CallExpression;
+use reifydb_rql::expression::{CallExpression, Expression, name::display_label};
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
@@ -17,6 +17,7 @@ use crate::{Result, error::EngineError, expression::context::EvalContext};
 pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: Columns) -> Result<ColumnWithName> {
 	let function_name = call.func.0.text();
 	let fn_fragment = call.func.0.clone();
+	let result_label = display_label(&Expression::Call(call.clone()));
 
 	// UDFs are hoisted to UdfEvalNode during volcano initialization.
 	// If one reaches here, it's a bug in the query plan.
@@ -70,7 +71,7 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 
 		let (_keys, result_data) = accumulator.finalize().map_err(|e| e.with_context(fn_fragment, false))?;
 
-		return Ok(ColumnWithName::new(call.full_fragment_owned(), result_data));
+		return Ok(ColumnWithName::new(result_label.clone(), result_data));
 	}
 
 	let result_columns = routine.call(&mut fn_ctx, &arguments).map_err(|e| e.with_context(fn_fragment, false))?;
@@ -84,5 +85,5 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 		.into());
 	}
 	let result_data = result_columns.data_at(0).clone();
-	Ok(ColumnWithName::new(call.full_fragment_owned(), result_data))
+	Ok(ColumnWithName::new(result_label, result_data))
 }

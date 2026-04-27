@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_rql::expression::{Expression, name::column_name_from_expression};
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, util::cowvec::CowVec};
 use tracing::instrument;
@@ -109,7 +109,7 @@ impl QueryNode for PatchNode {
 		}
 
 		let input_headers = self.input.headers()?;
-		let patch_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
+		let patch_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 
 		let mut result = Vec::new();
 		for col in &input_headers.columns {
@@ -142,7 +142,7 @@ impl Transform for PatchNode {
 		let created_at = input.created_at.clone();
 		let updated_at = input.updated_at.clone();
 
-		let patch_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
+		let patch_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 
 		let session = EvalContext::from_transform(ctx, stored_ctx);
 		let mut patch_columns = Vec::with_capacity(self.expressions.len());
