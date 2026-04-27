@@ -369,8 +369,12 @@ impl DatabaseBuilder {
 		// Shared CDC producer commit watermark. Producer advances it after
 		// processing each PostCommitEvent; the compactor caps its eligible
 		// range by it so no in-flight write can land at a version already
-		// covered by a packed block.
+		// covered by a packed block. Registered in IoC so consumers can
+		// observe "producer caught up to V" - the watermark advances even
+		// for commits that produce no CDC row (e.g. ConfigStorage-only
+		// commits filtered out by `should_exclude_from_cdc`).
 		let cdc_producer_watermark = CdcProducerWatermark::new();
+		self.ioc = self.ioc.register(cdc_producer_watermark.clone());
 
 		// Spawn the CDC compaction actor (sqlite only). Settings come from
 		// system config (CDC_COMPACT_INTERVAL etc.) so they can be tuned at

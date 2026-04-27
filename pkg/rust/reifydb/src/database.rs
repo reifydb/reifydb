@@ -112,9 +112,25 @@ impl Database {
 	}
 
 	/// Returns the highest version written to the CDC store, or `CommitVersion(0)` if empty.
-	/// This may lag behind `engine().current_version()` because CDC production is async.
+	///
+	/// This may lag `engine().current_version()` for two reasons:
+	/// 1. CDC production is async (transient lag - resolves once the producer drains its mailbox).
+	/// 2. The producer skips writing a row for commits whose deltas are all filtered out by
+	///    `should_exclude_from_cdc` (e.g. ConfigStorage-only commits). That gap is permanent until a later
+	///    non-excluded commit. To check "producer has caught up to the engine" use `cdc_producer_watermark()`
+	///    instead.
 	pub fn cdc_max_version(&self) -> CommitVersion {
 		self.engine.cdc_store().max_version().ok().flatten().unwrap_or(CommitVersion(0))
+	}
+
+	/// Highest commit version processed by the CDC producer actor.
+	///
+	/// Once this returns `>= V`, every `PostCommitEvent` for versions `<= V`
+	/// has been fully handled by the producer. Unlike `cdc_max_version()`, this
+	/// advances even for commits that produced no CDC row, so it is the correct
+	/// frontier for "producer is caught up to the engine".
+	pub fn cdc_producer_watermark(&self) -> CommitVersion {
+		self.engine.cdc_producer_watermark()
 	}
 
 	pub fn auth_service(&self) -> &AuthService {

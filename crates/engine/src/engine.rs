@@ -20,7 +20,7 @@ use reifydb_catalog::{
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
 };
-use reifydb_cdc::{consume::host::CdcHost, storage::CdcStore};
+use reifydb_cdc::{consume::host::CdcHost, produce::watermark::CdcProducerWatermark, storage::CdcStore};
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::{catalog::namespace_not_found, engine::read_only_rejection},
@@ -582,6 +582,23 @@ impl StandardEngine {
 	#[inline]
 	pub fn cdc_store(&self) -> CdcStore {
 		self.executor.ioc.resolve::<CdcStore>().expect("CdcStore must be registered")
+	}
+
+	/// Highest commit version processed by the CDC producer actor.
+	///
+	/// Once this returns `>= V`, every `PostCommitEvent` for versions `<= V`
+	/// has been fully handled by the producer, so any CDC row it was going
+	/// to write is in storage. Unlike `cdc_store().max_version()`, this
+	/// advances even for commits whose deltas were entirely filtered out by
+	/// `should_exclude_from_cdc` (e.g. ConfigStorage-only commits), so it is
+	/// the correct frontier for "producer is caught up to the engine".
+	#[inline]
+	pub fn cdc_producer_watermark(&self) -> CommitVersion {
+		self.executor
+			.ioc
+			.resolve::<CdcProducerWatermark>()
+			.expect("CdcProducerWatermark must be registered")
+			.get()
 	}
 
 	/// Mark this engine as read-only (replica mode).

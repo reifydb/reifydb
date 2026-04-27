@@ -249,6 +249,9 @@ impl WasmDB {
 		let cdc_store = CdcStore::memory();
 		ioc = ioc.register(cdc_store.clone());
 
+		let cdc_producer_watermark = CdcProducerWatermark::new();
+		ioc = ioc.register(cdc_producer_watermark.clone());
+
 		// Clone ioc for FlowSubsystem (engine consumes ioc)
 		let ioc_ref = ioc.clone();
 
@@ -291,7 +294,7 @@ impl WasmDB {
 			inner.clone(),
 			eventbus_clone.clone(),
 			runtime.clock().clone(),
-			CdcProducerWatermark::new(),
+			cdc_producer_watermark,
 		);
 
 		// Register event listener to forward PostCommitEvent to CDC producer

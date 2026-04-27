@@ -119,6 +119,9 @@ impl Bridge {
 		let cdc_store = CdcStore::memory();
 		ioc = ioc.register(cdc_store.clone());
 
+		let cdc_producer_watermark = CdcProducerWatermark::new();
+		ioc = ioc.register(cdc_producer_watermark.clone());
+
 		let ioc_ref = ioc.clone();
 
 		load_materialized_catalog(&multi, &single, &materialized_catalog)?;
@@ -155,7 +158,7 @@ impl Bridge {
 			engine.clone(),
 			eventbus_clone.clone(),
 			runtime.clock().clone(),
-			CdcProducerWatermark::new(),
+			cdc_producer_watermark,
 		);
 
 		let cdc_listener =

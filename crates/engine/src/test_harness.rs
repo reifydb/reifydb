@@ -219,6 +219,9 @@ impl TestEngineBuilder {
 		let cdc_store = CdcStore::memory();
 		ioc = ioc.register(cdc_store.clone());
 
+		let cdc_producer_watermark = CdcProducerWatermark::new();
+		ioc = ioc.register(cdc_producer_watermark.clone());
+
 		let ioc_for_cdc = ioc.clone();
 
 		let engine = StandardEngine::new(
@@ -242,7 +245,15 @@ impl TestEngineBuilder {
 		);
 
 		if self.cdc {
-			register_cdc_producer(&runtime, cdc_store, multi_store, &engine, &eventbus, ioc_for_cdc);
+			register_cdc_producer(
+				&runtime,
+				cdc_store,
+				multi_store,
+				&engine,
+				&eventbus,
+				ioc_for_cdc,
+				cdc_producer_watermark,
+			);
 		}
 
 		TestEngine {
@@ -269,6 +280,7 @@ fn register_cdc_producer(
 	engine: &StandardEngine,
 	eventbus: &EventBus,
 	ioc_for_cdc: IocContainer,
+	watermark: CdcProducerWatermark,
 ) {
 	let cdc_handle = spawn_cdc_producer(
 		&runtime.actor_system(),
@@ -277,7 +289,7 @@ fn register_cdc_producer(
 		engine.clone(),
 		eventbus.clone(),
 		runtime.clock().clone(),
-		CdcProducerWatermark::new(),
+		watermark,
 	);
 	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 		cdc_handle.actor_ref().clone(),
