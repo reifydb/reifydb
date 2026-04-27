@@ -10,6 +10,7 @@
 //! actor's policy is what decides when to flush and how to coalesce successive deltas into a single column rewrite.
 
 pub mod actor;
+pub mod block_store;
 pub mod error;
 pub mod factory;
 pub mod subsystem;

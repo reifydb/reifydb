@@ -47,12 +47,6 @@ impl QueryNode for DeltaMergeNode {
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.inputs.first().and_then(|input| input.headers())
 	}
-
-	fn set_scan_limit(&mut self, limit: usize) {
-		if let Some(input) = self.inputs.get_mut(self.cursor) {
-			input.set_scan_limit(limit);
-		}
-	}
 }
 
 #[cfg(test)]
@@ -60,7 +54,11 @@ mod tests {
 	use std::collections::VecDeque;
 
 	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, headers::ColumnHeaders};
-	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
+	use reifydb_type::{
+		fragment::Fragment,
+		params::Params,
+		value::{Value, identity::IdentityId},
+	};
 
 	use super::*;
 	use crate::{
@@ -72,7 +70,6 @@ mod tests {
 		batches: VecDeque<Columns>,
 		headers: Option<ColumnHeaders>,
 		init_count: usize,
-		scan_limit: Option<usize>,
 	}
 
 	impl StubNode {
@@ -81,7 +78,6 @@ mod tests {
 				batches: batches.into(),
 				headers,
 				init_count: 0,
-				scan_limit: None,
 			}
 		}
 	}
@@ -99,10 +95,6 @@ mod tests {
 		fn headers(&self) -> Option<ColumnHeaders> {
 			self.headers.clone()
 		}
-
-		fn set_scan_limit(&mut self, limit: usize) {
-			self.scan_limit = Some(limit);
-		}
 	}
 
 	fn batch(name: &str, vals: Vec<i32>) -> Columns {
@@ -116,7 +108,7 @@ mod tests {
 		let buf = &columns.columns[0];
 		(0..buf.len())
 			.map(|i| match buf.get_value(i) {
-				reifydb_type::value::Value::Int4(v) => v,
+				Value::Int4(v) => v,
 				other => panic!("expected Int4, got {other:?}"),
 			})
 			.collect()

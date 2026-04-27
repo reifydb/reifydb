@@ -7,15 +7,18 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use reifydb_catalog::catalog::Catalog;
+use reifydb_catalog::{
+	catalog::Catalog,
+	store::column_snapshot::{create::ColumnSnapshotToCreate, update::ColumnSnapshotToUpdate},
+};
 use reifydb_column::{
 	bucket::{Bucket, BucketId, bucket_for, is_closed},
 	compress::Compressor,
-	registry::SnapshotRegistry,
-	snapshot::{Snapshot, SnapshotId, SnapshotSource, SystemColumn},
+	snapshot::SystemColumn,
 };
 use reifydb_core::interface::{
 	catalog::{
+		column_snapshot::ColumnSnapshotSource,
 		id::SeriesId,
 		series::{Series, SeriesMetadata},
 	},
@@ -37,7 +40,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
-use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_type::{
 	Result,
 	fragment::Fragment,
@@ -48,6 +51,7 @@ use tracing::{debug, warn};
 
 use crate::{
 	actor::{SeriesMessage, batches::column_block_from_batches},
+	block_store::ColumnBlockStore,
 	error::SubColumnError,
 };
 
@@ -62,7 +66,7 @@ pub struct SeriesMaterializationState {
 
 pub struct SeriesMaterializationActor {
 	engine: StandardEngine,
-	registry: SnapshotRegistry,
+	block_store: ColumnBlockStore,
 	compressor: Compressor,
 	tick_interval: Duration,
 	bucket_width: u64,
@@ -72,7 +76,7 @@ pub struct SeriesMaterializationActor {
 impl SeriesMaterializationActor {
 	pub fn new(
 		engine: StandardEngine,
-		registry: SnapshotRegistry,
+		block_store: ColumnBlockStore,
 		compressor: Compressor,
 		tick_interval: Duration,
 		bucket_width: u64,
@@ -80,7 +84,7 @@ impl SeriesMaterializationActor {
 	) -> Self {
 		Self {
 			engine,
-			registry,
+			block_store,
 			compressor,
 			tick_interval,
 			bucket_width,
@@ -88,8 +92,8 @@ impl SeriesMaterializationActor {
 		}
 	}
 
-	pub fn registry(&self) -> &SnapshotRegistry {
-		&self.registry
+	pub fn block_store(&self) -> &ColumnBlockStore {
+		&self.block_store
 	}
 
 	fn run_tick(&self, state: &mut SeriesMaterializationState, _now: DateTime) {
@@ -255,26 +259,49 @@ impl SeriesMaterializationActor {
 
 		let schema = scan_output_schema(series);
 		let block = column_block_from_batches(schema, batches, &self.compressor)?;
+		let row_count = block.len() as u64;
+		let block_arc = Arc::new(block);
 
-		let snapshot = Snapshot {
-			id: SnapshotId::Series {
-				series_id: series.id,
-				bucket: bucket.id(),
-			},
-			source: SnapshotSource::Series {
-				series_id: series.id,
-				bucket: *bucket,
-				sequence_counter: metadata.sequence_counter,
-				sealed_at_commit_version,
-			},
-			namespace: namespace_def.name().to_string(),
-			name: series.name.clone(),
-			created_at: self.engine.clock().instant(),
-			block,
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
+		let cat = self.engine.catalog();
+		let column_snapshot = match cat.find_column_snapshot_for_series_bucket(
+			&mut Transaction::Admin(&mut admin),
+			series.id,
+			bucket.start,
+		)? {
+			Some(existing) => cat.update_column_snapshot(
+				&mut admin,
+				existing.id,
+				ColumnSnapshotToUpdate {
+					sequence_counter: metadata.sequence_counter,
+					read_version: sealed_at_commit_version,
+					row_count,
+				},
+			)?,
+			None => cat.create_column_snapshot(
+				&mut admin,
+				ColumnSnapshotToCreate {
+					namespace: series.namespace,
+					source: ColumnSnapshotSource::SeriesBucket {
+						series_id: series.id,
+						bucket_start: bucket.start,
+						bucket_width: bucket.width,
+						sequence_counter: metadata.sequence_counter,
+						sealed_at_commit_version,
+					},
+					row_count,
+				},
+			)?,
 		};
-		self.registry.insert(Arc::new(snapshot));
+		commit_admin(admin)?;
+		self.block_store.put(column_snapshot.id, block_arc);
 		Ok(())
 	}
+}
+
+fn commit_admin(mut admin: AdminTransaction) -> Result<()> {
+	admin.commit()?;
+	Ok(())
 }
 
 fn scan_output_schema(series: &Series) -> Vec<(String, Type)> {

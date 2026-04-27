@@ -7,6 +7,7 @@ use crate::transaction::admin::AdminTransaction;
 
 pub mod authentication;
 pub mod binding;
+pub mod column_snapshot;
 pub mod config;
 pub mod dictionary;
 pub mod flow;

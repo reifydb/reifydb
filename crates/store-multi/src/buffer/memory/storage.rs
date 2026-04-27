@@ -278,29 +278,27 @@ impl TierStorage for MemoryPrimitiveStorage {
 					version: *cur_version,
 					value: cur_value.clone(),
 				});
-			} else if *cur_version > scope.read() {
-				if let Some(versions) = historical.get(key) {
-					for (Reverse(v), value) in versions.range(Reverse(scope.read())..) {
-						if scope.contains(*v) {
-							entries.push(RawEntry {
-								key: key.clone(),
-								version: *v,
-								value: value.clone(),
-							});
-							break;
-						}
-						if let MultiVersionScope::Between {
-							after,
-							..
-						} = scope && *v <= after
-						{
-							break;
-						}
+			} else if *cur_version > scope.read()
+				&& let Some(versions) = historical.get(key)
+			{
+				for (Reverse(v), value) in versions.range(Reverse(scope.read())..) {
+					if scope.contains(*v) {
+						entries.push(RawEntry {
+							key: key.clone(),
+							version: *v,
+							value: value.clone(),
+						});
+						break;
+					}
+					if let MultiVersionScope::Between {
+						after,
+						..
+					} = scope && *v <= after
+					{
+						break;
 					}
 				}
 			}
-			// else: current is <= read but not in scope (Between with v <= after);
-			// no older historical version can satisfy v > after, so drop the key.
 		}
 
 		for (key, versions) in historical.range::<CowVec<u8>, _>((iter_start, iter_end)) {
@@ -424,28 +422,27 @@ impl TierStorage for MemoryPrimitiveStorage {
 					version: *cur_version,
 					value: cur_value.clone(),
 				});
-			} else if *cur_version > scope.read() {
-				if let Some(versions) = historical.get(key) {
-					for (Reverse(v), value) in versions.range(Reverse(scope.read())..) {
-						if scope.contains(*v) {
-							entries.push(RawEntry {
-								key: key.clone(),
-								version: *v,
-								value: value.clone(),
-							});
-							break;
-						}
-						if let MultiVersionScope::Between {
-							after,
-							..
-						} = scope && *v <= after
-						{
-							break;
-						}
+			} else if *cur_version > scope.read()
+				&& let Some(versions) = historical.get(key)
+			{
+				for (Reverse(v), value) in versions.range(Reverse(scope.read())..) {
+					if scope.contains(*v) {
+						entries.push(RawEntry {
+							key: key.clone(),
+							version: *v,
+							value: value.clone(),
+						});
+						break;
+					}
+					if let MultiVersionScope::Between {
+						after,
+						..
+					} = scope && *v <= after
+					{
+						break;
 					}
 				}
 			}
-			// else: current is <= read but not in scope; drop the key.
 		}
 
 		for (key, versions) in historical.range::<CowVec<u8>, _>((iter_start, iter_end)).rev() {

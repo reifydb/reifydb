@@ -2970,6 +2970,7 @@ dependencies = [
 name = "reifydb-sub-column"
 version = "0.4.13"
 dependencies = [
+ "dashmap",
  "reifydb",
  "reifydb-catalog",
  "reifydb-column",

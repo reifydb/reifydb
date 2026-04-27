@@ -23,7 +23,6 @@ pub mod encoding;
 pub mod error;
 pub mod predicate;
 pub mod reader;
-pub mod registry;
 pub mod scan;
 pub mod selection;
 pub mod snapshot;

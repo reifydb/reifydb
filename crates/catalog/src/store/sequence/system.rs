@@ -7,8 +7,9 @@ use reifydb_core::{
 	interface::catalog::{
 		authentication::AuthenticationId,
 		id::{
-			BindingId, ColumnId, ColumnPropertyId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
-			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId,
+			BindingId, ColumnId, ColumnPropertyId, ColumnSnapshotId, HandlerId, MigrationEventId,
+			MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, TableId, TestId,
+			ViewId,
 		},
 		identity::RoleId,
 		policy::PolicyId,
@@ -23,8 +24,8 @@ use crate::{
 	Result,
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		AUTHENTICATION, BINDING, COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION,
-		MIGRATION_EVENT, NAMESPACE, POLICY, PRIMARY_KEY, PROCEDURE, ROLE, SOURCE, TEST, TOKEN,
+		AUTHENTICATION, BINDING, COLUMN, COLUMN_PROPERTY, COLUMN_SNAPSHOT, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER,
+		MIGRATION, MIGRATION_EVENT, NAMESPACE, POLICY, PRIMARY_KEY, PROCEDURE, ROLE, SOURCE, TEST, TOKEN,
 	},
 };
 
@@ -63,6 +64,8 @@ static TEST_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TEST
 static TOKEN_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TOKEN));
 
 static BINDING_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(BINDING));
+
+static COLUMN_SNAPSHOT_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(COLUMN_SNAPSHOT));
 
 pub(crate) struct SystemSequence {}
 
@@ -147,5 +150,9 @@ impl SystemSequence {
 
 	pub(crate) fn next_binding_id(txn: &mut AdminTransaction) -> Result<BindingId> {
 		GeneratorU64::next(txn, &BINDING_KEY, Some(SYSTEM_RESERVED)).map(BindingId)
+	}
+
+	pub(crate) fn next_column_snapshot_id(txn: &mut AdminTransaction) -> Result<ColumnSnapshotId> {
+		GeneratorU64::next(txn, &COLUMN_SNAPSHOT_KEY, Some(SYSTEM_RESERVED)).map(ColumnSnapshotId)
 	}
 }

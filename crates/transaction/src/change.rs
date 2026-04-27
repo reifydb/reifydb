@@ -7,13 +7,14 @@ use reifydb_core::{
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
 		binding::Binding,
+		column_snapshot::ColumnSnapshot,
 		config::{Config, ConfigKey},
 		dictionary::Dictionary,
 		flow::{Flow, FlowId, FlowNodeId},
 		handler::Handler,
 		id::{
-			BindingId, HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId,
-			SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
+			ProcedureId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{GrantedRole, Identity, Role, RoleId},
 		migration::{Migration, MigrationEvent},
@@ -38,6 +39,7 @@ use crate::TransactionId;
 
 pub trait TransactionalChanges:
 	TransactionalBindingChanges
+	+ TransactionalColumnSnapshotChanges
 	+ TransactionalDictionaryChanges
 	+ TransactionalFlowChanges
 	+ TransactionalHandlerChanges
@@ -97,6 +99,12 @@ pub trait TransactionalDictionaryChanges {
 	fn is_dictionary_deleted(&self, id: DictionaryId) -> bool;
 
 	fn is_dictionary_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
+pub trait TransactionalColumnSnapshotChanges {
+	fn find_column_snapshot(&self, id: ColumnSnapshotId) -> Option<&ColumnSnapshot>;
+
+	fn is_column_snapshot_deleted(&self, id: ColumnSnapshotId) -> bool;
 }
 
 pub trait TransactionalNamespaceChanges {
@@ -289,6 +297,8 @@ pub struct TransactionalCatalogChanges {
 
 	pub binding: Vec<Change<Binding>>,
 
+	pub column_snapshot: Vec<Change<ColumnSnapshot>>,
+
 	pub dictionary: Vec<Change<Dictionary>>,
 
 	pub flow: Vec<Change<Flow>>,
@@ -337,6 +347,7 @@ pub struct TransactionalCatalogChanges {
 
 pub struct CatalogChangesSavepoint {
 	binding_len: usize,
+	column_snapshot_len: usize,
 	config_len: usize,
 	dictionary_len: usize,
 	flow_len: usize,
@@ -367,6 +378,7 @@ impl TransactionalCatalogChanges {
 	pub fn savepoint(&self) -> CatalogChangesSavepoint {
 		CatalogChangesSavepoint {
 			binding_len: self.binding.len(),
+			column_snapshot_len: self.column_snapshot.len(),
 			config_len: self.config.len(),
 			dictionary_len: self.dictionary.len(),
 			flow_len: self.flow.len(),
@@ -396,6 +408,7 @@ impl TransactionalCatalogChanges {
 
 	pub fn restore_savepoint(&mut self, sp: CatalogChangesSavepoint) {
 		self.binding.truncate(sp.binding_len);
+		self.column_snapshot.truncate(sp.column_snapshot_len);
 		self.config.truncate(sp.config_len);
 		self.dictionary.truncate(sp.dictionary_len);
 		self.flow.truncate(sp.flow_len);
@@ -462,6 +475,21 @@ impl TransactionalCatalogChanges {
 		let op = change.op;
 		self.dictionary.push(change);
 		self.log.push(Operation::Dictionary {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_column_snapshot_change(&mut self, change: Change<ColumnSnapshot>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|s| s.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.column_snapshot.push(change);
+		self.log.push(Operation::ColumnSnapshot {
 			id,
 			op,
 		});
@@ -812,6 +840,10 @@ pub enum Operation {
 		id: BindingId,
 		op: OperationType,
 	},
+	ColumnSnapshot {
+		id: ColumnSnapshotId,
+		op: OperationType,
+	},
 	Config {
 		key: ConfigKey,
 		op: OperationType,
@@ -912,6 +944,7 @@ impl TransactionalCatalogChanges {
 		Self {
 			txn_id,
 			binding: Vec::new(),
+			column_snapshot: Vec::new(),
 			config: Vec::new(),
 			dictionary: Vec::new(),
 			flow: Vec::new(),
@@ -1014,6 +1047,7 @@ impl TransactionalCatalogChanges {
 
 	pub fn clear(&mut self) {
 		self.binding.clear();
+		self.column_snapshot.clear();
 		self.config.clear();
 		self.dictionary.clear();
 		self.flow.clear();

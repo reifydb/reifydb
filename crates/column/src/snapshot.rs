@@ -3,15 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::id::{SeriesId, TableId},
-	value::column::data::Column,
-};
-use reifydb_runtime::context::clock::Instant;
+use reifydb_core::value::column::data::Column;
 use reifydb_type::{Result, value::r#type::Type};
-
-use crate::bucket::{Bucket, BucketId};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -152,63 +145,6 @@ impl ColumnBlock {
 		}
 		Ok(ColumnBlock::new(Arc::clone(&self.schema), sliced_columns))
 	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SnapshotId {
-	Table {
-		table_id: TableId,
-		commit_version: CommitVersion,
-	},
-	Series {
-		series_id: SeriesId,
-		bucket: BucketId,
-	},
-}
-
-#[derive(Clone, Debug)]
-pub enum SnapshotSource {
-	Table {
-		table_id: TableId,
-		commit_version: CommitVersion,
-	},
-	Series {
-		series_id: SeriesId,
-		bucket: Bucket,
-		sequence_counter: u64,
-		sealed_at_commit_version: CommitVersion,
-	},
-}
-
-#[derive(Clone)]
-pub struct Snapshot {
-	pub id: SnapshotId,
-	pub source: SnapshotSource,
-	pub namespace: String,
-	pub name: String,
-	pub created_at: Instant,
-	pub block: ColumnBlock,
-}
-
-impl Snapshot {
-	pub fn meta(&self) -> SnapshotMeta {
-		SnapshotMeta {
-			id: self.id,
-			namespace: self.namespace.clone(),
-			name: self.name.clone(),
-			created_at: self.created_at.clone(),
-			row_count: self.block.len(),
-		}
-	}
-}
-
-#[derive(Clone, Debug)]
-pub struct SnapshotMeta {
-	pub id: SnapshotId,
-	pub namespace: String,
-	pub name: String,
-	pub created_at: Instant,
-	pub row_count: usize,
 }
 
 #[cfg(test)]

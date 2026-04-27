@@ -17,6 +17,7 @@ pub mod authentication;
 pub mod binding;
 pub mod change;
 pub mod column;
+pub mod column_snapshot;
 pub mod config;
 pub mod dictionary;
 pub mod flow;

@@ -8,6 +8,7 @@ repository.workspace = true
 description = "Storage materialization subsystem for ReifyDB."
 
 [dependencies]
+dashmap = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-column = { workspace = true }
 reifydb-core = { workspace = true }

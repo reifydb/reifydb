@@ -39,7 +39,6 @@ pub struct TableScanNode {
 	shape: Option<RowShape>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
-	scan_limit: Option<usize>,
 	min_commit_version: Option<CommitVersion>,
 }
 
@@ -81,7 +80,6 @@ impl TableScanNode {
 			shape: None,
 			last_key: None,
 			exhausted: false,
-			scan_limit: None,
 			min_commit_version: None,
 		})
 	}

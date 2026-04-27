@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 use reifydb::{Params, WithSubsystem, embedded as db_embedded};
 use reifydb_column::reader::SnapshotReader;
@@ -15,7 +15,7 @@ mod common;
 use common::poll_until;
 
 #[test]
-fn table_materialization_produces_snapshot_in_registry() {
+fn table_materialization_populates_block_store() {
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_millis(50),
 		series_tick_interval: Duration::from_millis(50),
@@ -40,26 +40,21 @@ fn table_materialization_produces_snapshot_in_registry() {
 	.expect("insert");
 
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
-	let registry = storage.registry();
+	let block_store = storage.block_store().clone();
 
-	let meta = poll_until(
+	let block = poll_until(
 		|| {
-			let snaps = registry.list();
-			snaps.into_iter().find(|s| s.name == "t" && s.row_count == 3)
+			let entries = block_store.entries();
+			entries.into_iter().map(|(_, b)| b).find(|b| b.len() == 3)
 		},
 		Duration::from_secs(5),
 	)
-	.expect("snapshot with 3 rows did not appear in registry within 5 seconds");
+	.expect("block with 3 rows did not appear in block_store within 5 seconds");
 
-	assert_eq!(meta.namespace, "test");
-	assert_eq!(meta.row_count, 3);
-
-	let snap = registry.get(&meta.id).expect("snapshot fetchable by id");
-
-	let schema_names: Vec<&str> = snap.block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
+	let schema_names: Vec<&str> = block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
 	assert_eq!(schema_names, vec!["id", "name", "score", "#rownum", "#created_at", "#updated_at"]);
 
-	let mut reader = SnapshotReader::new(Arc::clone(&snap), 100);
+	let mut reader = SnapshotReader::new(block, 100);
 	let batch = reader.next().expect("batch present").expect("read batch");
 	assert!(reader.next().is_none(), "reader should yield a single batch for 3 rows");
 	assert_eq!(batch.row_count(), 3);

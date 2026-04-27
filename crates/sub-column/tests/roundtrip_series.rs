@@ -19,7 +19,7 @@ use common::poll_until;
 // `metadata.newest_key >= bucket.end`, so inserting keys past a bucket
 // boundary closes prior buckets on the next tick.
 #[test]
-fn series_materialization_produces_snapshot_in_registry() {
+fn series_materialization_populates_block_store() {
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_millis(50),
 		series_tick_interval: Duration::from_millis(50),
@@ -51,13 +51,13 @@ fn series_materialization_produces_snapshot_in_registry() {
 	.expect("insert");
 
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
-	let registry = storage.registry();
+	let block_store = storage.block_store().clone();
 
-	let metas = poll_until(
+	let blocks = poll_until(
 		|| {
-			let list: Vec<_> = registry.list().into_iter().filter(|s| s.name == "s").collect();
-			if list.len() >= 2 {
-				Some(list)
+			let entries: Vec<_> = block_store.entries();
+			if entries.len() >= 2 {
+				Some(entries)
 			} else {
 				None
 			}
@@ -66,27 +66,24 @@ fn series_materialization_produces_snapshot_in_registry() {
 	)
 	.expect("at least two series buckets did not materialize within 5 seconds");
 
-	assert!(metas.len() >= 2, "expected >= 2 closed-bucket snapshots, got {}", metas.len());
+	assert!(blocks.len() >= 2, "expected >= 2 blocks for closed buckets, got {}", blocks.len());
 
 	let mut all_keys: BTreeSet<u64> = BTreeSet::new();
-	for meta in &metas {
-		assert_eq!(meta.namespace, "test");
-		assert!(meta.row_count > 0);
+	for (_id, block) in &blocks {
+		assert!(block.len() > 0);
 
-		let snap = registry.get(&meta.id).expect("snapshot fetchable by id");
-
-		let schema_names: Vec<&str> = snap.block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
+		let schema_names: Vec<&str> = block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
 		assert_eq!(schema_names, vec!["k", "value", "#rownum", "#created_at", "#updated_at"]);
 
-		let mut reader = SnapshotReader::new(Arc::clone(&snap), 100);
+		let mut reader = SnapshotReader::new(Arc::clone(block), 100);
 		let batch = reader.next().expect("batch present").expect("read batch");
 		assert!(reader.next().is_none(), "reader should yield a single batch per bucket");
-		assert_eq!(batch.row_count(), meta.row_count);
+		assert_eq!(batch.row_count(), block.len());
 
 		let k_col = batch.column("k").expect("k column");
 		let v_col = batch.column("value").expect("value column");
 
-		for i in 0..meta.row_count {
+		for i in 0..block.len() {
 			let k = match k_col.data().get_value(i) {
 				Value::Uint8(v) => v,
 				other => panic!("row {i}: expected Uint8, got {other:?}"),

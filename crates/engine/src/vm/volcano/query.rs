@@ -28,8 +28,6 @@ pub trait QueryNode: Send + Sync {
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders>;
-
-	fn set_scan_limit(&mut self, _limit: usize) {}
 }
 
 #[derive(Clone)]
@@ -57,9 +55,5 @@ impl QueryNode for Box<dyn QueryNode> {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		(**self).headers()
-	}
-
-	fn set_scan_limit(&mut self, limit: usize) {
-		(**self).set_scan_limit(limit);
 	}
 }

@@ -225,7 +225,11 @@ fn run_table_delete_all(
 	};
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, table)?;
 	let rows: Vec<_> = txn
-		.range(EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap())), RangeScope::All, 32)?
+		.range(
+			EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap())),
+			RangeScope::All,
+			32,
+		)?
 		.collect::<Result<Vec<_>>>()?;
 
 	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(rows.len());
