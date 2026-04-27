@@ -753,9 +753,14 @@ impl CoordinatorActor {
 				continue;
 			}
 
-			// Create instruction and send to worker via callback
+			// Backfill must target the worker the flow was rebalanced onto, which
+			// may differ from flow_id % num_workers when the flow inherited its
+			// upstream's worker.
 			let instruction = FlowInstruction::new(flow_id, to_version, flow_changes);
-			let worker_id = (flow_id.0 as usize) % self.num_workers;
+			let worker_id = *state
+				.flow_assignments
+				.get(&flow_id)
+				.expect("flow must be in flow_assignments after registration");
 
 			let mut worker_batch = WorkerBatch::new(consume_ctx.state_version);
 			worker_batch.add_instruction(instruction);
@@ -1038,10 +1043,9 @@ impl CoordinatorActor {
 		let mut worker_batches: BTreeMap<usize, WorkerBatch> = BTreeMap::new();
 		for fid in ordered {
 			if let Some(instruction) = flow_instructions.remove(&fid) {
-				let worker_id = flow_to_worker
+				let worker_id = *flow_to_worker
 					.get(&fid)
-					.copied()
-					.unwrap_or_else(|| (fid.0 as usize) % self.num_workers);
+					.expect("flow must be in flow_assignments after registration");
 				let batch = worker_batches
 					.entry(worker_id)
 					.or_insert_with(|| WorkerBatch::new(state_version));
@@ -1141,7 +1145,10 @@ impl CoordinatorActor {
 		for (flow_id, schedule) in &mut state.tick_schedules {
 			let tick_std = Duration::from_nanos(schedule.tick.as_nanos() as u64);
 			if now.duration_since(&schedule.last_tick) >= tick_std {
-				let worker_id = (flow_id.0 as usize) % self.num_workers;
+				let worker_id = *state
+					.flow_assignments
+					.get(flow_id)
+					.expect("flow must be in flow_assignments after registration");
 				due_flows.entry(worker_id).or_default().push(*flow_id);
 				schedule.last_tick = now.clone();
 			}
