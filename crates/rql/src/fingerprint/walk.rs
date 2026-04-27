@@ -522,7 +522,7 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 
 		Ast::Create(node) => {
 			buf.write_u8(tag::CREATE);
-			match node {
+			match node.as_ref() {
 				AstCreate::Table(n) => {
 					buf.write_u8(0x01);
 					for ns in &n.table.namespace {
@@ -731,6 +731,32 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 					}
 					buf.write_str(n.procedure.name.text());
 				}
+				AstCreate::Relationship(n) => {
+					buf.write_u8(0x1b);
+					buf.write_str(n.name.text());
+					for ns in &n.source.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.source.name.text());
+					buf.write_str(n.source_column.text());
+					for ns in &n.target.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.target.name.text());
+					buf.write_str(n.target_column.text());
+					buf.write_str(n.cardinality.as_str());
+					if let Some(j) = &n.junction {
+						buf.write_u8(0x01);
+						for ns in &j.table.namespace {
+							buf.write_str(ns.text());
+						}
+						buf.write_str(j.table.name.text());
+						buf.write_str(j.source_column.text());
+						buf.write_str(j.target_column.text());
+					} else {
+						buf.write_u8(0x00);
+					}
+				}
 			}
 		}
 		Ast::Alter(node) => {
@@ -905,6 +931,19 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 						buf.write_str(ns.text());
 					}
 					buf.write_str(n.binding.name.text());
+				}
+				AstDrop::Relationship(n) => {
+					buf.write_u8(0x13);
+					if n.if_exists {
+						buf.write_u8(0x01);
+					} else {
+						buf.write_u8(0x00);
+					}
+					buf.write_str(n.name.text());
+					for ns in &n.source.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.source.name.text());
 				}
 			}
 		}

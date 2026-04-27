@@ -44,8 +44,9 @@ use crate::{
 	ast::{
 		ast::{
 			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstBindingProtocol, AstConfigPair, AstInfix,
-			AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstRunTests,
-			AstStatement, AstType, AstVariant, AstViewStorageKind, InfixOperator,
+			AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType, AstProcedureParam,
+			AstRelationshipCardinality, AstRunTests, AstStatement, AstType, AstVariant, AstViewStorageKind,
+			InfixOperator,
 		},
 		identifier::{
 			MaybeQualifiedBindingIdentifier, MaybeQualifiedColumnIdentifier,
@@ -139,7 +140,7 @@ impl<'bump> Compiler<'bump> {
 
 	pub fn compile_single(&self, node: Ast<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		match node {
-			Ast::Create(node) => self.compile_create(node, tx),
+			Ast::Create(node) => self.compile_create(BumpBox::into_inner(node), tx),
 			Ast::Drop(node) => self.compile_drop(node),
 			Ast::Alter(node) => self.compile_alter(node, tx),
 			Ast::Delete(node) => self.compile_delete(node, tx),
@@ -366,6 +367,7 @@ pub enum LogicalPlan<'bump> {
 	CreateSource(CreateSourceNode<'bump>),
 	CreateSink(CreateSinkNode<'bump>),
 	CreateBinding(CreateBindingNode<'bump>),
+	CreateRelationship(BumpBox<'bump, CreateRelationshipNode<'bump>>),
 
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),
@@ -386,6 +388,7 @@ pub enum LogicalPlan<'bump> {
 	DropHandler(DropHandlerNode<'bump>),
 	DropTest(DropTestNode<'bump>),
 	DropBinding(DropBindingNode<'bump>),
+	DropRelationship(DropRelationshipNode<'bump>),
 
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
@@ -1145,6 +1148,31 @@ pub struct CreateBindingNode<'bump> {
 #[derive(Debug)]
 pub struct DropBindingNode<'bump> {
 	pub binding: MaybeQualifiedBindingIdentifier<'bump>,
+	pub if_exists: bool,
+}
+
+#[derive(Debug)]
+pub struct CreateRelationshipNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub source: MaybeQualifiedTableIdentifier<'bump>,
+	pub source_column: BumpFragment<'bump>,
+	pub target: MaybeQualifiedTableIdentifier<'bump>,
+	pub target_column: BumpFragment<'bump>,
+	pub junction: Option<RelationshipJunctionNode<'bump>>,
+	pub cardinality: AstRelationshipCardinality,
+}
+
+#[derive(Debug)]
+pub struct RelationshipJunctionNode<'bump> {
+	pub table: MaybeQualifiedTableIdentifier<'bump>,
+	pub source_column: BumpFragment<'bump>,
+	pub target_column: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct DropRelationshipNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub source: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_exists: bool,
 }
 

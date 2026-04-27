@@ -6,9 +6,9 @@ use crate::{
 	ast::ast::AstDrop,
 	plan::logical::{
 		Compiler, DropAuthenticationNode, DropBindingNode, DropDictionaryNode, DropHandlerNode,
-		DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode, DropRingBufferNode,
-		DropRoleNode, DropSeriesNode, DropSinkNode, DropSourceNode, DropSubscriptionNode, DropSumTypeNode,
-		DropTableNode, DropTestNode, DropViewNode, LogicalPlan,
+		DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode, DropRelationshipNode,
+		DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSinkNode, DropSourceNode, DropSubscriptionNode,
+		DropSumTypeNode, DropTableNode, DropTestNode, DropViewNode, LogicalPlan,
 	},
 };
 
@@ -97,6 +97,11 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstDrop::Binding(node) => Ok(LogicalPlan::DropBinding(DropBindingNode {
 				binding: node.binding,
+				if_exists: node.if_exists,
+			})),
+			AstDrop::Relationship(node) => Ok(LogicalPlan::DropRelationship(DropRelationshipNode {
+				name: node.name,
+				source: node.source,
 				if_exists: node.if_exists,
 			})),
 		}

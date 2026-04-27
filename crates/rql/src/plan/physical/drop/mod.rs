@@ -547,4 +547,33 @@ impl<'bump> Compiler<'bump> {
 			}
 		}
 	}
+
+	pub(crate) fn compile_drop_relationship(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropRelationshipNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.source.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.source.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default".to_string())
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		let Some(table) = self.catalog.find_table_by_name(rx, namespace.id(), drop.source.name.text())? else {
+			let table_name = self.interner.intern_fragment(&drop.source.name);
+			return_error!(table_not_found(table_name, namespace.name(), drop.source.name.text()));
+		};
+
+		Ok(PhysicalPlan::DropRelationship(nodes::DropRelationshipNode {
+			namespace: namespace.id(),
+			source_table: table.id,
+			name: self.interner.intern_fragment(&drop.name),
+			if_exists: drop.if_exists,
+		}))
+	}
 }

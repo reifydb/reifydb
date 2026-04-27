@@ -12,10 +12,14 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			binding::{BindingFormat, BindingProtocol},
-			id::{HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId},
+			id::{
+				ColumnId, HandlerId, NamespaceId, ProcedureId, RingBufferId, SeriesId, TableId, TestId,
+				ViewId,
+			},
 			namespace::Namespace,
 			procedure::{ProcedureParam, RqlTrigger},
 			property::ColumnPropertyKind,
+			relationship::RelationshipCardinality,
 			series::SeriesKey,
 			subscription::HydrationConfig,
 		},
@@ -397,6 +401,33 @@ pub struct CreateBindingNode {
 #[derive(Debug, Clone)]
 pub struct DropBindingNode {
 	pub namespace: Namespace,
+	pub name: Fragment,
+	pub if_exists: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct RelationshipJunction {
+	pub table: TableId,
+	pub source_column: ColumnId,
+	pub target_column: ColumnId,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateRelationshipNode {
+	pub namespace: NamespaceId,
+	pub name: Fragment,
+	pub source_table: TableId,
+	pub source_column: ColumnId,
+	pub target_table: TableId,
+	pub target_column: ColumnId,
+	pub junction: Option<RelationshipJunction>,
+	pub cardinality: RelationshipCardinality,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropRelationshipNode {
+	pub namespace: NamespaceId,
+	pub source_table: TableId,
 	pub name: Fragment,
 	pub if_exists: bool,
 }

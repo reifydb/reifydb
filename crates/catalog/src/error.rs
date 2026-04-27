@@ -261,6 +261,12 @@ pub enum CatalogError {
 		reason: String,
 		fragment: Fragment,
 	},
+
+	#[error("invalid relationship: {reason}")]
+	InvalidRelationship {
+		reason: String,
+		fragment: Fragment,
+	},
 }
 
 impl From<(ConfigKey, AcceptError)> for CatalogError {
@@ -1260,6 +1266,25 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 				label: Some("invalid binding config".to_string()),
 				help: Some("check the protocol's required WITH keys and value constraints".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::InvalidRelationship {
+				reason,
+				fragment,
+			} => Diagnostic {
+				code: "CA_090".to_string(),
+				rql: None,
+				message: format!("invalid relationship: {}", reason),
+				fragment,
+				label: Some("invalid relationship".to_string()),
+				help: Some(
+					"N:M cardinality requires THROUGH <table>(src_col, tgt_col); other cardinalities must omit THROUGH"
+						.to_string(),
+				),
 				column: None,
 				notes: vec![],
 				cause: None,

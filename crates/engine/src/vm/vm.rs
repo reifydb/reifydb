@@ -29,17 +29,18 @@ use super::{
 				binding::create_binding, deferred::create_deferred_view, dictionary::create_dictionary,
 				migration::create_migration, namespace::create_namespace,
 				primary_key::create_primary_key, procedure::create_procedure,
-				property::create_column_property, remote_namespace::create_remote_namespace,
-				ringbuffer::create_ringbuffer, series::create_series, sink::create_sink,
-				source::create_source, subscription::create_subscription, sumtype::create_sumtype,
-				table::create_table, tag::create_tag, test::create_test,
-				transactional::create_transactional_view,
+				property::create_column_property, relationship::create_relationship,
+				remote_namespace::create_remote_namespace, ringbuffer::create_ringbuffer,
+				series::create_series, sink::create_sink, source::create_source,
+				subscription::create_subscription, sumtype::create_sumtype, table::create_table,
+				tag::create_tag, test::create_test, transactional::create_transactional_view,
 			},
 			drop::{
 				binding::drop_binding, dictionary::drop_dictionary, namespace::drop_namespace,
-				procedure::drop_procedure, ringbuffer::drop_ringbuffer, series::drop_series,
-				sink::drop_sink, source::drop_source, subscription::drop_subscription,
-				sumtype::drop_sumtype, table::drop_table, view::drop_view,
+				procedure::drop_procedure, relationship::drop_relationship,
+				ringbuffer::drop_ringbuffer, series::drop_series, sink::drop_sink, source::drop_source,
+				subscription::drop_subscription, sumtype::drop_sumtype, table::drop_table,
+				view::drop_view,
 			},
 		},
 		dml::{
@@ -422,6 +423,9 @@ impl<'a> Vm<'a> {
 				Instruction::CreateBinding(n) => {
 					self.exec_ddl(services, tx, |s, t| create_binding(s, t, n.clone()))?
 				}
+				Instruction::CreateRelationship(n) => {
+					self.exec_ddl(services, tx, |s, t| create_relationship(s, t, n.clone()))?
+				}
 				Instruction::CreateTest(n) => {
 					self.exec_ddl(services, tx, |s, t| create_test(s, t, n.clone()))?
 				}
@@ -500,6 +504,9 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::DropBinding(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_binding(s, t, n.clone()))?
+				}
+				Instruction::DropRelationship(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_relationship(s, t, n.clone()))?
 				}
 				Instruction::DropIdentity(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_identity(s, t, n.clone()))?

@@ -79,7 +79,7 @@ pub enum Ast<'bump> {
 	CallFunction(AstCallFunction<'bump>),
 	Cast(AstCast<'bump>),
 	Continue(AstContinue<'bump>),
-	Create(AstCreate<'bump>),
+	Create(BumpBox<'bump, AstCreate<'bump>>),
 	Alter(AstAlter<'bump>),
 	Drop(AstDrop<'bump>),
 	Describe(AstDescribe<'bump>),
@@ -282,7 +282,11 @@ impl<'bump> Ast<'bump> {
 	}
 
 	pub fn is_subscription_ddl(&self) -> bool {
-		matches!(self, Ast::Create(AstCreate::Subscription(_)) | Ast::Drop(AstDrop::Subscription(_)))
+		match self {
+			Ast::Create(node) => matches!(**node, AstCreate::Subscription(_)),
+			Ast::Drop(node) => matches!(*node, AstDrop::Subscription(_)),
+			_ => false,
+		}
 	}
 
 	ast_accessor!(Dispatch, AstDispatch<'bump>, is_dispatch, as_dispatch, "dispatch");
@@ -291,7 +295,16 @@ impl<'bump> Ast<'bump> {
 	ast_accessor!(Between, AstBetween<'bump>, is_between, as_between, "between");
 	ast_accessor!(CallFunction, AstCallFunction<'bump>, is_call_function, as_call_function, "call function");
 	ast_accessor!(Cast, AstCast<'bump>, is_cast, as_cast, "cast");
-	ast_accessor!(Create, AstCreate<'bump>, is_create, as_create, "create");
+	pub fn is_create(&self) -> bool {
+		matches!(self, Ast::Create(_))
+	}
+	pub fn as_create(&self) -> &AstCreate<'bump> {
+		if let Ast::Create(result) = self {
+			result
+		} else {
+			panic!("not create")
+		}
+	}
 	ast_accessor!(Alter, AstAlter<'bump>, is_alter, as_alter, "alter");
 	ast_accessor!(Describe, AstDescribe<'bump>, is_describe, as_describe, "describe");
 	ast_accessor!(Filter, AstFilter<'bump>, is_filter, as_filter, "filter");
@@ -472,6 +485,7 @@ pub enum AstCreate<'bump> {
 	Source(AstCreateSource<'bump>),
 	Sink(AstCreateSink<'bump>),
 	Binding(AstCreateBinding<'bump>),
+	Relationship(AstCreateRelationship<'bump>),
 }
 
 #[derive(Debug)]
@@ -523,6 +537,7 @@ pub enum AstDrop<'bump> {
 	Handler(AstDropHandler<'bump>),
 	Test(AstDropTest<'bump>),
 	Binding(AstDropBinding<'bump>),
+	Relationship(AstDropRelationship<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -655,6 +670,66 @@ pub struct AstCreateBinding<'bump> {
 	pub name: MaybeQualifiedBindingIdentifier<'bump>,
 	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
 	pub protocol: AstBindingProtocol<'bump>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AstRelationshipCardinality {
+	OneToOne,
+	ManyToOne,
+	OneToMany,
+	ManyToMany,
+}
+
+impl AstRelationshipCardinality {
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			Self::OneToOne => "1:1",
+			Self::ManyToOne => "N:1",
+			Self::OneToMany => "1:N",
+			Self::ManyToMany => "N:M",
+		}
+	}
+
+	pub fn parse(s: &str) -> Option<Self> {
+		match s {
+			"1:1" => Some(Self::OneToOne),
+			"N:1" => Some(Self::ManyToOne),
+			"1:N" => Some(Self::OneToMany),
+			"N:M" => Some(Self::ManyToMany),
+			_ => None,
+		}
+	}
+
+	pub fn requires_junction(&self) -> bool {
+		matches!(self, Self::ManyToMany)
+	}
+}
+
+#[derive(Debug)]
+pub struct AstRelationshipJunction<'bump> {
+	pub table: MaybeQualifiedTableIdentifier<'bump>,
+	pub source_column: BumpFragment<'bump>,
+	pub target_column: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateRelationship<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+	pub source: MaybeQualifiedTableIdentifier<'bump>,
+	pub source_column: BumpFragment<'bump>,
+	pub target: MaybeQualifiedTableIdentifier<'bump>,
+	pub target_column: BumpFragment<'bump>,
+	pub junction: Option<AstRelationshipJunction<'bump>>,
+	pub cardinality: AstRelationshipCardinality,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropRelationship<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub name: BumpFragment<'bump>,
+	pub source: MaybeQualifiedTableIdentifier<'bump>,
 }
 
 #[derive(Debug)]
@@ -1041,6 +1116,7 @@ impl_token_for_enum!(AstCreate, 'bump,
 	Source(AstCreateSource<'bump>),
 	Sink(AstCreateSink<'bump>),
 	Binding(AstCreateBinding<'bump>),
+	Relationship(AstCreateRelationship<'bump>),
 );
 
 impl_token_for_enum!(AstAlter, 'bump,
@@ -1069,6 +1145,7 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Handler(AstDropHandler<'bump>),
 	Test(AstDropTest<'bump>),
 	Binding(AstDropBinding<'bump>),
+	Relationship(AstDropRelationship<'bump>),
 );
 
 #[derive(Debug)]

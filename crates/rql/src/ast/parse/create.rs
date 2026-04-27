@@ -16,11 +16,12 @@ use crate::{
 			AstBindingProtocolKind, AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind,
 			AstColumnToCreate, AstCreate, AstCreateColumnProperty, AstCreateDeferredView,
 			AstCreateDictionary, AstCreateEvent, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
-			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer,
-			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
-			AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn,
-			AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstStatement, AstTimestampPrecision,
-			AstTtl, AstType, AstVariant, AstViewStorageKind,
+			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRelationship, AstCreateRemoteNamespace,
+			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable,
+			AstCreateTag, AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn,
+			AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstRelationshipCardinality,
+			AstRelationshipJunction, AstStatement, AstTimestampPrecision, AstTtl, AstType, AstVariant,
+			AstViewStorageKind,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -31,7 +32,7 @@ use crate::{
 		},
 		parse::{Parser, Precedence},
 	},
-	bump::BumpBox,
+	bump::{BumpBox, BumpFragment},
 	plan::logical::Compiler,
 	token::{
 		keyword::{
@@ -255,6 +256,10 @@ impl<'bump> Parser<'bump> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::Ws))?).is_some() {
 			self.consume_keyword(Keyword::Binding)?;
 			return self.parse_create_binding(token, AstBindingProtocolKind::Ws);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Relationship))?).is_some() {
+			return self.parse_create_relationship(token);
 		}
 
 		if self.peek_is_index_creation()? {
@@ -2710,6 +2715,180 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 		Ok((ttl, snapshot))
+	}
+
+	fn parse_create_relationship(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+		let name_token = self.consume(TokenKind::Identifier)?;
+		let name = name_token.fragment;
+
+		self.consume_keyword(Keyword::On)?;
+		let (source, source_column) = self.parse_relationship_table_with_column(1)?;
+
+		let junction = if self.consume_if(TokenKind::Keyword(Keyword::Through))?.is_some() {
+			let (jtable, jcols) = self.parse_relationship_table_with_columns(2)?;
+			let mut iter = jcols.into_iter();
+			let first = iter.next().unwrap();
+			let second = iter.next().unwrap();
+			Some(AstRelationshipJunction {
+				table: jtable,
+				source_column: first,
+				target_column: second,
+			})
+		} else {
+			None
+		};
+
+		self.consume_keyword(Keyword::References)?;
+		let (target, target_column) = self.parse_relationship_table_with_column(1)?;
+
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut cardinality: Option<AstRelationshipCardinality> = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key_token = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key_token.fragment.text() {
+				"cardinality" => {
+					let value = self.consume_literal(Literal::Text)?;
+					let text = value.fragment.text();
+					let parsed = AstRelationshipCardinality::parse(text);
+					match parsed {
+						Some(c) => cardinality = Some(c),
+						None => {
+							let fragment = value.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "'1:1', 'N:1', '1:N', or 'N:M'"
+										.to_string(),
+								},
+								message: format!(
+									"unknown relationship cardinality `{}`: expected '1:1', 'N:1', '1:N', or 'N:M'",
+									text
+								),
+								fragment,
+							}));
+						}
+					}
+				}
+				_other => {
+					let fragment = key_token.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'cardinality'".to_string(),
+						},
+						message: format!(
+							"unexpected key `{}`: relationship WITH block accepts only 'cardinality'",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		let cardinality = cardinality.ok_or_else(|| {
+			Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "WITH { cardinality: '<value>' }".to_string(),
+				},
+				message: "CREATE RELATIONSHIP requires 'cardinality' in WITH block".to_string(),
+				fragment: token.fragment.to_owned(),
+			})
+		})?;
+
+		if cardinality.requires_junction() && junction.is_none() {
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "THROUGH <table>(<src>, <tgt>)".to_string(),
+				},
+				message: "N:M relationship requires a THROUGH junction table".to_string(),
+				fragment: name.to_owned(),
+			}));
+		}
+		if !cardinality.requires_junction() && junction.is_some() {
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "no THROUGH clause".to_string(),
+				},
+				message: "THROUGH junction is only allowed for N:M cardinality".to_string(),
+				fragment: name.to_owned(),
+			}));
+		}
+
+		Ok(AstCreate::Relationship(AstCreateRelationship {
+			token,
+			name,
+			source,
+			source_column,
+			target,
+			target_column,
+			junction,
+			cardinality,
+		}))
+	}
+
+	fn parse_relationship_table_with_column(
+		&mut self,
+		_count: usize,
+	) -> Result<(MaybeQualifiedTableIdentifier<'bump>, BumpFragment<'bump>)> {
+		let (table, mut cols) = self.parse_relationship_table_with_columns(1)?;
+		Ok((table, cols.pop().unwrap()))
+	}
+
+	fn parse_relationship_table_with_columns(
+		&mut self,
+		count: usize,
+	) -> Result<(MaybeQualifiedTableIdentifier<'bump>, Vec<BumpFragment<'bump>>)> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let table_name = segments.pop().unwrap().into_fragment();
+		let table_namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let table = MaybeQualifiedTableIdentifier::new(table_name).with_namespace(table_namespace);
+
+		self.consume_operator(Operator::OpenParen)?;
+		let mut cols = Vec::with_capacity(count);
+		loop {
+			let col_token = self.consume(TokenKind::Identifier)?;
+			cols.push(col_token.fragment);
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			break;
+		}
+		self.consume_operator(Operator::CloseParen)?;
+
+		if cols.len() != count {
+			let fragment = table.name.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: format!("{} column name(s)", count),
+				},
+				message: format!(
+					"expected {} column name(s) in parentheses, found {}",
+					count,
+					cols.len()
+				),
+				fragment,
+			}));
+		}
+		Ok((table, cols))
 	}
 }
 

@@ -385,7 +385,7 @@ fn ast_description(ast: &Ast<'_>, kind: &str) -> String {
 				)
 			}
 		},
-		Ast::Create(create) => match create {
+		Ast::Create(create) => match create.as_ref() {
 			AstCreate::PrimaryKey(pk) => {
 				let namespace =
 					pk.table.namespace

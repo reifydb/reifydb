@@ -959,6 +959,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateBinding(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateRelationship(node) => {
+				self.emit(Instruction::CreateRelationship(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateTest(node) => {
 				self.emit(Instruction::CreateTest(node));
 				self.emit(Instruction::Emit);
@@ -1039,6 +1043,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DropBinding(node) => {
 				self.emit(Instruction::DropBinding(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropRelationship(node) => {
+				self.emit(Instruction::DropRelationship(node));
 				self.emit(Instruction::Emit);
 			}
 
