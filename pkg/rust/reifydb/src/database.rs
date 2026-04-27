@@ -14,7 +14,11 @@ use std::{
 use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, pool::Pools};
+use reifydb_runtime::{
+	SharedRuntime,
+	actor::{mailbox::ActorRef, system::ActorSystem},
+	pool::Pools,
+};
 use reifydb_sub_api::subsystem::HealthStatus;
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 use reifydb_sub_flow::subsystem::FlowSubsystem;
@@ -116,6 +120,15 @@ impl Database {
 	/// version?", etc. via the chained accessors.
 	pub fn watermarks(&self) -> Watermarks<'_> {
 		Watermarks::new(self)
+	}
+
+	/// Resolve an actor handle by message type. Returns `None` if no actor
+	/// for `M` was registered during engine construction.
+	pub fn actor<M: 'static>(&self) -> Option<ActorRef<M>>
+	where
+		ActorRef<M>: Send + Sync,
+	{
+		self.engine.actor::<M>()
 	}
 
 	pub fn auth_service(&self) -> &AuthService {

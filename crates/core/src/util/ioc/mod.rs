@@ -64,6 +64,13 @@ impl IocContainer {
 			.and_then(|boxed| boxed.value::<T>())
 			.ok_or_else(|| internal_error!("Type {} not registered in IoC container", type_name::<T>()))
 	}
+
+	/// Resolve a registered service if present. Unlike `resolve`, returns
+	/// `None` when the type is absent without producing a diagnostic - for
+	/// callers that treat absence as a normal outcome.
+	pub fn try_resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Option<T> {
+		self.dependencies.read().unwrap().get(&TypeId::of::<T>()).and_then(|boxed| boxed.value::<T>())
+	}
 }
 
 impl Clone for IocContainer {

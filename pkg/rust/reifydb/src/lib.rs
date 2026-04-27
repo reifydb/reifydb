@@ -38,7 +38,7 @@ pub use reifydb_routine::{function, procedure, routine};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
-	actor::system::ActorSystem,
+	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::{Clock, MockClock},
 };
 pub use reifydb_sqlite::SqliteConfig;

@@ -39,7 +39,7 @@ use reifydb_core::{
 };
 use reifydb_metric::storage::metric::MetricReader;
 use reifydb_runtime::{
-	actor::system::ActorSystem,
+	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::{clock::Clock, rng::Rng},
 };
 use reifydb_store_single::SingleStore;
@@ -591,6 +591,19 @@ impl StandardEngine {
 	#[inline]
 	pub fn cdc_store(&self) -> CdcStore {
 		self.executor.ioc.resolve::<CdcStore>().expect("CdcStore must be registered")
+	}
+
+	/// Resolve an actor handle by message type.
+	///
+	/// Returns `None` if no actor for `M` was registered during engine
+	/// construction (e.g. the CDC compact actor is only registered for
+	/// persistent backends).
+	#[inline]
+	pub fn actor<M: 'static>(&self) -> Option<ActorRef<M>>
+	where
+		ActorRef<M>: Send + Sync,
+	{
+		self.executor.ioc.try_resolve::<ActorRef<M>>()
 	}
 
 	/// Highest commit version processed by the CDC producer actor.
