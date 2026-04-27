@@ -21,7 +21,7 @@ use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_type::value::Value;
 
-use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
+use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, traits::WithSubsystem};
 use crate::{
 	Database, Migration, Result,
 	api::{StorageFactory, transaction},
@@ -178,11 +178,18 @@ impl EmbeddedBuilder {
 			Arc::new(materialized_catalog.clone()),
 		);
 
+		let cdc_backend = match &self.storage_factory {
+			StorageFactory::Memory => CdcBackend::Memory,
+			#[cfg(not(target_arch = "wasm32"))]
+			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone()),
+		};
+
 		let mut builder = DatabaseBuilder::new(materialized_catalog, multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone())
 			.with_actor_system(actor_system)
-			.with_stores(multi_store, single_store);
+			.with_stores(multi_store, single_store)
+			.with_cdc_backend(cdc_backend);
 
 		if let Some(configurator) = self.auth_configurator {
 			builder = builder.with_auth(configurator);

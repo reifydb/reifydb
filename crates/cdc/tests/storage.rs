@@ -206,6 +206,39 @@ fn assert_drop_before_entry_stats<S: CdcStorage>(storage: S) {
 	assert_eq!(r.entries[0].value_bytes, 5);
 }
 
+fn assert_range_inverted_returns_empty<S: CdcStorage>(storage: S) {
+	for v in 1..=5 {
+		storage.write(&cdc_minimal(v)).unwrap();
+	}
+	let batch = storage
+		.read_range(Bound::Included(CommitVersion(10)), Bound::Included(CommitVersion(5)), 16)
+		.expect("inverted range must not error");
+	assert!(batch.items.is_empty(), "inverted range must return no items");
+	assert!(!batch.has_more, "inverted range cannot have more items");
+}
+
+fn assert_range_excluded_zero_end_returns_empty<S: CdcStorage>(storage: S) {
+	for v in 1..=3 {
+		storage.write(&cdc_minimal(v)).unwrap();
+	}
+	let batch = storage
+		.read_range(Bound::Unbounded, Bound::Excluded(CommitVersion(0)), 16)
+		.expect("Excluded(0) end must not panic");
+	assert!(batch.items.is_empty());
+	assert!(!batch.has_more);
+}
+
+fn assert_range_excluded_pair_collapsing<S: CdcStorage>(storage: S) {
+	for v in 1..=10 {
+		storage.write(&cdc_minimal(v)).unwrap();
+	}
+	let batch = storage
+		.read_range(Bound::Excluded(CommitVersion(5)), Bound::Excluded(CommitVersion(6)), 16)
+		.expect("collapsing exclusive bounds must not panic");
+	assert!(batch.items.is_empty());
+	assert!(!batch.has_more);
+}
+
 macro_rules! storage_trait_tests {
 	($mod_name:ident, $fresh:expr) => {
 		mod $mod_name {
@@ -229,6 +262,18 @@ macro_rules! storage_trait_tests {
 			#[test]
 			fn range_batch_size_has_more() {
 				super::assert_range_batch_size_has_more($fresh);
+			}
+			#[test]
+			fn range_inverted_returns_empty() {
+				super::assert_range_inverted_returns_empty($fresh);
+			}
+			#[test]
+			fn range_excluded_zero_end_returns_empty() {
+				super::assert_range_excluded_zero_end_returns_empty($fresh);
+			}
+			#[test]
+			fn range_excluded_pair_collapsing() {
+				super::assert_range_excluded_pair_collapsing($fresh);
 			}
 			#[test]
 			fn count() {

@@ -68,10 +68,26 @@ impl CdcStorage for MemoryCdcStorage {
 		end: Bound<CommitVersion>,
 		batch_size: u64,
 	) -> CdcStorageResult<CdcBatch> {
+		let lo_inc: CommitVersion = match start {
+			Bound::Included(v) => v,
+			Bound::Excluded(v) => CommitVersion(v.0.saturating_add(1)),
+			Bound::Unbounded => CommitVersion(0),
+		};
+		let hi_inc: CommitVersion = match end {
+			Bound::Included(v) => v,
+			Bound::Excluded(v) => CommitVersion(v.0.saturating_sub(1)),
+			Bound::Unbounded => CommitVersion(u64::MAX),
+		};
+		if lo_inc > hi_inc {
+			return Ok(CdcBatch {
+				items: Vec::new(),
+				has_more: false,
+			});
+		}
+
 		let guard = self.inner.read();
 		let batch_size = batch_size as usize;
-
-		let range_iter = guard.range((start, end));
+		let range_iter = guard.range(lo_inc..=hi_inc);
 		let mut items: Vec<Cdc> = Vec::with_capacity(batch_size.min(64));
 
 		for (count, (_, cdc)) in range_iter.enumerate() {
