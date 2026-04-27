@@ -30,6 +30,11 @@ impl Pools {
 		StubPool
 	}
 
+	/// Number of threads in the system pool (always 1 in DST/WASM).
+	pub fn system_thread_count(&self) -> usize {
+		1
+	}
+
 	/// Get a reference to the query pool (stub).
 	pub fn query_pool(&self) -> StubPool {
 		StubPool

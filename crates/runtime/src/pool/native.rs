@@ -92,6 +92,11 @@ impl Pools {
 		&self.inner.system
 	}
 
+	/// Number of threads in the system pool.
+	pub fn system_thread_count(&self) -> usize {
+		self.inner.system.current_num_threads()
+	}
+
 	/// Get a reference to the query rayon pool.
 	pub fn query_pool(&self) -> &Arc<ThreadPool> {
 		&self.inner.query

@@ -161,7 +161,6 @@ impl Bridge {
 
 		let flow_config = FlowConfig {
 			operators_dir: None,
-			num_workers: 1,
 			custom_operators: HashMap::new(),
 			connector_registry: Default::default(),
 		};

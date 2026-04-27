@@ -166,10 +166,9 @@ impl FlowSubsystem {
 
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
-		let num_workers = config.num_workers;
-		info!(num_workers, "initializing flow coordinator with {} workers", num_workers);
-
 		let actor_system = engine.actor_system();
+		let num_workers = actor_system.pools().system_thread_count();
+		info!(num_workers, "initializing flow coordinator with {} workers", num_workers);
 
 		// Shared flow catalog: clones share the same cache so the dispatcher,
 		// coordinator, and workers see the same flow-cache state.

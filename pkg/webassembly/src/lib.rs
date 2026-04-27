@@ -299,7 +299,6 @@ impl WasmDB {
 		// Create and start FlowSubsystem
 		let flow_config = FlowConfig {
 			operators_dir: None, // No FFI operators in WASM
-			num_workers: 1,      // Single-threaded for WASM
 			custom_operators: HashMap::new(),
 			connector_registry: Default::default(),
 		};
