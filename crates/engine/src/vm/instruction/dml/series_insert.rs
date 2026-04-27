@@ -144,7 +144,9 @@ pub(crate) fn insert_series(
 		}
 	}
 
-	services.catalog.update_series_metadata_txn(txn, metadata)?;
+	if inserted_count > 0 {
+		services.catalog.update_series_metadata_txn(txn, metadata)?;
+	}
 
 	if let Some(returning_exprs) = &returning {
 		let columns = decode_rows_to_columns(&shape, &returned_rows);

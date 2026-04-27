@@ -92,29 +92,34 @@ pub(crate) fn update_series(
 			build_series_updates_to_apply(services, txn, &series, &columns, &row_numbers, has_tag)?;
 
 		for (encoded_key, mut row, row_idx) in updates_to_apply {
-			let pre_values = txn.get(&encoded_key)?.map(|v| v.row);
-			let old_created_at = pre_values.as_ref().expect("row must exist for update").created_at_nanos();
+			let pre_values = match txn.get(&encoded_key)? {
+				Some(v) => v.row,
+				None => continue,
+			};
+
+			let old_created_at = pre_values.created_at_nanos();
 			row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos());
 
 			let key_value = extract_series_update_key_value(&columns, &series, row_idx);
 			let row_number = RowNumber::from(u64::from(row_numbers[row_idx]));
 
-			if let Some(ref pre_vals) = pre_values {
-				let event = SeriesUpdateEvent {
-					columns: &columns,
-					pre: pre_vals,
-					post: &row,
-					key_value,
-					row_number,
-					row_idx,
-				};
-				track_series_update_flow_change(services, txn, &series, &event)?;
+			let row = SeriesRowInterceptor::pre_update(txn, &series, row)?;
+			if txn.get_committed(&encoded_key)?.is_some() {
+				txn.mark_preexisting(&encoded_key)?;
 			}
-
-			let pre_for_interceptor = pre_values.clone().unwrap_or_else(|| row.clone());
-			let row = SeriesRowInterceptor::pre_update(txn, &series, row.clone())?;
 			txn.set(&encoded_key, row.clone())?;
-			SeriesRowInterceptor::post_update(txn, &series, &row, &pre_for_interceptor)?;
+			SeriesRowInterceptor::post_update(txn, &series, &row, &pre_values)?;
+
+			let event = SeriesUpdateEvent {
+				columns: &columns,
+				pre: &pre_values,
+				post: &row,
+				key_value,
+				row_number,
+				row_idx,
+			};
+			track_series_update_flow_change(services, txn, &series, &event)?;
+
 			updated_count += 1;
 		}
 

@@ -82,8 +82,10 @@ pub(crate) fn delete_series(
 		run_series_delete_all(services, txn, &target_data, has_returning)?
 	};
 
-	update_series_metadata_after_delete(&mut metadata, deleted_count);
-	services.catalog.update_series_metadata_txn(txn, metadata)?;
+	if deleted_count > 0 {
+		update_series_metadata_after_delete(&mut metadata, deleted_count);
+		services.catalog.update_series_metadata_txn(txn, metadata)?;
+	}
 
 	if let Some(returning_exprs) = &returning {
 		let cols = returning_columns.unwrap_or_else(Columns::empty);
@@ -177,10 +179,13 @@ fn run_series_delete_with_input(
 			let encoded_row = pre_entry.row;
 			let row_number = RowNumber::from(sequence);
 
+			let committed = txn.get_committed(&encoded_key)?.map(|v| v.row);
+			let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_row.clone());
+
 			let pre = build_series_delete_pre_columns_from_input(
 				series,
 				&columns,
-				&encoded_row,
+				&pre_for_cdc,
 				key_value,
 				row_number,
 				row_idx,
@@ -188,8 +193,11 @@ fn run_series_delete_with_input(
 			emit_series_remove_change(txn, series, pre);
 
 			SeriesRowInterceptor::pre_delete(txn, series)?;
-			txn.unset(&encoded_key, encoded_row.clone())?;
-			SeriesRowInterceptor::post_delete(txn, series, &encoded_row)?;
+			if committed.is_some() {
+				txn.mark_preexisting(&encoded_key)?;
+			}
+			txn.unset(&encoded_key, pre_for_cdc.clone())?;
+			SeriesRowInterceptor::post_delete(txn, series, &pre_for_cdc)?;
 			deleted_count += 1;
 		}
 
@@ -225,19 +233,25 @@ fn run_series_delete_all(
 	let mut deleted_count = 0u64;
 
 	for (key, encoded_row) in entries_to_delete.iter() {
+		let committed = txn.get_committed(key)?.map(|v| v.row);
+		let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_row.clone());
+
 		if let Some(decoded_key) = SeriesRowKey::decode(key) {
 			let pre = build_series_delete_pre_columns_from_storage(
 				series,
 				&delete_all_shape,
-				encoded_row,
+				&pre_for_cdc,
 				&decoded_key,
 			);
 			emit_series_remove_change(txn, series, pre);
 		}
 
 		SeriesRowInterceptor::pre_delete(txn, series)?;
-		txn.unset(key, encoded_row.clone())?;
-		SeriesRowInterceptor::post_delete(txn, series, encoded_row)?;
+		if committed.is_some() {
+			txn.mark_preexisting(key)?;
+		}
+		txn.unset(key, pre_for_cdc.clone())?;
+		SeriesRowInterceptor::post_delete(txn, series, &pre_for_cdc)?;
 		deleted_count += 1;
 	}
 

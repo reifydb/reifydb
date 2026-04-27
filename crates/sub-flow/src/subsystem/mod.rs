@@ -28,7 +28,6 @@ use reifydb_core::{
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	key::{EncodableKey, cdc_consumer::CdcConsumerKey},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -206,13 +205,8 @@ impl FlowSubsystem {
 		let actor_ref = coordinator_handle.actor_ref().clone();
 
 		let consumer_id = CdcConsumerId::new("flow-coordinator");
-		let consumer_key = CdcConsumerKey {
-			consumer: consumer_id.clone(),
-		}
-		.encode();
 		let consume_ref = FlowConsumeRef {
 			actor_ref,
-			consumer_key,
 		};
 
 		// Transactional flow engine - a separate FlowEngine for transactional views only.

@@ -348,6 +348,25 @@ impl MultiWriteTransaction {
 		self.conflicts.mark_read(key);
 		Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into))
 	}
+
+	/// Read the committed value at the transaction's read version, ignoring
+	/// any intra-tx pending writes. Returns `None` when the key was not in
+	/// committed storage when this transaction started. Used by row
+	/// operations to gate `mark_preexisting`: only keys that genuinely
+	/// existed before the transaction may participate in the optimizer's
+	/// "preexisting => keep tombstone" rule.
+	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self), fields(
+		txn_id = %self.id,
+		key_hex = %hex::display(key.as_ref())
+	))]
+	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		let version = self.version();
+		self.conflicts.mark_read(key);
+		Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into))
+	}
 }
 
 impl MultiWriteTransaction {

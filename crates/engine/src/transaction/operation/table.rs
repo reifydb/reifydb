@@ -130,7 +130,9 @@ impl TableOperations for CommandTransaction {
 
 		let row = TableRowInterceptor::pre_update(self, &table, id, row)?;
 
-		self.mark_preexisting(&key)?;
+		if self.get_committed(&key)?.is_some() {
+			self.mark_preexisting(&key)?;
+		}
 		self.set(&key, row.clone())?;
 
 		TableRowInterceptor::post_update(self, &table, id, &row, &pre)?;
@@ -143,21 +145,26 @@ impl TableOperations for CommandTransaction {
 	fn remove_from_table(&mut self, table: Table, id: RowNumber) -> Result<EncodedRow> {
 		let key = RowKey::encoded(table.id, id);
 
-		let deleted_values = match self.get(&key)? {
+		let displayed = match self.get(&key)? {
 			Some(v) => v.row,
 			None => return Ok(EncodedRow(CowVec::new(vec![]))),
 		};
+		let committed = self.get_committed(&key)?.map(|v| v.row);
 
 		TableRowInterceptor::pre_delete(self, &table, id)?;
 
-		self.mark_preexisting(&key)?;
-		self.unset(&key, deleted_values.clone())?;
+		let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
 
-		TableRowInterceptor::post_delete(self, &table, id, &deleted_values)?;
+		if committed.is_some() {
+			self.mark_preexisting(&key)?;
+		}
+		self.unset(&key, pre_for_cdc.clone())?;
 
-		self.track_flow_change(build_table_remove_change(&table, id, &deleted_values));
+		TableRowInterceptor::post_delete(self, &table, id, &pre_for_cdc)?;
 
-		Ok(deleted_values)
+		self.track_flow_change(build_table_remove_change(&table, id, &pre_for_cdc));
+
+		Ok(displayed)
 	}
 }
 
@@ -198,7 +205,9 @@ impl TableOperations for AdminTransaction {
 
 		let row = TableRowInterceptor::pre_update(self, &table, id, row)?;
 
-		self.mark_preexisting(&key)?;
+		if self.get_committed(&key)?.is_some() {
+			self.mark_preexisting(&key)?;
+		}
 		self.set(&key, row.clone())?;
 
 		TableRowInterceptor::post_update(self, &table, id, &row, &pre)?;
@@ -211,21 +220,26 @@ impl TableOperations for AdminTransaction {
 	fn remove_from_table(&mut self, table: Table, id: RowNumber) -> Result<EncodedRow> {
 		let key = RowKey::encoded(table.id, id);
 
-		let deleted_values = match self.get(&key)? {
+		let displayed = match self.get(&key)? {
 			Some(v) => v.row,
 			None => return Ok(EncodedRow(CowVec::new(vec![]))),
 		};
+		let committed = self.get_committed(&key)?.map(|v| v.row);
 
 		TableRowInterceptor::pre_delete(self, &table, id)?;
 
-		self.mark_preexisting(&key)?;
-		self.unset(&key, deleted_values.clone())?;
+		let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
 
-		TableRowInterceptor::post_delete(self, &table, id, &deleted_values)?;
+		if committed.is_some() {
+			self.mark_preexisting(&key)?;
+		}
+		self.unset(&key, pre_for_cdc.clone())?;
 
-		self.track_flow_change(build_table_remove_change(&table, id, &deleted_values));
+		TableRowInterceptor::post_delete(self, &table, id, &pre_for_cdc)?;
 
-		Ok(deleted_values)
+		self.track_flow_change(build_table_remove_change(&table, id, &pre_for_cdc));
+
+		Ok(displayed)
 	}
 }
 

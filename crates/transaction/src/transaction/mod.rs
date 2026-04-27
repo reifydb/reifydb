@@ -316,6 +316,20 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
+	/// Read the committed value at the transaction's read version, ignoring
+	/// pending intra-tx writes. For read-only transaction variants (Query,
+	/// Replica) this is equivalent to `get` since they hold no pending
+	/// writes.
+	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+		match self {
+			Self::Command(txn) => txn.get_committed(key),
+			Self::Admin(txn) => txn.get_committed(key),
+			Self::Query(txn) => txn.get(key),
+			Self::Test(t) => t.inner.get_committed(key),
+			Self::Replica(txn) => txn.get(key),
+		}
+	}
+
 	/// Check if a key exists (async method)
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		match self {

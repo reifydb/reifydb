@@ -20,7 +20,7 @@ use reifydb_core::{
 		pending::{Pending, PendingWrite},
 	},
 	common::CommitVersion,
-	encoded::{key::EncodedKey, shape::RowShape},
+	encoded::shape::RowShape,
 	interface::{
 		catalog::{flow::FlowId, shape::ShapeId},
 		cdc::{Cdc, CdcBatch, SystemChange},
@@ -53,7 +53,6 @@ use crate::catalog::FlowCatalog;
 
 pub(crate) struct FlowConsumeRef {
 	pub actor_ref: ActorRef<FlowCoordinatorMessage>,
-	pub consumer_key: EncodedKey,
 }
 
 impl CdcConsume for FlowConsumeRef {
@@ -62,7 +61,6 @@ impl CdcConsume for FlowConsumeRef {
 
 		let result = self.actor_ref.send(FlowCoordinatorMessage::Consume {
 			cdcs,
-			consumer_key: self.consumer_key.clone(),
 			current_version,
 			reply,
 		});
@@ -89,7 +87,6 @@ struct ConsumeContext {
 	combined: Pending,
 	pending_shapes: Vec<RowShape>,
 	checkpoints: Vec<(FlowId, CommitVersion)>,
-	consumer_key: EncodedKey,
 	original_reply: Box<dyn FnOnce(Result<()>) + Send>,
 	consume_start: Instant,
 	/// All flow changes derived from CDCs (computed once during Consume)
@@ -102,6 +99,18 @@ struct ConsumeContext {
 	downstream_flows: collections::HashSet<FlowId>,
 	/// View changes accumulated from flow workers for cascading to transactional flows.
 	view_changes: Vec<Change>,
+}
+
+impl ConsumeContext {
+	/// True when this consume produced no work for the multi store.
+	/// `finish_consume` short-circuits on this to avoid an empty
+	/// transaction whose only effect is to bump `current_version`.
+	fn is_empty(&self) -> bool {
+		self.combined.iter_sorted().next().is_none()
+			&& self.view_changes.is_empty()
+			&& self.checkpoints.is_empty()
+			&& self.pending_shapes.is_empty()
+	}
 }
 
 enum Phase {
@@ -202,11 +211,10 @@ impl Actor for CoordinatorActor {
 		match msg {
 			FlowCoordinatorMessage::Consume {
 				cdcs,
-				consumer_key,
 				current_version,
 				reply,
 			} => {
-				self.handle_consume(state, ctx, cdcs, consumer_key, current_version, reply);
+				self.handle_consume(state, ctx, cdcs, current_version, reply);
 			}
 			FlowCoordinatorMessage::PoolReply(response) => {
 				self.handle_pool_reply(state, ctx, response);
@@ -240,7 +248,6 @@ impl CoordinatorActor {
 		state: &mut CoordinatorState,
 		ctx: &Context<FlowCoordinatorMessage>,
 		cdcs: Vec<Cdc>,
-		consumer_key: EncodedKey,
 		current_version: CommitVersion,
 		reply: Box<dyn FnOnce(Result<()>) + Send>,
 	) {
@@ -291,7 +298,6 @@ impl CoordinatorActor {
 			combined: Pending::new(),
 			pending_shapes: Vec::new(),
 			checkpoints: Vec::new(),
-			consumer_key,
 			original_reply: reply,
 			consume_start,
 			all_changes,
@@ -821,6 +827,19 @@ impl CoordinatorActor {
 
 		state.phase = Phase::Idle;
 
+		// If this consume produced no work for the multi store, skip the
+		// transaction entirely. An empty transaction still bumps
+		// `current_version`, which is observable to version-sensitive tests
+		// even though the commit writes nothing. The consumer-level checkpoint
+		// that used to live here was moved to the upstream PollActor (see
+		// note below), so a consume with no flow-scoped output, no view
+		// changes, no per-flow checkpoints, and no pending shapes has no
+		// reason to open a transaction at all.
+		if consume_ctx.is_empty() {
+			(consume_ctx.original_reply)(Ok(()));
+			return;
+		}
+
 		// Begin a command transaction to apply all writes and checkpoints
 		let mut transaction = match self.engine.begin_command(IdentityId::system()) {
 			Ok(t) => t,
@@ -883,15 +902,15 @@ impl CoordinatorActor {
 			return;
 		}
 
-		// Persist consumer checkpoint
-		if let Some(latest_version) = consume_ctx.latest_version
-			&& let Err(e) =
-				CdcCheckpoint::persist(&mut transaction, &consume_ctx.consumer_key, latest_version)
-		{
-			let _ = transaction.rollback();
-			(consume_ctx.original_reply)(coordinator_error(e));
-			return;
-		}
+		// Consumer-level checkpoint is persisted by the upstream PollActor
+		// after this consume reply succeeds (see crates/cdc/src/consume/actor.rs
+		// `finish_consume`). Persisting it here too produced a redundant write
+		// to the same `CdcConsumer` key, which is filtered from CDC by
+		// `should_exclude_from_cdc` but still bumps `current_version` and broke
+		// version-sensitive cdc-snapshot tests. The view writes above are
+		// idempotent (set/unset/remove on user keys), so no atomicity is lost
+		// by leaving the consumer checkpoint to the upstream actor.
+		let _ = consume_ctx.latest_version;
 
 		// Commit the transaction
 		match transaction.commit() {

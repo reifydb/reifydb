@@ -151,20 +151,21 @@ impl RingBufferOperations for CommandTransaction {
 	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
-		// Get the current encoded before updating (for post-update interceptor)
-		let pre = self.get(&key)?.map(|v| v.row);
+		let pre = match self.get(&key)? {
+			Some(v) => v.row,
+			None => return Ok(row),
+		};
 
 		let row = RingBufferRowInterceptor::pre_update(self, &ringbuffer, id, row)?;
 
-		if pre.is_some() {
+		if self.get_committed(&key)?.is_some() {
 			self.mark_preexisting(&key)?;
 		}
 		self.set(&key, row.clone())?;
 
-		if let Some(ref pre) = pre {
-			RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, pre)?;
-			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, pre, &row));
-		}
+		RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, &pre)?;
+
+		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &row));
 
 		Ok(row)
 	}
@@ -172,24 +173,26 @@ impl RingBufferOperations for CommandTransaction {
 	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
-		// Get the encoded before removing (for post-delete interceptor)
-		let deleted_row = match self.get(&key)? {
+		let displayed = match self.get(&key)? {
 			Some(v) => v.row,
 			None => return Ok(EncodedRow(CowVec::new(vec![]))),
 		};
+		let committed = self.get_committed(&key)?.map(|v| v.row);
 
-		// Execute pre-delete interceptors
 		RingBufferRowInterceptor::pre_delete(self, ringbuffer, id)?;
 
-		// Remove the encoded from the database
-		self.mark_preexisting(&key)?;
-		self.unset(&key, deleted_row.clone())?;
+		let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
 
-		RingBufferRowInterceptor::post_delete(self, ringbuffer, id, &deleted_row)?;
+		if committed.is_some() {
+			self.mark_preexisting(&key)?;
+		}
+		self.unset(&key, pre_for_cdc.clone())?;
 
-		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &deleted_row));
+		RingBufferRowInterceptor::post_delete(self, ringbuffer, id, &pre_for_cdc)?;
 
-		Ok(deleted_row)
+		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &pre_for_cdc));
+
+		Ok(displayed)
 	}
 }
 
@@ -234,19 +237,21 @@ impl RingBufferOperations for AdminTransaction {
 	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
-		let pre = self.get(&key)?.map(|v| v.row);
+		let pre = match self.get(&key)? {
+			Some(v) => v.row,
+			None => return Ok(row),
+		};
 
 		let row = RingBufferRowInterceptor::pre_update(self, &ringbuffer, id, row)?;
 
-		if pre.is_some() {
+		if self.get_committed(&key)?.is_some() {
 			self.mark_preexisting(&key)?;
 		}
 		self.set(&key, row.clone())?;
 
-		if let Some(ref pre) = pre {
-			RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, pre)?;
-			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, pre, &row));
-		}
+		RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, &pre)?;
+
+		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &row));
 
 		Ok(row)
 	}
@@ -254,21 +259,26 @@ impl RingBufferOperations for AdminTransaction {
 	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
-		let deleted_row = match self.get(&key)? {
+		let displayed = match self.get(&key)? {
 			Some(v) => v.row,
 			None => return Ok(EncodedRow(CowVec::new(vec![]))),
 		};
+		let committed = self.get_committed(&key)?.map(|v| v.row);
 
 		RingBufferRowInterceptor::pre_delete(self, ringbuffer, id)?;
 
-		self.mark_preexisting(&key)?;
-		self.unset(&key, deleted_row.clone())?;
+		let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
 
-		RingBufferRowInterceptor::post_delete(self, ringbuffer, id, &deleted_row)?;
+		if committed.is_some() {
+			self.mark_preexisting(&key)?;
+		}
+		self.unset(&key, pre_for_cdc.clone())?;
 
-		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &deleted_row));
+		RingBufferRowInterceptor::post_delete(self, ringbuffer, id, &pre_for_cdc)?;
 
-		Ok(deleted_row)
+		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &pre_for_cdc));
+
+		Ok(displayed)
 	}
 }
 

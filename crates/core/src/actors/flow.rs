@@ -11,7 +11,7 @@ use reifydb_type::{Result, value::datetime::DateTime};
 use super::pending::Pending;
 use crate::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, shape::RowShape},
+	encoded::shape::RowShape,
 	interface::{catalog::flow::FlowId, cdc::Cdc, change::Change},
 };
 
@@ -171,7 +171,6 @@ pub enum FlowCoordinatorMessage {
 	/// Consume CDC events and process them through flows
 	Consume {
 		cdcs: Vec<Cdc>,
-		consumer_key: EncodedKey,
 		current_version: CommitVersion,
 		reply: Box<dyn FnOnce(Result<()>) + Send>,
 	},

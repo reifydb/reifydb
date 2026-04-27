@@ -508,6 +508,14 @@ impl CommandTransaction {
 		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
+	/// Read the committed value at the transaction's read version, ignoring
+	/// pending intra-tx writes.
+	#[inline]
+	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().get_committed(key)?.map(|v| v.into_multi_version_row()))
+	}
+
 	/// Check if a key exists
 	#[inline]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
