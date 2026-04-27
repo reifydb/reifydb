@@ -2,4 +2,5 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod ringbuffer;
+pub mod series;
 pub mod table;

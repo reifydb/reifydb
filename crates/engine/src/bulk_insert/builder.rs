@@ -14,29 +14,34 @@ use reifydb_core::{
 		id::IndexId,
 		key::PrimaryKey,
 		ringbuffer::{RingBuffer, RingBufferMetadata},
+		series::{Series, SeriesMetadata},
 		table::Table,
 	},
 	internal_error,
-	key::{EncodableKey, index_entry::IndexEntryKey},
+	key::{EncodableKey, index_entry::IndexEntryKey, series_row::SeriesRowKey},
 };
 use reifydb_runtime::context::clock::Clock;
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::{
+	interceptor::series_row::SeriesRowInterceptor,
+	transaction::{Transaction, command::CommandTransaction},
+};
 use reifydb_type::{
 	fragment::Fragment,
 	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
 use super::{
-	BulkInsertResult, RingBufferInsertResult, TableInsertResult,
+	BulkInsertResult, RingBufferInsertResult, SeriesInsertResult, TableInsertResult,
 	validation::{
-		reorder_rows_unvalidated, reorder_rows_unvalidated_rb, validate_and_coerce_rows,
-		validate_and_coerce_rows_rb,
+		reorder_rows_unvalidated, reorder_rows_unvalidated_rb, reorder_rows_unvalidated_series,
+		validate_and_coerce_rows, validate_and_coerce_rows_rb, validate_and_coerce_rows_series,
 	},
 };
 use crate::{
 	Result,
 	bulk_insert::primitive::{
 		ringbuffer::{PendingRingBufferInsert, RingBufferInsertBuilder},
+		series::{PendingSeriesInsert, SeriesInsertBuilder},
 		table::{PendingTableInsert, TableInsertBuilder},
 	},
 	engine::StandardEngine,
@@ -45,7 +50,7 @@ use crate::{
 	},
 	vm::instruction::dml::{
 		primary_key,
-		shape::{get_or_create_ringbuffer_shape, get_or_create_table_shape},
+		shape::{get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape},
 	},
 };
 
@@ -122,6 +127,7 @@ pub struct BulkInsertBuilder<'e, V: ValidationMode = Validated> {
 	identity: IdentityId,
 	pending_tables: Vec<PendingTableInsert>,
 	pending_ringbuffers: Vec<PendingRingBufferInsert>,
+	pending_series: Vec<PendingSeriesInsert>,
 	_validation: PhantomData<V>,
 }
 
@@ -133,6 +139,7 @@ impl<'e> BulkInsertBuilder<'e, Validated> {
 			identity,
 			pending_tables: Vec::new(),
 			pending_ringbuffers: Vec::new(),
+			pending_series: Vec::new(),
 			_validation: PhantomData,
 		}
 	}
@@ -147,6 +154,7 @@ impl<'e> BulkInsertBuilder<'e, Unchecked> {
 			identity,
 			pending_tables: Vec::new(),
 			pending_ringbuffers: Vec::new(),
+			pending_series: Vec::new(),
 			_validation: PhantomData,
 		}
 	}
@@ -171,6 +179,15 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		RingBufferInsertBuilder::new(self, namespace, ringbuffer)
 	}
 
+	/// Begin inserting into a series.
+	///
+	/// The qualified name can be either "namespace::series" or just "series"
+	/// (which uses the default namespace).
+	pub fn series<'a>(&'a mut self, qualified_name: &str) -> SeriesInsertBuilder<'a, 'e, V> {
+		let (namespace, series) = parse_qualified_name(qualified_name);
+		SeriesInsertBuilder::new(self, namespace, series)
+	}
+
 	/// Add a pending table insert (called by TableInsertBuilder::done)
 	pub(super) fn add_table_insert(&mut self, pending: PendingTableInsert) {
 		self.pending_tables.push(pending);
@@ -179,6 +196,11 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	/// Add a pending ring buffer insert (called by RingBufferInsertBuilder::done)
 	pub(super) fn add_ringbuffer_insert(&mut self, pending: PendingRingBufferInsert) {
 		self.pending_ringbuffers.push(pending);
+	}
+
+	/// Add a pending series insert (called by SeriesInsertBuilder::done)
+	pub(super) fn add_series_insert(&mut self, pending: PendingSeriesInsert) {
+		self.pending_series.push(pending);
 	}
 
 	/// Execute all pending inserts in a single transaction.
@@ -193,9 +215,10 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		let total_rows = self.total_pending_rows();
 		let pending_tables = self.pending_tables;
 		let pending_ringbuffers = self.pending_ringbuffers;
+		let pending_series = self.pending_series;
 
 		V::run(&mut txn, total_rows, move |txn| {
-			run_all_pending::<V>(catalog, clock, txn, pending_tables, pending_ringbuffers)
+			run_all_pending::<V>(catalog, clock, txn, pending_tables, pending_ringbuffers, pending_series)
 		})
 	}
 
@@ -203,6 +226,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	fn total_pending_rows(&self) -> usize {
 		self.pending_tables.iter().map(|p| p.rows.len()).sum::<usize>()
 			+ self.pending_ringbuffers.iter().map(|p| p.rows.len()).sum::<usize>()
+			+ self.pending_series.iter().map(|p| p.rows.len()).sum::<usize>()
 	}
 }
 
@@ -213,6 +237,7 @@ fn run_all_pending<V: ValidationMode>(
 	txn: &mut CommandTransaction,
 	pending_tables: Vec<PendingTableInsert>,
 	pending_ringbuffers: Vec<PendingRingBufferInsert>,
+	pending_series: Vec<PendingSeriesInsert>,
 ) -> Result<BulkInsertResult> {
 	let mut result = BulkInsertResult::default();
 	for pending in pending_tables {
@@ -220,6 +245,9 @@ fn run_all_pending<V: ValidationMode>(
 	}
 	for pending in pending_ringbuffers {
 		result.ringbuffers.push(execute_ringbuffer_insert::<V>(&catalog, txn, &pending, clock)?);
+	}
+	for pending in pending_series {
+		result.series.push(execute_series_insert::<V>(&catalog, txn, &pending, clock)?);
 	}
 	Ok(result)
 }
@@ -561,6 +589,161 @@ fn dict_encode_ringbuffer_row(
 		}
 	}
 	Ok(())
+}
+
+fn execute_series_insert<V: ValidationMode>(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	pending: &PendingSeriesInsert,
+	clock: &Clock,
+) -> Result<SeriesInsertResult> {
+	let series = resolve_series(catalog, txn, pending)?;
+	let mut metadata = load_series_metadata(catalog, txn, pending, &series)?;
+	let shape = get_or_create_series_shape(catalog, &series, &mut Transaction::Command(txn))?;
+	let coerced_rows = coerce_series_rows::<V>(pending, &series)?;
+	let inserted = insert_series_rows::<V>(txn, &series, &shape, coerced_rows, &mut metadata, clock)?;
+	catalog.update_series_metadata_txn(&mut Transaction::Command(txn), metadata)?;
+	Ok(SeriesInsertResult {
+		namespace: pending.namespace.clone(),
+		series: pending.series.clone(),
+		inserted,
+	})
+}
+
+#[inline]
+fn resolve_series(catalog: &Catalog, txn: &mut CommandTransaction, pending: &PendingSeriesInsert) -> Result<Series> {
+	let namespace = catalog
+		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
+		.ok_or_else(|| CatalogError::NotFound {
+			kind: CatalogObjectKind::Namespace,
+			namespace: pending.namespace.to_string(),
+			name: String::new(),
+			fragment: Fragment::None,
+		})?;
+
+	catalog.find_series_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.series)?.ok_or_else(|| {
+		CatalogError::NotFound {
+			kind: CatalogObjectKind::Series,
+			namespace: pending.namespace.to_string(),
+			name: pending.series.to_string(),
+			fragment: Fragment::None,
+		}
+		.into()
+	})
+}
+
+#[inline]
+fn load_series_metadata(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	pending: &PendingSeriesInsert,
+	series: &Series,
+) -> Result<SeriesMetadata> {
+	catalog.find_series_metadata(&mut Transaction::Command(txn), series.id)?.ok_or_else(|| {
+		CatalogError::NotFound {
+			kind: CatalogObjectKind::Series,
+			namespace: pending.namespace.to_string(),
+			name: pending.series.to_string(),
+			fragment: Fragment::None,
+		}
+		.into()
+	})
+}
+
+#[inline]
+fn coerce_series_rows<V: ValidationMode>(pending: &PendingSeriesInsert, series: &Series) -> Result<Vec<Vec<Value>>> {
+	if V::VALIDATED {
+		validate_and_coerce_rows_series(&pending.rows, series)
+	} else {
+		reorder_rows_unvalidated_series(&pending.rows, series)
+	}
+}
+
+fn insert_series_rows<V: ValidationMode>(
+	txn: &mut CommandTransaction,
+	series: &Series,
+	shape: &RowShape,
+	coerced_rows: Vec<Vec<Value>>,
+	metadata: &mut SeriesMetadata,
+	clock: &Clock,
+) -> Result<u64> {
+	let key_col_name = series.key.column();
+	let key_col_idx =
+		series.columns.iter().position(|c| c.name == key_col_name).ok_or_else(|| {
+			internal_error!("series {} key column {} not found", series.name, key_col_name)
+		})?;
+
+	let mut inserted_count = 0u64;
+	for values in coerced_rows {
+		if V::VALIDATED {
+			for (idx, col) in series.columns.iter().enumerate() {
+				col.constraint.validate(&values[idx])?;
+			}
+		}
+
+		let key_value = series.key_to_u64(values[key_col_idx].clone()).unwrap_or(0);
+
+		metadata.sequence_counter += 1;
+		let sequence = metadata.sequence_counter;
+		let row_key = SeriesRowKey {
+			series: series.id,
+			variant_tag: None,
+			key: key_value,
+			sequence,
+		};
+		let encoded_key = row_key.encode();
+
+		let row = encode_series_row(series, shape, key_value, &values, key_col_idx, clock);
+
+		let row = SeriesRowInterceptor::pre_insert(txn, series, row)?;
+		txn.set(&encoded_key, row.clone())?;
+		SeriesRowInterceptor::post_insert(txn, series, &row)?;
+
+		update_series_metadata_for_insert(metadata, key_value);
+		inserted_count += 1;
+	}
+	Ok(inserted_count)
+}
+
+#[inline]
+fn encode_series_row(
+	series: &Series,
+	shape: &RowShape,
+	key_value: u64,
+	values: &[Value],
+	key_col_idx: usize,
+	clock: &Clock,
+) -> EncodedRow {
+	let key_value_encoded = series.key_from_u64(key_value);
+	let mut row = shape.allocate();
+	shape.set_value(&mut row, 0, &key_value_encoded);
+	let mut shape_idx = 1;
+	for (col_idx, value) in values.iter().enumerate() {
+		if col_idx == key_col_idx {
+			continue;
+		}
+		shape.set_value(&mut row, shape_idx, value);
+		shape_idx += 1;
+	}
+	let now_nanos = clock.now_nanos();
+	row.set_timestamps(now_nanos, now_nanos);
+	row
+}
+
+#[inline]
+fn update_series_metadata_for_insert(metadata: &mut SeriesMetadata, key_value: u64) {
+	if metadata.row_count == 0 {
+		metadata.oldest_key = key_value;
+		metadata.newest_key = key_value;
+	} else {
+		if key_value < metadata.oldest_key {
+			metadata.oldest_key = key_value;
+		}
+		if key_value > metadata.newest_key {
+			metadata.newest_key = key_value;
+		}
+	}
+	metadata.row_count += 1;
 }
 
 /// Parse a qualified name like "namespace::table" into (namespace, name).

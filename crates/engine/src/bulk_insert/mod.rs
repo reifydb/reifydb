@@ -20,6 +20,9 @@
 //!     .ringbuffer("namespace::events")
 //!         .row(params!{ timestamp: 12345, event_type: "login" })
 //!         .done()
+//!     .series("namespace::cpu_usage")
+//!         .row(params!{ timestamp: 12345, value: 0.42 })
+//!         .done()
 //!     .execute()?;
 //! ```
 
@@ -33,6 +36,7 @@ pub mod validation;
 pub struct BulkInsertResult {
 	pub tables: Vec<TableInsertResult>,
 	pub ringbuffers: Vec<RingBufferInsertResult>,
+	pub series: Vec<SeriesInsertResult>,
 }
 
 /// Result of inserting into a specific table
@@ -48,5 +52,13 @@ pub struct TableInsertResult {
 pub struct RingBufferInsertResult {
 	pub namespace: String,
 	pub ringbuffer: String,
+	pub inserted: u64,
+}
+
+/// Result of inserting into a specific series
+#[derive(Debug, Clone)]
+pub struct SeriesInsertResult {
+	pub namespace: String,
+	pub series: String,
 	pub inserted: u64,
 }

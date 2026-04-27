@@ -6,7 +6,7 @@
 use std::iter;
 
 use reifydb_core::{
-	interface::catalog::{column::Column, ringbuffer::RingBuffer, table::Table},
+	interface::catalog::{column::Column, ringbuffer::RingBuffer, series::Series, table::Table},
 	value::column::buffer::ColumnBuffer,
 };
 use reifydb_type::{fragment::Fragment, params::Params, value::Value};
@@ -85,6 +85,36 @@ pub fn reorder_rows_unvalidated_rb(rows: &[Params], ringbuffer: &RingBuffer) -> 
 	let column_data = collect_rows_to_columns(rows, &ringbuffer.columns, &ringbuffer.name)?;
 
 	// Convert directly to row format without coercion
+	Ok(columns_to_rows(&column_data, num_rows, num_cols))
+}
+
+/// Validate and coerce all rows for a series in columnar batch mode.
+pub fn validate_and_coerce_rows_series(rows: &[Params], series: &Series) -> Result<Vec<Vec<Value>>> {
+	if rows.is_empty() {
+		return Ok(Vec::new());
+	}
+
+	let num_cols = series.columns.len();
+	let num_rows = rows.len();
+
+	let column_data = collect_rows_to_columns(rows, &series.columns, &series.name)?;
+	let coerced_columns = coerce_columns(&column_data, &series.columns, num_rows)?;
+
+	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
+}
+
+/// Reorder all rows for a series without coercion. Companion to
+/// `reorder_rows_unvalidated` for series.
+pub fn reorder_rows_unvalidated_series(rows: &[Params], series: &Series) -> Result<Vec<Vec<Value>>> {
+	if rows.is_empty() {
+		return Ok(Vec::new());
+	}
+
+	let num_cols = series.columns.len();
+	let num_rows = rows.len();
+
+	let column_data = collect_rows_to_columns(rows, &series.columns, &series.name)?;
+
 	Ok(columns_to_rows(&column_data, num_rows, num_cols))
 }
 

@@ -5,12 +5,14 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::row::EncodedRow,
+	encoded::{row::EncodedRow, shape::RowShape},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
 		catalog::{
+			column::Column,
+			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
-			series::{SeriesKey, TimestampPrecision},
+			series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision},
 			shape::ShapeId,
 		},
 		change::{Change, ChangeOrigin, Diff},
@@ -30,6 +32,7 @@ use reifydb_type::{
 use tracing::instrument;
 
 use super::{
+	context::SeriesTarget,
 	returning::{decode_rows_to_columns, evaluate_returning},
 	shape::get_or_create_series_shape,
 };
@@ -54,122 +57,58 @@ pub(crate) fn insert_series(
 	params: Params,
 	symbols: &SymbolTable,
 ) -> Result<Columns> {
-	let namespace_name = plan.target.namespace().name();
-	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
-		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
+	let InsertSeriesNode {
+		input,
+		target,
+		returning,
+	} = plan;
+	let (namespace, series, mut metadata) = resolve_insert_series_target(services, txn, &target)?;
+	let target_data = SeriesTarget {
+		namespace: &namespace,
+		series: &series,
 	};
-
-	let series_name = plan.target.name();
-	let Some(series) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
-		let fragment = Fragment::internal(plan.target.name());
-		return_error!(series_not_found(fragment, namespace_name, series_name));
-	};
-
-	// Get current metadata
-	let Some(mut metadata) = services.catalog.find_series_metadata(txn, series.id)? else {
-		let fragment = Fragment::internal(plan.target.name());
-		return_error!(series_not_found(fragment, namespace_name, series_name));
-	};
+	let context = build_insert_series_query_context(services, &target_data, &params, symbols);
+	let mut input_node = compile(*input, txn, context.clone());
 
 	let has_tag = series.tag.is_some();
-	let key = &series.key;
 	let key_column_name = series.key.column();
 
-	// Create resolved source for the series
-	let namespace_ident = Fragment::internal(namespace.name());
-	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
-	let series_ident = Fragment::internal(series.name.clone());
-	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
-	let resolved_source = Some(ResolvedShape::Series(resolved_series));
-
-	let execution_context = Arc::new(QueryContext {
-		services: services.clone(),
-		source: resolved_source,
-		batch_size: 1024,
-		params: params.clone(),
-		symbols: symbols.clone(),
-		identity: IdentityId::root(),
-	});
-
-	let mut input_node = compile(*plan.input, txn, execution_context.clone());
-
 	let mut inserted_count = 0u64;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if returning.is_some() {
 		Vec::with_capacity(16)
 	} else {
 		Vec::new()
 	};
+	let has_returning = returning.is_some();
 
-	// Initialize the operator before execution
-	input_node.initialize(txn, &execution_context)?;
-
-	// Create shape for series encoding
+	input_node.initialize(txn, &context)?;
 	let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 
-	// Process all input batches
-	let mut mutable_context = (*execution_context).clone();
+	let mut mutable_context = (*context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-		// Enforce write policies before processing rows
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
-			namespace_name,
-			series_name,
+			namespace.name(),
+			&series.name,
 			DataOp::Insert,
 			&columns,
 			PolicyTargetType::Series,
 		)?;
 
 		let row_count = columns.row_count();
-
 		for row_idx in 0..row_count {
-			// Extract or generate key value
-			let key_value: u64 = if let Some(key_col) =
-				columns.iter().find(|col| col.name().text() == key_column_name)
-			{
-				match series.key_to_u64(key_col.data().get_value(row_idx)) {
-					Some(v) => v,
-					None => match key {
-						SeriesKey::DateTime {
-							precision,
-							..
-						} => generate_timestamp(services, precision),
-						SeriesKey::Integer {
-							..
-						} => metadata.newest_key + 1,
-					},
-				}
-			} else {
-				match key {
-					SeriesKey::DateTime {
-						precision,
-						..
-					} => generate_timestamp(services, precision),
-					SeriesKey::Integer {
-						..
-					} => metadata.newest_key + 1,
-				}
-			};
+			let key_value = extract_or_generate_series_key(
+				services,
+				&columns,
+				&series,
+				&metadata,
+				row_idx,
+				key_column_name,
+			);
+			let variant_tag = extract_variant_tag(&columns, has_tag, row_idx);
 
-			// Extract optional tag
-			let variant_tag: Option<u8> = if has_tag {
-				if let Some(tag_col) = columns.iter().find(|col| col.name().text() == "tag") {
-					match tag_col.data().get_value(row_idx) {
-						Value::Uint1(t) => Some(t),
-						Value::Int1(t) => Some(t as u8),
-						_ => Some(0),
-					}
-				} else {
-					Some(0)
-				}
-			} else {
-				None
-			};
-
-			// Allocate sequence number
 			metadata.sequence_counter += 1;
 			let sequence = metadata.sequence_counter;
-
-			// Build key
 			let row_key = SeriesRowKey {
 				series: series.id,
 				variant_tag,
@@ -178,103 +117,224 @@ pub(crate) fn insert_series(
 			};
 			let encoded_key = row_key.encode();
 
-			// Collect data column values (excluding key column)
 			let data_columns: Vec<_> = series.data_columns().collect();
-			let mut data_values = Vec::with_capacity(data_columns.len());
-			for col_def in &data_columns {
-				let value = if let Some(input_col) =
-					columns.iter().find(|c| c.name().text() == col_def.name)
-				{
-					input_col.data().get_value(row_idx)
-				} else {
-					Value::none()
-				};
-				data_values.push(value);
-			}
-
-			// Encode using shape (key at index 0, data columns at index 1+)
-			let key_value_encoded = series.key_from_u64(key_value);
-			let mut row = shape.allocate();
-			shape.set_value(&mut row, 0, &key_value_encoded);
-			for (i, value) in data_values.iter().enumerate() {
-				shape.set_value(&mut row, i + 1, value);
-			}
-
-			let now_nanos = services.runtime_context.clock.now_nanos();
-			row.set_timestamps(now_nanos, now_nanos);
+			let data_values = collect_series_data_values(&columns, &data_columns, row_idx);
+			let row = build_encoded_series_row(services, &series, &shape, key_value, &data_values);
 
 			let row = SeriesRowInterceptor::pre_insert(txn, &series, row)?;
 			txn.set(&encoded_key, row.clone())?;
 			SeriesRowInterceptor::post_insert(txn, &series, &row)?;
 
-			if plan.returning.is_some() {
+			if has_returning {
 				returned_rows.push((RowNumber::from(sequence), row.clone()));
 			}
 
-			// Track flow change for transactional/deferred view processing
-			{
-				let row_number = RowNumber::from(sequence);
-				let mut cols = Vec::with_capacity(1 + data_columns.len());
-				cols.push(ColumnWithName::new(
-					Fragment::internal(key_column_name),
-					series.key_column_data(vec![key_value]),
-				));
-				for (i, col_def) in data_columns.iter().enumerate() {
-					let mut data = ColumnBuffer::with_capacity(col_def.constraint.get_type(), 1);
-					data.push_value(data_values[i].clone());
-					cols.push(ColumnWithName {
-						name: Fragment::internal(&col_def.name),
-						data,
-					});
-				}
-				let post = Columns::with_system_columns(
-					cols,
-					vec![row_number],
-					vec![DateTime::from_nanos(row.created_at_nanos())],
-					vec![DateTime::from_nanos(row.updated_at_nanos())],
-				);
-				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
-					version: CommitVersion(0),
-					diffs: vec![Diff::Insert {
-						post,
-					}],
-					changed_at: DateTime::default(),
-				});
-			}
+			let snapshot = SeriesRowSnapshot {
+				key_column_name,
+				key_value,
+				data_columns: &data_columns,
+				data_values: &data_values,
+				sequence,
+				row: &row,
+			};
+			track_series_insert_flow_change(txn, &series, &snapshot);
 
-			// Update metadata
-			if metadata.row_count == 0 {
-				metadata.oldest_key = key_value;
-				metadata.newest_key = key_value;
-			} else {
-				if key_value < metadata.oldest_key {
-					metadata.oldest_key = key_value;
-				}
-				if key_value > metadata.newest_key {
-					metadata.newest_key = key_value;
-				}
-			}
-			metadata.row_count += 1;
+			update_series_metadata_for_insert(&mut metadata, key_value);
 			inserted_count += 1;
 		}
 	}
 
-	// Save updated metadata
 	services.catalog.update_series_metadata_txn(txn, metadata)?;
 
-	// If RETURNING clause is present, evaluate expressions against inserted rows
-	if let Some(returning_exprs) = &plan.returning {
+	if let Some(returning_exprs) = &returning {
 		let columns = decode_rows_to_columns(&shape, &returned_rows);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
+	Ok(insert_series_result(namespace.name(), &series.name, inserted_count))
+}
 
-	// Return summary
-	Ok(Columns::single_row([
-		("namespace", Value::Utf8(namespace.name().to_string())),
-		("series", Value::Utf8(series.name)),
-		("inserted", Value::Uint8(inserted_count)),
-	]))
+/// Snapshot of one freshly-inserted series row, used for flow-change tracking.
+struct SeriesRowSnapshot<'a> {
+	key_column_name: &'a str,
+	key_value: u64,
+	data_columns: &'a [&'a Column],
+	data_values: &'a [Value],
+	sequence: u64,
+	row: &'a EncodedRow,
+}
+
+#[inline]
+fn resolve_insert_series_target(
+	services: &Arc<Services>,
+	txn: &mut Transaction<'_>,
+	target: &ResolvedSeries,
+) -> Result<(Namespace, Series, SeriesMetadata)> {
+	let namespace_name = target.namespace().name();
+	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
+		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
+	};
+	let series_name = target.name();
+	let Some(series) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
+		let fragment = Fragment::internal(target.name());
+		return_error!(series_not_found(fragment, namespace_name, series_name));
+	};
+	let Some(metadata) = services.catalog.find_series_metadata(txn, series.id)? else {
+		let fragment = Fragment::internal(target.name());
+		return_error!(series_not_found(fragment, namespace_name, series_name));
+	};
+	Ok((namespace, series, metadata))
+}
+
+#[inline]
+fn build_insert_series_query_context(
+	services: &Arc<Services>,
+	target: &SeriesTarget<'_>,
+	params: &Params,
+	symbols: &SymbolTable,
+) -> Arc<QueryContext> {
+	let namespace_ident = Fragment::internal(target.namespace.name());
+	let resolved_namespace = ResolvedNamespace::new(namespace_ident, target.namespace.clone());
+	let series_ident = Fragment::internal(target.series.name.clone());
+	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, target.series.clone());
+	Arc::new(QueryContext {
+		services: services.clone(),
+		source: Some(ResolvedShape::Series(resolved_series)),
+		batch_size: 1024,
+		params: params.clone(),
+		symbols: symbols.clone(),
+		identity: IdentityId::root(),
+	})
+}
+
+#[inline]
+fn extract_or_generate_series_key(
+	services: &Arc<Services>,
+	columns: &Columns,
+	series: &Series,
+	metadata: &SeriesMetadata,
+	row_idx: usize,
+	key_column_name: &str,
+) -> u64 {
+	let from_input = columns
+		.iter()
+		.find(|col| col.name().text() == key_column_name)
+		.and_then(|key_col| series.key_to_u64(key_col.data().get_value(row_idx)));
+	match from_input {
+		Some(v) => v,
+		None => match &series.key {
+			SeriesKey::DateTime {
+				precision,
+				..
+			} => generate_timestamp(services, precision),
+			SeriesKey::Integer {
+				..
+			} => metadata.newest_key + 1,
+		},
+	}
+}
+
+#[inline]
+fn extract_variant_tag(columns: &Columns, has_tag: bool, row_idx: usize) -> Option<u8> {
+	if !has_tag {
+		return None;
+	}
+	let Some(tag_col) = columns.iter().find(|col| col.name().text() == "tag") else {
+		return Some(0);
+	};
+	match tag_col.data().get_value(row_idx) {
+		Value::Uint1(t) => Some(t),
+		Value::Int1(t) => Some(t as u8),
+		_ => Some(0),
+	}
+}
+
+#[inline]
+fn collect_series_data_values(columns: &Columns, data_columns: &[&Column], row_idx: usize) -> Vec<Value> {
+	let mut values = Vec::with_capacity(data_columns.len());
+	for col_def in data_columns {
+		let value = if let Some(input_col) = columns.iter().find(|c| c.name().text() == col_def.name) {
+			input_col.data().get_value(row_idx)
+		} else {
+			Value::none()
+		};
+		values.push(value);
+	}
+	values
+}
+
+#[inline]
+fn build_encoded_series_row(
+	services: &Arc<Services>,
+	series: &Series,
+	shape: &RowShape,
+	key_value: u64,
+	data_values: &[Value],
+) -> EncodedRow {
+	let key_value_encoded = series.key_from_u64(key_value);
+	let mut row = shape.allocate();
+	shape.set_value(&mut row, 0, &key_value_encoded);
+	for (i, value) in data_values.iter().enumerate() {
+		shape.set_value(&mut row, i + 1, value);
+	}
+	let now_nanos = services.runtime_context.clock.now_nanos();
+	row.set_timestamps(now_nanos, now_nanos);
+	row
+}
+
+fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, snapshot: &SeriesRowSnapshot<'_>) {
+	let row_number = RowNumber::from(snapshot.sequence);
+	let mut cols = Vec::with_capacity(1 + snapshot.data_columns.len());
+	cols.push(ColumnWithName::new(
+		Fragment::internal(snapshot.key_column_name),
+		series.key_column_data(vec![snapshot.key_value]),
+	));
+	for (i, col_def) in snapshot.data_columns.iter().enumerate() {
+		let mut data = ColumnBuffer::with_capacity(col_def.constraint.get_type(), 1);
+		data.push_value(snapshot.data_values[i].clone());
+		cols.push(ColumnWithName {
+			name: Fragment::internal(&col_def.name),
+			data,
+		});
+	}
+	let post = Columns::with_system_columns(
+		cols,
+		vec![row_number],
+		vec![DateTime::from_nanos(snapshot.row.created_at_nanos())],
+		vec![DateTime::from_nanos(snapshot.row.updated_at_nanos())],
+	);
+	txn.track_flow_change(Change {
+		origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
+		version: CommitVersion(0),
+		diffs: vec![Diff::Insert {
+			post,
+		}],
+		changed_at: DateTime::default(),
+	});
+}
+
+#[inline]
+fn update_series_metadata_for_insert(metadata: &mut SeriesMetadata, key_value: u64) {
+	if metadata.row_count == 0 {
+		metadata.oldest_key = key_value;
+		metadata.newest_key = key_value;
+	} else {
+		if key_value < metadata.oldest_key {
+			metadata.oldest_key = key_value;
+		}
+		if key_value > metadata.newest_key {
+			metadata.newest_key = key_value;
+		}
+	}
+	metadata.row_count += 1;
+}
+
+#[inline]
+fn insert_series_result(namespace: &str, series: &str, inserted: u64) -> Columns {
+	Columns::single_row([
+		("namespace", Value::Utf8(namespace.to_string())),
+		("series", Value::Utf8(series.to_string())),
+		("inserted", Value::Uint8(inserted)),
+	])
 }
 
 fn generate_timestamp(services: &Services, precision: &TimestampPrecision) -> u64 {
