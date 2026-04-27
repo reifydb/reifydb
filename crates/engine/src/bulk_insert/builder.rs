@@ -10,7 +10,12 @@ use reifydb_catalog::{
 use reifydb_core::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	error::CoreError,
-	interface::catalog::{id::IndexId, key::PrimaryKey, table::Table},
+	interface::catalog::{
+		id::IndexId,
+		key::PrimaryKey,
+		ringbuffer::{RingBuffer, RingBufferMetadata},
+		table::Table,
+	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
 };
@@ -185,26 +190,38 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		let mut txn = self.engine.begin_command(self.identity)?;
 		let catalog = self.engine.catalog();
 		let clock = self.engine.clock();
-
-		let total_rows: usize = self.pending_tables.iter().map(|p| p.rows.len()).sum::<usize>()
-			+ self.pending_ringbuffers.iter().map(|p| p.rows.len()).sum::<usize>();
-
+		let total_rows = self.total_pending_rows();
 		let pending_tables = self.pending_tables;
 		let pending_ringbuffers = self.pending_ringbuffers;
 
 		V::run(&mut txn, total_rows, move |txn| {
-			let mut result = BulkInsertResult::default();
-			for pending in pending_tables {
-				let table_result = execute_table_insert::<V>(&catalog, txn, &pending, clock)?;
-				result.tables.push(table_result);
-			}
-			for pending in pending_ringbuffers {
-				let rb_result = execute_ringbuffer_insert::<V>(&catalog, txn, &pending, clock)?;
-				result.ringbuffers.push(rb_result);
-			}
-			Ok(result)
+			run_all_pending::<V>(catalog, clock, txn, pending_tables, pending_ringbuffers)
 		})
 	}
+
+	#[inline]
+	fn total_pending_rows(&self) -> usize {
+		self.pending_tables.iter().map(|p| p.rows.len()).sum::<usize>()
+			+ self.pending_ringbuffers.iter().map(|p| p.rows.len()).sum::<usize>()
+	}
+}
+
+#[inline]
+fn run_all_pending<V: ValidationMode>(
+	catalog: Catalog,
+	clock: &Clock,
+	txn: &mut CommandTransaction,
+	pending_tables: Vec<PendingTableInsert>,
+	pending_ringbuffers: Vec<PendingRingBufferInsert>,
+) -> Result<BulkInsertResult> {
+	let mut result = BulkInsertResult::default();
+	for pending in pending_tables {
+		result.tables.push(execute_table_insert::<V>(&catalog, txn, &pending, clock)?);
+	}
+	for pending in pending_ringbuffers {
+		result.ringbuffers.push(execute_ringbuffer_insert::<V>(&catalog, txn, &pending, clock)?);
+	}
+	Ok(result)
 }
 
 fn execute_table_insert<V: ValidationMode>(
@@ -215,30 +232,44 @@ fn execute_table_insert<V: ValidationMode>(
 ) -> Result<TableInsertResult> {
 	let table = resolve_table(catalog, txn, pending)?;
 	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
-
 	let encoded_rows = encode_table_rows::<V>(catalog, txn, pending, &table, &shape, clock)?;
-
 	if encoded_rows.is_empty() {
-		return Ok(TableInsertResult {
-			namespace: pending.namespace.clone(),
-			table: pending.table.clone(),
-			inserted: 0,
-		});
+		return Ok(empty_table_result(pending));
 	}
+	write_table_rows(catalog, txn, &table, &shape, pending, encoded_rows)
+}
 
+#[inline]
+fn empty_table_result(pending: &PendingTableInsert) -> TableInsertResult {
+	TableInsertResult {
+		namespace: pending.namespace.clone(),
+		table: pending.table.clone(),
+		inserted: 0,
+	}
+}
+
+#[inline]
+fn write_table_rows(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	table: &Table,
+	shape: &RowShape,
+	pending: &PendingTableInsert,
+	encoded_rows: Vec<EncodedRow>,
+) -> Result<TableInsertResult> {
 	let total_rows = encoded_rows.len();
 	let row_numbers = catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
-	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), &table)?;
+	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), table)?;
 	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[Type::Uint8]));
 
 	for (row, &row_number) in encoded_rows.iter().zip(row_numbers.iter()) {
-		txn.insert_table(&table, &shape, row.clone(), row_number)?;
+		txn.insert_table(table, shape, row.clone(), row_number)?;
 
 		if let Some(ref pk_def) = pk_def {
 			write_primary_key_index(
 				txn,
-				&table,
-				&shape,
+				table,
+				shape,
 				pk_def,
 				row,
 				row_number,
@@ -378,13 +409,32 @@ fn write_primary_key_index(
 	Ok(())
 }
 
-/// Execute a ring buffer insert within a transaction
 fn execute_ringbuffer_insert<V: ValidationMode>(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,
 	clock: &Clock,
 ) -> Result<RingBufferInsertResult> {
+	let ringbuffer = resolve_ringbuffer(catalog, txn, pending)?;
+	let mut metadata = load_ringbuffer_metadata(catalog, txn, pending, &ringbuffer)?;
+	let shape = get_or_create_ringbuffer_shape(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
+	let coerced_rows = coerce_ringbuffer_rows::<V>(pending, &ringbuffer)?;
+	let inserted =
+		insert_ringbuffer_rows::<V>(catalog, txn, &ringbuffer, &shape, coerced_rows, &mut metadata, clock)?;
+	catalog.update_ringbuffer_metadata(txn, metadata)?;
+	Ok(RingBufferInsertResult {
+		namespace: pending.namespace.clone(),
+		ringbuffer: pending.ringbuffer.clone(),
+		inserted,
+	})
+}
+
+#[inline]
+fn resolve_ringbuffer(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	pending: &PendingRingBufferInsert,
+) -> Result<RingBuffer> {
 	let namespace = catalog
 		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
 		.ok_or_else(|| CatalogError::NotFound {
@@ -394,85 +444,79 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 			fragment: Fragment::None,
 		})?;
 
-	let ringbuffer = catalog
-		.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.ringbuffer)?
-		.ok_or_else(|| CatalogError::NotFound {
-			kind: CatalogObjectKind::RingBuffer,
-			namespace: pending.namespace.to_string(),
-			name: pending.ringbuffer.to_string(),
-			fragment: Fragment::None,
-		})?;
-
-	let mut metadata = catalog
-		.find_ringbuffer_metadata(&mut Transaction::Command(txn), ringbuffer.id)?
-		.ok_or_else(|| CatalogError::NotFound {
-			kind: CatalogObjectKind::RingBuffer,
-			namespace: pending.namespace.to_string(),
-			name: pending.ringbuffer.to_string(),
-			fragment: Fragment::None,
-		})?;
-
-	// Get or create shape with proper field names and constraints
-	let shape = get_or_create_ringbuffer_shape(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
-
-	// 3. Validate and coerce all rows in batch (fail-fast)
-	let coerced_rows = if V::VALIDATED {
-		validate_and_coerce_rows_rb(&pending.rows, &ringbuffer)?
-	} else {
-		reorder_rows_unvalidated_rb(&pending.rows, &ringbuffer)?
-	};
-
-	let mut inserted_count = 0u64;
-
-	// 4. Process each coerced row
-	for mut values in coerced_rows {
-		// Handle dictionary encoding
-		for (idx, col) in ringbuffer.columns.iter().enumerate() {
-			if let Some(dict_id) = col.dictionary_id {
-				let dictionary = catalog
-					.find_dictionary(&mut Transaction::Command(txn), dict_id)?
-					.ok_or_else(|| {
-						internal_error!(
-							"Dictionary {:?} not found for column {}",
-							dict_id,
-							col.name
-						)
-					})?;
-				let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx])?;
-				values[idx] = entry_id.to_value();
+	catalog.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id(), &pending.ringbuffer)?
+		.ok_or_else(|| {
+			CatalogError::NotFound {
+				kind: CatalogObjectKind::RingBuffer,
+				namespace: pending.namespace.to_string(),
+				name: pending.ringbuffer.to_string(),
+				fragment: Fragment::None,
 			}
-		}
+			.into()
+		})
+}
 
-		// Validate constraints (coercion is done in batch, but final constraint check still needed)
+#[inline]
+fn load_ringbuffer_metadata(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	pending: &PendingRingBufferInsert,
+	ringbuffer: &RingBuffer,
+) -> Result<RingBufferMetadata> {
+	catalog.find_ringbuffer_metadata(&mut Transaction::Command(txn), ringbuffer.id)?.ok_or_else(|| {
+		CatalogError::NotFound {
+			kind: CatalogObjectKind::RingBuffer,
+			namespace: pending.namespace.to_string(),
+			name: pending.ringbuffer.to_string(),
+			fragment: Fragment::None,
+		}
+		.into()
+	})
+}
+
+#[inline]
+fn coerce_ringbuffer_rows<V: ValidationMode>(
+	pending: &PendingRingBufferInsert,
+	ringbuffer: &RingBuffer,
+) -> Result<Vec<Vec<Value>>> {
+	if V::VALIDATED {
+		validate_and_coerce_rows_rb(&pending.rows, ringbuffer)
+	} else {
+		reorder_rows_unvalidated_rb(&pending.rows, ringbuffer)
+	}
+}
+
+fn insert_ringbuffer_rows<V: ValidationMode>(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	ringbuffer: &RingBuffer,
+	shape: &RowShape,
+	coerced_rows: Vec<Vec<Value>>,
+	metadata: &mut RingBufferMetadata,
+	clock: &Clock,
+) -> Result<u64> {
+	let mut inserted_count = 0u64;
+	for mut values in coerced_rows {
+		dict_encode_ringbuffer_row(catalog, txn, ringbuffer, &mut values)?;
+
 		if V::VALIDATED {
 			for (idx, col) in ringbuffer.columns.iter().enumerate() {
 				col.constraint.validate(&values[idx])?;
 			}
 		}
 
-		// Encode the row
 		let mut row = shape.allocate();
 		for (idx, value) in values.iter().enumerate() {
 			shape.set_value(&mut row, idx, value);
 		}
-
 		let now_nanos = clock.now_nanos();
 		row.set_timestamps(now_nanos, now_nanos);
 
-		if metadata.is_full() {
-			let oldest_row = RowNumber(metadata.head);
-			txn.remove_from_ringbuffer(&ringbuffer, oldest_row)?;
-			metadata.head += 1;
-			metadata.count -= 1;
-		}
+		evict_oldest_if_full(txn, ringbuffer, metadata)?;
 
-		// Allocate row number
 		let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
+		txn.insert_ringbuffer_at(ringbuffer, shape, row_number, row)?;
 
-		// Store the row
-		txn.insert_ringbuffer_at(&ringbuffer, &shape, row_number, row)?;
-
-		// Update metadata
 		if metadata.is_empty() {
 			metadata.head = row_number.0;
 		}
@@ -481,15 +525,42 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 
 		inserted_count += 1;
 	}
+	Ok(inserted_count)
+}
 
-	// Save updated metadata
-	catalog.update_ringbuffer_metadata(txn, metadata)?;
+#[inline]
+fn evict_oldest_if_full(
+	txn: &mut CommandTransaction,
+	ringbuffer: &RingBuffer,
+	metadata: &mut RingBufferMetadata,
+) -> Result<()> {
+	if metadata.is_full() {
+		let oldest_row = RowNumber(metadata.head);
+		txn.remove_from_ringbuffer(ringbuffer, oldest_row)?;
+		metadata.head += 1;
+		metadata.count -= 1;
+	}
+	Ok(())
+}
 
-	Ok(RingBufferInsertResult {
-		namespace: pending.namespace.clone(),
-		ringbuffer: pending.ringbuffer.clone(),
-		inserted: inserted_count,
-	})
+#[inline]
+fn dict_encode_ringbuffer_row(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	ringbuffer: &RingBuffer,
+	values: &mut [Value],
+) -> Result<()> {
+	for (idx, col) in ringbuffer.columns.iter().enumerate() {
+		if let Some(dict_id) = col.dictionary_id {
+			let dictionary =
+				catalog.find_dictionary(&mut Transaction::Command(txn), dict_id)?.ok_or_else(|| {
+					internal_error!("Dictionary {:?} not found for column {}", dict_id, col.name)
+				})?;
+			let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx])?;
+			values[idx] = entry_id.to_value();
+		}
+	}
+	Ok(())
 }
 
 /// Parse a qualified name like "namespace::table" into (namespace, name).

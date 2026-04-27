@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::{evaluate::TargetColumn, resolved::ResolvedShape},
+	interface::{catalog::sumtype::SumType, evaluate::TargetColumn, resolved::ResolvedShape},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
@@ -69,242 +69,195 @@ impl InlineDataNode {
 	}
 
 	fn expand_sumtype_constructors<'a>(&mut self, txn: &mut Transaction<'a>) -> Result<()> {
-		let ctx = match self.context.as_ref() {
-			Some(ctx) => ctx.clone(),
-			None => return Ok(()),
+		let Some(ctx) = self.context.as_ref().cloned() else {
+			return Ok(());
 		};
-
-		let mut needs_expansion = false;
-		for row in &self.rows {
-			for alias_expr in row {
-				if matches!(
-					alias_expr.expression.as_ref(),
-					Expression::SumTypeConstructor(_) | Expression::Column(_)
-				) {
-					needs_expansion = true;
-					break;
-				}
-			}
-			if needs_expansion {
-				break;
-			}
-		}
-		if !needs_expansion {
+		if !rows_need_sumtype_expansion(&self.rows) {
 			return Ok(());
 		}
-
 		for row in &mut self.rows {
 			let original = mem::take(row);
 			let mut expanded = Vec::with_capacity(original.len());
-
 			for alias_expr in original {
 				match alias_expr.expression.as_ref() {
-					Expression::SumTypeConstructor(ctor) => {
-						let col_name = alias_expr.alias.0.text().to_string();
-						let fragment = alias_expr.fragment.clone();
-
-						let is_unresolved = ctor.namespace.text() == ctor.variant_name.text()
-							&& ctor.sumtype_name.text() == ctor.variant_name.text();
-
-						let Expression::SumTypeConstructor(ctor) = *alias_expr.expression
-						else {
-							unreachable!()
-						};
-
-						let sumtype = if is_unresolved {
-							// Resolve from column constraint in table shape
-							let tag_col_name = format!("{}_tag", col_name);
-							let source = ctx
-								.source
-								.as_ref()
-								.expect("source required for unresolved sumtype");
-
-							if let Some(tag_col) =
-								source.columns().iter().find(|c| c.name == tag_col_name)
-							{
-								let Some(Constraint::SumType(id)) =
-									tag_col.constraint.constraint()
-								else {
-									panic!(
-										"expected SumType constraint on tag column"
-									)
-								};
-								ctx.services.catalog.get_sumtype(txn, *id)?
-							} else if let ResolvedShape::Series(series) = source {
-								// For series, the tag is stored as Series.tag, not
-								// as a column
-								let tag_id =
-									series.def().tag.expect("series tag expected");
-								ctx.services.catalog.get_sumtype(txn, tag_id)?
-							} else {
-								panic!("tag column not found: {}", tag_col_name)
-							}
-						} else {
-							// Resolve from fully-qualified namespace
-							let ns_name = ctor.namespace.text();
-							let ns = ctx
-								.services
-								.catalog
-								.find_namespace_by_name(txn, ns_name)?
-								.unwrap();
-							let sumtype_name = ctor.sumtype_name.text();
-							ctx.services
-								.catalog
-								.find_sumtype_by_name(txn, ns.id(), sumtype_name)?
-								.unwrap()
-						};
-
-						let variant_name_lower = ctor.variant_name.text().to_lowercase();
-						let variant = sumtype
-							.variants
-							.iter()
-							.find(|v| v.name == variant_name_lower)
-							.unwrap();
-
-						expanded.push(AliasExpression {
-							alias: IdentExpression(Fragment::internal(format!(
-								"{}_tag",
-								col_name
-							))),
-							expression: Box::new(Expression::Constant(
-								ConstantExpression::Number {
-									fragment: Fragment::internal(
-										variant.tag.to_string(),
-									),
-								},
-							)),
-							fragment: fragment.clone(),
-						});
-
-						for (field_name, field_expr) in ctor.columns {
-							let phys_col_name = format!(
-								"{}_{}_{}",
-								col_name,
-								variant_name_lower,
-								field_name.text().to_lowercase()
-							);
-							expanded.push(AliasExpression {
-								alias: IdentExpression(Fragment::internal(
-									phys_col_name,
-								)),
-								expression: Box::new(field_expr),
-								fragment: fragment.clone(),
-							});
-						}
+					Expression::SumTypeConstructor(_) => {
+						expand_sumtype_ctor(&ctx, txn, alias_expr, &mut expanded)?;
 					}
-					Expression::Column(col) => {
-						// Check if this bare identifier is a unit variant for a SumType column
-						let col_name = alias_expr.alias.0.text().to_string();
-						let tag_col_name = format!("{}_tag", col_name);
-
-						let resolved = if let Some(source) = ctx.source.as_ref() {
-							if let Some(tag_col) =
-								source.columns().iter().find(|c| c.name == tag_col_name)
-							{
-								if let Some(Constraint::SumType(id)) =
-									tag_col.constraint.constraint()
-								{
-									let sumtype = ctx
-										.services
-										.catalog
-										.get_sumtype(txn, *id)?;
-									let variant_name_lower =
-										col.0.name.text().to_lowercase();
-									let maybe_tag = sumtype
-										.variants
-										.iter()
-										.find(|v| {
-											v.name.to_lowercase()
-												== variant_name_lower
-										})
-										.map(|v| v.tag);
-									maybe_tag.map(|tag| (sumtype, tag))
-								} else {
-									None
-								}
-							} else if let ResolvedShape::Series(series) = source {
-								// For series, the tag is stored as Series.tag
-								if let Some(tag_id) = series.def().tag {
-									let sumtype = ctx
-										.services
-										.catalog
-										.get_sumtype(txn, tag_id)?;
-									let variant_name_lower =
-										col.0.name.text().to_lowercase();
-									let maybe_tag = sumtype
-										.variants
-										.iter()
-										.find(|v| {
-											v.name.to_lowercase()
-												== variant_name_lower
-										})
-										.map(|v| v.tag);
-									maybe_tag.map(|tag| (sumtype, tag))
-								} else {
-									None
-								}
-							} else {
-								None
-							}
-						} else {
-							None
-						};
-
-						if let Some((sumtype, tag)) = resolved {
-							let fragment = alias_expr.fragment.clone();
-							// Expand unit variant: tag column
-							expanded.push(AliasExpression {
-								alias: IdentExpression(Fragment::internal(format!(
-									"{}_tag",
-									col_name
-								))),
-								expression: Box::new(Expression::Constant(
-									ConstantExpression::Number {
-										fragment: Fragment::internal(
-											tag.to_string(),
-										),
-									},
-								)),
-								fragment: fragment.clone(),
-							});
-							// None for all variant fields (INSERT fills missing columns
-							// with None)
-							for v in &sumtype.variants {
-								for field in &v.fields {
-									let phys_col_name = format!(
-										"{}_{}_{}",
-										col_name,
-										v.name.to_lowercase(),
-										field.name.to_lowercase()
-									);
-									expanded.push(AliasExpression {
-										alias: IdentExpression(Fragment::internal(
-											phys_col_name,
-										)),
-										expression: Box::new(Expression::Constant(
-											ConstantExpression::None {
-												fragment: fragment.clone(),
-											},
-										)),
-										fragment: fragment.clone(),
-									});
-								}
-							}
-						} else {
-							expanded.push(alias_expr);
-						}
+					Expression::Column(_) => {
+						expand_unit_variant_column(&ctx, txn, alias_expr, &mut expanded)?;
 					}
-					_ => {
-						expanded.push(alias_expr);
-					}
+					_ => expanded.push(alias_expr),
 				}
 			}
-
 			*row = expanded;
 		}
-
 		Ok(())
 	}
+}
+
+#[inline]
+fn rows_need_sumtype_expansion(rows: &[Vec<AliasExpression>]) -> bool {
+	for row in rows {
+		for alias_expr in row {
+			if matches!(
+				alias_expr.expression.as_ref(),
+				Expression::SumTypeConstructor(_) | Expression::Column(_)
+			) {
+				return true;
+			}
+		}
+	}
+	false
+}
+
+fn expand_sumtype_ctor<'a>(
+	ctx: &Arc<QueryContext>,
+	txn: &mut Transaction<'a>,
+	alias_expr: AliasExpression,
+	expanded: &mut Vec<AliasExpression>,
+) -> Result<()> {
+	let col_name = alias_expr.alias.0.text().to_string();
+	let fragment = alias_expr.fragment.clone();
+
+	let Expression::SumTypeConstructor(ctor) = *alias_expr.expression else {
+		unreachable!()
+	};
+
+	let is_unresolved = ctor.namespace.text() == ctor.variant_name.text()
+		&& ctor.sumtype_name.text() == ctor.variant_name.text();
+
+	let sumtype = if is_unresolved {
+		resolve_unresolved_sumtype(ctx, txn, &col_name)?
+	} else {
+		let ns_name = ctor.namespace.text();
+		let ns = ctx.services.catalog.find_namespace_by_name(txn, ns_name)?.unwrap();
+		let sumtype_name = ctor.sumtype_name.text();
+		ctx.services.catalog.find_sumtype_by_name(txn, ns.id(), sumtype_name)?.unwrap()
+	};
+
+	let variant_name_lower = ctor.variant_name.text().to_lowercase();
+	let variant = sumtype.variants.iter().find(|v| v.name == variant_name_lower).unwrap();
+
+	expanded.push(AliasExpression {
+		alias: IdentExpression(Fragment::internal(format!("{}_tag", col_name))),
+		expression: Box::new(Expression::Constant(ConstantExpression::Number {
+			fragment: Fragment::internal(variant.tag.to_string()),
+		})),
+		fragment: fragment.clone(),
+	});
+
+	for (field_name, field_expr) in ctor.columns {
+		let phys_col_name = format!("{}_{}_{}", col_name, variant_name_lower, field_name.text().to_lowercase());
+		expanded.push(AliasExpression {
+			alias: IdentExpression(Fragment::internal(phys_col_name)),
+			expression: Box::new(field_expr),
+			fragment: fragment.clone(),
+		});
+	}
+
+	Ok(())
+}
+
+#[inline]
+fn resolve_unresolved_sumtype<'a>(
+	ctx: &Arc<QueryContext>,
+	txn: &mut Transaction<'a>,
+	col_name: &str,
+) -> Result<SumType> {
+	let tag_col_name = format!("{}_tag", col_name);
+	let source = ctx.source.as_ref().expect("source required for unresolved sumtype");
+
+	if let Some(tag_col) = source.columns().iter().find(|c| c.name == tag_col_name) {
+		let Some(Constraint::SumType(id)) = tag_col.constraint.constraint() else {
+			panic!("expected SumType constraint on tag column")
+		};
+		ctx.services.catalog.get_sumtype(txn, *id)
+	} else if let ResolvedShape::Series(series) = source {
+		let tag_id = series.def().tag.expect("series tag expected");
+		ctx.services.catalog.get_sumtype(txn, tag_id)
+	} else {
+		panic!("tag column not found: {}", tag_col_name)
+	}
+}
+
+fn expand_unit_variant_column<'a>(
+	ctx: &Arc<QueryContext>,
+	txn: &mut Transaction<'a>,
+	alias_expr: AliasExpression,
+	expanded: &mut Vec<AliasExpression>,
+) -> Result<()> {
+	let col_name = alias_expr.alias.0.text().to_string();
+
+	let resolved = if let Some(source) = ctx.source.as_ref() {
+		let Expression::Column(col) = alias_expr.expression.as_ref() else {
+			unreachable!()
+		};
+		try_resolve_unit_variant(ctx, txn, source, &col_name, col.0.name.text())?
+	} else {
+		None
+	};
+
+	let Some((sumtype, tag)) = resolved else {
+		expanded.push(alias_expr);
+		return Ok(());
+	};
+
+	let fragment = alias_expr.fragment.clone();
+	expanded.push(AliasExpression {
+		alias: IdentExpression(Fragment::internal(format!("{}_tag", col_name))),
+		expression: Box::new(Expression::Constant(ConstantExpression::Number {
+			fragment: Fragment::internal(tag.to_string()),
+		})),
+		fragment: fragment.clone(),
+	});
+	for v in &sumtype.variants {
+		for field in &v.fields {
+			let phys_col_name =
+				format!("{}_{}_{}", col_name, v.name.to_lowercase(), field.name.to_lowercase());
+			expanded.push(AliasExpression {
+				alias: IdentExpression(Fragment::internal(phys_col_name)),
+				expression: Box::new(Expression::Constant(ConstantExpression::None {
+					fragment: fragment.clone(),
+				})),
+				fragment: fragment.clone(),
+			});
+		}
+	}
+	Ok(())
+}
+
+#[inline]
+fn try_resolve_unit_variant<'a>(
+	ctx: &Arc<QueryContext>,
+	txn: &mut Transaction<'a>,
+	source: &ResolvedShape,
+	col_name: &str,
+	alias_text: &str,
+) -> Result<Option<(SumType, u8)>> {
+	let tag_col_name = format!("{}_tag", col_name);
+
+	if let Some(tag_col) = source.columns().iter().find(|c| c.name == tag_col_name) {
+		let Some(Constraint::SumType(id)) = tag_col.constraint.constraint() else {
+			return Ok(None);
+		};
+		let sumtype = ctx.services.catalog.get_sumtype(txn, *id)?;
+		let variant_name_lower = alias_text.to_lowercase();
+		let maybe_tag =
+			sumtype.variants.iter().find(|v| v.name.to_lowercase() == variant_name_lower).map(|v| v.tag);
+		return Ok(maybe_tag.map(|tag| (sumtype, tag)));
+	}
+
+	if let ResolvedShape::Series(series) = source
+		&& let Some(tag_id) = series.def().tag
+	{
+		let sumtype = ctx.services.catalog.get_sumtype(txn, tag_id)?;
+		let variant_name_lower = alias_text.to_lowercase();
+		let maybe_tag =
+			sumtype.variants.iter().find(|v| v.name.to_lowercase() == variant_name_lower).map(|v| v.tag);
+		return Ok(maybe_tag.map(|tag| (sumtype, tag)));
+	}
+
+	Ok(None)
 }
 
 impl QueryNode for InlineDataNode {

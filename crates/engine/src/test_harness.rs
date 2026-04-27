@@ -189,13 +189,7 @@ impl TestEngineBuilder {
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-		let runtime_config =
-			SharedRuntimeConfig::default().async_threads(2).system_threads(2).query_threads(2).seeded(1000);
-		let runtime_config = SharedRuntimeConfig {
-			clock: Clock::Mock(mock_clock.clone()),
-			..runtime_config
-		};
-		let runtime = SharedRuntime::from_config(runtime_config);
+		let runtime = make_test_runtime(&mock_clock);
 		let materialized_catalog = MaterializedCatalog::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
@@ -209,9 +203,7 @@ impl TestEngineBuilder {
 		.unwrap();
 
 		let mut ioc = IocContainer::new();
-
 		ioc = ioc.register(materialized_catalog.clone());
-
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
 
@@ -247,19 +239,7 @@ impl TestEngineBuilder {
 		);
 
 		if self.cdc {
-			let cdc_handle = spawn_cdc_producer(
-				&runtime.actor_system(),
-				cdc_store,
-				multi_store.clone(),
-				engine.clone(),
-				eventbus.clone(),
-				runtime.clock().clone(),
-			);
-			eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
-				cdc_handle.actor_ref().clone(),
-				runtime.clock().clone(),
-			));
-			ioc_for_cdc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
+			register_cdc_producer(&runtime, cdc_store, multi_store, &engine, &eventbus, ioc_for_cdc);
 		}
 
 		TestEngine {
@@ -267,6 +247,39 @@ impl TestEngineBuilder {
 			mock_clock,
 		}
 	}
+}
+
+#[inline]
+fn make_test_runtime(mock_clock: &MockClock) -> SharedRuntime {
+	let base = SharedRuntimeConfig::default().async_threads(2).system_threads(2).query_threads(2).seeded(1000);
+	let config = SharedRuntimeConfig {
+		clock: Clock::Mock(mock_clock.clone()),
+		..base
+	};
+	SharedRuntime::from_config(config)
+}
+
+fn register_cdc_producer(
+	runtime: &SharedRuntime,
+	cdc_store: CdcStore,
+	multi_store: MultiStore,
+	engine: &StandardEngine,
+	eventbus: &EventBus,
+	ioc_for_cdc: IocContainer,
+) {
+	let cdc_handle = spawn_cdc_producer(
+		&runtime.actor_system(),
+		cdc_store,
+		multi_store,
+		engine.clone(),
+		eventbus.clone(),
+		runtime.clock().clone(),
+	);
+	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
+		cdc_handle.actor_ref().clone(),
+		runtime.clock().clone(),
+	));
+	ioc_for_cdc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 }
 
 pub fn create_test_admin_transaction() -> AdminTransaction {

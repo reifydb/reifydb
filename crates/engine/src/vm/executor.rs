@@ -16,9 +16,10 @@ use reifydb_metric::storage::metric::MetricReader;
 use reifydb_policy::inject_from_policies;
 use reifydb_rql::{
 	ast::parse_str,
-	compiler::{CompilationResult, Compiled, constrain_policy},
+	compiler::{CompilationResult, Compiled, IncrementalCompilation, constrain_policy},
 	fingerprint::request::fingerprint_request,
 };
+use reifydb_runtime::context::clock::Instant;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	RqlExecutor, TestTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
@@ -231,6 +232,15 @@ fn merge_results(mut output_results: Vec<Frame>, mut remaining: Vec<Frame>) -> V
 	output_results
 }
 
+#[inline]
+fn error_result(error: Error, metrics: ExecutionMetrics) -> ExecutionResult {
+	ExecutionResult {
+		frames: vec![],
+		error: Some(error),
+		metrics,
+	}
+}
+
 /// Extract the actual rows-affected count from a DML result.
 ///
 /// DML handlers (INSERT/UPDATE/DELETE) emit a single summary frame with a
@@ -349,134 +359,137 @@ impl Executor {
 	pub fn admin(&self, txn: &mut AdminTransaction, cmd: Admin<'_>) -> ExecutionResult {
 		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Admin(&mut *txn)) {
 			Ok(s) => s,
-			Err(e) => {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
-			}
+			Err(e) => return error_result(e, ExecutionMetrics::default()),
 		};
+		if let Err(e) = self.enforce_admin_policy(&symbols, txn) {
+			return error_result(e, ExecutionMetrics::default());
+		}
+		let start_compile = self.0.runtime_context.clock.instant();
+		match self.compiler.compile_with_policy(&mut Transaction::Admin(txn), cmd.rql, inject_from_policies) {
+			Err(err) => self.handle_admin_compile_error(err, cmd.rql, cmd.params),
+			Ok(CompilationResult::Ready(compiled)) => {
+				self.execute_admin_ready(txn, compiled, &cmd.params, symbols, start_compile)
+			}
+			Ok(CompilationResult::Incremental(state)) => {
+				self.execute_admin_incremental(txn, state, &cmd.params, symbols)
+			}
+		}
+	}
 
-		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
-			&mut Transaction::Admin(&mut *txn),
+	#[inline]
+	fn enforce_admin_policy(&self, symbols: &SymbolTable, txn: &mut AdminTransaction) -> Result<()> {
+		PolicyEvaluator::new(&self.0, symbols).enforce_session_policy(
+			&mut Transaction::Admin(txn),
 			SessionOp::Admin,
 			true,
-		) {
+		)
+	}
+
+	#[inline]
+	#[cfg_attr(reifydb_single_threaded, allow(unused_variables))]
+	fn handle_admin_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
+		#[cfg(not(reifydb_single_threaded))]
+		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
 			return ExecutionResult {
-				frames: vec![],
-				error: Some(e),
+				frames,
+				error: None,
 				metrics: ExecutionMetrics::default(),
 			};
 		}
+		error_result(err, ExecutionMetrics::default())
+	}
 
-		let start_compile = self.0.runtime_context.clock.instant();
-		match self.compiler.compile_with_policy(&mut Transaction::Admin(txn), cmd.rql, inject_from_policies) {
-			Err(err) => {
-				#[cfg(not(reifydb_single_threaded))]
-				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, cmd.rql, cmd.params) {
-					return ExecutionResult {
-						frames,
-						error: None,
-						metrics: ExecutionMetrics::default(),
-					};
-				}
-				ExecutionResult {
-					frames: vec![],
-					error: Some(err),
-					metrics: ExecutionMetrics::default(),
-				}
+	#[inline]
+	fn execute_admin_ready(
+		&self,
+		txn: &mut AdminTransaction,
+		compiled: Arc<Vec<Compiled>>,
+		params: &Params,
+		symbols: SymbolTable,
+		start_compile: Instant,
+	) -> ExecutionResult {
+		let compile_duration = start_compile.elapsed();
+		match execute_compiled_units(
+			&self.0,
+			&mut Transaction::Admin(txn),
+			&compiled,
+			params,
+			symbols,
+			compile_duration,
+		) {
+			Ok((output, remaining, _, metrics)) => ExecutionResult {
+				frames: merge_results(output, remaining),
+				error: None,
+				metrics: build_metrics(metrics),
+			},
+			Err(f) => ExecutionResult {
+				frames: vec![],
+				error: Some(f.error),
+				metrics: build_metrics(f.partial_metrics),
+			},
+		}
+	}
+
+	fn execute_admin_incremental(
+		&self,
+		txn: &mut AdminTransaction,
+		mut state: IncrementalCompilation,
+		params: &Params,
+		symbols: SymbolTable,
+	) -> ExecutionResult {
+		let policy = constrain_policy(inject_from_policies);
+		let mut result = vec![];
+		let mut output_results: Vec<Frame> = Vec::new();
+		let mut symbols = symbols;
+		let mut metrics = Vec::new();
+		loop {
+			let start_incr = self.0.runtime_context.clock.instant();
+			let next = match self.compiler.compile_next_with_policy(
+				&mut Transaction::Admin(txn),
+				&mut state,
+				&policy,
+			) {
+				Ok(n) => n,
+				Err(e) => return error_result(e, build_metrics(metrics)),
+			};
+			let compile_duration = start_incr.elapsed();
+
+			let Some(compiled) = next else {
+				break;
+			};
+
+			result.clear();
+			let mut tx = Transaction::Admin(txn);
+			let mut vm = Vm::from_services(symbols, &self.0, params, tx.identity());
+			let start_execute = self.0.runtime_context.clock.instant();
+			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
+			let execute_duration = start_execute.elapsed();
+			symbols = vm.symbols;
+
+			metrics.push(StatementMetric {
+				fingerprint: compiled.fingerprint,
+				normalized_rql: compiled.normalized_rql,
+				compile_duration_us: compile_duration.as_micros() as u64,
+				execute_duration_us: execute_duration.as_micros() as u64,
+				rows_affected: if run_result.is_ok() {
+					extract_rows_affected(&result)
+				} else {
+					0
+				},
+			});
+
+			if let Err(e) = run_result {
+				return error_result(e, build_metrics(metrics));
 			}
-			Ok(CompilationResult::Ready(compiled)) => {
-				let compile_duration = start_compile.elapsed();
-				match execute_compiled_units(
-					&self.0,
-					&mut Transaction::Admin(txn),
-					&compiled,
-					&cmd.params,
-					symbols,
-					compile_duration,
-				) {
-					Ok((output, remaining, _, metrics)) => ExecutionResult {
-						frames: merge_results(output, remaining),
-						error: None,
-						metrics: build_metrics(metrics),
-					},
-					Err(f) => ExecutionResult {
-						frames: vec![],
-						error: Some(f.error),
-						metrics: build_metrics(f.partial_metrics),
-					},
-				}
+
+			if compiled.is_output {
+				output_results.append(&mut result);
 			}
-			Ok(CompilationResult::Incremental(mut state)) => {
-				let policy = constrain_policy(|plans, bump, cat, tx| {
-					inject_from_policies(plans, bump, cat, tx)
-				});
-				let mut result = vec![];
-				let mut output_results: Vec<Frame> = Vec::new();
-				let mut symbols = symbols;
-				let mut metrics = Vec::new();
-				loop {
-					let start_incr = self.0.runtime_context.clock.instant();
-					let next = match self.compiler.compile_next_with_policy(
-						&mut Transaction::Admin(txn),
-						&mut state,
-						&policy,
-					) {
-						Ok(n) => n,
-						Err(e) => {
-							return ExecutionResult {
-								frames: vec![],
-								error: Some(e),
-								metrics: build_metrics(metrics),
-							};
-						}
-					};
-					let compile_duration = start_incr.elapsed();
-
-					let Some(compiled) = next else {
-						break;
-					};
-
-					result.clear();
-					let mut tx = Transaction::Admin(txn);
-					let mut vm = Vm::from_services(symbols, &self.0, &cmd.params, tx.identity());
-					let start_execute = self.0.runtime_context.clock.instant();
-					let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
-					let execute_duration = start_execute.elapsed();
-					symbols = vm.symbols;
-
-					metrics.push(StatementMetric {
-						fingerprint: compiled.fingerprint,
-						normalized_rql: compiled.normalized_rql,
-						compile_duration_us: compile_duration.as_micros() as u64,
-						execute_duration_us: execute_duration.as_micros() as u64,
-						rows_affected: if run_result.is_ok() {
-							extract_rows_affected(&result)
-						} else {
-							0
-						},
-					});
-
-					if let Err(e) = run_result {
-						return ExecutionResult {
-							frames: vec![],
-							error: Some(e),
-							metrics: build_metrics(metrics),
-						};
-					}
-
-					if compiled.is_output {
-						output_results.append(&mut result);
-					}
-				}
-				ExecutionResult {
-					frames: merge_results(output_results, result),
-					error: None,
-					metrics: build_metrics(metrics),
-				}
-			}
+		}
+		ExecutionResult {
+			frames: merge_results(output_results, result),
+			error: None,
+			metrics: build_metrics(metrics),
 		}
 	}
 
