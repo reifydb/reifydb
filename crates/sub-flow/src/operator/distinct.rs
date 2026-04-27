@@ -337,9 +337,7 @@ impl DistinctOperator {
 
 		if !new_distinct_indices.is_empty() {
 			let output = columns.extract_by_indices(&new_distinct_indices);
-			result.push(Diff::Insert {
-				post: output,
-			});
+			result.push(Diff::insert(output));
 		}
 
 		Ok(result)
@@ -415,24 +413,17 @@ impl DistinctOperator {
 		if !same_key_update_indices.is_empty() {
 			let pre_output = pre_columns.extract_by_indices(&same_key_update_indices);
 			let post_output = post_columns.extract_by_indices(&same_key_update_indices);
-			result.push(Diff::Update {
-				pre: pre_output,
-				post: post_output,
-			});
+			result.push(Diff::update(pre_output, post_output));
 		}
 
 		if !removed_indices.is_empty() {
 			let output = pre_columns.extract_by_indices(&removed_indices);
-			result.push(Diff::Remove {
-				pre: output,
-			});
+			result.push(Diff::remove(output));
 		}
 
 		if !inserted_indices.is_empty() {
 			let output = post_columns.extract_by_indices(&inserted_indices);
-			result.push(Diff::Insert {
-				post: output,
-			});
+			result.push(Diff::insert(output));
 		}
 
 		Ok(result)
@@ -463,9 +454,7 @@ impl DistinctOperator {
 		for hash in removed_hashes {
 			if let Some(entry) = state.entries.shift_remove(&hash) {
 				let stored_columns = entry.first_row.to_columns(&state.layout);
-				result.push(Diff::Remove {
-					pre: stored_columns,
-				});
+				result.push(Diff::remove(stored_columns));
 			}
 		}
 

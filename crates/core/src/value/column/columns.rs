@@ -367,6 +367,14 @@ impl Columns {
 	}
 }
 
+impl Default for Columns {
+	/// Equivalent to [`Columns::empty`]. Required by `core::util::slab::Slab<T>`
+	/// which mints fresh slabs via `T::default()`.
+	fn default() -> Self {
+		Self::empty()
+	}
+}
+
 impl Columns {
 	/// Extract a subset of rows by indices, returning a new Columns
 	pub fn extract_by_indices(&self, indices: &[usize]) -> Columns {
@@ -518,11 +526,40 @@ impl Columns {
 		key_to_indices.into_iter().map(|(key, indices)| (key, self.extract_by_indices(&indices))).collect()
 	}
 
-	/// Create Columns from a Row by decoding its encoded values
+	/// Create Columns from a Row by decoding its encoded values.
+	///
+	/// Allocates fresh `CowVec` storage. For hot paths that repeatedly
+	/// rebuild a `Columns` per row (e.g. `CdcProducerActor`), prefer
+	/// `reset_from_row` on a reusable `Columns` slab to retain the inner
+	/// `Vec` capacities across calls.
 	pub fn from_row(row: &Row) -> Self {
+		let mut out = Columns::empty();
+		out.reset_from_row(row);
+		out
+	}
+
+	/// Refill this `Columns` from a single row, retaining inner `Vec`
+	/// capacities when this slab is uniquely owned. When shared (e.g. a
+	/// previous `Diff` is still in flight referencing one of the inner
+	/// `CowVec`s), `Arc::make_mut` forks to a fresh capacity-preserving
+	/// copy.
+	pub fn reset_from_row(&mut self, row: &Row) {
 		let field_count = row.shape.fields().len();
-		let mut names = Vec::with_capacity(field_count);
-		let mut buffers = Vec::with_capacity(field_count);
+
+		self.row_numbers.clear();
+		self.created_at.clear();
+		self.updated_at.clear();
+		self.columns.clear();
+		self.names.clear();
+
+		// Reserve up-front so per-field push() does not re-trigger
+		// RawVec::grow_one when the slab was created empty.
+		self.columns.make_mut().reserve(field_count);
+		self.names.make_mut().reserve(field_count);
+
+		self.row_numbers.push(row.number);
+		self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
+		self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
 
 		for (idx, field) in row.shape.fields().iter().enumerate() {
 			let value = row.shape.get_value(&row.encoded, idx);
@@ -549,16 +586,88 @@ impl Columns {
 
 			let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
 
-			names.push(Fragment::internal(name));
-			buffers.push(data);
+			self.names.push(Fragment::internal(name));
+			self.columns.push(data);
+		}
+	}
+
+	/// Refill from a row, sourcing inner column buffers from a shared
+	/// `ColumnBufferPool`. Existing buffers whose `get_type()` matches
+	/// the field type are cleared in place; mismatches are released to
+	/// the pool and replaced with `pool.acquire(...)`. New columns
+	/// (slab last held a narrower row) come from `pool.acquire`. Excess
+	/// columns (slab last held a wider row) are released to the pool.
+	pub fn reset_from_row_with_pool(
+		&mut self,
+		row: &Row,
+		pool: &crate::value::column::buffer::pool::ColumnBufferPool,
+	) {
+		let field_count = row.shape.fields().len();
+
+		self.row_numbers.clear();
+		self.created_at.clear();
+		self.updated_at.clear();
+		self.names.clear();
+
+		self.row_numbers.push(row.number);
+		self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
+		self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
+
+		let columns_vec = self.columns.make_mut();
+		let names_vec = self.names.make_mut();
+
+		// Drain extra columns back to the pool (slab last held a wider row).
+		while columns_vec.len() > field_count {
+			if let Some(buf) = columns_vec.pop() {
+				pool.release(buf);
+			}
 		}
 
-		Self {
-			row_numbers: CowVec::new(vec![row.number]),
-			created_at: CowVec::new(vec![DateTime::from_nanos(row.encoded.created_at_nanos())]),
-			updated_at: CowVec::new(vec![DateTime::from_nanos(row.encoded.updated_at_nanos())]),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
+		columns_vec.reserve(field_count);
+		names_vec.reserve(field_count);
+
+		for (idx, field) in row.shape.fields().iter().enumerate() {
+			let value = row.shape.get_value(&row.encoded, idx);
+
+			let column_type = if matches!(value, Value::None { .. }) {
+				field.constraint.get_type()
+			} else {
+				value.get_type()
+			};
+
+			if idx < columns_vec.len() {
+				if columns_vec[idx].get_type() == column_type {
+					columns_vec[idx].clear();
+				} else {
+					let replacement = if column_type.is_option() {
+						// Option-wrapped buffers are never pooled; allocate fresh.
+						ColumnBuffer::none_typed(column_type.clone(), 0)
+					} else {
+						pool.acquire(&column_type, 1)
+					};
+					let old = std::mem::replace(&mut columns_vec[idx], replacement);
+					pool.release(old);
+				}
+			} else {
+				let fresh = if column_type.is_option() {
+					ColumnBuffer::none_typed(column_type.clone(), 0)
+				} else {
+					pool.acquire(&column_type, 1)
+				};
+				columns_vec.push(fresh);
+			}
+
+			columns_vec[idx].push_value(value);
+
+			if column_type == Type::DictionaryId
+				&& let ColumnBuffer::DictionaryId(container) = &mut columns_vec[idx]
+				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
+			{
+				container.set_dictionary_id(*dict_id);
+			}
+
+			let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
+			names_vec.push(Fragment::internal(name));
 		}
 	}
 

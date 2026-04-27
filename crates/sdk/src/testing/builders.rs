@@ -126,9 +126,7 @@ impl TestChangeBuilder {
 
 	/// Add an insert diff
 	pub fn insert(mut self, row: Row) -> Self {
-		self.diffs.push(Diff::Insert {
-			post: Columns::from_row(&row),
-		});
+		self.diffs.push(Diff::insert(Columns::from_row(&row)));
 		self
 	}
 
@@ -140,10 +138,7 @@ impl TestChangeBuilder {
 
 	/// Add an update diff
 	pub fn update(mut self, pre: Row, post: Row) -> Self {
-		self.diffs.push(Diff::Update {
-			pre: Columns::from_row(&pre),
-			post: Columns::from_row(&post),
-		});
+		self.diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 		self
 	}
 
@@ -162,9 +157,7 @@ impl TestChangeBuilder {
 
 	/// Add a remove diff
 	pub fn remove(mut self, row: Row) -> Self {
-		self.diffs.push(Diff::Remove {
-			pre: Columns::from_row(&row),
-		});
+		self.diffs.push(Diff::remove(Columns::from_row(&row)));
 		self
 	}
 

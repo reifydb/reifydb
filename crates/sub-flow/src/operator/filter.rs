@@ -147,9 +147,7 @@ impl Operator for FilterOperator {
 					let mask = self.evaluate(&post)?;
 					let passing = self.filter_passing(&post, &mask);
 					if !passing.is_empty() {
-						result.push(Diff::Insert {
-							post: passing,
-						});
+						result.push(Diff::insert(passing));
 					}
 				}
 				Diff::Update {
@@ -182,20 +180,16 @@ impl Operator for FilterOperator {
 					}
 
 					if !updated_idx.is_empty() {
-						result.push(Diff::Update {
-							pre: pre.extract_by_indices(&updated_idx),
-							post: post.extract_by_indices(&updated_idx),
-						});
+						result.push(Diff::update(
+							pre.extract_by_indices(&updated_idx),
+							post.extract_by_indices(&updated_idx),
+						));
 					}
 					if !inserted_idx.is_empty() {
-						result.push(Diff::Insert {
-							post: post.extract_by_indices(&inserted_idx),
-						});
+						result.push(Diff::insert(post.extract_by_indices(&inserted_idx)));
 					}
 					if !removed_idx.is_empty() {
-						result.push(Diff::Remove {
-							pre: pre.extract_by_indices(&removed_idx),
-						});
+						result.push(Diff::remove(pre.extract_by_indices(&removed_idx)));
 					}
 				}
 				Diff::Remove {
@@ -206,9 +200,7 @@ impl Operator for FilterOperator {
 					let mask = self.evaluate(&pre)?;
 					let passing = self.filter_passing(&pre, &mask);
 					if !passing.is_empty() {
-						result.push(Diff::Remove {
-							pre: passing,
-						});
+						result.push(Diff::remove(passing));
 					}
 				}
 			}

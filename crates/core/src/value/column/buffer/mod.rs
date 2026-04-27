@@ -6,6 +6,7 @@ pub mod factory;
 pub mod filter;
 pub mod from;
 pub mod get;
+pub mod pool;
 pub mod reorder;
 pub mod scatter;
 pub mod slice;

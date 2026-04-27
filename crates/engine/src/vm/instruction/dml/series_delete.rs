@@ -340,9 +340,7 @@ fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Series, pre: Co
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::Remove {
-			pre,
-		}],
+		diffs: vec![Diff::remove(pre)],
 		changed_at: DateTime::default(),
 	});
 }

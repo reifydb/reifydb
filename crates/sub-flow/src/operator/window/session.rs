@@ -117,9 +117,7 @@ impl WindowOperator {
 						&state.events,
 						changed_at,
 					)? {
-					result.push(Diff::Remove {
-						pre: Columns::from_row(&row),
-					});
+					result.push(Diff::remove(Columns::from_row(&row)));
 				}
 				keys_to_clear.push(window_key);
 			}
@@ -170,9 +168,7 @@ fn process_session_group_insert(
 					&pre_state.events,
 					changed_at,
 				)? {
-				result.push(Diff::Remove {
-					pre: Columns::from_row(&pre_row),
-				});
+				result.push(Diff::remove(Columns::from_row(&pre_row)));
 			}
 			session_id += 1;
 		}

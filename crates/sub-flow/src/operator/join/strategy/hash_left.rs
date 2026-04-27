@@ -30,9 +30,7 @@ impl LeftHashJoin {
 			JoinSide::Left => {
 				// Undefined key in left join still emits the row
 				let unmatched = ctx.operator.unmatched_left_columns(txn, post, row_idx)?;
-				Ok(vec![Diff::Insert {
-					post: unmatched,
-				}])
+				Ok(vec![Diff::insert(unmatched)])
 			}
 			JoinSide::Right => {
 				// Right side inserts with undefined keys don't produce output
@@ -56,9 +54,7 @@ impl LeftHashJoin {
 				// Undefined key - remove the unmatched row
 				let unmatched = ctx.operator.unmatched_left_columns(txn, pre, row_idx)?;
 				ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
-				Ok(vec![Diff::Remove {
-					pre: unmatched,
-				}])
+				Ok(vec![Diff::remove(unmatched)])
 			}
 			JoinSide::Right => {
 				// Right side removes with undefined keys don't produce output
@@ -81,10 +77,7 @@ impl LeftHashJoin {
 				// Both keys are undefined - update the row
 				let unmatched_pre = ctx.operator.unmatched_left_columns(txn, pre, row_idx)?;
 				let unmatched_post = ctx.operator.unmatched_left_columns(txn, post, row_idx)?;
-				Ok(vec![Diff::Update {
-					pre: unmatched_pre,
-					post: unmatched_post,
-				}])
+				Ok(vec![Diff::update(unmatched_pre, unmatched_post)])
 			}
 			JoinSide::Right => {
 				// Right side updates with undefined keys don't produce output
@@ -129,9 +122,7 @@ impl LeftHashJoin {
 					// No matches - emit unmatched left rows for all
 					let unmatched =
 						ctx.operator.unmatched_left_columns_batch(txn, post, indices)?;
-					result.push(Diff::Insert {
-						post: unmatched,
-					});
+					result.push(Diff::insert(unmatched));
 				}
 			}
 			JoinSide::Right => {
@@ -158,9 +149,7 @@ impl LeftHashJoin {
 							&left_columns,
 							&left_indices,
 						)?;
-						result.push(Diff::Remove {
-							pre: unmatched,
-						});
+						result.push(Diff::remove(unmatched));
 					}
 				}
 
@@ -221,9 +210,7 @@ impl LeftHashJoin {
 				} else {
 					// No joined rows to remove - remove unmatched left rows
 					let unmatched = ctx.operator.unmatched_left_columns_batch(txn, pre, indices)?;
-					result.push(Diff::Remove {
-						pre: unmatched,
-					});
+					result.push(Diff::remove(unmatched));
 				}
 
 				// Then remove all rows from state
@@ -275,9 +262,7 @@ impl LeftHashJoin {
 							&left_columns,
 							&left_indices,
 						)?;
-						result.push(Diff::Insert {
-							post: unmatched,
-						});
+						result.push(Diff::insert(unmatched));
 					}
 				}
 			}
@@ -343,10 +328,10 @@ impl LeftHashJoin {
 								let unmatched_post = ctx
 									.operator
 									.unmatched_left_columns(txn, post, row_idx)?;
-								result.push(Diff::Update {
-									pre: unmatched_pre,
-									post: unmatched_post,
-								});
+								result.push(Diff::update(
+									unmatched_pre,
+									unmatched_post,
+								));
 							}
 						}
 					}

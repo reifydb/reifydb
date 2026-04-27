@@ -79,9 +79,7 @@ impl WindowOperator {
 				if state.events.is_empty() {
 					self.save_window_state(txn, &window_key, &state)?;
 					if let Some((row, _)) = pre_agg {
-						result.push(Diff::Remove {
-							pre: Columns::from_row(&row),
-						});
+						result.push(Diff::remove(Columns::from_row(&row)));
 					}
 				} else {
 					let post_agg = self.apply_aggregations(
@@ -93,10 +91,10 @@ impl WindowOperator {
 					)?;
 					self.save_window_state(txn, &window_key, &state)?;
 					if let (Some((pre_row, _)), Some((post_row, _))) = (pre_agg, post_agg) {
-						result.push(Diff::Update {
-							pre: Columns::from_row(&pre_row),
-							post: Columns::from_row(&post_row),
-						});
+						result.push(Diff::update(
+							Columns::from_row(&pre_row),
+							Columns::from_row(&post_row),
+						));
 					}
 				}
 			}

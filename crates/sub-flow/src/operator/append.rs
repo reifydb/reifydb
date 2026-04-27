@@ -118,11 +118,9 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let output = post.clone().with_row_numbers(output_row_numbers);
+					let output = Arc::unwrap_or_clone(post).with_row_numbers(output_row_numbers);
 
-					result_diffs.push(Diff::Insert {
-						post: output,
-					});
+					result_diffs.push(Diff::insert(output));
 				}
 				Diff::Update {
 					pre,
@@ -144,13 +142,12 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let pre_output = pre.clone().with_row_numbers(output_row_numbers.clone());
-					let post_output = post.clone().with_row_numbers(output_row_numbers);
+					let pre_output =
+						Arc::unwrap_or_clone(pre).with_row_numbers(output_row_numbers.clone());
+					let post_output =
+						Arc::unwrap_or_clone(post).with_row_numbers(output_row_numbers);
 
-					result_diffs.push(Diff::Update {
-						pre: pre_output,
-						post: post_output,
-					});
+					result_diffs.push(Diff::update(pre_output, post_output));
 				}
 				Diff::Remove {
 					pre,
@@ -171,11 +168,9 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let output = pre.clone().with_row_numbers(output_row_numbers);
+					let output = Arc::unwrap_or_clone(pre).with_row_numbers(output_row_numbers);
 
-					result_diffs.push(Diff::Remove {
-						pre: output,
-					});
+					result_diffs.push(Diff::remove(output));
 				}
 			}
 		}

@@ -83,7 +83,7 @@ impl<'a> ChangeAssertion<'a> {
 			.filter_map(|d| match d {
 				Diff::Insert {
 					post,
-				} => Some(post),
+				} => Some(post.as_ref()),
 				_ => None,
 			})
 			.collect()
@@ -98,7 +98,7 @@ impl<'a> ChangeAssertion<'a> {
 				Diff::Update {
 					pre,
 					post,
-				} => Some((pre, post)),
+				} => Some((pre.as_ref(), post.as_ref())),
 				_ => None,
 			})
 			.collect()
@@ -112,7 +112,7 @@ impl<'a> ChangeAssertion<'a> {
 			.filter_map(|d| match d {
 				Diff::Remove {
 					pre,
-				} => Some(pre),
+				} => Some(pre.as_ref()),
 				_ => None,
 			})
 			.collect()

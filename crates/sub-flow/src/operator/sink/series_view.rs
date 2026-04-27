@@ -84,9 +84,7 @@ impl Operator for SinkSeriesViewOperator {
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
-						diffs: vec![Diff::Insert {
-							post: coerced,
-						}],
+						diffs: vec![Diff::insert(coerced)],
 						changed_at,
 					});
 				}
@@ -136,10 +134,7 @@ impl Operator for SinkSeriesViewOperator {
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
-						diffs: vec![Diff::Update {
-							pre: coerced_pre,
-							post: coerced_post,
-						}],
+						diffs: vec![Diff::update(coerced_pre, coerced_post)],
 						changed_at,
 					});
 				}
@@ -163,9 +158,7 @@ impl Operator for SinkSeriesViewOperator {
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
-						diffs: vec![Diff::Remove {
-							pre: coerced,
-						}],
+						diffs: vec![Diff::remove(coerced)],
 						changed_at,
 					});
 				}

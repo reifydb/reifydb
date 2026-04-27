@@ -165,9 +165,7 @@ impl DictionaryOperations for AdminTransaction {
 		self.track_flow_change(Change {
 			origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
 			version: CommitVersion(0),
-			diffs: vec![Diff::Insert {
-				post: Columns::single_row([("value", value)]),
-			}],
+			diffs: vec![Diff::insert(Columns::single_row([("value", value)]))],
 			changed_at: DateTime::default(),
 		});
 

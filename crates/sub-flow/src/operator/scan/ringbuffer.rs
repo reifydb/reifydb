@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::{
@@ -45,10 +47,8 @@ impl Operator for PrimitiveRingBufferOperator {
 					post,
 				} => {
 					let mut decoded = post;
-					decode_dictionary_columns(&mut decoded, txn)?;
-					Diff::Insert {
-						post: decoded,
-					}
+					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;
+					Diff::insert_arc(decoded)
 				}
 				Diff::Update {
 					pre,
@@ -56,21 +56,16 @@ impl Operator for PrimitiveRingBufferOperator {
 				} => {
 					let mut decoded_pre = pre;
 					let mut decoded_post = post;
-					decode_dictionary_columns(&mut decoded_pre, txn)?;
-					decode_dictionary_columns(&mut decoded_post, txn)?;
-					Diff::Update {
-						pre: decoded_pre,
-						post: decoded_post,
-					}
+					decode_dictionary_columns(Arc::make_mut(&mut decoded_pre), txn)?;
+					decode_dictionary_columns(Arc::make_mut(&mut decoded_post), txn)?;
+					Diff::update_arc(decoded_pre, decoded_post)
 				}
 				Diff::Remove {
 					pre,
 				} => {
 					let mut decoded = pre;
-					decode_dictionary_columns(&mut decoded, txn)?;
-					Diff::Remove {
-						pre: decoded,
-					}
+					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;
+					Diff::remove_arc(decoded)
 				}
 			});
 		}

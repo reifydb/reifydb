@@ -447,10 +447,10 @@ impl WindowOperator {
 				self.save_window_state(txn, &window_key, &window_state)?;
 
 				if let (Some((pre_row, _)), Some((post_row, _))) = (pre_aggregation, post_aggregation) {
-					result.push(Diff::Update {
-						pre: Columns::from_row(&pre_row),
-						post: Columns::from_row(&post_row),
-					});
+					result.push(Diff::update(
+						Columns::from_row(&pre_row),
+						Columns::from_row(&post_row),
+					));
 				}
 			}
 		}
@@ -526,9 +526,7 @@ impl WindowOperator {
 				if window_state.events.is_empty() {
 					self.save_window_state(txn, &window_key, &window_state)?;
 					if let Some((pre_row, _)) = pre_aggregation {
-						result.push(Diff::Remove {
-							pre: Columns::from_row(&pre_row),
-						});
+						result.push(Diff::remove(Columns::from_row(&pre_row)));
 					}
 				} else {
 					let post_aggregation = self.apply_aggregations(
@@ -543,10 +541,10 @@ impl WindowOperator {
 					if let (Some((pre_row, _)), Some((post_row, _))) =
 						(pre_aggregation, post_aggregation)
 					{
-						result.push(Diff::Update {
-							pre: Columns::from_row(&pre_row),
-							post: Columns::from_row(&post_row),
-						});
+						result.push(Diff::update(
+							Columns::from_row(&pre_row),
+							Columns::from_row(&post_row),
+						));
 					}
 				}
 			}
@@ -753,9 +751,7 @@ impl WindowOperator {
 								&window_state.events,
 								changed_at,
 							)? {
-							result.push(Diff::Remove {
-								pre: Columns::from_row(&row),
-							});
+							result.push(Diff::remove(Columns::from_row(&row)));
 						}
 					}
 
@@ -939,9 +935,7 @@ impl WindowOperator {
 						&window_state.events,
 						changed_at,
 					)? {
-					result.push(Diff::Remove {
-						pre: Columns::from_row(&row),
-					});
+					result.push(Diff::remove(Columns::from_row(&row)));
 				}
 				keys_to_remove.push(window_key);
 			}
@@ -1025,18 +1019,11 @@ impl WindowOperator {
 		previous_aggregation: Option<(Row, bool)>,
 	) -> Diff {
 		if is_new {
-			Diff::Insert {
-				post: Columns::from_row(aggregated_row),
-			}
+			Diff::insert(Columns::from_row(aggregated_row))
 		} else if let Some((previous_row, _)) = previous_aggregation {
-			Diff::Update {
-				pre: Columns::from_row(&previous_row),
-				post: Columns::from_row(aggregated_row),
-			}
+			Diff::update(Columns::from_row(&previous_row), Columns::from_row(aggregated_row))
 		} else {
-			Diff::Insert {
-				post: Columns::from_row(aggregated_row),
-			}
+			Diff::insert(Columns::from_row(aggregated_row))
 		}
 	}
 }

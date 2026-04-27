@@ -55,9 +55,7 @@ fn build_ringbuffer_insert_change(
 	Change {
 		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::Insert {
-			post: build_encoded_columns(shape, row_number, encoded),
-		}],
+		diffs: vec![Diff::insert(build_encoded_columns(shape, row_number, encoded))],
 		changed_at: DateTime::default(),
 	}
 }
@@ -72,10 +70,10 @@ fn build_ringbuffer_update_change(
 	Change {
 		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::Update {
-			pre: build_encoded_columns(&shape, row_number, pre),
-			post: build_encoded_columns(&shape, row_number, post),
-		}],
+		diffs: vec![Diff::update(
+			build_encoded_columns(&shape, row_number, pre),
+			build_encoded_columns(&shape, row_number, post),
+		)],
 		changed_at: DateTime::default(),
 	}
 }
@@ -85,9 +83,7 @@ fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encode
 	Change {
 		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::Remove {
-			pre: build_encoded_columns(&shape, row_number, encoded),
-		}],
+		diffs: vec![Diff::remove(build_encoded_columns(&shape, row_number, encoded))],
 		changed_at: DateTime::default(),
 	}
 }

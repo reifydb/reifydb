@@ -170,9 +170,7 @@ impl Arena {
 				}
 
 				let post = self.unmarshal_columns(&ffi.post);
-				Ok(Diff::Insert {
-					post,
-				})
+				Ok(Diff::insert(post))
 			}
 			DiffType::Update => {
 				if ffi.pre.is_empty() || ffi.post.is_empty() {
@@ -181,10 +179,7 @@ impl Arena {
 
 				let pre = self.unmarshal_columns(&ffi.pre);
 				let post = self.unmarshal_columns(&ffi.post);
-				Ok(Diff::Update {
-					pre,
-					post,
-				})
+				Ok(Diff::update(pre, post))
 			}
 			DiffType::Remove => {
 				if ffi.pre.is_empty() {
@@ -192,9 +187,7 @@ impl Arena {
 				}
 
 				let pre = self.unmarshal_columns(&ffi.pre);
-				Ok(Diff::Remove {
-					pre,
-				})
+				Ok(Diff::remove(pre))
 			}
 		}
 	}

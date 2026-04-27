@@ -214,17 +214,18 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 	let mut new_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(entries.len()); field_names.len()];
 
 	for entry in entries {
-		let (op, old_cols, new_cols) = match &entry.diff {
+		let empty = Columns::empty();
+		let (op, old_cols, new_cols): (&str, &Columns, &Columns) = match &entry.diff {
 			Diff::Insert {
 				post,
-			} => ("insert", &Columns::empty(), post),
+			} => ("insert", &empty, post.as_ref()),
 			Diff::Update {
 				pre,
 				post,
-			} => ("update", pre, post),
+			} => ("update", pre.as_ref(), post.as_ref()),
 			Diff::Remove {
 				pre,
-			} => ("delete", pre, &Columns::empty()),
+			} => ("delete", pre.as_ref(), &empty),
 		};
 
 		op_data.push(op);

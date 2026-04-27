@@ -154,9 +154,7 @@ pub(crate) fn emit_joined_columns(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(Diff::Insert {
-			post: joined,
-		}))
+		Ok(Some(Diff::insert(joined)))
 	}
 }
 
@@ -181,9 +179,7 @@ pub(crate) fn emit_remove_joined_columns(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(Diff::Remove {
-			pre: joined,
-		}))
+		Ok(Some(Diff::remove(joined)))
 	}
 }
 
@@ -215,10 +211,7 @@ pub(crate) fn emit_update_joined_columns(
 	if pre_joined.is_empty() || post_joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(Diff::Update {
-			pre: pre_joined,
-			post: post_joined,
-		}))
+		Ok(Some(Diff::update(pre_joined, post_joined)))
 	}
 }
 
@@ -265,9 +258,7 @@ pub(crate) fn emit_joined_columns_batch(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(Diff::Insert {
-			post: joined,
-		}))
+		Ok(Some(Diff::insert(joined)))
 	}
 }
 
@@ -314,9 +305,7 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(Diff::Remove {
-			pre: joined,
-		}))
+		Ok(Some(Diff::remove(joined)))
 	}
 }
 

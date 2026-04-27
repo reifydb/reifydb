@@ -305,9 +305,7 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::Insert {
-			post,
-		}],
+		diffs: vec![Diff::insert(post)],
 		changed_at: DateTime::default(),
 	});
 }

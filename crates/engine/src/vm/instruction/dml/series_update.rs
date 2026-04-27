@@ -302,10 +302,7 @@ fn track_series_update_flow_change(
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::Update {
-			pre,
-			post,
-		}],
+		diffs: vec![Diff::update(pre, post)],
 		changed_at: DateTime::default(),
 	});
 	Ok(())

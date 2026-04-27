@@ -45,51 +45,37 @@ impl ChangeBuilder {
 
 	/// Add an insert diff with Columns
 	pub fn insert(mut self, post: Columns) -> Self {
-		self.diffs.push(Diff::Insert {
-			post,
-		});
+		self.diffs.push(Diff::insert(post));
 		self
 	}
 
 	/// Add an insert diff from a Row (converts to Columns)
 	pub fn insert_row(mut self, row: Row) -> Self {
-		self.diffs.push(Diff::Insert {
-			post: Columns::from_row(&row),
-		});
+		self.diffs.push(Diff::insert(Columns::from_row(&row)));
 		self
 	}
 
 	/// Add an update diff with Columns
 	pub fn update(mut self, pre: Columns, post: Columns) -> Self {
-		self.diffs.push(Diff::Update {
-			pre,
-			post,
-		});
+		self.diffs.push(Diff::update(pre, post));
 		self
 	}
 
 	/// Add an update diff from Rows (converts to Columns)
 	pub fn update_rows(mut self, pre: Row, post: Row) -> Self {
-		self.diffs.push(Diff::Update {
-			pre: Columns::from_row(&pre),
-			post: Columns::from_row(&post),
-		});
+		self.diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 		self
 	}
 
 	/// Add a remove diff with Columns
 	pub fn remove(mut self, pre: Columns) -> Self {
-		self.diffs.push(Diff::Remove {
-			pre,
-		});
+		self.diffs.push(Diff::remove(pre));
 		self
 	}
 
 	/// Add a remove diff from a Row (converts to Columns)
 	pub fn remove_row(mut self, row: Row) -> Self {
-		self.diffs.push(Diff::Remove {
-			pre: Columns::from_row(&row),
-		});
+		self.diffs.push(Diff::remove(Columns::from_row(&row)));
 		self
 	}
 
@@ -114,21 +100,17 @@ impl ChangeBuilder {
 			.map(|diff| match diff {
 				Diff::Insert {
 					post,
-				} => Diff::Insert {
-					post: Self::ensure_timestamps(post, timestamp),
-				},
+				} => Diff::insert(Self::ensure_timestamps((*post).clone(), timestamp)),
 				Diff::Update {
 					pre,
 					post,
-				} => Diff::Update {
-					pre: Self::ensure_timestamps(pre, timestamp),
-					post: Self::ensure_timestamps(post, timestamp),
-				},
+				} => Diff::update(
+					Self::ensure_timestamps((*pre).clone(), timestamp),
+					Self::ensure_timestamps((*post).clone(), timestamp),
+				),
 				Diff::Remove {
 					pre,
-				} => Diff::Remove {
-					pre: Self::ensure_timestamps(pre, timestamp),
-				},
+				} => Diff::remove(Self::ensure_timestamps((*pre).clone(), timestamp)),
 			})
 			.collect();
 		Change::from_flow(self.operator_id, self.version, diffs, self.changed_at)

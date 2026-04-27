@@ -156,9 +156,9 @@ impl Operator for GateOperator {
 							.map(|(idx, _)| idx)
 							.collect();
 						if !passing_indices.is_empty() {
-							result.push(Diff::Insert {
-								post: post.extract_by_indices(&passing_indices),
-							});
+							result.push(Diff::insert(
+								post.extract_by_indices(&passing_indices),
+							));
 						}
 					} else {
 						// Evaluate condition per row
@@ -173,9 +173,9 @@ impl Operator for GateOperator {
 							// if not pass: drop (latch stays closed)
 						}
 						if !passing_indices.is_empty() {
-							result.push(Diff::Insert {
-								post: post.extract_by_indices(&passing_indices),
-							});
+							result.push(Diff::insert(
+								post.extract_by_indices(&passing_indices),
+							));
 						}
 					}
 				}
@@ -215,15 +215,15 @@ impl Operator for GateOperator {
 						}
 
 						if !update_indices.is_empty() {
-							result.push(Diff::Update {
-								pre: pre.extract_by_indices(&update_indices),
-								post: post.extract_by_indices(&update_indices),
-							});
+							result.push(Diff::update(
+								pre.extract_by_indices(&update_indices),
+								post.extract_by_indices(&update_indices),
+							));
 						}
 						if !insert_indices.is_empty() {
-							result.push(Diff::Insert {
-								post: post.extract_by_indices(&insert_indices),
-							});
+							result.push(Diff::insert(
+								post.extract_by_indices(&insert_indices),
+							));
 						}
 					}
 				}
@@ -248,9 +248,9 @@ impl Operator for GateOperator {
 						}
 
 						if !remove_indices.is_empty() {
-							result.push(Diff::Remove {
-								pre: pre.extract_by_indices(&remove_indices),
-							});
+							result.push(Diff::remove(
+								pre.extract_by_indices(&remove_indices),
+							));
 						}
 					}
 				}

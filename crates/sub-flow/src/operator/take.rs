@@ -89,9 +89,7 @@ impl TakeOperator {
 
 				let cols = self.parent.pull(txn, &[candidate_row])?;
 				if !cols.is_empty() {
-					output_diffs.push(Diff::Insert {
-						post: cols,
-					});
+					output_diffs.push(Diff::insert(cols));
 				}
 			}
 		}
@@ -110,9 +108,7 @@ impl TakeOperator {
 
 				let cols = self.parent.pull(txn, &[evicted_row])?;
 				if !cols.is_empty() {
-					output_diffs.push(Diff::Remove {
-						pre: cols,
-					});
+					output_diffs.push(Diff::remove(cols));
 				}
 			}
 		}
@@ -165,9 +161,9 @@ impl Operator for TakeOperator {
 
 						if state.active.len() < self.limit {
 							state.active.insert(row_number, 1);
-							output_diffs.push(Diff::Insert {
-								post: post.extract_by_indices(&[row_idx]),
-							});
+							output_diffs.push(Diff::insert(
+								post.extract_by_indices(&[row_idx]),
+							));
 						} else {
 							let smallest_active = state.active.keys().next().copied();
 							if let Some(smallest) = smallest_active {
@@ -182,17 +178,14 @@ impl Operator for TakeOperator {
 											.pull(txn, &[smallest])?;
 										if !cols.is_empty() {
 											output_diffs.push(
-												Diff::Remove {
-													pre: cols,
-												},
+												Diff::remove(cols),
 											);
 										}
 									}
 									state.active.insert(row_number, 1);
-									output_diffs.push(Diff::Insert {
-										post: post
-											.extract_by_indices(&[row_idx]),
-									});
+									output_diffs.push(Diff::insert(
+										post.extract_by_indices(&[row_idx]),
+									));
 									let candidate_limit = self.limit * 4;
 									while state.candidates.len() > candidate_limit {
 										if let Some((&r, _)) =
@@ -229,10 +222,10 @@ impl Operator for TakeOperator {
 						}
 					}
 					if !update_indices.is_empty() {
-						output_diffs.push(Diff::Update {
-							pre: pre.extract_by_indices(&update_indices),
-							post: post.extract_by_indices(&update_indices),
-						});
+						output_diffs.push(Diff::update(
+							pre.extract_by_indices(&update_indices),
+							post.extract_by_indices(&update_indices),
+						));
 					}
 				}
 				Diff::Remove {
@@ -247,9 +240,9 @@ impl Operator for TakeOperator {
 								*count -= 1;
 							} else {
 								state.active.remove(&row_number);
-								output_diffs.push(Diff::Remove {
-									pre: pre.extract_by_indices(&[row_idx]),
-								});
+								output_diffs.push(Diff::remove(
+									pre.extract_by_indices(&[row_idx]),
+								));
 								let promoted =
 									self.promote_candidates(&mut state, txn)?;
 								output_diffs.extend(promoted);

@@ -24,6 +24,8 @@ use reifydb_core::{
 		EncodableKey, Key, cdc_exclude::should_exclude_from_cdc, kind::KeyKind, row::RowKey,
 		series_row::SeriesRowKey,
 	},
+	util::slab::Slab,
+	value::column::{buffer::pool::ColumnBufferPool, columns::Columns},
 };
 use reifydb_runtime::{
 	actor::{
@@ -41,8 +43,15 @@ use reifydb_type::{
 };
 use tracing::{debug, error, trace};
 
-use super::decode::{build_insert_diff, build_remove_diff, build_update_diff};
+use super::decode::{
+	build_insert_diff_into_with_pool, build_remove_diff_into_with_pool, build_update_diff_into_with_pool,
+};
 use crate::{consume::host::CdcHost, storage::CdcStorage};
+
+/// Cap on how many `Columns` slabs `CdcProducerActor` keeps in its reuse
+/// pool. With ~5 KB per slab the cap bounds steady-state pool memory at
+/// ~1.3 MB while still satisfying typical per-call burst demand.
+const MAX_POOL_SLABS: usize = 256;
 
 /// Default interval between CDC cleanup attempts (30 seconds)
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
@@ -60,6 +69,18 @@ pub struct CdcProducerActor<S, T, H> {
 	host: H,
 	event_bus: EventBus,
 	clock: Clock,
+	/// Reuse pool of `Columns` slabs. The actor pulls slabs at the start
+	/// of each `process()` row-delta iteration, fills them via
+	/// `Columns::reset_from_row`, hands `Arc::clone`s into the resulting
+	/// `Diff`s for dispatch, and pushes the original `Arc`s back here at
+	/// the end of `process()` once dispatch has completed and consumer
+	/// references have dropped.
+	slab_pool: Slab<Columns>,
+	/// Per-`Type` reuse pool of inner `ColumnBuffer`s. Threaded through
+	/// the `_with_pool` decode helpers so a slab whose previous shape
+	/// differs from the new row's shape can swap out individual column
+	/// buffers without allocating a fresh inner `Vec` per column.
+	pool: ColumnBufferPool,
 }
 
 impl<S, T, H> CdcProducerActor<S, T, H>
@@ -75,12 +96,20 @@ where
 			host,
 			event_bus,
 			clock,
+			slab_pool: Slab::new(MAX_POOL_SLABS),
+			pool: ColumnBufferPool::new(),
 		}
 	}
 
 	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
 		let mut diffs_by_shape: BTreeMap<ShapeId, Vec<Diff>> = BTreeMap::new();
 		let mut system_changes: Vec<SystemChange> = Vec::new();
+		// Slabs pulled from the pool for this call. Each entry is an
+		// `Arc<Columns>` that was filled in place by `build_*_diff_into`
+		// and Arc-cloned into a `Diff`. After dispatch we release them
+		// back to the pool; their `strong_count` will be 1 once the
+		// dispatched `Diff`s have been dropped.
+		let mut acquired_slabs: Vec<Arc<Columns>> = Vec::new();
 		let catalog = self.host.materialized_catalog();
 
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
@@ -111,18 +140,31 @@ where
 									.ok()
 									.flatten();
 								if let Some(prev) = pre {
-									build_update_diff(
+									let mut pre_buf = self.slab_pool.acquire();
+									let mut post_buf = self.slab_pool.acquire();
+									let diff = build_update_diff_into_with_pool(
 										catalog,
 										row_number,
 										prev.row,
 										row.clone(),
-									)
+										&mut pre_buf,
+										&mut post_buf,
+										&self.pool,
+									);
+									acquired_slabs.push(pre_buf);
+									acquired_slabs.push(post_buf);
+									diff
 								} else {
-									build_insert_diff(
+									let mut post_buf = self.slab_pool.acquire();
+									let diff = build_insert_diff_into_with_pool(
 										catalog,
 										row_number,
 										row.clone(),
-									)
+										&mut post_buf,
+										&self.pool,
+									);
+									acquired_slabs.push(post_buf);
+									diff
 								}
 							}
 							Delta::Unset {
@@ -130,11 +172,16 @@ where
 								..
 							} => {
 								if !row.is_empty() {
-									build_remove_diff(
+									let mut pre_buf = self.slab_pool.acquire();
+									let diff = build_remove_diff_into_with_pool(
 										catalog,
 										row_number,
 										row.clone(),
-									)
+										&mut pre_buf,
+										&self.pool,
+									);
+									acquired_slabs.push(pre_buf);
+									diff
 								} else {
 									None
 								}
@@ -167,18 +214,31 @@ where
 									.ok()
 									.flatten();
 								if let Some(prev) = pre {
-									build_update_diff(
+									let mut pre_buf = self.slab_pool.acquire();
+									let mut post_buf = self.slab_pool.acquire();
+									let diff = build_update_diff_into_with_pool(
 										catalog,
 										row_key.row,
 										prev.row,
 										row.clone(),
-									)
+										&mut pre_buf,
+										&mut post_buf,
+										&self.pool,
+									);
+									acquired_slabs.push(pre_buf);
+									acquired_slabs.push(post_buf);
+									diff
 								} else {
-									build_insert_diff(
+									let mut post_buf = self.slab_pool.acquire();
+									let diff = build_insert_diff_into_with_pool(
 										catalog,
 										row_key.row,
 										row.clone(),
-									)
+										&mut post_buf,
+										&self.pool,
+									);
+									acquired_slabs.push(post_buf);
+									diff
 								}
 							}
 							Delta::Unset {
@@ -186,11 +246,16 @@ where
 								..
 							} => {
 								if !row.is_empty() {
-									build_remove_diff(
+									let mut pre_buf = self.slab_pool.acquire();
+									let diff = build_remove_diff_into_with_pool(
 										catalog,
 										row_key.row,
 										row.clone(),
-									)
+										&mut pre_buf,
+										&self.pool,
+									);
+									acquired_slabs.push(pre_buf);
+									diff
 								} else {
 									None
 								}
@@ -278,27 +343,41 @@ where
 
 		if !changes.is_empty() || !system_changes.is_empty() {
 			let cdc = Cdc::new(version, changed_at, changes, system_changes.clone());
-			if let Err(e) = self.storage.write(&cdc) {
-				error!(version = version.0, "CDC write failed: {:?}", e);
-				return;
+			match self.storage.write(&cdc) {
+				Ok(_) => {
+					debug!(version = version.0, "CDC written successfully");
+
+					// Emit CDC stats event
+					let entries: Vec<CdcWrite> = system_changes
+						.iter()
+						.map(|sys_change| {
+							let key = sys_change.key();
+							let value_bytes = sys_change.value_bytes() as u64;
+							CdcWrite {
+								key: key.clone(),
+								value_bytes,
+							}
+						})
+						.collect();
+
+					self.event_bus.emit(CdcWrittenEvent::new(entries, version));
+				}
+				Err(e) => {
+					error!(version = version.0, "CDC write failed: {:?}", e);
+				}
 			}
+			// `cdc` (and therefore the dispatched `Diff`s and their
+			// `Arc<Columns>` clones) drops here, returning each
+			// acquired slab's strong_count to 1.
+		}
 
-			debug!(version = version.0, "CDC written successfully");
-
-			// Emit CDC stats event
-			let entries: Vec<CdcWrite> = system_changes
-				.iter()
-				.map(|sys_change| {
-					let key = sys_change.key();
-					let value_bytes = sys_change.value_bytes() as u64;
-					CdcWrite {
-						key: key.clone(),
-						value_bytes,
-					}
-				})
-				.collect();
-
-			self.event_bus.emit(CdcWrittenEvent::new(entries, version));
+		// Return slabs to the pool. By this point the `cdc` value
+		// above (and its embedded `Diff`s) has been dropped, so each
+		// slab in `acquired_slabs` has `strong_count == 1` unless an
+		// event-bus consumer kept its own clone alive - in which
+		// case `Slab::acquire` will skip it on a future pop.
+		for slab in acquired_slabs {
+			self.slab_pool.release(slab);
 		}
 	}
 
@@ -407,7 +486,8 @@ pub(crate) fn merge_diffs(diffs: Vec<Diff>) -> Vec<Diff> {
 					post: ref mut existing,
 				}) = insert
 				{
-					if let Err(e) = existing.append_columns(post) {
+					let owned = Arc::try_unwrap(post).unwrap_or_else(|arc| (*arc).clone());
+					if let Err(e) = Arc::make_mut(existing).append_columns(owned) {
 						error!("Failed to merge insert columns: {:?}", e);
 					}
 				} else {
@@ -425,10 +505,12 @@ pub(crate) fn merge_diffs(diffs: Vec<Diff>) -> Vec<Diff> {
 					post: ref mut existing_post,
 				}) = update
 				{
-					if let Err(e) = existing_pre.append_columns(pre) {
+					let owned_pre = Arc::try_unwrap(pre).unwrap_or_else(|arc| (*arc).clone());
+					let owned_post = Arc::try_unwrap(post).unwrap_or_else(|arc| (*arc).clone());
+					if let Err(e) = Arc::make_mut(existing_pre).append_columns(owned_pre) {
 						error!("Failed to merge update pre columns: {:?}", e);
 					}
-					if let Err(e) = existing_post.append_columns(post) {
+					if let Err(e) = Arc::make_mut(existing_post).append_columns(owned_post) {
 						error!("Failed to merge update post columns: {:?}", e);
 					}
 				} else {
@@ -445,7 +527,8 @@ pub(crate) fn merge_diffs(diffs: Vec<Diff>) -> Vec<Diff> {
 					pre: ref mut existing,
 				}) = remove
 				{
-					if let Err(e) = existing.append_columns(pre) {
+					let owned = Arc::try_unwrap(pre).unwrap_or_else(|arc| (*arc).clone());
+					if let Err(e) = Arc::make_mut(existing).append_columns(owned) {
 						error!("Failed to merge remove columns: {:?}", e);
 					}
 				} else {

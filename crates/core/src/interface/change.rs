@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_type::value::datetime::DateTime;
 use serde::{Deserialize, Serialize};
 
@@ -16,19 +18,73 @@ pub enum ChangeOrigin {
 	Shape(ShapeId),
 	Flow(FlowNodeId),
 }
-/// Represents a single diff
+
+/// Represents a single diff.
+///
+/// Carries `Arc<Columns>` so that cloning a `Diff` (or the enclosing
+/// `Change`) is a refcount bump rather than a deep copy of every column,
+/// and so that producers (e.g. `CdcProducerActor`) can hold onto a slab
+/// pool of `Arc<Columns>` and reuse them across calls when `strong_count`
+/// drops back to 1 after dispatch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Diff {
 	Insert {
-		post: Columns,
+		post: Arc<Columns>,
 	},
 	Update {
-		pre: Columns,
-		post: Columns,
+		pre: Arc<Columns>,
+		post: Arc<Columns>,
 	},
 	Remove {
-		pre: Columns,
+		pre: Arc<Columns>,
 	},
+}
+
+impl Diff {
+	/// Build an insert diff from an owned `Columns`. Wraps internally.
+	pub fn insert(post: Columns) -> Self {
+		Self::Insert {
+			post: Arc::new(post),
+		}
+	}
+
+	/// Build an update diff from owned `Columns`. Wraps internally.
+	pub fn update(pre: Columns, post: Columns) -> Self {
+		Self::Update {
+			pre: Arc::new(pre),
+			post: Arc::new(post),
+		}
+	}
+
+	/// Build a remove diff from an owned `Columns`. Wraps internally.
+	pub fn remove(pre: Columns) -> Self {
+		Self::Remove {
+			pre: Arc::new(pre),
+		}
+	}
+
+	/// Build an insert diff from an already-`Arc`'d `Columns`. Used by
+	/// the `CdcProducerActor` slab pool to avoid an extra `Arc::new`.
+	pub fn insert_arc(post: Arc<Columns>) -> Self {
+		Self::Insert {
+			post,
+		}
+	}
+
+	/// Build an update diff from already-`Arc`'d `Columns`.
+	pub fn update_arc(pre: Arc<Columns>, post: Arc<Columns>) -> Self {
+		Self::Update {
+			pre,
+			post,
+		}
+	}
+
+	/// Build a remove diff from an already-`Arc`'d `Columns`.
+	pub fn remove_arc(pre: Arc<Columns>) -> Self {
+		Self::Remove {
+			pre,
+		}
+	}
 }
 
 /// A change with origin, diffs, version, and timestamp

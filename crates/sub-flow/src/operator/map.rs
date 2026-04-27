@@ -146,9 +146,7 @@ impl Operator for MapOperator {
 					};
 
 					if !projected.is_empty() {
-						result.push(Diff::Insert {
-							post: projected,
-						});
+						result.push(Diff::insert(projected));
 					}
 				}
 				Diff::Update {
@@ -159,10 +157,7 @@ impl Operator for MapOperator {
 					let projected_pre = self.project(&pre)?;
 
 					if !projected_post.is_empty() {
-						result.push(Diff::Update {
-							pre: projected_pre,
-							post: projected_post,
-						});
+						result.push(Diff::update(projected_pre, projected_post));
 					}
 				}
 				Diff::Remove {
@@ -170,9 +165,7 @@ impl Operator for MapOperator {
 				} => {
 					let projected_pre = self.project(&pre)?;
 					if !projected_pre.is_empty() {
-						result.push(Diff::Remove {
-							pre: projected_pre,
-						});
+						result.push(Diff::remove(projected_pre));
 					}
 				}
 			}
