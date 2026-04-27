@@ -520,8 +520,9 @@ impl Columns {
 
 	/// Create Columns from a Row by decoding its encoded values
 	pub fn from_row(row: &Row) -> Self {
-		let mut names = Vec::new();
-		let mut buffers = Vec::new();
+		let field_count = row.shape.fields().len();
+		let mut names = Vec::with_capacity(field_count);
+		let mut buffers = Vec::with_capacity(field_count);
 
 		for (idx, field) in row.shape.fields().iter().enumerate() {
 			let value = row.shape.get_value(&row.encoded, idx);

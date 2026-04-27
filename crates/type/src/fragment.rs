@@ -138,8 +138,8 @@ impl Fragment {
 	}
 
 	/// Return a new fragment with replaced text, preserving location info.
-	pub fn with_text(&self, text: impl Into<String>) -> Fragment {
-		let text = Arc::from(text.into());
+	pub fn with_text(&self, text: impl AsRef<str>) -> Fragment {
+		let text = Arc::from(text.as_ref());
 		match self {
 			Fragment::Statement {
 				line,
@@ -164,18 +164,26 @@ impl Fragment {
 
 impl Fragment {
 	/// Create an internal fragment - useful for creating fragments from
-	/// substrings
-	pub fn internal(text: impl Into<String>) -> Self {
+	/// substrings.
+	///
+	/// Takes `impl AsRef<str>` so `Arc::<str>::from(&str)` allocates the
+	/// inline Arc payload directly, skipping the implicit `String` round
+	/// trip that the previous `impl Into<String>` signature forced.
+	pub fn internal(text: impl AsRef<str>) -> Self {
 		Fragment::Internal {
-			text: Arc::from(text.into()),
+			text: Arc::from(text.as_ref()),
 		}
 	}
 
 	/// Create a testing fragment - returns a Statement fragment for test
-	/// purposes
-	pub fn testing(text: impl Into<String>) -> Self {
+	/// purposes.
+	///
+	/// Takes `impl AsRef<str>` so `Arc::<str>::from(&str)` allocates the
+	/// inline Arc payload directly, skipping the implicit `String` round
+	/// trip that the previous `impl Into<String>` signature forced.
+	pub fn testing(text: impl AsRef<str>) -> Self {
 		Fragment::Statement {
-			text: Arc::from(text.into()),
+			text: Arc::from(text.as_ref()),
 			line: StatementLine(1),
 			column: StatementColumn(0),
 		}
@@ -271,9 +279,9 @@ impl From<&str> for Fragment {
 
 impl Fragment {
 	/// Create a statement fragment with position info
-	pub fn statement(text: impl Into<String>, line: u32, column: u32) -> Self {
+	pub fn statement(text: impl AsRef<str>, line: u32, column: u32) -> Self {
 		Fragment::Statement {
-			text: Arc::from(text.into()),
+			text: Arc::from(text.as_ref()),
 			line: StatementLine(line),
 			column: StatementColumn(column),
 		}
