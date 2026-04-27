@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::slice::from_ref;
+use std::{mem::discriminant, slice::from_ref};
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_rql::expression::Expression;
@@ -26,7 +26,7 @@ use crate::{
 		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns},
 		constant::{constant_value, constant_value_of},
 		context::EvalContext,
-		logic::execute_logical_op,
+		logic::{execute_logical_op, try_short_circuit_and, try_short_circuit_or},
 		lookup::column_lookup,
 		parameter::parameter_lookup,
 		prefix::prefix_apply,
@@ -264,6 +264,9 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let fragment = e.full_fragment_owned();
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
+				if let Some(short) = try_short_circuit_and(&l, &fragment, l.data().len()) {
+					return Ok(short);
+				}
 				let r = right.execute(ctx)?;
 				execute_logical_op(&l, &r, &fragment, LogicalOp::And, |a, b| a && b)
 			})
@@ -275,6 +278,9 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let fragment = e.full_fragment_owned();
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
+				if let Some(short) = try_short_circuit_or(&l, &fragment, l.data().len()) {
+					return Ok(short);
+				}
 				let r = right.execute(ctx)?;
 				execute_logical_op(&l, &r, &fragment, LogicalOp::Or, |a, b| a || b)
 			})
@@ -844,10 +850,35 @@ fn combine_bool_columns(
 }
 
 fn list_items_contain(items: &[Value], element: &Value, fragment: &Fragment) -> bool {
+	if items.iter().any(|item| item == element) {
+		return true;
+	}
+	if items.is_empty() {
+		return false;
+	}
+
+	if let Some(items_buf) = build_homogeneous_buffer(items) {
+		let elems_buf = ColumnBuffer::from_many(element.clone(), items.len());
+		let items_col = ColumnWithName::new(fragment.clone(), items_buf);
+		let elems_col = ColumnWithName::new(fragment.clone(), elems_buf);
+		return compare_columns::<Equal>(&items_col, &elems_col, fragment.clone(), |f, l, r| {
+			TypeError::BinaryOperatorNotApplicable {
+				operator: BinaryOp::Equal,
+				left: l,
+				right: r,
+				fragment: f,
+			}
+			.into_diagnostic()
+		})
+		.map(|c| bool_column_has_true(&c))
+		.unwrap_or(false);
+	}
+
+	list_items_contain_per_item(items, element, fragment)
+}
+
+fn list_items_contain_per_item(items: &[Value], element: &Value, fragment: &Fragment) -> bool {
 	items.iter().any(|item| {
-		if item == element {
-			return true;
-		}
 		let item_col = ColumnWithName::new(fragment.clone(), ColumnBuffer::from(item.clone()));
 		let elem_col = ColumnWithName::new(fragment.clone(), ColumnBuffer::from(element.clone()));
 		compare_columns::<Equal>(&item_col, &elem_col, fragment.clone(), |f, l, r| {
@@ -866,6 +897,75 @@ fn list_items_contain(items: &[Value], element: &Value, fragment: &Fragment) -> 
 		})
 		.unwrap_or(false)
 	})
+}
+
+fn bool_column_has_true(col: &ColumnWithName) -> bool {
+	match col.data() {
+		ColumnBuffer::Bool(b) => b.data().any(),
+		ColumnBuffer::Option {
+			inner,
+			bitvec,
+		} => match inner.as_ref() {
+			ColumnBuffer::Bool(b) => {
+				let n = bitvec.len().min(b.len());
+				(0..n).any(|i| bitvec.get(i) && b.data().get(i))
+			}
+			_ => false,
+		},
+		_ => false,
+	}
+}
+
+fn build_homogeneous_buffer(items: &[Value]) -> Option<ColumnBuffer> {
+	let first = items.first()?;
+	let first_disc = discriminant(first);
+	if !items.iter().all(|v| discriminant(v) == first_disc) {
+		return None;
+	}
+
+	macro_rules! collect {
+		($variant:ident, $constructor:ident, |$x:ident| $convert:expr) => {{
+			let data: Vec<_> = items
+				.iter()
+				.map(|v| match v {
+					Value::$variant($x) => $convert,
+					_ => unreachable!("homogeneous check guarantees variant"),
+				})
+				.collect();
+			Some(ColumnBuffer::$constructor(data))
+		}};
+	}
+
+	match first {
+		Value::Boolean(_) => collect!(Boolean, bool, |x| *x),
+		Value::Float4(_) => collect!(Float4, float4, |x| x.value()),
+		Value::Float8(_) => collect!(Float8, float8, |x| x.value()),
+		Value::Int1(_) => collect!(Int1, int1, |x| *x),
+		Value::Int2(_) => collect!(Int2, int2, |x| *x),
+		Value::Int4(_) => collect!(Int4, int4, |x| *x),
+		Value::Int8(_) => collect!(Int8, int8, |x| *x),
+		Value::Int16(_) => collect!(Int16, int16, |x| *x),
+		Value::Uint1(_) => collect!(Uint1, uint1, |x| *x),
+		Value::Uint2(_) => collect!(Uint2, uint2, |x| *x),
+		Value::Uint4(_) => collect!(Uint4, uint4, |x| *x),
+		Value::Uint8(_) => collect!(Uint8, uint8, |x| *x),
+		Value::Uint16(_) => collect!(Uint16, uint16, |x| *x),
+		Value::Utf8(_) => collect!(Utf8, utf8, |x| x.clone()),
+		Value::Date(_) => collect!(Date, date, |x| *x),
+		Value::DateTime(_) => collect!(DateTime, datetime, |x| *x),
+		Value::Time(_) => collect!(Time, time, |x| *x),
+		Value::Duration(_) => collect!(Duration, duration, |x| *x),
+		Value::Uuid4(_) => collect!(Uuid4, uuid4, |x| *x),
+		Value::Uuid7(_) => collect!(Uuid7, uuid7, |x| *x),
+		Value::IdentityId(_) => collect!(IdentityId, identity_id, |x| *x),
+		Value::Blob(_) => collect!(Blob, blob, |x| x.clone()),
+		Value::Int(_) => collect!(Int, int, |x| x.clone()),
+		Value::Uint(_) => collect!(Uint, uint, |x| x.clone()),
+		Value::Decimal(_) => collect!(Decimal, decimal, |x| x.clone()),
+		Value::DictionaryId(_) => collect!(DictionaryId, dictionary_id, |x| *x),
+		// Any, List, Record, Tuple, Type, None: fall back to per-item.
+		_ => None,
+	}
 }
 
 fn list_contains_element(

@@ -75,6 +75,40 @@ impl QueryNode for AssertNode {
 							}
 						}
 					}
+					ColumnBuffer::Option {
+						inner,
+						bitvec,
+					} => match inner.as_ref() {
+						ColumnBuffer::Bool(container) => {
+							for i in 0..row_count {
+								let defined = i < bitvec.len() && bitvec.get(i);
+								let valid = defined && container.is_defined(i);
+								let value = valid && container.data().get(i);
+								if !value {
+									return Err(EngineError::AssertionFailed {
+										fragment: frag.clone(),
+										message: self
+											.message
+											.clone()
+											.unwrap_or_default(),
+										expression: Some(frag
+											.text()
+											.to_string()),
+									}
+									.into());
+								}
+							}
+						}
+						_ => {
+							return Err(EngineError::AssertionFailed {
+								fragment: frag.clone(),
+								message: "assert expression must evaluate to a boolean"
+									.to_string(),
+								expression: Some(frag.text().to_string()),
+							}
+							.into());
+						}
+					},
 					_ => {
 						return Err(EngineError::AssertionFailed {
 							fragment: frag.clone(),
@@ -154,6 +188,33 @@ impl QueryNode for AssertWithoutInputNode {
 						.into());
 					}
 				}
+				ColumnBuffer::Option {
+					inner,
+					bitvec,
+				} => match inner.as_ref() {
+					ColumnBuffer::Bool(container) => {
+						let defined = !bitvec.is_empty() && bitvec.get(0);
+						let valid = defined && container.is_defined(0);
+						let value = valid && container.data().get(0);
+						if !value {
+							return Err(EngineError::AssertionFailed {
+								fragment: frag.clone(),
+								message: self.message.clone().unwrap_or_default(),
+								expression: Some(frag.text().to_string()),
+							}
+							.into());
+						}
+					}
+					_ => {
+						return Err(EngineError::AssertionFailed {
+							fragment: frag.clone(),
+							message: "assert expression must evaluate to a boolean"
+								.to_string(),
+							expression: Some(frag.text().to_string()),
+						}
+						.into());
+					}
+				},
 				_ => {
 					return Err(EngineError::AssertionFailed {
 						fragment: frag.clone(),

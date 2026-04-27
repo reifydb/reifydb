@@ -90,11 +90,13 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 fn extract_column_data(col: &ColumnWithName, ctx: &EvalContext) -> Result<ColumnWithName> {
 	let take = ctx.take.unwrap_or(usize::MAX);
 
-	// Use the column's actual data type instead of checking the first value
-	// This handles cases where the first value is Undefined
-	let col_type = col.data().get_type();
+	// Fast path: when no truncation is required, the underlying buffer already
+	// carries its data in the correct typed form and a clone is an Arc-bump.
+	if take >= col.data().len() {
+		return Ok(col.clone());
+	}
 
-	// Unwrap Option to get the effective data type
+	let col_type = col.data().get_type();
 	let effective_type = match col_type {
 		Type::Option(inner) => *inner,
 		other => other,

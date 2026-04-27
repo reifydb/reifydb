@@ -11,6 +11,69 @@ use reifydb_type::{
 use super::option::apply_option_bitvec;
 use crate::Result;
 
+/// If `l` is an entirely defined boolean column whose every row is `false`,
+/// return an all-false defined column of `row_count` rows. The caller can then
+/// skip evaluating the right operand of `AND` (`false AND x = false` for any
+/// `x`, including `null`). Returns `None` whenever any row is `true` or `null`,
+/// in which case the right operand must still be evaluated for Kleene K3.
+pub(crate) fn try_short_circuit_and(
+	l: &ColumnWithName,
+	fragment: &Fragment,
+	row_count: usize,
+) -> Option<ColumnWithName> {
+	if is_all_false_defined(l.data()) {
+		Some(ColumnWithName::new(fragment.clone(), ColumnBuffer::bool(vec![false; row_count])))
+	} else {
+		None
+	}
+}
+
+/// Mirror of [`try_short_circuit_and`] for `OR`: short-circuits to all-true
+/// only when every row of `l` is defined and `true`.
+pub(crate) fn try_short_circuit_or(
+	l: &ColumnWithName,
+	fragment: &Fragment,
+	row_count: usize,
+) -> Option<ColumnWithName> {
+	if is_all_true_defined(l.data()) {
+		Some(ColumnWithName::new(fragment.clone(), ColumnBuffer::bool(vec![true; row_count])))
+	} else {
+		None
+	}
+}
+
+fn is_all_false_defined(buffer: &ColumnBuffer) -> bool {
+	match buffer {
+		ColumnBuffer::Bool(c) => !c.is_empty() && c.data().none(),
+		ColumnBuffer::Option {
+			inner,
+			bitvec,
+		} => {
+			if !bitvec.all_ones() {
+				return false;
+			}
+			matches!(inner.as_ref(), ColumnBuffer::Bool(c) if !c.is_empty() && c.data().none())
+		}
+		_ => false,
+	}
+}
+
+fn is_all_true_defined(buffer: &ColumnBuffer) -> bool {
+	match buffer {
+		ColumnBuffer::Bool(c) => !c.is_empty() && c.data().all_ones(),
+		ColumnBuffer::Option {
+			inner,
+			bitvec,
+		} => {
+			if !bitvec.all_ones() {
+				return false;
+			}
+			matches!(inner.as_ref(), ColumnBuffer::Bool(c) if !c.is_empty() && c.data().all_ones())
+		}
+		_ => false,
+	}
+}
+
 fn is_all_none(bv: Option<&BitVec>) -> bool {
 	match bv {
 		Some(bv) => bv.count_ones() == 0,
