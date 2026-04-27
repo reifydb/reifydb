@@ -46,7 +46,7 @@ use tracing::{debug, error, trace};
 use super::decode::{
 	build_insert_diff_into_with_pool, build_remove_diff_into_with_pool, build_update_diff_into_with_pool,
 };
-use crate::{consume::host::CdcHost, storage::CdcStorage};
+use crate::{consume::host::CdcHost, produce::watermark::CdcProducerWatermark, storage::CdcStorage};
 
 /// Cap on how many `Columns` slabs `CdcProducerActor` keeps in its reuse
 /// pool. With ~5 KB per slab the cap bounds steady-state pool memory at
@@ -81,6 +81,7 @@ pub struct CdcProducerActor<S, T, H> {
 	/// differs from the new row's shape can swap out individual column
 	/// buffers without allocating a fresh inner `Vec` per column.
 	pool: ColumnBufferPool,
+	watermark: CdcProducerWatermark,
 }
 
 impl<S, T, H> CdcProducerActor<S, T, H>
@@ -89,7 +90,14 @@ where
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
 	H: CdcHost,
 {
-	pub fn new(storage: S, transaction_store: T, host: H, event_bus: EventBus, clock: Clock) -> Self {
+	pub fn new(
+		storage: S,
+		transaction_store: T,
+		host: H,
+		event_bus: EventBus,
+		clock: Clock,
+		watermark: CdcProducerWatermark,
+	) -> Self {
 		Self {
 			storage: Arc::new(storage),
 			transaction_store: Arc::new(transaction_store),
@@ -98,6 +106,7 @@ where
 			clock,
 			slab_pool: Slab::new(MAX_POOL_SLABS),
 			pool: ColumnBufferPool::new(),
+			watermark,
 		}
 	}
 
@@ -587,6 +596,11 @@ where
 				deltas,
 			} => {
 				self.process(version, changed_at, deltas);
+				// Advance the watermark AFTER process completes (whether or not a CDC
+				// entry was written). The compactor reads this watermark as a hard cap
+				// to guarantee that no later producer write can land at a version
+				// already covered by a packed block.
+				self.watermark.advance(version);
 			}
 			CdcProduceMessage::Tick => {
 				self.try_cleanup();
@@ -646,13 +660,14 @@ pub fn spawn_cdc_producer<S, T, H>(
 	host: H,
 	event_bus: EventBus,
 	clock: Clock,
+	watermark: CdcProducerWatermark,
 ) -> CdcProduceHandle
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
 	H: CdcHost,
 {
-	let actor = CdcProducerActor::new(storage, transaction_store, host, event_bus, clock);
+	let actor = CdcProducerActor::new(storage, transaction_store, host, event_bus, clock, watermark);
 	system.spawn("cdc-producer", actor)
 }
 
@@ -679,7 +694,15 @@ pub mod tests {
 		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::new();
 		let clock = host.clock.clone();
-		let handle = spawn_cdc_producer(&actor_system, storage.clone(), resolver, host, event_bus, clock);
+		let handle = spawn_cdc_producer(
+			&actor_system,
+			storage.clone(),
+			resolver,
+			host,
+			event_bus,
+			clock,
+			CdcProducerWatermark::new(),
+		);
 
 		let deltas = vec![Delta::Set {
 			key: make_key("test_key"),
@@ -724,7 +747,15 @@ pub mod tests {
 		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::new();
 		let clock = host.clock.clone();
-		let handle = spawn_cdc_producer(&actor_system, storage.clone(), resolver, host, event_bus, clock);
+		let handle = spawn_cdc_producer(
+			&actor_system,
+			storage.clone(),
+			resolver,
+			host,
+			event_bus,
+			clock,
+			CdcProducerWatermark::new(),
+		);
 
 		let deltas = vec![
 			Delta::Set {

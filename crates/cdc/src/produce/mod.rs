@@ -13,3 +13,4 @@
 
 pub(crate) mod decode;
 pub mod producer;
+pub mod watermark;

@@ -38,6 +38,9 @@ struct Inner {
 	block_cache: BlockCache,
 }
 
+/// `(decoded entries, raw version blobs)` returned from `select_oldest_eligible`.
+type CompactionCandidates = (Vec<Cdc>, Vec<Vec<u8>>);
+
 impl SqliteCdcStorage {
 	pub fn new(config: SqliteConfig) -> Self {
 		Self::new_with_cache_capacity(config, BlockCache::DEFAULT_CAPACITY)
@@ -220,16 +223,22 @@ impl SqliteCdcStorage {
 		target_size: usize,
 		safety_lag: u64,
 		zstd_level: u8,
+		producer_watermark: CommitVersion,
 	) -> CdcStorageResult<Option<CompactBlockSummary>> {
-		self.compact_oldest_inner(target_size, safety_lag, false, zstd_level)
+		self.compact_oldest_inner(target_size, safety_lag, false, zstd_level, producer_watermark)
 	}
 
-	pub fn compact_all(&self, target_size: usize, zstd_level: u8) -> CdcStorageResult<Vec<CompactBlockSummary>> {
+	pub fn compact_all(
+		&self,
+		target_size: usize,
+		zstd_level: u8,
+		producer_watermark: CommitVersion,
+	) -> CdcStorageResult<Vec<CompactBlockSummary>> {
 		let mut out = Vec::new();
-		while let Some(s) = self.compact_oldest_inner(target_size, 0, false, zstd_level)? {
+		while let Some(s) = self.compact_oldest_inner(target_size, 0, false, zstd_level, producer_watermark)? {
 			out.push(s);
 		}
-		if let Some(tail) = self.compact_oldest_inner(target_size, 0, true, zstd_level)? {
+		if let Some(tail) = self.compact_oldest_inner(target_size, 0, true, zstd_level, producer_watermark)? {
 			out.push(tail);
 		}
 		Ok(out)
@@ -241,11 +250,59 @@ impl SqliteCdcStorage {
 		safety_lag: u64,
 		allow_partial: bool,
 		zstd_level: u8,
+		producer_watermark: CommitVersion,
 	) -> CdcStorageResult<Option<CompactBlockSummary>> {
 		if target_size == 0 {
 			return Ok(None);
 		}
 
+		let Some((entries, version_blobs)) =
+			self.select_oldest_eligible(target_size, safety_lag, allow_partial, producer_watermark)?
+		else {
+			return Ok(None);
+		};
+
+		let min_version = entries.first().unwrap().version;
+		let max_version = entries.last().unwrap().version;
+		let (min_ts_nanos, max_ts_nanos) = summarize_timestamps(&entries);
+
+		let payload = block::encode(&entries, zstd_level)?;
+		let compressed_bytes = payload.len();
+
+		let committed = self.commit_block_swap(
+			&version_blobs,
+			&payload,
+			min_version,
+			max_version,
+			min_ts_nanos,
+			max_ts_nanos,
+			entries.len(),
+		)?;
+		if !committed {
+			return Ok(None);
+		}
+
+		Ok(Some(CompactBlockSummary {
+			min_version,
+			max_version,
+			num_entries: entries.len(),
+			compressed_bytes,
+		}))
+	}
+
+	/// Phase A: short-lived read under the connection mutex. No txn.
+	///
+	/// Returns `Some((entries, version_blobs))` if a viable batch exists,
+	/// or `None` when there is nothing to compact (no live entries, max
+	/// below safety_lag, or fewer than target_size eligible rows when
+	/// partial blocks are not allowed).
+	fn select_oldest_eligible(
+		&self,
+		target_size: usize,
+		safety_lag: u64,
+		allow_partial: bool,
+		producer_watermark: CommitVersion,
+	) -> CdcStorageResult<Option<CompactionCandidates>> {
 		let conn = self.inner.conn.lock();
 
 		let max_live: Option<Vec<u8>> = conn
@@ -259,7 +316,16 @@ impl SqliteCdcStorage {
 		if max_v < safety_lag {
 			return Ok(None);
 		}
-		let eligible_max = CommitVersion(max_v - safety_lag);
+		// Cap eligibility at the CDC producer's commit watermark. Below this
+		// watermark, every PostCommitEvent has been fully processed by the
+		// producer actor, so the cdc table contains the complete set of
+		// entries for those versions. Above the watermark, an in-flight
+		// producer write could still land at a version we are about to pack,
+		// breaking the invariant that for any block, every CDC version in
+		// [block.min, block.max] is contained in that block.
+		let safety_capped = max_v.saturating_sub(safety_lag);
+		let eligible_max_v = safety_capped.min(producer_watermark.0);
+		let eligible_max = CommitVersion(eligible_max_v);
 		let eligible_max_bytes = version_to_bytes(eligible_max);
 
 		let mut stmt = conn
@@ -287,7 +353,6 @@ impl SqliteCdcStorage {
 			version_blobs.push(vb);
 			entries.push(cdc);
 		}
-		drop(stmt);
 
 		if entries.is_empty() {
 			return Ok(None);
@@ -296,21 +361,50 @@ impl SqliteCdcStorage {
 			return Ok(None);
 		}
 
-		let min_version = entries.first().unwrap().version;
-		let max_version = entries.last().unwrap().version;
-		let min_v_bytes = version_to_bytes(min_version);
-		let max_v_bytes = version_to_bytes(max_version);
+		Ok(Some((entries, version_blobs)))
+	}
 
-		let (min_ts_nanos, max_ts_nanos) = entries.iter().fold((i64::MAX, i64::MIN), |(lo, hi), c| {
-			let n = datetime_to_nanos(&c.timestamp);
-			(lo.min(n), hi.max(n))
-		});
-
-		let payload = block::encode(&entries, zstd_level)?;
+	/// Phase C: short-lived commit under the connection mutex.
+	///
+	/// DELETE first so we can detect a concurrent `drop_before` via
+	/// rows_affected; rolls back and returns `Ok(false)` if the row count
+	/// mismatches (next tick retries on a fresh snapshot). Returns
+	/// `Ok(true)` after a successful swap.
+	#[allow(clippy::too_many_arguments)]
+	fn commit_block_swap(
+		&self,
+		version_blobs: &[Vec<u8>],
+		payload: &[u8],
+		min_version: CommitVersion,
+		max_version: CommitVersion,
+		min_ts_nanos: i64,
+		max_ts_nanos: i64,
+		num_entries: usize,
+	) -> CdcStorageResult<bool> {
+		let conn = self.inner.conn.lock();
 
 		let tx = conn
 			.unchecked_transaction()
 			.map_err(|e| CdcError::Internal(format!("compact tx begin: {e}")))?;
+
+		let placeholders = repeat_n("?", version_blobs.len()).collect::<Vec<_>>().join(",");
+		let del_sql = format!(r#"DELETE FROM "cdc" WHERE version IN ({})"#, placeholders);
+		let del_params: Vec<SqlValue> = version_blobs.iter().map(|b| SqlValue::Blob(b.clone())).collect();
+		let rows_deleted = {
+			let mut del_stmt = tx
+				.prepare(&del_sql)
+				.map_err(|e| CdcError::Internal(format!("compact delete prepare: {e}")))?;
+			del_stmt.execute(params_from_iter(del_params.iter()))
+				.map_err(|e| CdcError::Internal(format!("compact delete execute: {e}")))?
+		};
+
+		if rows_deleted != num_entries {
+			tx.rollback().map_err(|e| CdcError::Internal(format!("compact rollback: {e}")))?;
+			return Ok(false);
+		}
+
+		let min_v_bytes = version_to_bytes(min_version);
+		let max_v_bytes = version_to_bytes(max_version);
 
 		tx.execute(
 			r#"INSERT INTO "cdc_block"
@@ -321,30 +415,14 @@ impl SqliteCdcStorage {
 				min_v_bytes.as_slice(),
 				min_ts_nanos,
 				max_ts_nanos,
-				entries.len() as i64,
-				payload.as_slice(),
+				num_entries as i64,
+				payload,
 			],
 		)
 		.map_err(|e| CdcError::Internal(format!("compact insert block: {e}")))?;
 
-		let placeholders = repeat_n("?", version_blobs.len()).collect::<Vec<_>>().join(",");
-		let del_sql = format!(r#"DELETE FROM "cdc" WHERE version IN ({})"#, placeholders);
-		let mut del_stmt =
-			tx.prepare(&del_sql).map_err(|e| CdcError::Internal(format!("compact delete prepare: {e}")))?;
-		let del_params: Vec<SqlValue> = version_blobs.iter().map(|b| SqlValue::Blob(b.clone())).collect();
-		del_stmt.execute(params_from_iter(del_params.iter()))
-			.map_err(|e| CdcError::Internal(format!("compact delete execute: {e}")))?;
-		drop(del_stmt);
-
 		tx.commit().map_err(|e| CdcError::Internal(format!("compact commit: {e}")))?;
-		let compressed_bytes = payload.len();
-
-		Ok(Some(CompactBlockSummary {
-			min_version,
-			max_version,
-			num_entries: entries.len(),
-			compressed_bytes,
-		}))
+		Ok(true)
 	}
 }
 
@@ -359,6 +437,16 @@ fn bytes_to_version(bytes: &[u8]) -> CdcStorageResult<CommitVersion> {
 
 fn datetime_to_nanos(dt: &DateTime) -> i64 {
 	dt.to_nanos() as i64
+}
+
+/// Fold an entry slice's timestamps into `(min, max)` nanos. Timestamps are
+/// not guaranteed monotonic with version (clock skew, batched commits) so we
+/// compute the range explicitly rather than taking first/last.
+fn summarize_timestamps(entries: &[Cdc]) -> (i64, i64) {
+	entries.iter().fold((i64::MAX, i64::MIN), |(lo, hi), c| {
+		let n = datetime_to_nanos(&c.timestamp);
+		(lo.min(n), hi.max(n))
+	})
 }
 
 impl CdcStorage for SqliteCdcStorage {
@@ -418,62 +506,116 @@ impl CdcStorage for SqliteCdcStorage {
 		}
 
 		let want = batch_size as usize;
-		let mut items: Vec<Cdc> = Vec::with_capacity(want.min(64));
 
-		let block_rows: Vec<(Vec<u8>, Vec<u8>)> = {
+		// Snapshot both `cdc_block` and `cdc` under a single connection lock so
+		// the two reads are consistent. Without this, a concurrent compactor
+		// can move an entry from `cdc` into a new block between the two reads
+		// and the row goes missing in the merged output: we miss it in the
+		// block read (block didn't exist yet) and miss it in the live read
+		// (row already deleted from cdc).
+		let lo_b = version_to_bytes(lo_inc);
+		let hi_b = version_to_bytes(hi_inc);
+		let limit = (batch_size as i64).saturating_add(1);
+		type RangeSnapshot = (Vec<(Vec<u8>, Vec<u8>)>, Vec<Vec<u8>>);
+		let (block_rows, live_payloads): RangeSnapshot = {
 			let conn = self.inner.conn.lock();
-			let mut stmt = conn
-				.prepare(
-					r#"SELECT max_version, payload FROM "cdc_block"
-					   WHERE max_version >= ?1 AND min_version <= ?2
-					   ORDER BY max_version ASC"#,
-				)
-				.map_err(|e| CdcError::Internal(format!("range blocks prepare: {e}")))?;
-			let lo_b = version_to_bytes(lo_inc);
-			let hi_b = version_to_bytes(hi_inc);
-			let rows = stmt
-				.query_map(params![lo_b.as_slice(), hi_b.as_slice()], |row| {
-					Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
-				})
-				.map_err(|e| CdcError::Internal(format!("range blocks rows: {e}")))?;
-			let mut out = Vec::new();
-			for r in rows {
-				out.push(r.map_err(|e| CdcError::Internal(format!("range blocks row: {e}")))?);
-			}
-			out
+
+			let block_rows = {
+				let mut stmt = conn
+					.prepare(
+						r#"SELECT max_version, payload FROM "cdc_block"
+						   WHERE max_version >= ?1 AND min_version <= ?2
+						   ORDER BY max_version ASC"#,
+					)
+					.map_err(|e| CdcError::Internal(format!("range blocks prepare: {e}")))?;
+				let rows = stmt
+					.query_map(params![lo_b.as_slice(), hi_b.as_slice()], |row| {
+						Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
+					})
+					.map_err(|e| CdcError::Internal(format!("range blocks rows: {e}")))?;
+				let mut out = Vec::new();
+				for r in rows {
+					out.push(r.map_err(|e| CdcError::Internal(format!("range blocks row: {e}")))?);
+				}
+				out
+			};
+
+			let live_payloads = {
+				let mut stmt = conn
+					.prepare(
+						r#"SELECT payload FROM "cdc"
+						   WHERE version >= ?1 AND version <= ?2
+						   ORDER BY version ASC LIMIT ?3"#,
+					)
+					.map_err(|e| CdcError::Internal(format!("range live prepare: {e}")))?;
+				let rows = stmt
+					.query_map(params![lo_b.as_slice(), hi_b.as_slice(), limit], |row| {
+						row.get::<_, Vec<u8>>(0)
+					})
+					.map_err(|e| CdcError::Internal(format!("range live rows: {e}")))?;
+				let mut out = Vec::new();
+				for r in rows {
+					out.push(r.map_err(|e| CdcError::Internal(format!("range live row: {e}")))?);
+				}
+				out
+			};
+
+			(block_rows, live_payloads)
 		};
 
-		let mut has_more = false;
-		'outer: for (max_bytes, payload) in block_rows {
+		// Decode block payloads and live rows outside the connection lock; merge
+		// by version. If the same version appears in both (the compactor's
+		// commit just landed and the live read raced ahead), keep the block
+		// copy and drop the live duplicate - the entry is byte-identical.
+		let mut block_items: Vec<Cdc> = Vec::new();
+		for (max_bytes, payload) in block_rows {
 			let block_max = bytes_to_version(&max_bytes)?;
 			let entries = self.load_block_cached(block_max, &payload)?;
 			for cdc in entries.iter() {
-				if cdc.version < lo_inc || cdc.version > hi_inc {
-					continue;
+				if cdc.version >= lo_inc && cdc.version <= hi_inc {
+					block_items.push(cdc.clone());
 				}
-				if items.len() == want {
-					has_more = true;
-					break 'outer;
-				}
-				items.push(cdc.clone());
 			}
 		}
-
-		if items.len() < want {
-			let lo_live: Bound<CommitVersion> = match items.last() {
-				Some(last) => Bound::Excluded(last.version),
-				None => start,
-			};
-			let need = (want - items.len()) as u64;
-			let live = self.read_range_live(lo_live, end, need)?;
-			if live.has_more {
-				has_more = true;
-			}
-			items.extend(live.items);
+		let mut live_items: Vec<Cdc> = Vec::with_capacity(live_payloads.len());
+		for payload in live_payloads {
+			let cdc: Cdc = from_bytes(&payload)
+				.map_err(|e| CdcError::Codec(format!("postcard decode range live: {e}")))?;
+			live_items.push(cdc);
 		}
 
+		let mut merged: Vec<Cdc> = Vec::with_capacity(block_items.len() + live_items.len());
+		let (mut bi, mut li) = (0usize, 0usize);
+		while bi < block_items.len() && li < live_items.len() {
+			let bv = block_items[bi].version;
+			let lv = live_items[li].version;
+			if bv < lv {
+				merged.push(block_items[bi].clone());
+				bi += 1;
+			} else if bv > lv {
+				merged.push(live_items[li].clone());
+				li += 1;
+			} else {
+				// Same version in both (compactor swap raced with our read);
+				// keep the block copy and skip the live duplicate.
+				merged.push(block_items[bi].clone());
+				bi += 1;
+				li += 1;
+			}
+		}
+		while bi < block_items.len() {
+			merged.push(block_items[bi].clone());
+			bi += 1;
+		}
+		while li < live_items.len() {
+			merged.push(live_items[li].clone());
+			li += 1;
+		}
+
+		let has_more = merged.len() > want;
+		merged.truncate(want);
 		Ok(CdcBatch {
-			items,
+			items: merged,
 			has_more,
 		})
 	}

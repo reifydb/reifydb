@@ -9,7 +9,7 @@ use std::{
 
 use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_cdc::{
-	produce::producer::spawn_cdc_producer,
+	produce::{producer::spawn_cdc_producer, watermark::CdcProducerWatermark},
 	storage::{CdcStorage, memory::MemoryCdcStorage},
 	testing::TestCdcHost,
 };
@@ -64,8 +64,15 @@ impl TtlFixture {
 		let mock = host.mock.clone();
 		let clock = host.clock.clone();
 
-		let handle =
-			spawn_cdc_producer(&actor_system, storage.clone(), resolver, host, event_bus.clone(), clock);
+		let handle = spawn_cdc_producer(
+			&actor_system,
+			storage.clone(),
+			resolver,
+			host,
+			event_bus.clone(),
+			clock,
+			CdcProducerWatermark::new(),
+		);
 
 		Self {
 			handle,

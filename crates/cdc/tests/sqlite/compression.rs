@@ -74,7 +74,7 @@ fn compact_all_roundtrip_per_level() {
 			store.write(cdc).unwrap();
 		}
 
-		let summaries = store.compact_all(256, level).unwrap();
+		let summaries = store.compact_all(256, level, CommitVersion(u64::MAX)).unwrap();
 		assert_eq!(summaries.len(), 4, "level {level}: expected 4 blocks");
 		assert_eq!(summaries.iter().map(|s| s.num_entries).sum::<usize>(), 1024);
 
@@ -98,13 +98,13 @@ fn read_back_mixed_compression_levels() {
 	for cdc in &all_entries[..512] {
 		store.write(cdc).unwrap();
 	}
-	let s1 = store.compact_all(512, 1).unwrap();
+	let s1 = store.compact_all(512, 1, CommitVersion(u64::MAX)).unwrap();
 	assert_eq!(s1.len(), 1, "first batch should produce exactly one block");
 
 	for cdc in &all_entries[512..] {
 		store.write(cdc).unwrap();
 	}
-	let s2 = store.compact_all(512, 22).unwrap();
+	let s2 = store.compact_all(512, 22, CommitVersion(u64::MAX)).unwrap();
 	assert_eq!(s2.len(), 1, "second batch should produce exactly one block");
 
 	let batch = store.read_range(Bound::Unbounded, Bound::Unbounded, 2048).unwrap();

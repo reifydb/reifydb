@@ -15,9 +15,14 @@ use reifydb_catalog::{
 	materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_cdc::compact::actor::CompactActor;
 use reifydb_cdc::{
 	CdcVersion,
-	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
+	produce::{
+		producer::{CdcProducerEventListener, spawn_cdc_producer},
+		watermark::CdcProducerWatermark,
+	},
 	storage::CdcStore,
 };
 use reifydb_core::{
@@ -361,6 +366,23 @@ impl DatabaseBuilder {
 		};
 		self.ioc = self.ioc.register(cdc_store.clone());
 
+		// Shared CDC producer commit watermark. Producer advances it after
+		// processing each PostCommitEvent; the compactor caps its eligible
+		// range by it so no in-flight write can land at a version already
+		// covered by a packed block.
+		let cdc_producer_watermark = CdcProducerWatermark::new();
+
+		// Spawn the CDC compaction actor (sqlite only). Settings come from
+		// system config (CDC_COMPACT_INTERVAL etc.) so they can be tuned at
+		// runtime via SET CONFIG.
+		#[cfg(not(target_arch = "wasm32"))]
+		if let CdcStore::Sqlite(ref sqlite_store) = cdc_store {
+			let provider = multi.config();
+			let actor = CompactActor::new(provider, sqlite_store.clone(), cdc_producer_watermark.clone());
+			let cdc_compact_handle = actor_system.spawn("cdc-compact", actor);
+			self.ioc = self.ioc.register(cdc_compact_handle.actor_ref().clone());
+		}
+
 		// Get the underlying stores for workers
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
@@ -445,6 +467,7 @@ impl DatabaseBuilder {
 			engine.clone(),
 			eventbus.clone(),
 			runtime.clock().clone(),
+			cdc_producer_watermark,
 		);
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 			cdc_handle.actor_ref().clone(),

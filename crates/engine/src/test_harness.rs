@@ -12,7 +12,10 @@ use reifydb_catalog::{
 	materialized::MaterializedCatalog,
 };
 use reifydb_cdc::{
-	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
+	produce::{
+		producer::{CdcProducerEventListener, spawn_cdc_producer},
+		watermark::CdcProducerWatermark,
+	},
 	storage::CdcStore,
 };
 use reifydb_core::{
@@ -274,6 +277,7 @@ fn register_cdc_producer(
 		engine.clone(),
 		eventbus.clone(),
 		runtime.clock().clone(),
+		CdcProducerWatermark::new(),
 	);
 	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 		cdc_handle.actor_ref().clone(),

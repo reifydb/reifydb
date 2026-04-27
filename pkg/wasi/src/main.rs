@@ -27,7 +27,10 @@ use reifydb_catalog::{
 };
 use reifydb_cdc::{
 	CdcVersion,
-	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
+	produce::{
+		producer::{CdcProducerEventListener, spawn_cdc_producer},
+		watermark::CdcProducerWatermark,
+	},
 	storage::CdcStore,
 };
 use reifydb_core::{
@@ -152,6 +155,7 @@ impl Bridge {
 			engine.clone(),
 			eventbus_clone.clone(),
 			runtime.clock().clone(),
+			CdcProducerWatermark::new(),
 		);
 
 		let cdc_listener =

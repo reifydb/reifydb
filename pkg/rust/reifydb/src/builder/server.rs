@@ -39,7 +39,7 @@ use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_type::value::Value;
 
-use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
+use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, traits::WithSubsystem};
 use crate::{
 	Database, Migration, Result,
 	api::{StorageFactory, transaction},
@@ -281,11 +281,18 @@ impl ServerBuilder {
 			Arc::new(materialized_catalog.clone()),
 		);
 
+		let cdc_backend = match &self.storage_factory {
+			StorageFactory::Memory => CdcBackend::Memory,
+			#[cfg(not(target_arch = "wasm32"))]
+			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone()),
+		};
+
 		let mut database_builder = DatabaseBuilder::new(materialized_catalog, multi, single, eventbus.clone())
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone())
 			.with_actor_system(actor_system.clone())
-			.with_stores(multi_store, single_store);
+			.with_stores(multi_store, single_store)
+			.with_cdc_backend(cdc_backend);
 
 		#[cfg(feature = "sub_replication")]
 		if self.is_replica {
