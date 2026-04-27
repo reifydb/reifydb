@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::{
-	error::CoreError,
+	error::{CoreError, diagnostic::query},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_routine::routine::{
@@ -16,6 +16,7 @@ use reifydb_routine::routine::{
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
+	error,
 	fragment::Fragment,
 	value::{Value, r#type::Type},
 };
@@ -29,6 +30,7 @@ use crate::{
 enum Projection {
 	Aggregate {
 		column: String,
+		column_fragment: Fragment,
 		alias: Fragment,
 		accumulator: Box<dyn Accumulator>,
 	},
@@ -99,15 +101,18 @@ impl QueryNode for AggregateNode {
 				if let Projection::Aggregate {
 					accumulator,
 					column,
+					column_fragment,
 					..
 				} = projection
 				{
-					let column_ref = columns.column(column).unwrap();
+					let column_ref = columns.column(column).ok_or_else(|| {
+						error!(query::column_not_found(column_fragment.clone()))
+					})?;
 					let cwn = ColumnWithName::new(
 						column_ref.name().clone(),
 						column_ref.data().clone(),
 					);
-					accumulator.update(&Columns::new(vec![cwn]), &groups).unwrap();
+					accumulator.update(&Columns::new(vec![cwn]), &groups)?;
 				}
 			}
 		}
@@ -243,6 +248,7 @@ fn parse_keys_and_aggregates<'a>(
 					Some(Expression::Column(c)) => {
 						projections.push(Projection::Aggregate {
 							column: c.0.name.text().to_string(),
+							column_fragment: c.0.name.clone(),
 							alias,
 							accumulator,
 						});
@@ -253,6 +259,7 @@ fn parse_keys_and_aggregates<'a>(
 						// functions
 						projections.push(Projection::Aggregate {
 							column: access.column.name.text().to_string(),
+							column_fragment: access.column.name.clone(),
 							alias,
 							accumulator,
 						});
