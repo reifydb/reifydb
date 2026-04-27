@@ -14,11 +14,11 @@ use handler::TestingHandlersInvoked;
 use crate::routine::registry::RoutinesConfigurator;
 
 pub fn register_testing_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfigurator {
-	builder.register_procedure(Arc::new(TestingEventsDispatched::new()))
-		.register_procedure(Arc::new(TestingHandlersInvoked::new()))
-		.register_procedure(Arc::new(TestingChanged::new("tables")))
-		.register_procedure(Arc::new(TestingChanged::new("views")))
-		.register_procedure(Arc::new(TestingChanged::new("series")))
-		.register_procedure(Arc::new(TestingChanged::new("ringbuffers")))
-		.register_procedure(Arc::new(TestingChanged::new("dictionaries")))
+	builder.register_builtin_procedure(Arc::new(TestingEventsDispatched::new()))
+		.register_builtin_procedure(Arc::new(TestingHandlersInvoked::new()))
+		.register_builtin_procedure(Arc::new(TestingChanged::new("tables")))
+		.register_builtin_procedure(Arc::new(TestingChanged::new("views")))
+		.register_builtin_procedure(Arc::new(TestingChanged::new("series")))
+		.register_builtin_procedure(Arc::new(TestingChanged::new("ringbuffers")))
+		.register_builtin_procedure(Arc::new(TestingChanged::new("dictionaries")))
 }

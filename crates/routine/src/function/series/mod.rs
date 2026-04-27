@@ -19,7 +19,7 @@ impl Default for GenerateSeries {
 impl GenerateSeries {
 	pub fn new() -> Self {
 		Self {
-			info: RoutineInfo::new("generate_series"),
+			info: RoutineInfo::new("series::generate"),
 		}
 	}
 }

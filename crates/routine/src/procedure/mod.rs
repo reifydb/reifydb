@@ -15,10 +15,10 @@ use crate::routine::registry::RoutinesConfigurator;
 /// Register all built-in native procedures directly into a `Routines` builder.
 pub fn default_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfigurator {
 	let builder = builder
-		.register_procedure(Arc::new(set::config::SetConfigProcedure::new()))
-		.register_procedure(Arc::new(clock::set::ClockSetProcedure::new()))
-		.register_procedure(Arc::new(clock::advance::ClockAdvanceProcedure::new()))
-		.register_procedure(Arc::new(identity::inject::IdentityInject::new()))
-		.register_procedure(Arc::new(subscription::inspect::InspectSubscription::new()));
+		.register_builtin_procedure(Arc::new(set::config::SetConfigProcedure::new()))
+		.register_builtin_procedure(Arc::new(clock::set::ClockSetProcedure::new()))
+		.register_builtin_procedure(Arc::new(clock::advance::ClockAdvanceProcedure::new()))
+		.register_builtin_procedure(Arc::new(identity::inject::IdentityInject::new()))
+		.register_builtin_procedure(Arc::new(subscription::inspect::InspectSubscription::new()));
 	testing::register_testing_native_procedures(builder)
 }

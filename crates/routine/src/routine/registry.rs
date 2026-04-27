@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	mem,
 	ops::Deref,
 	sync::{Arc, RwLock},
@@ -12,6 +12,16 @@ use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_type::value::sumtype::VariantRef;
 
 use super::{Function, FunctionKind, Procedure};
+
+/// Canonical storage prefix for built-in functions. Surface calls like
+/// `math::abs(x)` resolve to the literal `math::abs` first; on miss, if the
+/// first segment is a known builtin namespace, the registry retries under
+/// `system::builtin::functions::math::abs`.
+pub const BUILTIN_FUNCTION_PREFIX: &str = "system::builtin::functions::";
+
+/// Canonical storage prefix for built-in procedures. Same fallback semantics
+/// as `BUILTIN_FUNCTION_PREFIX`.
+pub const BUILTIN_PROCEDURE_PREFIX: &str = "system::builtin::procedures::";
 
 /// Unified registry for all routines (functions and procedures).
 ///
@@ -47,6 +57,8 @@ impl Deref for Routines {
 pub struct RoutinesInner {
 	functions: HashMap<String, Arc<dyn Function>>,
 	procedures: HashMap<String, Arc<dyn Procedure>>,
+	builtin_function_namespaces: HashSet<String>,
+	builtin_procedure_namespaces: HashSet<String>,
 	handlers: RwLock<EventHandlerState>,
 }
 
@@ -57,62 +69,78 @@ struct EventHandlerState {
 
 impl RoutinesInner {
 	pub fn get_function(&self, name: &str) -> Option<Arc<dyn Function>> {
-		self.functions.get(name).cloned()
+		if let Some(f) = self.functions.get(name) {
+			return Some(f.clone());
+		}
+		let first_segment = name.split_once("::").map(|(ns, _)| ns)?;
+		if self.builtin_function_namespaces.contains(first_segment) {
+			let canonical = format!("{BUILTIN_FUNCTION_PREFIX}{name}");
+			return self.functions.get(&canonical).cloned();
+		}
+		None
 	}
 
 	pub fn get_procedure(&self, name: &str) -> Option<Arc<dyn Procedure>> {
-		self.procedures.get(name).cloned()
+		if let Some(p) = self.procedures.get(name) {
+			return Some(p.clone());
+		}
+		let first_segment = name.split_once("::").map(|(ns, _)| ns)?;
+		if self.builtin_procedure_namespaces.contains(first_segment) {
+			let canonical = format!("{BUILTIN_PROCEDURE_PREFIX}{name}");
+			return self.procedures.get(&canonical).cloned();
+		}
+		None
 	}
 
 	pub fn has_function(&self, name: &str) -> bool {
-		self.functions.contains_key(name)
+		self.get_function(name).is_some()
 	}
 
 	pub fn has_procedure(&self, name: &str) -> bool {
-		self.procedures.contains_key(name)
+		self.get_procedure(name).is_some()
 	}
 
 	pub fn get_scalar_function(&self, name: &str) -> Option<Arc<dyn Function>> {
-		self.functions.get(name).cloned().filter(|f| f.kinds().contains(&FunctionKind::Scalar))
+		self.get_function(name).filter(|f| f.kinds().contains(&FunctionKind::Scalar))
 	}
 
 	pub fn get_aggregate_function(&self, name: &str) -> Option<Arc<dyn Function>> {
-		self.functions.get(name).cloned().filter(|f| f.kinds().contains(&FunctionKind::Aggregate))
+		self.get_function(name).filter(|f| f.kinds().contains(&FunctionKind::Aggregate))
 	}
 
 	pub fn get_generator_function(&self, name: &str) -> Option<Arc<dyn Function>> {
-		self.functions.get(name).cloned().filter(|f| f.kinds().contains(&FunctionKind::Generator))
+		self.get_function(name).filter(|f| f.kinds().contains(&FunctionKind::Generator))
 	}
 
-	pub fn function_names(&self) -> Vec<&str> {
-		self.functions.keys().map(|s| s.as_str()).collect()
+	pub fn function_names(&self) -> Vec<String> {
+		self.functions.keys().map(|k| user_facing_name(k, BUILTIN_FUNCTION_PREFIX)).collect()
 	}
 
 	pub fn procedure_names(&self) -> Vec<String> {
-		self.procedures.keys().cloned().collect()
+		self.procedures.keys().map(|k| user_facing_name(k, BUILTIN_PROCEDURE_PREFIX)).collect()
 	}
 
-	pub fn scalar_function_names(&self) -> Vec<&str> {
+	pub fn scalar_function_names(&self) -> Vec<String> {
 		self.functions
 			.iter()
 			.filter(|(_, f)| f.kinds().contains(&FunctionKind::Scalar))
-			.map(|(s, _)| s.as_str())
+			.map(|(k, _)| user_facing_name(k, BUILTIN_FUNCTION_PREFIX))
 			.collect()
 	}
 
-	pub fn aggregate_function_names(&self) -> Vec<&str> {
+	pub fn aggregate_function_names(&self) -> Vec<String> {
 		self.functions
 			.iter()
 			.filter(|(_, f)| f.kinds().contains(&FunctionKind::Aggregate))
-			.map(|(s, _)| s.as_str())
+			.map(|(k, _)| user_facing_name(k, BUILTIN_FUNCTION_PREFIX))
 			.collect()
 	}
 
-	pub fn generator_function_names(&self) -> Vec<&str> {
+	pub fn generator_function_names(&self) -> Vec<String> {
 		self.functions
 			.iter()
 			.filter(|(_, f)| f.kinds().contains(&FunctionKind::Generator))
-			.map(|(s, _)| s.as_str())
+			.map(|(k, _)| user_facing_name(k, BUILTIN_FUNCTION_PREFIX))
 			.collect()
 	}
 
@@ -156,17 +184,35 @@ impl RoutinesConfigurator {
 		self.procedures.contains_key(name)
 	}
 
-	/// Register a function. The impl block (`impl Routine<FunctionContext>`)
-	/// determines that this is a function rather than a procedure.
+	/// Register a function under its literal `RoutineInfo` name. Used by FFI
+	/// and WASM loaders for user-defined functions; built-ins use
+	/// `register_builtin_function` instead.
 	pub fn register_function(mut self, routine: Arc<dyn Function>) -> Self {
 		self.functions.insert(routine.info().name.clone(), routine);
 		self
 	}
 
-	/// Register a procedure. The impl block (`impl Routine<ProcedureContext>`)
-	/// determines that this is a procedure rather than a function.
+	/// Register a procedure under its literal `RoutineInfo` name. Used by FFI
+	/// and WASM loaders for user-defined procedures; built-ins use
+	/// `register_builtin_procedure` instead.
 	pub fn register_procedure(mut self, routine: Arc<dyn Procedure>) -> Self {
 		self.procedures.insert(routine.info().name.clone(), routine);
+		self
+	}
+
+	/// Register a built-in function under `system::builtin::functions::<name>`.
+	/// `RoutineInfo::name` stays user-visible (e.g. `"math::abs"`); only the
+	/// storage key is prefixed.
+	pub fn register_builtin_function(mut self, routine: Arc<dyn Function>) -> Self {
+		let key = format!("{BUILTIN_FUNCTION_PREFIX}{}", routine.info().name);
+		self.functions.insert(key, routine);
+		self
+	}
+
+	/// Register a built-in procedure under `system::builtin::procedures::<name>`.
+	pub fn register_builtin_procedure(mut self, routine: Arc<dyn Procedure>) -> Self {
+		let key = format!("{BUILTIN_PROCEDURE_PREFIX}{}", routine.info().name);
+		self.procedures.insert(key, routine);
 		self
 	}
 
@@ -193,15 +239,134 @@ impl RoutinesConfigurator {
 		self
 	}
 
+	/// Alias one built-in function name to another. `alias` and `canonical`
+	/// are the user-visible names (e.g. `"duration::day"`, `"duration::days"`);
+	/// both are stored with the canonical builtin prefix.
+	pub fn register_builtin_function_alias(mut self, alias: &str, canonical: &str) -> Self {
+		let canonical_key = format!("{BUILTIN_FUNCTION_PREFIX}{canonical}");
+		let alias_key = format!("{BUILTIN_FUNCTION_PREFIX}{alias}");
+		if let Some(routine) = self.functions.get(&canonical_key).cloned() {
+			self.functions.insert(alias_key, routine);
+		}
+		self
+	}
+
+	/// Alias one built-in procedure name to another. Mirrors
+	/// `register_builtin_function_alias`.
+	pub fn register_builtin_procedure_alias(mut self, alias: &str, canonical: &str) -> Self {
+		let canonical_key = format!("{BUILTIN_PROCEDURE_PREFIX}{canonical}");
+		let alias_key = format!("{BUILTIN_PROCEDURE_PREFIX}{alias}");
+		if let Some(routine) = self.procedures.get(&canonical_key).cloned() {
+			self.procedures.insert(alias_key, routine);
+		}
+		self
+	}
+
 	pub fn configure(self) -> Routines {
+		let builtin_function_namespaces =
+			collect_builtin_namespaces(self.functions.keys(), BUILTIN_FUNCTION_PREFIX);
+		let builtin_procedure_namespaces =
+			collect_builtin_namespaces(self.procedures.keys(), BUILTIN_PROCEDURE_PREFIX);
 		Routines(Arc::new(RoutinesInner {
 			functions: self.functions,
 			procedures: self.procedures,
+			builtin_function_namespaces,
+			builtin_procedure_namespaces,
 			handlers: RwLock::new(EventHandlerState {
 				resolved: HashMap::new(),
 				deferred: self.deferred_handlers,
 			}),
 		}))
+	}
+}
+
+fn user_facing_name(key: &str, prefix: &str) -> String {
+	key.strip_prefix(prefix).unwrap_or(key).to_string()
+}
+
+fn collect_builtin_namespaces<'a, I: Iterator<Item = &'a String>>(keys: I, prefix: &str) -> HashSet<String> {
+	keys.filter_map(|k| k.strip_prefix(prefix))
+		.filter_map(|tail| tail.split_once("::").map(|(ns, _)| ns.to_string()))
+		.collect()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::{
+		function::default_native_functions,
+		procedure::{clock::set::ClockSetProcedure, default_native_procedures},
+	};
+
+	fn registry() -> Routines {
+		default_native_procedures(default_native_functions(Routines::builder())).configure()
+	}
+
+	#[test]
+	fn function_fallback_returns_same_arc_as_canonical() {
+		let r = registry();
+		let direct = r.get_function("math::abs").unwrap();
+		let canonical = r.get_function("system::builtin::functions::math::abs").unwrap();
+		assert!(Arc::ptr_eq(&direct, &canonical));
+	}
+
+	#[test]
+	fn procedure_fallback_returns_same_arc_as_canonical() {
+		let r = registry();
+		let direct = r.get_procedure("clock::set").unwrap();
+		let canonical = r.get_procedure("system::builtin::procedures::clock::set").unwrap();
+		assert!(Arc::ptr_eq(&direct, &canonical));
+	}
+
+	#[test]
+	fn procedure_multi_segment_fallback() {
+		let r = registry();
+		let direct = r.get_procedure("testing::events::dispatched").unwrap();
+		let canonical = r.get_procedure("system::builtin::procedures::testing::events::dispatched").unwrap();
+		assert!(Arc::ptr_eq(&direct, &canonical));
+	}
+
+	#[test]
+	fn unknown_namespace_returns_none() {
+		let r = registry();
+		assert!(r.get_function("nonexistent::foo").is_none());
+		assert!(r.get_procedure("nonexistent::bar").is_none());
+	}
+
+	#[test]
+	fn unqualified_name_returns_none() {
+		let r = registry();
+		assert!(r.get_function("abs").is_none());
+		assert!(r.get_procedure("set").is_none());
+	}
+
+	#[test]
+	fn alias_returns_same_arc_as_canonical() {
+		let r = registry();
+		let day = r.get_function("duration::day").unwrap();
+		let days = r.get_function("duration::days").unwrap();
+		assert!(Arc::ptr_eq(&day, &days));
+	}
+
+	#[test]
+	fn raw_registration_shadows_builtin() {
+		let user_proc: Arc<dyn Procedure> = Arc::new(ClockSetProcedure::new());
+		let r = default_native_procedures(Routines::builder())
+			.register_procedure(user_proc.clone())
+			.configure();
+		let resolved = r.get_procedure("clock::set").unwrap();
+		assert!(Arc::ptr_eq(&resolved, &user_proc));
+	}
+
+	#[test]
+	fn name_listings_strip_canonical_prefix() {
+		let r = registry();
+		let function_names = r.function_names();
+		assert!(function_names.iter().any(|n| n == "math::abs"));
+		assert!(!function_names.iter().any(|n| n.starts_with("system::builtin::functions::")));
+		let procedure_names = r.procedure_names();
+		assert!(procedure_names.iter().any(|n| n == "clock::set"));
+		assert!(!procedure_names.iter().any(|n| n.starts_with("system::builtin::procedures::")));
 	}
 }
 

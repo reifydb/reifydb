@@ -15,7 +15,7 @@ use reifydb_type::{
 
 use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
-static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("inspect_subscription"));
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("subscription::inspect"));
 
 pub struct InspectSubscription;
 
@@ -46,20 +46,20 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for InspectSubscription {
 				Value::Uint8(id) => *id,
 				Value::Utf8(s) => {
 					s.parse::<u64>().map_err(|_| RoutineError::ProcedureExecutionFailed {
-						procedure: Fragment::internal("inspect_subscription"),
+						procedure: Fragment::internal("subscription::inspect"),
 						reason: "Invalid subscription_id format".to_string(),
 					})?
 				}
 				_ => {
 					return Err(RoutineError::ProcedureExecutionFailed {
-						procedure: Fragment::internal("inspect_subscription"),
+						procedure: Fragment::internal("subscription::inspect"),
 						reason: "subscription_id must be of type u64 or utf8".to_string(),
 					});
 				}
 			},
 			_ => {
 				return Err(RoutineError::ProcedureArityMismatch {
-					procedure: Fragment::internal("inspect_subscription"),
+					procedure: Fragment::internal("subscription::inspect"),
 					expected: 1,
 					actual: match ctx.params {
 						Params::Positional(args) => args.len(),

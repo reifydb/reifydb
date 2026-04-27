@@ -11,8 +11,8 @@ pub const IMPLICIT_COLUMN_OP: &str = "_op";
 /// Type-erased interface for inspecting subscription data.
 ///
 /// Implemented by the subscription subsystem and registered in IoC as
-/// `Arc<dyn SubscriptionInspector>`. Used by the `inspect_subscription`
-/// generator function in the routine crate without depending on the
+/// `Arc<dyn SubscriptionInspector>`. Used by the `subscription::inspect`
+/// generator procedure in the routine crate without depending on the
 /// subscription subsystem crate.
 pub trait SubscriptionInspector: Send + Sync {
 	/// Drain all available rows from a subscription's buffer,
