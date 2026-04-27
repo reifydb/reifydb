@@ -6,7 +6,14 @@
 //! Single table, one row per CommitVersion, payload is a postcard-encoded `Cdc`.
 //! Concurrency: single `Mutex<Connection>` (rusqlite::Connection is Send but !Sync).
 
-use std::{collections::Bound, iter::repeat_n, sync::Arc};
+use std::{
+	collections::Bound,
+	iter::repeat_n,
+	sync::{
+		Arc,
+		atomic::{AtomicU8, Ordering},
+	},
+};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
@@ -36,6 +43,7 @@ pub struct SqliteCdcStorage {
 struct Inner {
 	conn: Mutex<Connection>,
 	block_cache: BlockCache,
+	last_zstd_level: AtomicU8,
 }
 
 /// `(decoded entries, raw version blobs)` returned from `select_oldest_eligible`.
@@ -59,6 +67,7 @@ impl SqliteCdcStorage {
 			inner: Arc::new(Inner {
 				conn: Mutex::new(conn),
 				block_cache: BlockCache::new(cache_capacity),
+				last_zstd_level: AtomicU8::new(3),
 			}),
 		}
 	}
@@ -255,6 +264,8 @@ impl SqliteCdcStorage {
 		if target_size == 0 {
 			return Ok(None);
 		}
+
+		self.inner.last_zstd_level.store(zstd_level, Ordering::Relaxed);
 
 		let Some((entries, version_blobs)) =
 			self.select_oldest_eligible(target_size, safety_lag, allow_partial, producer_watermark)?
@@ -665,11 +676,12 @@ impl CdcStorage for SqliteCdcStorage {
 	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
 		let conn = self.inner.conn.lock();
 		let version_bytes = version_to_bytes(version);
+		let zstd_level = self.inner.last_zstd_level.load(Ordering::Relaxed);
 
-		let mut entries = Vec::new();
+		let mut entries: Vec<DroppedCdcEntry> = Vec::new();
 		let mut count = 0usize;
-		let mut block_pks_to_delete: Vec<Vec<u8>> = Vec::new();
 
+		let mut block_pks_to_delete: Vec<Vec<u8>> = Vec::new();
 		{
 			let mut stmt = conn
 				.prepare(
@@ -700,6 +712,59 @@ impl CdcStorage for SqliteCdcStorage {
 			}
 		}
 
+		enum BlockOutcome {
+			Delete,
+			Rewrite {
+				survivors: Vec<Cdc>,
+			},
+		}
+		let mut straddle_actions: Vec<(Vec<u8>, BlockOutcome)> = Vec::new();
+		{
+			let mut stmt = conn
+				.prepare(
+					r#"SELECT max_version, payload FROM "cdc_block"
+					   WHERE min_version < ?1 AND max_version >= ?1
+					   ORDER BY max_version ASC"#,
+				)
+				.map_err(|e| CdcError::Internal(format!("drop straddle prepare: {e}")))?;
+			let rows = stmt
+				.query_map(params![version_bytes.as_slice()], |row| {
+					Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
+				})
+				.map_err(|e| CdcError::Internal(format!("drop straddle rows: {e}")))?;
+			for row in rows {
+				let (max_bytes, payload) =
+					row.map_err(|e| CdcError::Internal(format!("drop straddle row: {e}")))?;
+				let block_max = bytes_to_version(&max_bytes)?;
+				let decoded = block::decode(&payload)?;
+				let mut survivors: Vec<Cdc> = Vec::with_capacity(decoded.len());
+				for cdc in decoded {
+					if cdc.version < version {
+						count += 1;
+						for sys_change in &cdc.system_changes {
+							entries.push(DroppedCdcEntry {
+								key: sys_change.key().clone(),
+								value_bytes: sys_change.value_bytes() as u64,
+							});
+						}
+					} else {
+						survivors.push(cdc);
+					}
+				}
+				self.inner.block_cache.remove(block_max);
+				if survivors.is_empty() {
+					straddle_actions.push((max_bytes, BlockOutcome::Delete));
+				} else {
+					straddle_actions.push((
+						max_bytes,
+						BlockOutcome::Rewrite {
+							survivors,
+						},
+					));
+				}
+			}
+		}
+
 		{
 			let mut stmt = conn
 				.prepare(r#"SELECT payload FROM "cdc" WHERE version < ?1 ORDER BY version ASC"#)
@@ -721,12 +786,59 @@ impl CdcStorage for SqliteCdcStorage {
 			}
 		}
 
+		let tx = conn
+			.unchecked_transaction()
+			.map_err(|e| CdcError::Internal(format!("drop_before tx begin: {e}")))?;
+
 		for pk in &block_pks_to_delete {
-			conn.execute(r#"DELETE FROM "cdc_block" WHERE max_version = ?1"#, params![pk.as_slice()])
+			tx.execute(r#"DELETE FROM "cdc_block" WHERE max_version = ?1"#, params![pk.as_slice()])
 				.map_err(|e| CdcError::Internal(format!("drop block delete: {e}")))?;
 		}
-		conn.execute(r#"DELETE FROM "cdc" WHERE version < ?1"#, params![version_bytes.as_slice()])
+
+		for (max_bytes, action) in &straddle_actions {
+			match action {
+				BlockOutcome::Delete => {
+					tx.execute(
+						r#"DELETE FROM "cdc_block" WHERE max_version = ?1"#,
+						params![max_bytes.as_slice()],
+					)
+					.map_err(|e| CdcError::Internal(format!("drop straddle delete: {e}")))?;
+				}
+				BlockOutcome::Rewrite {
+					survivors,
+				} => {
+					let new_min = survivors.first().unwrap().version;
+					let new_max = survivors.last().unwrap().version;
+					debug_assert_eq!(
+						new_max,
+						bytes_to_version(max_bytes)?,
+						"max_version is the block PK and must be preserved"
+					);
+					let (min_ts_nanos, max_ts_nanos) = summarize_timestamps(survivors);
+					let payload = block::encode(survivors, zstd_level)?;
+					tx.execute(
+						r#"INSERT OR REPLACE INTO "cdc_block"
+						   (max_version, min_version, min_timestamp, max_timestamp, num_entries, payload)
+						   VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
+						params![
+							max_bytes.as_slice(),
+							version_to_bytes(new_min).as_slice(),
+							min_ts_nanos,
+							max_ts_nanos,
+							survivors.len() as i64,
+							payload.as_slice(),
+						],
+					)
+					.map_err(|e| CdcError::Internal(format!("drop straddle rewrite: {e}")))?;
+				}
+			}
+		}
+
+		tx.execute(r#"DELETE FROM "cdc" WHERE version < ?1"#, params![version_bytes.as_slice()])
 			.map_err(|e| CdcError::Internal(format!("drop_before delete: {e}")))?;
+
+		tx.commit().map_err(|e| CdcError::Internal(format!("drop_before commit: {e}")))?;
+
 		let _ = conn.execute("PRAGMA incremental_vacuum", []);
 
 		Ok(DropBeforeResult {
