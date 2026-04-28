@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::{binding::BindingFormat, id::SubscriptionId},
 };
-use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel};
+use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorHandle};
 use reifydb_sub_server::{
 	actor::ServerActor,
 	auth::extract_identity_from_ws_auth,
@@ -35,7 +35,7 @@ use tokio::{
 	task::JoinHandle,
 	time::timeout,
 };
-use tokio_tungstenite::{accept_async, tungstenite::Message};
+use tokio_tungstenite::{WebSocketStream, accept_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 use uuid::Builder;
 
@@ -97,35 +97,17 @@ pub async fn handle_connection(
 	mut shutdown: watch::Receiver<bool>,
 ) {
 	let peer = stream.peer_addr().ok();
-	let connection_id = {
-		let millis = state.clock().now_millis();
-		let random_bytes = state.rng().infra_bytes_10();
-		Uuid7::from(Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid())
-	};
+	let connection_id = generate_connection_id(&state);
+	configure_stream(&stream, peer);
 
-	// Set TCP_NODELAY to disable Nagle's algorithm for lower latency
-	if let Err(e) = stream.set_nodelay(true) {
-		warn!("Failed to set TCP_NODELAY for {:?}: {}", peer, e);
-	}
-
-	// Wrap accept_async with a 30-second timeout to prevent hanging on slow/malicious clients
-	let ws_stream = match timeout(Duration::from_secs(30), accept_async(stream)).await {
-		Ok(Ok(ws)) => ws,
-		Ok(Err(_)) => {
-			return;
-		}
-		Err(_) => {
-			return;
-		}
+	let Some(ws_stream) = accept_ws_with_timeout(stream).await else {
+		return;
 	};
 
 	debug!("WebSocket connection {} established from {:?}", connection_id, peer);
 	let (mut sender, mut receiver) = ws_stream.split();
 
-	// Spawn per-connection actor
-	let actor = ServerActor::new(state.engine_clone(), state.auth_service().clone(), state.clock().clone());
-	let actor_handle = state.actor_system().spawn(&format!("ws-{}", connection_id), actor);
-	let actor_ref = actor_handle.actor_ref().clone();
+	let (actor_handle, actor_ref) = spawn_connection_actor(&state, connection_id);
 
 	// Channel for receiving push messages from the registry
 	let (push_tx, mut push_rx) = mpsc::unbounded_channel::<PushMessage>();
@@ -271,10 +253,51 @@ pub async fn handle_connection(
 		}
 	}
 
-	// Drop actor handle - actor stops
 	drop(actor_handle);
+	abort_remote_tasks(remote_tasks, batch_remote_tasks);
+	cleanup_connection_subscriptions(&state, &registry, connection_id).await;
 
-	// Abort all remote proxy tasks
+	debug!("WebSocket connection {} from {:?} cleaned up", connection_id, peer);
+}
+
+#[inline]
+fn generate_connection_id(state: &AppState) -> Uuid7 {
+	let millis = state.clock().now_millis();
+	let random_bytes = state.rng().infra_bytes_10();
+	Uuid7::from(Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid())
+}
+
+#[inline]
+fn configure_stream(stream: &TcpStream, peer: Option<SocketAddr>) {
+	if let Err(e) = stream.set_nodelay(true) {
+		warn!("Failed to set TCP_NODELAY for {:?}: {}", peer, e);
+	}
+}
+
+#[inline]
+async fn accept_ws_with_timeout(stream: TcpStream) -> Option<WebSocketStream<TcpStream>> {
+	match timeout(Duration::from_secs(30), accept_async(stream)).await {
+		Ok(Ok(ws)) => Some(ws),
+		_ => None,
+	}
+}
+
+#[inline]
+fn spawn_connection_actor(
+	state: &AppState,
+	connection_id: Uuid7,
+) -> (ActorHandle<ServerMessage>, ActorRef<ServerMessage>) {
+	let actor = ServerActor::new(state.engine_clone(), state.auth_service().clone(), state.clock().clone());
+	let actor_handle = state.actor_system().spawn(&format!("ws-{}", connection_id), actor);
+	let actor_ref = actor_handle.actor_ref().clone();
+	(actor_handle, actor_ref)
+}
+
+#[inline]
+fn abort_remote_tasks(
+	remote_tasks: HashMap<String, JoinHandle<()>>,
+	batch_remote_tasks: HashMap<BatchId, Vec<JoinHandle<()>>>,
+) {
 	for (_, handle) in remote_tasks {
 		handle.abort();
 	}
@@ -283,18 +306,20 @@ pub async fn handle_connection(
 			handle.abort();
 		}
 	}
+}
 
-	// Cleanup all subscriptions for this connection
+#[inline]
+async fn cleanup_connection_subscriptions(
+	state: &AppState,
+	registry: &Arc<SubscriptionRegistry>,
+	connection_id: Uuid7,
+) {
 	let subscription_ids = registry.cleanup_connection(connection_id);
-
-	// Cleanup database subscriptions for each subscription
 	for subscription_id in subscription_ids {
-		if let Err(e) = cleanup_subscription(&state, subscription_id).await {
+		if let Err(e) = cleanup_subscription(state, subscription_id).await {
 			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
 		}
 	}
-
-	debug!("WebSocket connection {} from {:?} cleaned up", connection_id, peer);
 }
 
 /// Connection ID type alias for clarity.

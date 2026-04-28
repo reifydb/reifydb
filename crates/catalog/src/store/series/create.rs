@@ -52,31 +52,48 @@ pub struct SeriesToCreate {
 impl CatalogStore {
 	pub(crate) fn create_series(txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
 		let namespace_id = to_create.namespace;
-
-		if let Some(series) = CatalogStore::find_series_by_name(
-			&mut Transaction::Admin(&mut *txn),
-			namespace_id,
-			to_create.name.text(),
-		)? {
-			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return Err(CatalogError::AlreadyExists {
-				kind: CatalogObjectKind::Series,
-				namespace: namespace.name().to_string(),
-				name: series.name,
-				fragment: to_create.name.clone(),
-			}
-			.into());
-		}
+		Self::reject_existing_series(txn, namespace_id, &to_create.name)?;
 
 		let series_id = SystemSequence::next_series_id(txn)?;
-
-		Self::store_series(txn, series_id, namespace_id, &to_create)?;
-		Self::link_series_to_namespace(txn, namespace_id, series_id, to_create.name.text())?;
-
+		Self::install_series(txn, series_id, namespace_id, &to_create)?;
 		Self::insert_series_columns(txn, series_id, &to_create)?;
 		Self::initialize_series_metadata(txn, series_id)?;
-
 		Self::get_series(&mut Transaction::Admin(&mut *txn), series_id)
+	}
+
+	#[inline]
+	fn reject_existing_series(
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		name: &Fragment,
+	) -> Result<()> {
+		let Some(series) = CatalogStore::find_series_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			namespace_id,
+			name.text(),
+		)?
+		else {
+			return Ok(());
+		};
+		let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
+		Err(CatalogError::AlreadyExists {
+			kind: CatalogObjectKind::Series,
+			namespace: namespace.name().to_string(),
+			name: series.name,
+			fragment: name.clone(),
+		}
+		.into())
+	}
+
+	#[inline]
+	fn install_series(
+		txn: &mut AdminTransaction,
+		series_id: SeriesId,
+		namespace_id: NamespaceId,
+		to_create: &SeriesToCreate,
+	) -> Result<()> {
+		Self::store_series(txn, series_id, namespace_id, to_create)?;
+		Self::link_series_to_namespace(txn, namespace_id, series_id, to_create.name.text())
 	}
 
 	fn store_series(
@@ -183,13 +200,9 @@ impl CatalogStore {
 		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
 
 		let namespace_id = to_create.namespace;
-
-		Self::store_series(txn, series_id, namespace_id, &to_create)?;
-		Self::link_series_to_namespace(txn, namespace_id, series_id, to_create.name.text())?;
-
+		Self::install_series(txn, series_id, namespace_id, &to_create)?;
 		Self::insert_series_columns_with_ids(txn, series_id, &to_create, column_ids)?;
 		Self::initialize_series_metadata(txn, series_id)?;
-
 		Self::get_series(&mut Transaction::Admin(&mut *txn), series_id)
 	}
 

@@ -68,62 +68,20 @@ pub fn decode_frames(data: &[u8]) -> Result<Vec<Frame>, DecodeError> {
 	Ok(frames)
 }
 
+struct FrameHeader {
+	row_count: usize,
+	column_count: usize,
+	meta_flags: u8,
+}
+
 fn decode_frame(data: &[u8], start: usize) -> Result<(Frame, usize), DecodeError> {
-	let mut pos = start;
-	check_len(data, pos, FRAME_HEADER_SIZE)?;
-
-	let row_count = read_u32(data, pos) as usize;
-	pos += 4;
-	let column_count = read_u16(data, pos) as usize;
-	pos += 2;
-	let meta_flags = data[pos];
-	pos += 1;
-	let _reserved = data[pos];
-	pos += 1;
-	let _frame_size = read_u32(data, pos);
-	pos += 4;
-
-	// Read metadata arrays
-	let mut row_numbers = Vec::new();
-	if meta_flags & META_HAS_ROW_NUMBERS != 0 {
-		check_len(data, pos, row_count * 8)?;
-		row_numbers.reserve(row_count);
-		for _ in 0..row_count {
-			let v = read_u64(data, pos);
-			pos += 8;
-			row_numbers.push(RowNumber::new(v));
-		}
-	}
-
-	let mut created_at = Vec::new();
-	if meta_flags & META_HAS_CREATED_AT != 0 {
-		check_len(data, pos, row_count * 8)?;
-		created_at.reserve(row_count);
-		for _ in 0..row_count {
-			let v = read_u64(data, pos);
-			pos += 8;
-			created_at.push(DateTime::from_nanos(v));
-		}
-	}
-
-	let mut updated_at = Vec::new();
-	if meta_flags & META_HAS_UPDATED_AT != 0 {
-		check_len(data, pos, row_count * 8)?;
-		updated_at.reserve(row_count);
-		for _ in 0..row_count {
-			let v = read_u64(data, pos);
-			pos += 8;
-			updated_at.push(DateTime::from_nanos(v));
-		}
-	}
-
-	// Read columns
-	let mut columns = Vec::with_capacity(column_count);
-	for _ in 0..column_count {
-		let (col, new_pos) = decode_column(data, pos)?;
-		columns.push(col);
-		pos = new_pos;
-	}
+	let (header, pos) = read_frame_header(data, start)?;
+	let (row_numbers, pos) = read_row_numbers(data, pos, header.row_count, header.meta_flags)?;
+	let (created_at, pos) =
+		read_datetime_array(data, pos, header.row_count, header.meta_flags, META_HAS_CREATED_AT)?;
+	let (updated_at, pos) =
+		read_datetime_array(data, pos, header.row_count, header.meta_flags, META_HAS_UPDATED_AT)?;
+	let (columns, pos) = read_frame_columns(data, pos, header.column_count)?;
 
 	Ok((
 		Frame {
@@ -134,6 +92,86 @@ fn decode_frame(data: &[u8], start: usize) -> Result<(Frame, usize), DecodeError
 		},
 		pos,
 	))
+}
+
+#[inline]
+fn read_frame_header(data: &[u8], start: usize) -> Result<(FrameHeader, usize), DecodeError> {
+	let mut pos = start;
+	check_len(data, pos, FRAME_HEADER_SIZE)?;
+	let row_count = read_u32(data, pos) as usize;
+	pos += 4;
+	let column_count = read_u16(data, pos) as usize;
+	pos += 2;
+	let meta_flags = data[pos];
+	pos += 1;
+	let _reserved = data[pos];
+	pos += 1;
+	let _frame_size = read_u32(data, pos);
+	pos += 4;
+	Ok((
+		FrameHeader {
+			row_count,
+			column_count,
+			meta_flags,
+		},
+		pos,
+	))
+}
+
+#[inline]
+fn read_row_numbers(
+	data: &[u8],
+	mut pos: usize,
+	row_count: usize,
+	meta_flags: u8,
+) -> Result<(Vec<RowNumber>, usize), DecodeError> {
+	if meta_flags & META_HAS_ROW_NUMBERS == 0 {
+		return Ok((Vec::new(), pos));
+	}
+	check_len(data, pos, row_count * 8)?;
+	let mut row_numbers = Vec::with_capacity(row_count);
+	for _ in 0..row_count {
+		let v = read_u64(data, pos);
+		pos += 8;
+		row_numbers.push(RowNumber::new(v));
+	}
+	Ok((row_numbers, pos))
+}
+
+#[inline]
+fn read_datetime_array(
+	data: &[u8],
+	mut pos: usize,
+	row_count: usize,
+	meta_flags: u8,
+	flag: u8,
+) -> Result<(Vec<DateTime>, usize), DecodeError> {
+	if meta_flags & flag == 0 {
+		return Ok((Vec::new(), pos));
+	}
+	check_len(data, pos, row_count * 8)?;
+	let mut values = Vec::with_capacity(row_count);
+	for _ in 0..row_count {
+		let v = read_u64(data, pos);
+		pos += 8;
+		values.push(DateTime::from_nanos(v));
+	}
+	Ok((values, pos))
+}
+
+#[inline]
+fn read_frame_columns(
+	data: &[u8],
+	mut pos: usize,
+	column_count: usize,
+) -> Result<(Vec<FrameColumn>, usize), DecodeError> {
+	let mut columns = Vec::with_capacity(column_count);
+	for _ in 0..column_count {
+		let (col, new_pos) = decode_column(data, pos)?;
+		columns.push(col);
+		pos = new_pos;
+	}
+	Ok((columns, pos))
 }
 
 fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), DecodeError> {

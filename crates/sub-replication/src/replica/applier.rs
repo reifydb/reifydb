@@ -38,6 +38,19 @@ impl ReplicaApplier {
 	/// transaction, apply each system change through the catalog, commit at
 	/// the primary's version, and advance the replica watermark.
 	pub fn apply_changes(&self, version: CommitVersion, system_changes: &[SystemChange]) -> Result<()> {
+		self.validate_version_order(version)?;
+		if system_changes.is_empty() {
+			self.advance_to(version);
+			return Ok(());
+		}
+		self.commit_replica_transaction(version, system_changes)?;
+		self.advance_to(version);
+		debug!(version = version.0, "Replica applied CDC entry");
+		Ok(())
+	}
+
+	#[inline]
+	fn validate_version_order(&self, version: CommitVersion) -> Result<()> {
 		let last = self.last_applied.load(Ordering::Acquire);
 		if version.0 <= last {
 			return Err(ReplicationError::OutOfOrderVersion {
@@ -46,26 +59,25 @@ impl ReplicaApplier {
 			}
 			.into());
 		}
+		Ok(())
+	}
 
-		if system_changes.is_empty() {
-			self.engine.multi().advance_version_for_replica(version);
-			self.last_applied.store(version.0, Ordering::Release);
-			self.watermark.store(version);
-			return Ok(());
-		}
-
+	#[inline]
+	fn commit_replica_transaction(&self, version: CommitVersion, system_changes: &[SystemChange]) -> Result<()> {
 		let catalog = self.engine.catalog();
 		let mut replica_txn = ReplicaTransaction::new(self.engine.multi_owned(), version)?;
 		for change in system_changes {
 			apply_system_change(&catalog, &mut Transaction::Replica(&mut replica_txn), change)?;
 		}
 		replica_txn.commit_at_version()?;
-		self.engine.multi().advance_version_for_replica(version);
+		Ok(())
+	}
 
+	#[inline]
+	fn advance_to(&self, version: CommitVersion) {
+		self.engine.multi().advance_version_for_replica(version);
 		self.last_applied.store(version.0, Ordering::Release);
 		self.watermark.store(version);
-		debug!(version = version.0, "Replica applied CDC entry");
-		Ok(())
 	}
 
 	/// Apply a single proto CDC entry (delegates to apply_changes after conversion).

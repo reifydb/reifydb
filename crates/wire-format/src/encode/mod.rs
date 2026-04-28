@@ -35,46 +35,66 @@ pub(crate) struct EncodedColumn {
 /// Encode multiple frames into RBCF binary format.
 pub fn encode_frames(frames: &[Frame], options: &EncodeOptions) -> Result<Vec<u8>, EncodeError> {
 	let mut buf = Vec::with_capacity(4096);
-
-	// Reserve space for message header (will be filled at end)
-	buf.extend_from_slice(&[0u8; MESSAGE_HEADER_SIZE]);
-
+	reserve_message_header(&mut buf);
 	for frame in frames {
 		encode_frame(frame, &mut buf, options)?;
 	}
+	write_message_header(&mut buf, frames.len() as u32);
+	Ok(buf)
+}
 
+#[inline]
+fn reserve_message_header(buf: &mut Vec<u8>) {
+	buf.extend_from_slice(&[0u8; MESSAGE_HEADER_SIZE]);
+}
+
+#[inline]
+fn write_message_header(buf: &mut [u8], frame_count: u32) {
 	let total_size = buf.len() as u32;
-
-	// Write message header
 	buf[0..4].copy_from_slice(&RBCF_MAGIC.to_le_bytes());
 	buf[4..6].copy_from_slice(&RBCF_VERSION.to_le_bytes());
 	buf[6..8].copy_from_slice(&0u16.to_le_bytes()); // flags
-	buf[8..12].copy_from_slice(&(frames.len() as u32).to_le_bytes());
+	buf[8..12].copy_from_slice(&frame_count.to_le_bytes());
 	buf[12..16].copy_from_slice(&total_size.to_le_bytes());
-
-	Ok(buf)
 }
 
 fn encode_frame(frame: &Frame, buf: &mut Vec<u8>, options: &EncodeOptions) -> Result<(), EncodeError> {
 	let frame_start = buf.len();
 	let row_count = frame.columns.first().map_or(0, |c| c.data.len()) as u32;
 	let column_count = frame.columns.len() as u16;
+	let meta_flags = compute_meta_flags(frame);
 
-	let mut meta_flags = 0u8;
+	reserve_frame_header(buf);
+	write_frame_metadata(frame, meta_flags, buf);
+	encode_frame_columns(frame, buf, options)?;
+
+	let frame_size = (buf.len() - frame_start) as u32;
+	write_frame_header(buf, frame_start, row_count, column_count, meta_flags, frame_size);
+	Ok(())
+}
+
+#[inline]
+fn compute_meta_flags(frame: &Frame) -> u8 {
+	let mut flags = 0u8;
 	if !frame.row_numbers.is_empty() {
-		meta_flags |= META_HAS_ROW_NUMBERS;
+		flags |= META_HAS_ROW_NUMBERS;
 	}
 	if !frame.created_at.is_empty() {
-		meta_flags |= META_HAS_CREATED_AT;
+		flags |= META_HAS_CREATED_AT;
 	}
 	if !frame.updated_at.is_empty() {
-		meta_flags |= META_HAS_UPDATED_AT;
+		flags |= META_HAS_UPDATED_AT;
 	}
+	flags
+}
 
-	// Reserve frame header
+#[inline]
+fn reserve_frame_header(buf: &mut Vec<u8>) {
 	buf.extend_from_slice(&[0u8; FRAME_HEADER_SIZE]);
+}
 
-	// Write metadata arrays
+#[inline]
+fn write_frame_metadata(frame: &Frame, meta_flags: u8, buf: &mut Vec<u8>) {
 	if meta_flags & META_HAS_ROW_NUMBERS != 0 {
 		for rn in &frame.row_numbers {
 			buf.extend_from_slice(&rn.value().to_le_bytes());
@@ -90,23 +110,31 @@ fn encode_frame(frame: &Frame, buf: &mut Vec<u8>, options: &EncodeOptions) -> Re
 			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
 		}
 	}
+}
 
-	// Encode each column
+#[inline]
+fn encode_frame_columns(frame: &Frame, buf: &mut Vec<u8>, options: &EncodeOptions) -> Result<(), EncodeError> {
 	for col in &frame.columns {
 		encode_column(&col.name, &col.data, buf, options)?;
 	}
+	Ok(())
+}
 
-	let frame_size = (buf.len() - frame_start) as u32;
-
-	// Write frame header
+#[inline]
+fn write_frame_header(
+	buf: &mut [u8],
+	frame_start: usize,
+	row_count: u32,
+	column_count: u16,
+	meta_flags: u8,
+	frame_size: u32,
+) {
 	let h = frame_start;
 	buf[h..h + 4].copy_from_slice(&row_count.to_le_bytes());
 	buf[h + 4..h + 6].copy_from_slice(&column_count.to_le_bytes());
 	buf[h + 6] = meta_flags;
 	buf[h + 7] = 0; // reserved
 	buf[h + 8..h + 12].copy_from_slice(&frame_size.to_le_bytes());
-
-	Ok(())
 }
 
 fn encode_column(

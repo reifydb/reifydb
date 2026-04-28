@@ -18,7 +18,7 @@ use reifydb_core::interface::{
 use reifydb_rql::{
 	ast::parse_str,
 	expression::{ConstantExpression, Expression},
-	plan::logical::{FilterNode, LogicalPlan, PipelineNode, compile_logical},
+	plan::logical::{FilterNode, LogicalPlan, PipelineNode, ShapeScanNode, compile_logical},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, fragment::Fragment};
@@ -82,83 +82,102 @@ fn inject_pipeline<'a>(
 	tx: &mut Transaction<'_>,
 ) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
 	let mut result = BumpVec::with_capacity_in(steps.len() + 4, bump);
-
 	for step in steps {
 		match &step {
-			LogicalPlan::PrimitiveScan(scan) => {
-				// Determine target type, namespace, and object name
-				let target_type = match &scan.source {
-					ResolvedShape::Table(_) | ResolvedShape::TableVirtual(_) => {
-						PolicyTargetType::Table
-					}
-					ResolvedShape::View(_)
-					| ResolvedShape::DeferredView(_)
-					| ResolvedShape::TransactionalView(_) => PolicyTargetType::View,
-					ResolvedShape::RingBuffer(_) => PolicyTargetType::RingBuffer,
-					ResolvedShape::Series(_) => PolicyTargetType::Series,
-					ResolvedShape::Dictionary(_) => PolicyTargetType::Dictionary,
-				};
-				let target_ns = scan.source.namespace().unwrap().name().to_string();
-				let target_obj = scan.source.name().to_string();
-
-				// Push the scan node first
-				result.push(step);
-
-				// Look up policies for this shape
-				let policies = catalog.list_all_policies(tx)?;
-				let mut found_policy = false;
-
-				for policy in &policies {
-					if !policy.enabled {
-						continue;
-					}
-					if policy.target_type != target_type {
-						continue;
-					}
-					if !scope_matches(policy, &target_ns, &target_obj) {
-						continue;
-					}
-
-					// Get `from` operations for this policy
-					let ops = catalog.list_policy_operations(tx, policy.id)?;
-					for op in &ops {
-						if DataOp::parse(&op.operation) != Some(DataOp::From) {
-							continue;
-						}
-						if op.body_source.is_empty() {
-							continue;
-						}
-
-						// Compile body_source into logical plan steps.
-						// Use the outer bump so the compiled plans have the same lifetime.
-						let statements = parse_str(bump, bump.alloc_str(&op.body_source))?;
-						for stmt in statements {
-							let logical = compile_logical(bump, catalog, tx, stmt)?;
-							for logical_step in logical {
-								push_policy_step(&mut result, logical_step);
-								found_policy = true;
-							}
-						}
-					}
-				}
-
-				// Default-deny: no `from` policy found → filter out all rows
-				if !found_policy {
-					result.push(LogicalPlan::Filter(FilterNode {
-						condition: Expression::Constant(ConstantExpression::Bool {
-							fragment: Fragment::internal("false"),
-						}),
-						rql: String::new(),
-					}));
-				}
+			LogicalPlan::PrimitiveScan(_) => {
+				inject_scan_with_policies(step, &mut result, bump, catalog, tx)?
 			}
-			_ => {
-				result.push(step);
-			}
+			_ => result.push(step),
 		}
 	}
-
 	Ok(result)
+}
+
+fn inject_scan_with_policies<'a>(
+	step: LogicalPlan<'a>,
+	result: &mut BumpVec<'a, LogicalPlan<'a>>,
+	bump: &'a Bump,
+	catalog: &Catalog,
+	tx: &mut Transaction<'_>,
+) -> Result<()> {
+	let LogicalPlan::PrimitiveScan(scan) = &step else {
+		unreachable!("inject_scan_with_policies called with non-PrimitiveScan");
+	};
+	let target_type = policy_target_type_for_scan(scan);
+	let target_ns = scan.source.namespace().unwrap().name().to_string();
+	let target_obj = scan.source.name().to_string();
+
+	result.push(step);
+
+	let policies = catalog.list_all_policies(tx)?;
+	let mut found_policy = false;
+	for policy in &policies {
+		if !policy_matches_scan(policy, target_type, &target_ns, &target_obj) {
+			continue;
+		}
+		let ops = catalog.list_policy_operations(tx, policy.id)?;
+		for op in &ops {
+			if !is_from_op_with_body(op) {
+				continue;
+			}
+			compile_and_push_from_op(op, result, bump, catalog, tx)?;
+			found_policy = true;
+		}
+	}
+	if !found_policy {
+		result.push(default_deny_filter());
+	}
+	Ok(())
+}
+
+#[inline]
+fn policy_target_type_for_scan(scan: &ShapeScanNode) -> PolicyTargetType {
+	match &scan.source {
+		ResolvedShape::Table(_) | ResolvedShape::TableVirtual(_) => PolicyTargetType::Table,
+		ResolvedShape::View(_) | ResolvedShape::DeferredView(_) | ResolvedShape::TransactionalView(_) => {
+			PolicyTargetType::View
+		}
+		ResolvedShape::RingBuffer(_) => PolicyTargetType::RingBuffer,
+		ResolvedShape::Series(_) => PolicyTargetType::Series,
+		ResolvedShape::Dictionary(_) => PolicyTargetType::Dictionary,
+	}
+}
+
+#[inline]
+fn policy_matches_scan(policy: &Policy, target_type: PolicyTargetType, target_ns: &str, target_obj: &str) -> bool {
+	policy.enabled && policy.target_type == target_type && scope_matches(policy, target_ns, target_obj)
+}
+
+#[inline]
+fn is_from_op_with_body(op: &PolicyOperation) -> bool {
+	DataOp::parse(&op.operation) == Some(DataOp::From) && !op.body_source.is_empty()
+}
+
+fn compile_and_push_from_op<'a>(
+	op: &PolicyOperation,
+	result: &mut BumpVec<'a, LogicalPlan<'a>>,
+	bump: &'a Bump,
+	catalog: &Catalog,
+	tx: &mut Transaction<'_>,
+) -> Result<()> {
+	let statements = parse_str(bump, bump.alloc_str(&op.body_source))?;
+	for stmt in statements {
+		let logical = compile_logical(bump, catalog, tx, stmt)?;
+		for logical_step in logical {
+			push_policy_step(result, logical_step);
+		}
+	}
+	Ok(())
+}
+
+#[inline]
+fn default_deny_filter<'a>() -> LogicalPlan<'a> {
+	LogicalPlan::Filter(FilterNode {
+		condition: Expression::Constant(ConstantExpression::Bool {
+			fragment: Fragment::internal("false"),
+		}),
+		rql: String::new(),
+	})
 }
 
 /// Check if a policy's scope matches a given target namespace and object.

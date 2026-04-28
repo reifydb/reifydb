@@ -9,15 +9,16 @@ use crate::{
 		ast::{Ast, AstDelete, AstFrom},
 		identifier::{
 			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTableIdentifier, UnresolvedShapeIdentifier,
 		},
 	},
-	bump::{BumpBox, BumpVec},
-	expression::ExpressionCompiler,
+	bump::{BumpBox, BumpFragment, BumpVec},
+	expression::{Expression, ExpressionCompiler},
 	plan::logical::{
 		Compiler, DeleteRingBufferNode, DeleteSeriesNode, DeleteTableNode, FilterNode, LogicalPlan,
-		PipelineNode,
+		PipelineNode, mutate::compile_returning_clause,
 	},
+	token::token::Token,
 };
 
 impl<'bump> Compiler<'bump> {
@@ -26,47 +27,42 @@ impl<'bump> Compiler<'bump> {
 		ast: AstDelete<'bump>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
-		let returning = if let Some(returning_asts) = ast.returning {
-			let mut exprs = Vec::with_capacity(returning_asts.len());
-			for ast_node in returning_asts {
-				exprs.push(ExpressionCompiler::compile(ast_node)?);
-			}
-			Some(exprs)
-		} else {
-			None
-		};
+		let AstDelete {
+			token,
+			target,
+			filter,
+			take,
+			returning,
+		} = ast;
+		let returning = compile_returning_clause(returning)?;
+		let from_plan = self.compile_delete_from(token, target.clone(), tx)?;
+		let filter_plan = compile_delete_filter(filter)?;
+		let take_plan = self.compile_optional_take(take)?;
+		let pipeline = self.assemble_delete_pipeline(from_plan, filter_plan, take_plan);
+		self.wrap_delete_target(target, pipeline, returning, tx)
+	}
 
-		// Build internal pipeline: FROM -> FILTER
-
-		// 1. Create FROM scan from target
+	#[inline]
+	fn compile_delete_from(
+		&self,
+		token: Token<'bump>,
+		target: UnresolvedShapeIdentifier<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>> {
 		let from_ast = AstFrom::Source {
-			token: ast.token,
-			source: ast.target.clone(),
+			token,
+			source: target,
 			index_name: None,
 		};
-		let from_plan = self.compile_from(from_ast, tx)?;
+		self.compile_from(from_ast, tx)
+	}
 
-		// 2. Create FILTER node from the filter clause
-		let filter_ast = match BumpBox::into_inner(ast.filter) {
-			Ast::Filter(f) => f,
-			_ => unreachable!("filter should always be Ast::Filter"),
-		};
-		let filter_plan = LogicalPlan::Filter(FilterNode {
-			condition: ExpressionCompiler::compile(BumpBox::into_inner(filter_ast.node))?,
-			rql: filter_ast.rql.to_string(),
-		});
-
-		// 3. Build pipeline: FROM -> FILTER -> [TAKE]
-		let take_plan = if let Some(take_box) = ast.take {
-			let take_ast = match BumpBox::into_inner(take_box) {
-				Ast::Take(t) => t,
-				_ => unreachable!("take should always be Ast::Take"),
-			};
-			Some(self.compile_take(take_ast)?)
-		} else {
-			None
-		};
-
+	fn assemble_delete_pipeline(
+		&self,
+		from_plan: LogicalPlan<'bump>,
+		filter_plan: LogicalPlan<'bump>,
+		take_plan: Option<LogicalPlan<'bump>>,
+	) -> LogicalPlan<'bump> {
 		let capacity = if take_plan.is_some() {
 			3
 		} else {
@@ -78,68 +74,81 @@ impl<'bump> Compiler<'bump> {
 		if let Some(take) = take_plan {
 			steps.push(take);
 		}
-		let pipeline = LogicalPlan::Pipeline(PipelineNode {
+		LogicalPlan::Pipeline(PipelineNode {
 			steps,
-		});
+		})
+	}
 
-		// 4. Wrap in DELETE node
-		// Check in the catalog whether the target is a table or ring buffer
-		let target_name = ast.target.name.text();
-		let name = ast.target.name;
-		let namespace = ast.target.namespace;
+	fn wrap_delete_target(
+		&self,
+		target: UnresolvedShapeIdentifier<'bump>,
+		pipeline: LogicalPlan<'bump>,
+		returning: Option<Vec<Expression>>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>> {
+		let target_name = target.name.text();
+		let name = target.name;
+		let namespace = target.namespace;
 		let ns_segments: Vec<&str> = namespace.iter().map(|n| n.text()).collect();
 
-		// Try to find namespace
-		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_segments(tx, &ns_segments)? {
-			ns.id()
-		} else {
-			// If namespace doesn't exist, default to table (will error during physical plan)
-			let mut target = MaybeQualifiedTableIdentifier::new(name);
-			if !namespace.is_empty() {
-				target = target.with_namespace(namespace);
-			}
-			return Ok(LogicalPlan::DeleteTable(DeleteTableNode {
-				target: Some(target),
-				input: Some(BumpBox::new_in(pipeline, self.bump)),
-				returning,
-			}));
+		let Some(ns) = self.catalog.find_namespace_by_segments(tx, &ns_segments)? else {
+			return Ok(self.delete_table_node(name, namespace, pipeline, returning));
 		};
+		let namespace_id = ns.id();
 
-		// Check if it's a ring buffer first
 		if self.catalog.find_ringbuffer_by_name(tx, namespace_id, target_name)?.is_some() {
-			let mut target = MaybeQualifiedRingBufferIdentifier::new(name);
+			let mut t = MaybeQualifiedRingBufferIdentifier::new(name);
 			if !namespace.is_empty() {
-				target = target.with_namespace(namespace);
+				t = t.with_namespace(namespace);
 			}
 			return Ok(LogicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
-				target,
+				target: t,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
 				returning,
 			}));
 		}
-
-		// Check if it's a series
 		if self.catalog.find_series_by_name(tx, namespace_id, target_name)?.is_some() {
-			let mut target = MaybeQualifiedSeriesIdentifier::new(name);
+			let mut t = MaybeQualifiedSeriesIdentifier::new(name);
 			if !namespace.is_empty() {
-				target = target.with_namespace(namespace);
+				t = t.with_namespace(namespace);
 			}
 			return Ok(LogicalPlan::DeleteSeries(DeleteSeriesNode {
-				target,
+				target: t,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
 				returning,
 			}));
 		}
+		Ok(self.delete_table_node(name, namespace, pipeline, returning))
+	}
 
-		// Assume it's a table (will error during physical plan if not found)
+	#[inline]
+	fn delete_table_node(
+		&self,
+		name: BumpFragment<'bump>,
+		namespace: Vec<BumpFragment<'bump>>,
+		pipeline: LogicalPlan<'bump>,
+		returning: Option<Vec<Expression>>,
+	) -> LogicalPlan<'bump> {
 		let mut target = MaybeQualifiedTableIdentifier::new(name);
 		if !namespace.is_empty() {
 			target = target.with_namespace(namespace);
 		}
-		Ok(LogicalPlan::DeleteTable(DeleteTableNode {
+		LogicalPlan::DeleteTable(DeleteTableNode {
 			target: Some(target),
 			input: Some(BumpBox::new_in(pipeline, self.bump)),
 			returning,
-		}))
+		})
 	}
+}
+
+#[inline]
+fn compile_delete_filter<'bump>(filter: BumpBox<'bump, Ast<'bump>>) -> Result<LogicalPlan<'bump>> {
+	let filter_ast = match BumpBox::into_inner(filter) {
+		Ast::Filter(f) => f,
+		_ => unreachable!("filter should always be Ast::Filter"),
+	};
+	Ok(LogicalPlan::Filter(FilterNode {
+		condition: ExpressionCompiler::compile(BumpBox::into_inner(filter_ast.node))?,
+		rql: filter_ast.rql.to_string(),
+	}))
 }

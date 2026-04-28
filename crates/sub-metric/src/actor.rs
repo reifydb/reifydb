@@ -7,8 +7,15 @@ use std::{collections::HashSet, mem, sync::Arc, time::Duration as StdDuration};
 use reifydb_core::{
 	actors::metric::MetricMessage,
 	common::CommitVersion,
-	encoded::shape::RowShape,
-	event::{EventBus, metric::RequestExecutedEvent, store::StatsProcessedEvent},
+	encoded::{key::EncodedKey, shape::RowShape},
+	event::{
+		EventBus,
+		metric::{
+			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiDelete, MultiDrop, MultiWrite,
+			RequestExecutedEvent,
+		},
+		store::StatsProcessedEvent,
+	},
 	interface::{
 		catalog::ringbuffer::RingBuffer,
 		store::{MultiVersionGetPrevious, Tier},
@@ -63,6 +70,106 @@ impl MetricCollectorActor {
 		self.flush_interval = interval;
 		self
 	}
+
+	fn process_multi_committed(&self, state: &mut MetricActorState, event: MultiCommittedEvent) {
+		let version = *event.version();
+		let writes = event.writes();
+		let deletes = event.deletes();
+		let drops = event.drops();
+		trace!(
+			"Processing multi ops for version {:?}: {} writes, {} deletes, {} drops",
+			version,
+			writes.len(),
+			deletes.len(),
+			drops.len(),
+		);
+
+		let dropped_keys: HashSet<_> = drops.iter().map(|d| d.key.clone()).collect();
+		self.record_writes(state, writes, &dropped_keys, version);
+		record_deletes(state, deletes);
+		record_drops(state, drops);
+		advance_max_version(&mut state.max_version, version);
+	}
+
+	#[inline]
+	fn record_writes(
+		&self,
+		state: &mut MetricActorState,
+		writes: &[MultiWrite],
+		dropped_keys: &HashSet<EncodedKey>,
+		version: CommitVersion,
+	) {
+		for write in writes {
+			let pre_value_bytes = if dropped_keys.contains(&write.key) {
+				None
+			} else {
+				self.resolver
+					.get_previous_version(&write.key, version)
+					.ok()
+					.flatten()
+					.map(|v| v.row.len() as u64)
+			};
+			if let Err(e) = state.storage_writer.record_write(
+				Tier::Hot,
+				write.key.as_ref(),
+				write.value_bytes,
+				pre_value_bytes,
+			) {
+				error!("Failed to record write: {}", e);
+			}
+		}
+	}
+
+	fn process_cdc_written(&self, state: &mut MetricActorState, event: CdcWrittenEvent) {
+		let version = *event.version();
+		let entries = event.entries();
+		trace!("Processing {} CDC ops for version {:?}", entries.len(), version);
+		for entry in entries {
+			if let Err(e) = state.cdc_writer.record_cdc(entry.key.as_ref(), entry.value_bytes) {
+				error!("Failed to record cdc: {}", e);
+			}
+		}
+		advance_max_version(&mut state.max_version, version);
+	}
+
+	fn process_cdc_evicted(&self, state: &mut MetricActorState, event: CdcEvictedEvent) {
+		let version = *event.version();
+		let entries = event.entries();
+		trace!("Processing {} CDC drop ops for version {:?}", entries.len(), version);
+		for entry in entries {
+			if let Err(e) = state.cdc_writer.record_drop(entry.key.as_ref(), entry.value_bytes) {
+				error!("Failed to record cdc drop: {}", e);
+			}
+		}
+		advance_max_version(&mut state.max_version, version);
+	}
+}
+
+#[inline]
+fn record_deletes(state: &mut MetricActorState, deletes: &[MultiDelete]) {
+	for delete in deletes {
+		if let Err(e) =
+			state.storage_writer.record_delete(Tier::Hot, delete.key.as_ref(), Some(delete.value_bytes))
+		{
+			error!("Failed to record delete: {}", e);
+		}
+	}
+}
+
+#[inline]
+fn record_drops(state: &mut MetricActorState, drops: &[MultiDrop]) {
+	for drop in drops {
+		if let Err(e) = state.storage_writer.record_drop(Tier::Hot, drop.key.as_ref(), drop.value_bytes) {
+			error!("Failed to record drop: {}", e);
+		}
+	}
+}
+
+#[inline]
+fn advance_max_version(max_version: &mut CommitVersion, version: CommitVersion) {
+	if version > *max_version {
+		*max_version = version;
+	}
 }
 
 #[allow(dead_code)]
@@ -98,98 +205,10 @@ impl Actor for MetricCollectorActor {
 				let _ = mem::take(&mut state.pending);
 				emit_stats_processed(&self.event_bus, &mut state.max_version);
 			}
-			MetricMessage::RequestExecuted(event) => {
-				state.pending.push(event);
-			}
-			MetricMessage::MultiCommitted(event) => {
-				let version = *event.version();
-				let writes = event.writes();
-				let deletes = event.deletes();
-				let drops = event.drops();
-				trace!(
-					"Processing multi ops for version {:?}: {} writes, {} deletes, {} drops",
-					version,
-					writes.len(),
-					deletes.len(),
-					drops.len(),
-				);
-
-				// Collect dropped keys first - if a key is dropped in this batch, any
-				// write to that key is a fresh insert (not an update to the old entry).
-				let dropped_keys: HashSet<_> = drops.iter().map(|d| d.key.clone()).collect();
-
-				for write in writes {
-					let pre_value_bytes = if dropped_keys.contains(&write.key) {
-						None
-					} else {
-						self.resolver
-							.get_previous_version(&write.key, version)
-							.ok()
-							.flatten()
-							.map(|v| v.row.len() as u64)
-					};
-
-					if let Err(e) = state.storage_writer.record_write(
-						Tier::Hot,
-						write.key.as_ref(),
-						write.value_bytes,
-						pre_value_bytes,
-					) {
-						error!("Failed to record write: {}", e);
-					}
-				}
-				for delete in deletes {
-					if let Err(e) = state.storage_writer.record_delete(
-						Tier::Hot,
-						delete.key.as_ref(),
-						Some(delete.value_bytes),
-					) {
-						error!("Failed to record delete: {}", e);
-					}
-				}
-				for drop in drops {
-					if let Err(e) = state.storage_writer.record_drop(
-						Tier::Hot,
-						drop.key.as_ref(),
-						drop.value_bytes,
-					) {
-						error!("Failed to record drop: {}", e);
-					}
-				}
-				if version > state.max_version {
-					state.max_version = version;
-				}
-			}
-			MetricMessage::CdcWritten(event) => {
-				let version = *event.version();
-				let entries = event.entries();
-				trace!("Processing {} CDC ops for version {:?}", entries.len(), version);
-				for entry in entries {
-					if let Err(e) =
-						state.cdc_writer.record_cdc(entry.key.as_ref(), entry.value_bytes)
-					{
-						error!("Failed to record cdc: {}", e);
-					}
-				}
-				if version > state.max_version {
-					state.max_version = version;
-				}
-			}
-			MetricMessage::CdcEvicted(event) => {
-				let version = *event.version();
-				let entries = event.entries();
-				trace!("Processing {} CDC drop ops for version {:?}", entries.len(), version);
-				for entry in entries {
-					if let Err(e) =
-						state.cdc_writer.record_drop(entry.key.as_ref(), entry.value_bytes)
-					{
-						error!("Failed to record cdc drop: {}", e);
-					}
-				}
-				if version > state.max_version {
-					state.max_version = version;
-				}
-			}
+			MetricMessage::RequestExecuted(event) => state.pending.push(event),
+			MetricMessage::MultiCommitted(event) => self.process_multi_committed(state, event),
+			MetricMessage::CdcWritten(event) => self.process_cdc_written(state, event),
+			MetricMessage::CdcEvicted(event) => self.process_cdc_evicted(state, event),
 		}
 		Directive::Continue
 	}

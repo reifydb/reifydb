@@ -3,16 +3,17 @@
 
 use std::{
 	collections::HashMap,
-	sync::{Arc, RwLock},
+	sync::{Arc, RwLock, RwLockReadGuard},
 };
 
 use dashmap::DashMap;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::consume::consumer::CdcConsume;
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
-		catalog::flow::FlowId,
+		catalog::flow::{FlowId, FlowNodeId},
 		cdc::Cdc,
 		change::{Change, ChangeOrigin},
 	},
@@ -60,69 +61,16 @@ impl SubscriptionCdcConsumer {
 
 impl CdcConsume for SubscriptionCdcConsumer {
 	fn consume(&self, cdcs: Vec<Cdc>, reply: Box<dyn FnOnce(Result<()>) + Send>) {
-		let flow_engine = match self.flow_engine.read() {
-			Ok(guard) => guard,
-			Err(_) => {
-				reply(Ok(()));
-				return;
-			}
+		let Some(flow_engine) = self.acquire_flow_engine() else {
+			reply(Ok(()));
+			return;
 		};
-
-		// No subscription flows registered - skip processing
 		if flow_engine.sources.is_empty() {
 			reply(Ok(()));
 			return;
 		}
 
-		for cdc in &cdcs {
-			let version = cdc.version;
-
-			for change in &cdc.changes {
-				let source_shape = match &change.origin {
-					ChangeOrigin::Shape(s) => *s,
-					ChangeOrigin::Flow(_) => continue,
-				};
-
-				let flow_entries = match flow_engine.sources.get(&source_shape) {
-					Some(entries) => entries.clone(),
-					None => continue,
-				};
-
-				for (flow_id, _node_id) in &flow_entries {
-					// Take ephemeral state for this flow (avoids cloning the HashMap)
-					let state =
-						self.flow_states.remove(flow_id).map(|(_, v)| v).unwrap_or_default();
-
-					// Create ephemeral transaction for this flow
-					let primitive_query = match self.multi.begin_query() {
-						Ok(q) => q,
-						Err(_) => continue,
-					};
-
-					let mut txn = FlowTransaction::ephemeral(
-						version,
-						primitive_query,
-						self.catalog.clone(),
-						state,
-						flow_engine.clock().clone(),
-					);
-
-					// Process the change through the flow
-					let flow_change = Change::from_flow(
-						*_node_id,
-						version,
-						change.diffs.clone(),
-						change.changed_at,
-					);
-
-					if flow_engine.process(&mut txn, flow_change, *flow_id).is_ok() {
-						txn.merge_state();
-					}
-					// Always put state back (original on failure, merged on success)
-					self.flow_states.insert(*flow_id, txn.take_state());
-				}
-			}
-		}
+		self.process_cdc_batch(&flow_engine, &cdcs);
 
 		// Drop the read guard before committing: commit takes the coord write
 		// lock on the store, and holding the flow_engine read lock here is
@@ -133,7 +81,56 @@ impl CdcConsume for SubscriptionCdcConsumer {
 		// batch. Without this, the poller can observe some members' diffs
 		// while others are still being produced.
 		self.delivery.commit_batch();
-
 		reply(Ok(()));
+	}
+}
+
+impl SubscriptionCdcConsumer {
+	#[inline]
+	fn acquire_flow_engine(&self) -> Option<RwLockReadGuard<'_, FlowEngine>> {
+		self.flow_engine.read().ok()
+	}
+
+	fn process_cdc_batch(&self, flow_engine: &FlowEngine, cdcs: &[Cdc]) {
+		for cdc in cdcs {
+			let version = cdc.version;
+			for change in &cdc.changes {
+				let source_shape = match &change.origin {
+					ChangeOrigin::Shape(s) => *s,
+					ChangeOrigin::Flow(_) => continue,
+				};
+				let Some(flow_entries) = flow_engine.sources.get(&source_shape).cloned() else {
+					continue;
+				};
+				self.process_change_for_flows(flow_engine, version, change, &flow_entries);
+			}
+		}
+	}
+
+	fn process_change_for_flows(
+		&self,
+		flow_engine: &FlowEngine,
+		version: CommitVersion,
+		change: &Change,
+		flow_entries: &[(FlowId, FlowNodeId)],
+	) {
+		for (flow_id, node_id) in flow_entries {
+			let state = self.flow_states.remove(flow_id).map(|(_, v)| v).unwrap_or_default();
+			let Ok(primitive_query) = self.multi.begin_query() else {
+				continue;
+			};
+			let mut txn = FlowTransaction::ephemeral(
+				version,
+				primitive_query,
+				self.catalog.clone(),
+				state,
+				flow_engine.clock().clone(),
+			);
+			let flow_change = Change::from_flow(*node_id, version, change.diffs.clone(), change.changed_at);
+			if flow_engine.process(&mut txn, flow_change, *flow_id).is_ok() {
+				txn.merge_state();
+			}
+			self.flow_states.insert(*flow_id, txn.take_state());
+		}
 	}
 }

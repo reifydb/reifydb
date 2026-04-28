@@ -114,6 +114,37 @@ pub mod query;
 pub mod replica;
 pub mod write;
 
+use crate::multi::{pending::PendingWrites, transaction::write::MultiWriteTransaction};
+
+/// Collect transaction writes from pending writes for use in `PreCommitContext`.
+#[inline]
+pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(EncodedKey, Option<EncodedRow>)> {
+	pending.iter()
+		.map(|(key, p)| match &p.delta {
+			Delta::Set {
+				row,
+				..
+			} => (key.clone(), Some(row.clone())),
+			_ => (key.clone(), None),
+		})
+		.collect()
+}
+
+/// Apply pending writes produced by pre-commit interceptors to the multi transaction.
+#[inline]
+pub(super) fn apply_pre_commit_writes(
+	multi: &mut MultiWriteTransaction,
+	pending_writes: &[(EncodedKey, Option<EncodedRow>)],
+) -> Result<()> {
+	for (key, value) in pending_writes {
+		match value {
+			Some(v) => multi.set(key, v.clone())?,
+			None => multi.remove(key)?,
+		}
+	}
+	Ok(())
+}
+
 /// Opaque savepoint for per-test transaction isolation.
 pub struct Savepoint {
 	write: WriteSavepoint,

@@ -20,7 +20,7 @@ use crate::{
 	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
 		Compiler, InlineDataNode, InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode,
-		InsertTableNode, LogicalPlan,
+		InsertTableNode, LogicalPlan, mutate::compile_returning_clause,
 	},
 };
 
@@ -32,18 +32,18 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<LogicalPlan<'bump>> {
 		let unresolved_target = ast.target;
 		let source_ast = BumpBox::into_inner(ast.source);
+		let returning = compile_returning_clause(ast.returning)?;
+		let source = self.compile_insert_source(source_ast, &unresolved_target, tx)?;
+		self.build_insert_node(unresolved_target, source, returning, tx)
+	}
 
-		let returning = if let Some(returning_asts) = ast.returning {
-			let mut exprs = Vec::with_capacity(returning_asts.len());
-			for ast_node in returning_asts {
-				exprs.push(ExpressionCompiler::compile(ast_node)?);
-			}
-			Some(exprs)
-		} else {
-			None
-		};
-
-		let source = match source_ast {
+	fn compile_insert_source(
+		&self,
+		source_ast: Ast<'bump>,
+		unresolved_target: &UnresolvedShapeIdentifier<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<LogicalPlan<'bump>> {
+		match source_ast {
 			Ast::From(AstFrom::Inline {
 				list,
 				..
@@ -55,12 +55,10 @@ impl<'bump> Compiler<'bump> {
 					}
 					.into());
 				}
-				self.compile_positional_tuples(&unresolved_target, list.nodes, tx)?
+				self.compile_positional_tuples(unresolved_target, list.nodes, tx)
 			}
-			other => self.compile_single(other, tx)?,
-		};
-
-		self.build_insert_node(unresolved_target, source, returning, tx)
+			other => self.compile_single(other, tx),
+		}
 	}
 
 	fn build_insert_node(

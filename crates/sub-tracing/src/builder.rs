@@ -3,11 +3,13 @@
 
 //! Builder pattern for configuring the tracing subsystem
 
+use tracing::Subscriber;
 use tracing_subscriber::{
 	EnvFilter, Layer, Registry,
 	fmt::{self, format::FmtSpan},
 	layer::SubscriberExt,
 	registry,
+	registry::LookupSpan,
 	util::SubscriberInitExt,
 };
 
@@ -130,45 +132,39 @@ impl TracingConfigurator {
 	///
 	/// This sets up the global tracing subscriber. It should only be called once.
 	pub fn configure(self) -> TracingSubsystem {
-		// Build the filter
-		let filter = self
-			.filter
-			.map(|f| EnvFilter::try_new(&f).unwrap_or_else(|_| EnvFilter::new("info")))
-			.unwrap_or_else(|| {
-				// Try to get from RUST_LOG env var, fallback to info
-				EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
-			});
-
-		// Build subscriber with external layer and filter
-		let subscriber = registry().with(self.external_layer).with(filter);
-
-		// Conditionally create console layer
-		let fmt_layer = if let Some(console_config) = self.console_config {
-			let span_events = if self.with_spans {
-				FmtSpan::NEW | FmtSpan::CLOSE
-			} else {
-				FmtSpan::NONE
-			};
-
-			Some(fmt::layer()
-				.with_ansi(console_config.use_color())
-				.with_target(true)
-				.with_thread_ids(false)
-				.with_thread_names(true)
-				.with_file(true)
-				.with_line_number(true)
-				.with_span_events(span_events))
-		} else {
-			None
-		};
-
-		// Add the console layer (or None if disabled)
-		let subscriber = subscriber.with(fmt_layer);
-
-		// Initialize the global subscriber
-		// Note: This will fail silently if a subscriber is already set
+		let filter = build_filter(self.filter.as_deref());
+		let fmt_layer = build_console_layer(self.console_config.as_ref(), self.with_spans);
+		let subscriber = registry().with(self.external_layer).with(filter).with(fmt_layer);
 		let _ = subscriber.try_init();
-
 		TracingSubsystem::new()
 	}
+}
+
+#[inline]
+fn build_filter(filter: Option<&str>) -> EnvFilter {
+	match filter {
+		Some(f) => EnvFilter::try_new(f).unwrap_or_else(|_| EnvFilter::new("info")),
+		None => EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+	}
+}
+
+#[inline]
+fn build_console_layer<S>(console_config: Option<&ConsoleBuilder>, with_spans: bool) -> Option<fmt::Layer<S>>
+where
+	S: Subscriber + for<'a> LookupSpan<'a>,
+{
+	let console_config = console_config?;
+	let span_events = if with_spans {
+		FmtSpan::NEW | FmtSpan::CLOSE
+	} else {
+		FmtSpan::NONE
+	};
+	Some(fmt::layer()
+		.with_ansi(console_config.use_color())
+		.with_target(true)
+		.with_thread_ids(false)
+		.with_thread_names(true)
+		.with_file(true)
+		.with_line_number(true)
+		.with_span_events(span_events))
 }

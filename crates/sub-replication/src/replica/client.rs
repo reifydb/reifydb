@@ -4,10 +4,11 @@
 use std::{error::Error, time::Duration};
 
 use tokio::{select, sync::watch, task::block_in_place, time::sleep};
+use tonic::{Streaming, transport::Channel};
 use tracing::{debug, error, info, warn};
 
 use super::applier::ReplicaApplier;
-use crate::generated::{StreamCdcRequest, reify_db_replication_client::ReifyDbReplicationClient};
+use crate::generated::{CdcEntry, StreamCdcRequest, reify_db_replication_client::ReifyDbReplicationClient};
 
 /// Client that connects to a primary and replicates CDC entries.
 pub struct ReplicationClient {
@@ -75,28 +76,47 @@ impl ReplicationClient {
 		    "Connecting to primary for replication"
 		);
 
-		let mut client = select! {
-		    result = ReifyDbReplicationClient::connect(self.primary_addr.clone()) => result?,
-		    _ = shutdown_rx.changed() => {
+		let Some(mut client) = self.connect_to_primary(shutdown_rx).await? else {
 			return Ok(());
-		    }
 		};
+		let Some(mut stream) = self.open_cdc_stream(&mut client, since_version, shutdown_rx).await? else {
+			return Ok(());
+		};
+		debug!("Replication stream established");
+		self.apply_stream_entries(&mut stream, shutdown_rx).await
+	}
 
+	async fn connect_to_primary(
+		&self,
+		shutdown_rx: &mut watch::Receiver<bool>,
+	) -> Result<Option<ReifyDbReplicationClient<Channel>>, Box<dyn Error + Send + Sync>> {
+		select! {
+		    result = ReifyDbReplicationClient::connect(self.primary_addr.clone()) => Ok(Some(result?)),
+		    _ = shutdown_rx.changed() => Ok(None),
+		}
+	}
+
+	async fn open_cdc_stream(
+		&self,
+		client: &mut ReifyDbReplicationClient<Channel>,
+		since_version: u64,
+		shutdown_rx: &mut watch::Receiver<bool>,
+	) -> Result<Option<Streaming<CdcEntry>>, Box<dyn Error + Send + Sync>> {
 		let request = StreamCdcRequest {
 			since_version,
 			batch_size: self.batch_size,
 		};
+		select! {
+		    result = client.stream_cdc(request) => Ok(Some(result?.into_inner())),
+		    _ = shutdown_rx.changed() => Ok(None),
+		}
+	}
 
-		let response = select! {
-		    result = client.stream_cdc(request) => result?,
-		    _ = shutdown_rx.changed() => {
-			return Ok(());
-		    }
-		};
-		let mut stream = response.into_inner();
-
-		debug!("Replication stream established");
-
+	async fn apply_stream_entries(
+		&self,
+		stream: &mut Streaming<CdcEntry>,
+		shutdown_rx: &mut watch::Receiver<bool>,
+	) -> Result<(), Box<dyn Error + Send + Sync>> {
 		loop {
 			select! {
 			    msg = stream.message() => {
@@ -110,7 +130,6 @@ impl ReplicationClient {
 					}
 				    }
 				    Ok(None) => {
-					// Stream ended
 					debug!("Replication stream ended");
 					return Err("stream ended".into());
 				    }

@@ -19,7 +19,7 @@ mod native {
 		actors::server::{ServerMessage, ServerResponse, ServerSubscribeResponse, build_server_message},
 		metric::ExecutionMetrics,
 	};
-	use reifydb_runtime::actor::reply::reply_channel;
+	use reifydb_runtime::{actor::reply::reply_channel, context::clock::Instant};
 	use reifydb_type::value::{duration::Duration as ReifyDuration, frame::frame::Frame};
 	use tokio::time::timeout;
 
@@ -41,60 +41,11 @@ mod native {
 		state: &AppState,
 		mut ctx: RequestContext,
 	) -> Result<(Vec<Frame>, ExecutionMetrics), ExecuteError> {
-		// Pre-execute interceptors
-		if !state.request_interceptors().is_empty() {
-			state.request_interceptors().pre_execute(&mut ctx).await?;
-		}
-
+		run_pre_execute(state, &mut ctx).await?;
 		let start = state.clock().instant();
-
-		// Build message and send to per-request actor
-		let (reply, receiver) = reply_channel();
-		let msg = build_server_message(ctx.operation, ctx.identity, ctx.rql.clone(), ctx.params.clone(), reply);
-
-		let (actor_ref, _handle) = state.spawn_server_actor();
-		actor_ref.send(msg).ok().ok_or(ExecuteError::Disconnected)?;
-
-		// Await reply with timeout
-		let server_response = timeout(state.query_timeout(), receiver.recv())
-			.await
-			.map_err(|_| ExecuteError::Timeout)?
-			.map_err(|_| ExecuteError::Disconnected)?;
-
-		let wall_duration = start.elapsed();
-		let (frames, compute_duration, mut metrics) = match server_response {
-			ServerResponse::Success {
-				frames,
-				duration,
-				metrics,
-			} => Ok((frames, duration, metrics)),
-			ServerResponse::EngineError {
-				diagnostic,
-				rql,
-			} => Err(ExecuteError::Engine {
-				diagnostic: Arc::from(diagnostic),
-				rql,
-			}),
-		}?;
-
-		metrics.total = ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
-		metrics.compute =
-			ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64).unwrap_or_default();
-
-		// Post-execute interceptors
-		if !state.request_interceptors().is_empty() {
-			let response_ctx = ResponseContext {
-				identity: ctx.identity,
-				operation: ctx.operation,
-				rql: ctx.rql,
-				params: ctx.params,
-				metadata: ctx.metadata,
-				metrics: metrics.clone(),
-				result: Ok(frames.len()),
-			};
-			state.request_interceptors().post_execute(&response_ctx).await;
-		}
-
+		let response = send_server_message(state, &ctx).await?;
+		let (frames, metrics) = finalize_dispatch_metrics(response, start)?;
+		run_post_execute(state, &ctx, &metrics, frames.len()).await;
 		Ok((frames, metrics))
 	}
 
@@ -106,30 +57,109 @@ mod native {
 		state: &AppState,
 		mut ctx: RequestContext,
 	) -> Result<(Vec<Frame>, ExecutionMetrics), ExecuteError> {
-		// Pre-execute interceptors
-		if !state.request_interceptors().is_empty() {
-			state.request_interceptors().pre_execute(&mut ctx).await?;
-		}
-
+		run_pre_execute(state, &mut ctx).await?;
 		let start = state.clock().instant();
+		let response = send_subscribe_message(state, &ctx).await?;
+		let (frames, metrics) = finalize_subscribe_metrics(response, start)?;
+		run_post_execute(state, &ctx, &metrics, frames.len()).await;
+		Ok((frames, metrics))
+	}
 
+	#[inline]
+	async fn run_pre_execute(state: &AppState, ctx: &mut RequestContext) -> Result<(), ExecuteError> {
+		if !state.request_interceptors().is_empty() {
+			state.request_interceptors().pre_execute(ctx).await?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	async fn run_post_execute(
+		state: &AppState,
+		ctx: &RequestContext,
+		metrics: &ExecutionMetrics,
+		frame_count: usize,
+	) {
+		if state.request_interceptors().is_empty() {
+			return;
+		}
+		let response_ctx = ResponseContext {
+			identity: ctx.identity,
+			operation: ctx.operation,
+			rql: ctx.rql.clone(),
+			params: ctx.params.clone(),
+			metadata: ctx.metadata.clone(),
+			metrics: metrics.clone(),
+			result: Ok(frame_count),
+		};
+		state.request_interceptors().post_execute(&response_ctx).await;
+	}
+
+	#[inline]
+	async fn send_server_message(state: &AppState, ctx: &RequestContext) -> Result<ServerResponse, ExecuteError> {
+		let (reply, receiver) = reply_channel();
+		let msg = build_server_message(ctx.operation, ctx.identity, ctx.rql.clone(), ctx.params.clone(), reply);
+		let (actor_ref, _handle) = state.spawn_server_actor();
+		actor_ref.send(msg).ok().ok_or(ExecuteError::Disconnected)?;
+		timeout(state.query_timeout(), receiver.recv())
+			.await
+			.map_err(|_| ExecuteError::Timeout)?
+			.map_err(|_| ExecuteError::Disconnected)
+	}
+
+	#[inline]
+	async fn send_subscribe_message(
+		state: &AppState,
+		ctx: &RequestContext,
+	) -> Result<ServerSubscribeResponse, ExecuteError> {
 		let (reply, receiver) = reply_channel();
 		let msg = ServerMessage::Subscribe {
 			identity: ctx.identity,
 			rql: ctx.rql.clone(),
 			reply,
 		};
-
 		let (actor_ref, _handle) = state.spawn_server_actor();
 		actor_ref.send(msg).ok().ok_or(ExecuteError::Disconnected)?;
-
-		let response = timeout(state.query_timeout(), receiver.recv())
+		timeout(state.query_timeout(), receiver.recv())
 			.await
 			.map_err(|_| ExecuteError::Timeout)?
-			.map_err(|_| ExecuteError::Disconnected)?;
+			.map_err(|_| ExecuteError::Disconnected)
+	}
 
+	#[inline]
+	fn finalize_dispatch_metrics(
+		response: ServerResponse,
+		start: Instant,
+	) -> Result<(Vec<Frame>, ExecutionMetrics), ExecuteError> {
 		let wall_duration = start.elapsed();
+		let (frames, compute_duration, mut metrics) = match response {
+			ServerResponse::Success {
+				frames,
+				duration,
+				metrics,
+			} => (frames, duration, metrics),
+			ServerResponse::EngineError {
+				diagnostic,
+				rql,
+			} => {
+				return Err(ExecuteError::Engine {
+					diagnostic: Arc::from(diagnostic),
+					rql,
+				});
+			}
+		};
+		metrics.total = ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
+		metrics.compute =
+			ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64).unwrap_or_default();
+		Ok((frames, metrics))
+	}
 
+	#[inline]
+	fn finalize_subscribe_metrics(
+		response: ServerSubscribeResponse,
+		start: Instant,
+	) -> Result<(Vec<Frame>, ExecutionMetrics), ExecuteError> {
+		let wall_duration = start.elapsed();
 		let (frames, compute_duration, mut metrics) = match response {
 			ServerSubscribeResponse::Subscribed {
 				frames,
@@ -146,25 +176,9 @@ mod native {
 				});
 			}
 		};
-
 		metrics.total = ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
 		metrics.compute =
 			ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64).unwrap_or_default();
-
-		// Post-execute interceptors
-		if !state.request_interceptors().is_empty() {
-			let response_ctx = ResponseContext {
-				identity: ctx.identity,
-				operation: ctx.operation,
-				rql: ctx.rql,
-				params: ctx.params,
-				metadata: ctx.metadata,
-				metrics: metrics.clone(),
-				result: Ok(frames.len()),
-			};
-			state.request_interceptors().post_execute(&response_ctx).await;
-		}
-
 		Ok((frames, metrics))
 	}
 }

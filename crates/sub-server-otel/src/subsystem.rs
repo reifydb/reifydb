@@ -28,7 +28,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_type::{Result, error::Error};
+use reifydb_type::Result;
 use tracing::{debug, error, info};
 
 use crate::config::OtelConfig;
@@ -107,6 +107,34 @@ impl OtelSubsystem {
 			.and_then(|guard| guard.as_ref().map(|provider| provider.tracer("reifydb")))
 	}
 
+	/// Build the tracer provider, entering the shared runtime context for tonic/hyper init.
+	fn build_provider_in_runtime(&self) -> Result<SdkTracerProvider> {
+		#[cfg(not(feature = "otlp"))]
+		{
+			return Err(CoreError::SubsystemFeatureDisabled {
+				feature: "otlp".to_string(),
+			}
+			.into());
+		}
+		#[cfg(feature = "otlp")]
+		{
+			let _guard = self.runtime.handle().enter();
+			self.build_otlp_tracer_provider().map_err(|e| {
+				CoreError::SubsystemInitFailed {
+					subsystem: "OpenTelemetry".to_string(),
+					reason: e.to_string(),
+				}
+				.into()
+			})
+		}
+	}
+
+	#[inline]
+	fn install_provider(&self, provider: SdkTracerProvider) {
+		global::set_tracer_provider(provider.clone());
+		*self.tracer_provider.lock().unwrap() = Some(provider);
+	}
+
 	/// Build the OTLP tracer provider
 	#[cfg(feature = "otlp")]
 	fn build_otlp_tracer_provider(&self) -> StdResult<SdkTracerProvider, Box<dyn error::Error>> {
@@ -164,42 +192,11 @@ impl Subsystem for OtelSubsystem {
 	}
 
 	fn start(&mut self) -> Result<()> {
-		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
 		}
-
-		// Build the tracer provider (needs runtime context for tonic/hyper)
-		#[cfg(not(feature = "otlp"))]
-		{
-			let err: Error = CoreError::SubsystemFeatureDisabled {
-				feature: "otlp".to_string(),
-			}
-			.into();
-			return Err(err);
-		}
-
-		#[cfg(feature = "otlp")]
-		let provider = {
-			// Enter runtime context for tonic/hyper initialization
-			let _guard = self.runtime.handle().enter();
-			self.build_otlp_tracer_provider().map_err(|e| {
-				let err: Error = CoreError::SubsystemInitFailed {
-					subsystem: "OpenTelemetry".to_string(),
-					reason: e.to_string(),
-				}
-				.into();
-				err
-			})?
-		};
-
-		// Set the global tracer provider
-		// This allows tracing-opentelemetry layer to find and use it
-		global::set_tracer_provider(provider.clone());
-
-		// Store the provider to prevent premature drop
-		*self.tracer_provider.lock().unwrap() = Some(provider);
-
+		let provider = self.build_provider_in_runtime()?;
+		self.install_provider(provider);
 		self.running.store(true, Ordering::SeqCst);
 		info!(
 			service = %self.config.service_name,
@@ -207,7 +204,6 @@ impl Subsystem for OtelSubsystem {
 			exporter = ?self.config.exporter_type,
 			"OpenTelemetry subsystem started"
 		);
-
 		Ok(())
 	}
 

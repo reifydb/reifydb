@@ -19,7 +19,7 @@ use reifydb_type::{
 
 use crate::{
 	ast::{
-		ast::{AstTimestampPrecision, AstViewStorageKind},
+		ast::{AstStatement, AstTimestampPrecision, AstViewStorageKind},
 		parse_str,
 	},
 	bump::{Bump, BumpBox, BumpVec},
@@ -104,7 +104,6 @@ impl Compiler {
 
 	pub fn compile(&self, tx: &mut Transaction<'_>, query: &str) -> Result<CompilationResult> {
 		let fingerprint = CompilationFingerprint::from(xxh3_128(query.as_bytes()));
-
 		if let Some(cached) = self.0.cache.get(&fingerprint) {
 			return Ok(CompilationResult::Ready(cached));
 		}
@@ -112,24 +111,35 @@ impl Compiler {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, query)?;
 		let has_ddl = statements.iter().any(|s| s.contains_ddl());
-		let total_statements = statements.len();
-		let needs_incremental = total_statements > 1 && has_ddl;
-
-		if needs_incremental {
+		if needs_incremental_compile(&statements, has_ddl) {
 			return Ok(CompilationResult::Incremental(IncrementalCompilation {
 				query: query.to_string(),
-				total_statements,
+				total_statements: statements.len(),
 				current: 0,
 			}));
 		}
 
-		// Batch compile
+		let plans = self.batch_compile_statements(&bump, tx, statements)?;
+		let arc_plans = Arc::new(plans);
+		if !has_ddl {
+			self.0.cache.put(fingerprint, arc_plans.clone());
+		}
+		Ok(CompilationResult::Ready(arc_plans))
+	}
+
+	#[inline]
+	fn batch_compile_statements<'b>(
+		&self,
+		bump: &'b Bump,
+		tx: &mut Transaction<'_>,
+		statements: Vec<AstStatement<'b>>,
+	) -> Result<Vec<Compiled>> {
 		let mut plans = Vec::new();
 		for statement in statements {
 			let is_output = statement.is_output;
 			let fingerprint = fingerprint_statement(&statement);
 			let normalized_rql = normalize_statement(&statement);
-			if let Some(mut physical) = plan(&bump, &self.0.catalog, tx, statement)? {
+			if let Some(mut physical) = plan(bump, &self.0.catalog, tx, statement)? {
 				optimize_physical(&mut physical);
 				plans.push(Compiled {
 					instructions: compile_instructions(physical)?,
@@ -139,12 +149,7 @@ impl Compiler {
 				});
 			}
 		}
-
-		let arc_plans = Arc::new(plans);
-		if !has_ddl {
-			self.0.cache.put(fingerprint, arc_plans.clone());
-		}
-		Ok(CompilationResult::Ready(arc_plans))
+		Ok(plans)
 	}
 
 	/// Compile the next statement in an incremental compilation.
@@ -459,6 +464,11 @@ fn compile_instructions(plan: PhysicalPlan<'_>) -> Result<Vec<Instruction>> {
 	compiler.compile_plan(plan)?;
 	compiler.emit(Instruction::Halt);
 	Ok(compiler.instructions)
+}
+
+#[inline]
+fn needs_incremental_compile(statements: &[AstStatement<'_>], has_ddl: bool) -> bool {
+	statements.len() > 1 && has_ddl
 }
 
 /// Context for tracking loop information during compilation

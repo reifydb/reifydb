@@ -4,6 +4,7 @@
 use std::{
 	any::Any,
 	net::SocketAddr,
+	result::Result as StdResult,
 	sync::{
 		Arc, RwLock,
 		atomic::{AtomicBool, Ordering},
@@ -25,7 +26,7 @@ use tokio::{
 	sync::{Notify, oneshot, watch},
 };
 use tokio_stream::{StreamExt, wrappers::TcpListenerStream};
-use tonic::transport::Server;
+use tonic::transport::{Error as TonicError, Server};
 use tracing::{error, info, warn};
 
 use crate::{
@@ -110,60 +111,22 @@ impl ReplicationSubsystem {
 		let bind_addr = config.bind_addr.clone().unwrap_or_else(|| "0.0.0.0:0".to_string());
 		let batch_size = config.batch_size;
 
-		// Create notify and register EventBus listener for push-based replication
-		let notify = Arc::new(Notify::new());
-		event_bus.register::<CdcWrittenEvent, _>(CdcNotifyListener::new(notify.clone()));
-
-		let listener = self.runtime.block_on(TcpListener::bind(&bind_addr)).map_err(|e| {
-			let err: Error = CoreError::SubsystemBindFailed {
-				addr: bind_addr.clone(),
-				reason: e.to_string(),
-			}
-			.into();
-			err
-		})?;
-
-		let actual_addr = listener.local_addr().map_err(|e| {
-			let err: Error = CoreError::SubsystemAddressUnavailable {
-				reason: e.to_string(),
-			}
-			.into();
-			err
-		})?;
-		*self.actual_addr.write().unwrap() = Some(actual_addr);
-		info!("Replication server bound to {}", actual_addr);
+		let notify = register_cdc_notify_listener(&event_bus);
+		let listener = self.bind_replication_listener(&bind_addr)?;
+		self.record_bound_addr(&listener)?;
 
 		let (shutdown_tx, shutdown_rx) = oneshot::channel();
 		let (complete_tx, complete_rx) = oneshot::channel();
-		let running = self.running.clone();
-
 		let (stream_shutdown_tx, stream_shutdown_rx) = watch::channel(false);
 		let service = ReplicationService::new(cdc_store, notify, stream_shutdown_rx, batch_size);
 
+		let running = self.running.clone();
 		self.runtime.spawn(async move {
 			running.store(true, Ordering::SeqCst);
-
-			let incoming = TcpListenerStream::new(listener).map(|result| {
-				if let Ok(ref stream) = result
-					&& let Err(e) = stream.set_nodelay(true)
-				{
-					warn!("Failed to set TCP_NODELAY: {e}");
-				}
-				result
-			});
-
-			let result = Server::builder()
-				.add_service(ReifyDbReplicationServer::new(service))
-				.serve_with_incoming_shutdown(incoming, async {
-					shutdown_rx.await.ok();
-					info!("Replication server received shutdown signal");
-				})
-				.await;
-
+			let result = serve_replication(listener, service, shutdown_rx).await;
 			if let Err(e) = result {
 				error!("Replication server error: {}", e);
 			}
-
 			running.store(false, Ordering::SeqCst);
 			let _ = complete_tx.send(());
 			info!("Replication server stopped");
@@ -172,6 +135,30 @@ impl ReplicationSubsystem {
 		self.shutdown_tx = Some(shutdown_tx);
 		self.shutdown_complete_rx = Some(complete_rx);
 		self.stream_shutdown_tx = Some(stream_shutdown_tx);
+		Ok(())
+	}
+
+	#[inline]
+	fn bind_replication_listener(&self, bind_addr: &str) -> Result<TcpListener> {
+		self.runtime.block_on(TcpListener::bind(bind_addr)).map_err(|e| {
+			CoreError::SubsystemBindFailed {
+				addr: bind_addr.to_string(),
+				reason: e.to_string(),
+			}
+			.into()
+		})
+	}
+
+	#[inline]
+	fn record_bound_addr(&self, listener: &TcpListener) -> Result<()> {
+		let actual_addr = listener.local_addr().map_err(|e| -> Error {
+			CoreError::SubsystemAddressUnavailable {
+				reason: e.to_string(),
+			}
+			.into()
+		})?;
+		*self.actual_addr.write().unwrap() = Some(actual_addr);
+		info!("Replication server bound to {}", actual_addr);
 		Ok(())
 	}
 
@@ -207,6 +194,35 @@ impl ReplicationSubsystem {
 		self.running.store(true, Ordering::SeqCst);
 		Ok(())
 	}
+}
+
+#[inline]
+fn register_cdc_notify_listener(event_bus: &EventBus) -> Arc<Notify> {
+	let notify = Arc::new(Notify::new());
+	event_bus.register::<CdcWrittenEvent, _>(CdcNotifyListener::new(notify.clone()));
+	notify
+}
+
+async fn serve_replication(
+	listener: TcpListener,
+	service: ReplicationService,
+	shutdown_rx: oneshot::Receiver<()>,
+) -> StdResult<(), TonicError> {
+	let incoming = TcpListenerStream::new(listener).map(|result| {
+		if let Ok(ref stream) = result
+			&& let Err(e) = stream.set_nodelay(true)
+		{
+			warn!("Failed to set TCP_NODELAY: {e}");
+		}
+		result
+	});
+	Server::builder()
+		.add_service(ReifyDbReplicationServer::new(service))
+		.serve_with_incoming_shutdown(incoming, async {
+			shutdown_rx.await.ok();
+			info!("Replication server received shutdown signal");
+		})
+		.await
 }
 
 impl HasVersion for ReplicationSubsystem {

@@ -40,8 +40,7 @@ impl CatalogStore {
 		let subscription_id = SubscriptionId(flow_id.0);
 		Self::store_subscription(txn, subscription_id)?;
 		Self::insert_columns_for_subscription(txn, subscription_id, &to_create)?;
-
-		Ok(Self::get_subscription(&mut Transaction::Admin(&mut *txn), subscription_id)?)
+		Self::get_subscription(&mut Transaction::Admin(&mut *txn), subscription_id)
 	}
 
 	fn store_subscription(txn: &mut AdminTransaction, subscription: SubscriptionId) -> Result<()> {

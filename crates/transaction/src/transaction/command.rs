@@ -5,7 +5,6 @@ use std::{mem::take, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
@@ -99,7 +98,10 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, query::QueryTransaction, write::Write},
+	transaction::{
+		RqlExecutor, Transaction, apply_pre_commit_writes, collect_transaction_writes, query::QueryTransaction,
+		write::Write,
+	},
 };
 
 /// An active command transaction that holds a multi command transaction
@@ -225,20 +227,15 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
+		let mut ctx = self.build_pre_commit_context();
+		self.interceptors.pre_commit.execute(&mut ctx)?;
+		self.finalize_commit(ctx, /* unchecked = */ false)
+	}
 
-		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
-			.pending_writes()
-			.iter()
-			.map(|(key, pending)| match &pending.delta {
-				Delta::Set {
-					row,
-					..
-				} => (key.clone(), Some(row.clone())),
-				_ => (key.clone(), None),
-			})
-			.collect();
-
-		let mut ctx = PreCommitContext {
+	#[inline]
+	fn build_pre_commit_context(&mut self) -> PreCommitContext {
+		let transaction_writes = collect_transaction_writes(self.pending_writes());
+		PreCommitContext {
 			flow_changes: self
 				.accumulator
 				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos())),
@@ -246,37 +243,26 @@ impl CommandTransaction {
 			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
-		};
-		self.interceptors.pre_commit.execute(&mut ctx)?;
-
-		if let Some(mut multi) = self.cmd.take() {
-			// Apply pending view writes produced by pre-commit interceptors
-			for (key, value) in &ctx.pending_writes {
-				match value {
-					Some(v) => multi.set(key, v.clone())?,
-					None => multi.remove(key)?,
-				}
-			}
-
-			let id = multi.id();
-			self.state = TransactionState::Committed;
-
-			let changes = TransactionalCatalogChanges::default();
-			let row_changes = take(&mut self.row_changes);
-
-			let version = multi.commit()?;
-			self.interceptors.post_commit.execute(PostCommitContext::new(
-				id,
-				version,
-				changes,
-				row_changes,
-			))?;
-
-			Ok(version)
-		} else {
-			// This should never happen due to check_active
-			unreachable!("Transaction state inconsistency")
 		}
+	}
+
+	fn finalize_commit(&mut self, ctx: PreCommitContext, unchecked: bool) -> Result<CommitVersion> {
+		let Some(mut multi) = self.cmd.take() else {
+			unreachable!("Transaction state inconsistency")
+		};
+		apply_pre_commit_writes(&mut multi, &ctx.pending_writes)?;
+		let id = multi.id();
+		self.state = TransactionState::Committed;
+
+		let changes = TransactionalCatalogChanges::default();
+		let row_changes = take(&mut self.row_changes);
+		let version = if unchecked {
+			multi.commit_unchecked()?
+		} else {
+			multi.commit()?
+		};
+		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;
+		Ok(version)
 	}
 
 	/// Run `body` with conflict tracking disabled, then commit via the
@@ -311,56 +297,9 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
 	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
-
-		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
-			.pending_writes()
-			.iter()
-			.map(|(key, pending)| match &pending.delta {
-				Delta::Set {
-					row,
-					..
-				} => (key.clone(), Some(row.clone())),
-				_ => (key.clone(), None),
-			})
-			.collect();
-
-		let mut ctx = PreCommitContext {
-			flow_changes: self
-				.accumulator
-				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos())),
-			pending_writes: Vec::new(),
-			pending_shapes: Vec::new(),
-			transaction_writes,
-			view_entries: Vec::new(),
-		};
+		let mut ctx = self.build_pre_commit_context();
 		self.interceptors.pre_commit.execute(&mut ctx)?;
-
-		if let Some(mut multi) = self.cmd.take() {
-			for (key, value) in &ctx.pending_writes {
-				match value {
-					Some(v) => multi.set(key, v.clone())?,
-					None => multi.remove(key)?,
-				}
-			}
-
-			let id = multi.id();
-			self.state = TransactionState::Committed;
-
-			let changes = TransactionalCatalogChanges::default();
-			let row_changes = take(&mut self.row_changes);
-
-			let version = multi.commit_unchecked()?;
-			self.interceptors.post_commit.execute(PostCommitContext::new(
-				id,
-				version,
-				changes,
-				row_changes,
-			))?;
-
-			Ok(version)
-		} else {
-			unreachable!("Transaction state inconsistency")
-		}
+		self.finalize_commit(ctx, /* unchecked = */ true)
 	}
 
 	/// Rollback the transaction.

@@ -8,6 +8,7 @@
 
 use std::{
 	any::Any,
+	io,
 	net::SocketAddr,
 	sync::{
 		Arc, RwLock,
@@ -24,9 +25,9 @@ use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
-use reifydb_type::{Result, error::Error};
+use reifydb_type::Result;
 use tokio::{
-	net::TcpListener,
+	net::{TcpListener, TcpStream},
 	select,
 	sync::{Semaphore, oneshot, watch},
 };
@@ -163,6 +164,104 @@ impl WsSubsystem {
 	pub fn admin_port(&self) -> Option<u16> {
 		self.admin_local_addr().map(|a| a.port())
 	}
+
+	#[inline]
+	fn spawn_subscription_poller_if_configured(&self, shutdown_rx: watch::Receiver<bool>) {
+		let Some(ref store) = self.subscription_store else {
+			return;
+		};
+		let poller = Arc::new(StoreBackedPoller::new(store.clone(), self.poll_batch_size));
+		let registry = self.registry.clone();
+		let poll_interval = self.poll_interval;
+		self.runtime.spawn(async move {
+			poller.run_loop(registry, poll_interval, shutdown_rx).await;
+		});
+	}
+
+	fn spawn_main_server(&mut self, shutdown_rx: watch::Receiver<bool>) -> Result<()> {
+		let Some(addr) = self.bind_addr.clone() else {
+			self.running.store(true, Ordering::SeqCst);
+			return Ok(());
+		};
+		let listener = self.bind_listener(&addr)?;
+		let actual_addr = local_addr_or_err(&listener)?;
+		*self.actual_addr.write().unwrap() = Some(actual_addr);
+		info!("WebSocket server bound to {}", actual_addr);
+
+		let (complete_tx, complete_rx) = oneshot::channel();
+		let running = self.running.clone();
+		let state = self.state.clone();
+		let registry = self.registry.clone();
+		let semaphore = self.connection_semaphore.clone();
+		let active_connections = self.active_connections.clone();
+		let runtime_inner = self.runtime.clone();
+		self.runtime.spawn(async move {
+			running.store(true, Ordering::SeqCst);
+			run_accept_loop(
+				listener,
+				state,
+				registry,
+				semaphore,
+				active_connections,
+				shutdown_rx,
+				runtime_inner,
+				"WebSocket server",
+			)
+			.await;
+			running.store(false, Ordering::SeqCst);
+			let _ = complete_tx.send(());
+			info!("WebSocket server stopped");
+		});
+		self.shutdown_complete_rx = Some(complete_rx);
+		Ok(())
+	}
+
+	fn spawn_admin_server(&mut self) -> Result<()> {
+		let Some(admin_addr) = self.admin_bind_addr.clone() else {
+			return Ok(());
+		};
+		let listener = self.bind_listener(&admin_addr)?;
+		let actual_addr = local_addr_or_err(&listener)?;
+		*self.admin_actual_addr.write().unwrap() = Some(actual_addr);
+		info!("WebSocket admin server bound to {}", actual_addr);
+
+		let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
+		let admin_config = self.state.config().clone().admin_enabled(true);
+		let admin_state = self.state.clone_with_config(admin_config);
+		let admin_registry = self.registry.clone();
+		let admin_semaphore = self.connection_semaphore.clone();
+		let admin_active = self.active_connections.clone();
+		let admin_shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
+		let runtime_inner = self.runtime.clone();
+		self.runtime.spawn(async move {
+			run_accept_loop(
+				listener,
+				admin_state,
+				admin_registry,
+				admin_semaphore,
+				admin_active,
+				admin_shutdown_rx,
+				runtime_inner,
+				"WebSocket admin server",
+			)
+			.await;
+			let _ = admin_complete_tx.send(());
+			info!("WebSocket admin server stopped");
+		});
+		self.admin_shutdown_complete_rx = Some(admin_complete_rx);
+		Ok(())
+	}
+
+	#[inline]
+	fn bind_listener(&self, addr: &str) -> Result<TcpListener> {
+		self.runtime.block_on(TcpListener::bind(addr)).map_err(|e| {
+			CoreError::SubsystemBindFailed {
+				addr: addr.to_string(),
+				reason: e.to_string(),
+			}
+			.into()
+		})
+	}
 }
 
 impl HasVersion for WsSubsystem {
@@ -185,215 +284,14 @@ impl Subsystem for WsSubsystem {
 	}
 
 	fn start(&mut self) -> Result<()> {
-		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
 		}
-
-		let runtime = self.runtime.clone();
-		let state = self.state.clone();
-		let registry = self.registry.clone();
-
-		// Create shutdown watch channel (shared by main, admin, and poller)
-		let (tx, rx) = watch::channel(false);
-
-		// Create subscription poller with configured values
-		let poll_interval = self.poll_interval;
-		let batch_size = self.poll_batch_size;
-
-		// Spawn store-backed subscription poller if store is available
-		if let Some(ref store) = self.subscription_store {
-			let poller = Arc::new(StoreBackedPoller::new(store.clone(), batch_size));
-			let poller_registry = registry.clone();
-			let poller_shutdown_rx = rx.clone();
-			runtime.spawn(async move {
-				poller.run_loop(poller_registry, poll_interval, poller_shutdown_rx).await;
-			});
-		}
-
-		// Bind main listener if configured
-		if let Some(addr) = &self.bind_addr {
-			let addr = addr.clone();
-			let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| {
-				let err: Error = CoreError::SubsystemBindFailed {
-					addr: addr.clone(),
-					reason: e.to_string(),
-				}
-				.into();
-				err
-			})?;
-
-			let actual_addr = listener.local_addr().map_err(|e| {
-				let err: Error = CoreError::SubsystemAddressUnavailable {
-					reason: e.to_string(),
-				}
-				.into();
-				err
-			})?;
-			*self.actual_addr.write().unwrap() = Some(actual_addr);
-			info!("WebSocket server bound to {}", actual_addr);
-
-			let (complete_tx, complete_rx) = oneshot::channel();
-			let running = self.running.clone();
-			let active_connections = self.active_connections.clone();
-			let semaphore = self.connection_semaphore.clone();
-			let runtime_inner = runtime.clone();
-			let mut shutdown_rx = rx;
-
-			runtime.spawn(async move {
-				running.store(true, Ordering::SeqCst);
-
-				loop {
-					select! {
-						biased;
-
-						// Check shutdown first
-						result = shutdown_rx.changed() => {
-							if result.is_err() || *shutdown_rx.borrow() {
-								info!("WebSocket server shutting down");
-								break;
-							}
-						}
-
-						// Accept new connections
-						accept = listener.accept() => {
-							match accept {
-								Ok((stream, peer)) => {
-									// Try to acquire a permit (non-blocking)
-									let permit = match semaphore.clone().try_acquire_owned() {
-										Ok(p) => p,
-										Err(_) => {
-											warn!("Connection limit reached, rejecting {}", peer);
-											// Connection will be dropped, closing it
-											continue;
-										}
-									};
-
-									let conn_state = state.clone();
-									let conn_registry = registry.clone();
-										let shutdown_rx = shutdown_rx.clone();
-									let active = active_connections.clone();
-									let runtime_handle = runtime_inner.clone();
-
-									active.fetch_add(1, Ordering::SeqCst);
-									debug!("Accepted connection from {}", peer);
-
-									runtime_handle.spawn(async move {
-										handle_connection(stream, conn_state, conn_registry, shutdown_rx).await;
-										active.fetch_sub(1, Ordering::SeqCst);
-										drop(permit); // Release connection slot
-									});
-								}
-								Err(e) => {
-									warn!("Accept error: {}", e);
-								}
-							}
-						}
-					}
-				}
-
-				running.store(false, Ordering::SeqCst);
-				let _ = complete_tx.send(());
-				info!("WebSocket server stopped");
-			});
-
-			self.shutdown_complete_rx = Some(complete_rx);
-		} else {
-			// No main listener - mark running synchronously
-			self.running.store(true, Ordering::SeqCst);
-		}
-
-		self.shutdown_tx = Some(tx);
-
-		// Start admin listener if configured
-		if let Some(admin_addr) = &self.admin_bind_addr {
-			let admin_addr = admin_addr.clone();
-			let runtime = self.runtime.clone();
-			let admin_listener = runtime.block_on(TcpListener::bind(&admin_addr)).map_err(|e| {
-				let err: Error = CoreError::SubsystemBindFailed {
-					addr: admin_addr.clone(),
-					reason: e.to_string(),
-				}
-				.into();
-				err
-			})?;
-
-			let admin_actual_addr = admin_listener.local_addr().map_err(|e| {
-				let err: Error = CoreError::SubsystemAddressUnavailable {
-					reason: e.to_string(),
-				}
-				.into();
-				err
-			})?;
-			*self.admin_actual_addr.write().unwrap() = Some(admin_actual_addr);
-			info!("WebSocket admin server bound to {}", admin_actual_addr);
-
-			let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
-
-			// Create admin state with admin_enabled = true, preserving interceptors
-			let admin_config = self.state.config().clone().admin_enabled(true);
-			let admin_state = self.state.clone_with_config(admin_config);
-
-			// Share the same registry and poller
-			let admin_registry = self.registry.clone();
-			let admin_semaphore = self.connection_semaphore.clone();
-			let admin_active = self.active_connections.clone();
-			let mut admin_shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
-			let runtime_inner = runtime.clone();
-
-			runtime.spawn(async move {
-				loop {
-					select! {
-						biased;
-
-						result = admin_shutdown_rx.changed() => {
-							if result.is_err() || *admin_shutdown_rx.borrow() {
-								info!("WebSocket admin server shutting down");
-								break;
-							}
-						}
-
-						accept = admin_listener.accept() => {
-							match accept {
-								Ok((stream, peer)) => {
-									let permit = match admin_semaphore.clone().try_acquire_owned() {
-										Ok(p) => p,
-										Err(_) => {
-											warn!("Connection limit reached on admin, rejecting {}", peer);
-											continue;
-										}
-									};
-
-									let conn_state = admin_state.clone();
-									let conn_registry = admin_registry.clone();
-									let shutdown_rx = admin_shutdown_rx.clone();
-									let active = admin_active.clone();
-									let runtime_handle = runtime_inner.clone();
-
-									active.fetch_add(1, Ordering::SeqCst);
-									debug!("Accepted admin connection from {}", peer);
-
-									runtime_handle.spawn(async move {
-										handle_connection(stream, conn_state, conn_registry, shutdown_rx).await;
-										active.fetch_sub(1, Ordering::SeqCst);
-										drop(permit);
-									});
-								}
-								Err(e) => {
-									warn!("Admin accept error: {}", e);
-								}
-							}
-						}
-					}
-				}
-
-				let _ = admin_complete_tx.send(());
-				info!("WebSocket admin server stopped");
-			});
-
-			self.admin_shutdown_complete_rx = Some(admin_complete_rx);
-		}
-
+		let (shutdown_tx, shutdown_rx) = watch::channel(false);
+		self.spawn_subscription_poller_if_configured(shutdown_rx.clone());
+		self.spawn_main_server(shutdown_rx)?;
+		self.shutdown_tx = Some(shutdown_tx);
+		self.spawn_admin_server()?;
 		Ok(())
 	}
 
@@ -450,4 +348,83 @@ impl Subsystem for WsSubsystem {
 	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
+}
+
+#[inline]
+fn local_addr_or_err(listener: &TcpListener) -> Result<SocketAddr> {
+	listener.local_addr().map_err(|e| {
+		CoreError::SubsystemAddressUnavailable {
+			reason: e.to_string(),
+		}
+		.into()
+	})
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_accept_loop(
+	listener: TcpListener,
+	state: AppState,
+	registry: Arc<SubscriptionRegistry>,
+	semaphore: Arc<Semaphore>,
+	active_connections: Arc<AtomicUsize>,
+	mut shutdown_rx: watch::Receiver<bool>,
+	runtime: SharedRuntime,
+	name: &'static str,
+) {
+	loop {
+		select! {
+			biased;
+			result = shutdown_rx.changed() => {
+				if result.is_err() || *shutdown_rx.borrow() {
+					info!("{} shutting down", name);
+					break;
+				}
+			}
+			accept = listener.accept() => {
+				handle_accept_result(
+					accept,
+					&state,
+					&registry,
+					&semaphore,
+					&active_connections,
+					&shutdown_rx,
+					&runtime,
+				);
+			}
+		}
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_accept_result(
+	accept: io::Result<(TcpStream, SocketAddr)>,
+	state: &AppState,
+	registry: &Arc<SubscriptionRegistry>,
+	semaphore: &Arc<Semaphore>,
+	active_connections: &Arc<AtomicUsize>,
+	shutdown_rx: &watch::Receiver<bool>,
+	runtime: &SharedRuntime,
+) {
+	let (stream, peer) = match accept {
+		Ok(pair) => pair,
+		Err(e) => {
+			warn!("Accept error: {}", e);
+			return;
+		}
+	};
+	let Ok(permit) = semaphore.clone().try_acquire_owned() else {
+		warn!("Connection limit reached, rejecting {}", peer);
+		return;
+	};
+	let conn_state = state.clone();
+	let conn_registry = registry.clone();
+	let conn_shutdown_rx = shutdown_rx.clone();
+	let active = active_connections.clone();
+	active.fetch_add(1, Ordering::SeqCst);
+	debug!("Accepted connection from {}", peer);
+	runtime.spawn(async move {
+		handle_connection(stream, conn_state, conn_registry, conn_shutdown_rx).await;
+		active.fetch_sub(1, Ordering::SeqCst);
+		drop(permit);
+	});
 }

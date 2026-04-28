@@ -9,6 +9,8 @@ use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::engine::StandardEngine;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_type::error::Error;
+#[cfg(not(reifydb_single_threaded))]
+use reifydb_type::value::frame::column::FrameColumn;
 use reifydb_type::{
 	Result as TypeResult,
 	params::Params,
@@ -90,65 +92,48 @@ pub async fn create_subscription(
 		params: Params::None,
 		metadata,
 	};
-
 	let (frames, _metrics) = dispatch_subscribe(state, ctx).await?;
-
 	let frame = frames.first().ok_or(CreateSubscriptionError::ExtractionFailed)?;
 
-	// Check if result indicates a remote source
-	if let Some(addr_col) = frame.columns.iter().find(|c| c.name == "remote_address") {
-		let address = if !addr_col.data.is_empty() {
-			match addr_col.data.get_value(0) {
-				Value::Utf8(s) => s,
-				_ => return Err(CreateSubscriptionError::ExtractionFailed),
-			}
-		} else {
-			return Err(CreateSubscriptionError::ExtractionFailed);
-		};
-
-		let rql = frame
-			.columns
-			.iter()
-			.find(|c| c.name == "remote_rql")
-			.and_then(|col| {
-				if !col.data.is_empty() {
-					match col.data.get_value(0) {
-						Value::Utf8(s) => Some(s),
-						_ => None,
-					}
-				} else {
-					None
-				}
-			})
-			.ok_or(CreateSubscriptionError::ExtractionFailed)?;
-
-		let token = frame.columns.iter().find(|c| c.name == "remote_token").and_then(|col| {
-			if !col.data.is_empty() {
-				match col.data.get_value(0) {
-					Value::Utf8(s) => Some(s),
-					_ => None,
-				}
-			} else {
-				None
-			}
-		});
-
-		return Ok(CreateSubscriptionResult::Remote {
-			address,
-			rql,
-			token,
-		});
+	if let Some(remote) = extract_remote_result(frame)? {
+		return Ok(remote);
 	}
+	extract_local_result(frame)
+}
 
-	// Normal local path: extract subscription_id
+#[cfg(not(reifydb_single_threaded))]
+fn extract_remote_result(frame: &Frame) -> Result<Option<CreateSubscriptionResult>, CreateSubscriptionError> {
+	let Some(addr_col) = frame.columns.iter().find(|c| c.name == "remote_address") else {
+		return Ok(None);
+	};
+	let address = match first_utf8_value(addr_col) {
+		Some(s) => s,
+		None => return Err(CreateSubscriptionError::ExtractionFailed),
+	};
+	let rql = frame
+		.columns
+		.iter()
+		.find(|c| c.name == "remote_rql")
+		.and_then(first_utf8_value)
+		.ok_or(CreateSubscriptionError::ExtractionFailed)?;
+	let token = frame.columns.iter().find(|c| c.name == "remote_token").and_then(first_utf8_value);
+	Ok(Some(CreateSubscriptionResult::Remote {
+		address,
+		rql,
+		token,
+	}))
+}
+
+#[cfg(not(reifydb_single_threaded))]
+fn extract_local_result(frame: &Frame) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
 	frame.columns
 		.iter()
 		.find(|c| c.name == "subscription_id")
 		.and_then(|col| {
-			if !col.data.is_empty() {
-				Some(col.data.get_value(0))
-			} else {
+			if col.data.is_empty() {
 				None
+			} else {
+				Some(col.data.get_value(0))
 			}
 		})
 		.and_then(|value| match value {
@@ -160,6 +145,18 @@ pub async fn create_subscription(
 		})
 		.map(CreateSubscriptionResult::Local)
 		.ok_or(CreateSubscriptionError::ExtractionFailed)
+}
+
+#[cfg(not(reifydb_single_threaded))]
+#[inline]
+fn first_utf8_value(col: &FrameColumn) -> Option<String> {
+	if col.data.is_empty() {
+		return None;
+	}
+	match col.data.get_value(0) {
+		Value::Utf8(s) => Some(s),
+		_ => None,
+	}
 }
 
 /// Extract the subscription ID from frames returned by `engine.subscribe_as`.

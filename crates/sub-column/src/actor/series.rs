@@ -4,9 +4,10 @@
 use std::{
 	collections::HashMap,
 	sync::Arc,
-	time::{Duration, UNIX_EPOCH},
+	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use reifydb_catalog::catalog::Catalog;
 use reifydb_column::{
 	bucket::{Bucket, BucketId, bucket_for, is_closed},
 	compress::Compressor,
@@ -98,79 +99,108 @@ impl SeriesMaterializationActor {
 	}
 
 	fn run_tick(&self, state: &mut SeriesMaterializationState, _now: DateTime) {
-		let mut query_txn = match self.engine.begin_query(IdentityId::system()) {
-			Ok(t) => t,
-			Err(e) => {
-				warn!("series materialization: begin_query failed: {e}");
-				return;
-			}
+		let Some(mut query_txn) = self.begin_query_or_warn() else {
+			return;
 		};
-
 		let catalog = self.engine.catalog();
 		let now_wall = UNIX_EPOCH + Duration::from_nanos(self.engine.clock().now_nanos());
-		let series_list = catalog.materialized.list_series();
+		for series in catalog.materialized.list_series() {
+			self.materialize_series_buckets(state, &mut query_txn, &catalog, &series, now_wall);
+		}
+	}
 
-		for series in series_list {
-			let metadata = {
-				let mut tx: Transaction<'_> = (&mut query_txn).into();
-				match catalog.find_series_metadata(&mut tx, series.id) {
-					Ok(Some(m)) => m,
-					Ok(None) => continue,
-					Err(e) => {
-						warn!(
-							"series materialization: find_series_metadata failed for {:?}: {e}",
-							series.id
-						);
-						continue;
-					}
-				}
-			};
-			if metadata.row_count == 0 {
-				continue;
+	#[inline]
+	fn begin_query_or_warn(&self) -> Option<QueryTransaction> {
+		match self.engine.begin_query(IdentityId::system()) {
+			Ok(t) => Some(t),
+			Err(e) => {
+				warn!("series materialization: begin_query failed: {e}");
+				None
 			}
+		}
+	}
 
-			let first = bucket_for(metadata.oldest_key, self.bucket_width);
-			let last = bucket_for(metadata.newest_key, self.bucket_width);
+	fn materialize_series_buckets(
+		&self,
+		state: &mut SeriesMaterializationState,
+		query_txn: &mut QueryTransaction,
+		catalog: &Catalog,
+		series: &Series,
+		now_wall: SystemTime,
+	) {
+		let Some(metadata) = self.load_series_metadata_or_warn(query_txn, catalog, series) else {
+			return;
+		};
+		if metadata.row_count == 0 {
+			return;
+		}
+		let first = bucket_for(metadata.oldest_key, self.bucket_width);
+		let last = bucket_for(metadata.newest_key, self.bucket_width);
+		let mut start = first.start;
+		while start <= last.start {
+			let bucket = Bucket {
+				start,
+				end: start + self.bucket_width,
+				width: self.bucket_width,
+			};
+			start = start.saturating_add(self.bucket_width);
+			self.maybe_materialize_bucket(state, query_txn, series, &metadata, &bucket, now_wall);
+		}
+	}
 
-			let mut start = first.start;
-			while start <= last.start {
-				let bucket = Bucket {
-					start,
-					end: start + self.bucket_width,
-					width: self.bucket_width,
-				};
-				start = start.saturating_add(self.bucket_width);
+	#[inline]
+	fn load_series_metadata_or_warn(
+		&self,
+		query_txn: &mut QueryTransaction,
+		catalog: &Catalog,
+		series: &Series,
+	) -> Option<SeriesMetadata> {
+		let mut tx: Transaction<'_> = query_txn.into();
+		match catalog.find_series_metadata(&mut tx, series.id) {
+			Ok(Some(m)) => Some(m),
+			Ok(None) => None,
+			Err(e) => {
+				warn!("series materialization: find_series_metadata failed for {:?}: {e}", series.id);
+				None
+			}
+		}
+	}
 
-				if !is_closed(&bucket, &series, &metadata, now_wall, self.grace) {
-					continue;
-				}
-
-				let key = (series.id, bucket.id());
-				let need_remat = match state.bucket_state.get(&key) {
-					None => true,
-					Some(s) => s.materialized_at_sequence < metadata.sequence_counter,
-				};
-				if !need_remat {
-					continue;
-				}
-
-				match self.materialize_bucket(&mut query_txn, &series, &metadata, &bucket) {
-					Ok(()) => {
-						state.bucket_state.insert(
-							key,
-							SeriesBucketState {
-								materialized_at_sequence: metadata.sequence_counter,
-							},
-						);
-					}
-					Err(e) => {
-						warn!(
-							"series materialization skipped for {:?} bucket {:?}: {e}",
-							series.id,
-							bucket.id()
-						);
-					}
-				}
+	fn maybe_materialize_bucket(
+		&self,
+		state: &mut SeriesMaterializationState,
+		query_txn: &mut QueryTransaction,
+		series: &Series,
+		metadata: &SeriesMetadata,
+		bucket: &Bucket,
+		now_wall: SystemTime,
+	) {
+		if !is_closed(bucket, series, metadata, now_wall, self.grace) {
+			return;
+		}
+		let key = (series.id, bucket.id());
+		let need_remat = match state.bucket_state.get(&key) {
+			None => true,
+			Some(s) => s.materialized_at_sequence < metadata.sequence_counter,
+		};
+		if !need_remat {
+			return;
+		}
+		match self.materialize_bucket(query_txn, series, metadata, bucket) {
+			Ok(()) => {
+				state.bucket_state.insert(
+					key,
+					SeriesBucketState {
+						materialized_at_sequence: metadata.sequence_counter,
+					},
+				);
+			}
+			Err(e) => {
+				warn!(
+					"series materialization skipped for {:?} bucket {:?}: {e}",
+					series.id,
+					bucket.id()
+				);
 			}
 		}
 	}

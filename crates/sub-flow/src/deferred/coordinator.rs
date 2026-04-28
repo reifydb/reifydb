@@ -80,6 +80,16 @@ impl CdcConsume for FlowConsumeRef {
 
 use reifydb_core::actors::flow::FlowCoordinatorMessage;
 
+#[inline]
+fn record_version_range_span(cdcs: &[Cdc]) {
+	if let Some(first) = cdcs.first() {
+		Span::current().record("version_start", first.version.0);
+	}
+	if let Some(last) = cdcs.last() {
+		Span::current().record("version_end", last.version.0);
+	}
+}
+
 /// Context needed to resume processing after an async pool reply.
 struct ConsumeContext {
 	state_version: CommitVersion,
@@ -255,20 +265,11 @@ impl CoordinatorActor {
 			(reply)(coordinator_error("Coordinator busy"));
 			return;
 		}
+		record_version_range_span(&cdcs);
 
 		let consume_start = self.clock.instant();
-
-		// Record version range
-		if let Some(first) = cdcs.first() {
-			Span::current().record("version_start", first.version.0);
-		}
-		if let Some(last) = cdcs.last() {
-			Span::current().record("version_end", last.version.0);
-		}
-
 		let latest_version = cdcs.last().map(|c| c.version);
 
-		// Get state_version from a read-only query
 		let state_version = match self.engine.begin_query(IdentityId::system()) {
 			Ok(q) => q.version(),
 			Err(e) => {
@@ -277,21 +278,7 @@ impl CoordinatorActor {
 			}
 		};
 
-		// Update tracker and collect changes directly from CDC
-		let mut all_changes = Vec::new();
-		for cdc in &cdcs {
-			let version = cdc.version;
-
-			// Update tracker for lag calculation
-			for change in &cdc.changes {
-				if let ChangeOrigin::Shape(source) = &change.origin {
-					self.tracker.update(*source, version);
-				}
-			}
-
-			// Collect changes directly (no conversion needed with columnar layout)
-			all_changes.extend(cdc.changes.iter().cloned());
-		}
+		let all_changes = self.update_tracker_and_collect(&cdcs);
 		let consume_ctx = ConsumeContext {
 			state_version,
 			current_version,
@@ -306,88 +293,113 @@ impl CoordinatorActor {
 			view_changes: Vec::new(),
 		};
 
-		// Discover and load new flows from CDC events using engine.begin_query()
-		let new_flow_ids = extract_new_flow_ids(&cdcs);
-		let mut new_flows = Vec::new();
-		if !new_flow_ids.is_empty() {
-			let mut query = match self.engine.begin_query(IdentityId::system()) {
-				Ok(q) => q,
-				Err(e) => {
-					(consume_ctx.original_reply)(coordinator_error(e));
-					return;
-				}
-			};
-			for flow_id in new_flow_ids {
-				match self.catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
-					Ok((flow, is_new)) => {
-						if is_new {
-							new_flows.push(flow);
-						} else {
-							// Flow was already cached (e.g. by the dispatcher for
-							// transactional views). Add it to the analyzer so the
-							// dependency graph includes its source/sink info - this
-							// lets filter_cdc_for_flow resolve transitive dependencies
-							// through transactional views.
-							state.analyzer.add(flow);
-							// Remove from FlowCatalog so the lag provider doesn't
-							// include this non-deferred flow in its calculations.
-							// Transactional flows have no CDC checkpoint and would
-							// report perpetual lag, blocking `await` indefinitely.
-							self.catalog.remove(flow_id);
-						}
-					}
-					Err(e) => {
-						warn!(
-							flow_id = flow_id.0,
-							error = %e,
-							"failed to load flow in coordinator, skipping"
-						);
-						continue;
-					}
-				}
-			}
-		}
-
-		// Start registering flows (if any), otherwise proceed to submit
-		if new_flows.is_empty() {
-			self.proceed_to_submit(state, ctx, consume_ctx);
-		} else {
-			// Register flows one at a time via async callbacks
-			// Pop the first flow to register now
-			let flow = new_flows.remove(0);
-			let flow_id = flow.id;
-
-			state.analyzer.add(flow.clone());
-			self.maybe_register_tick_schedule(state, &flow);
-			if flow.is_subscription() {
-				state.states.register_active(flow_id, consume_ctx.current_version);
-				debug!(flow_id = flow_id.0, "registered new subscription flow as active");
-			} else {
-				state.states.register_backfilling(flow_id);
-				debug!(flow_id = flow_id.0, "registered new flow in backfilling status");
-			}
-
-			let self_ref = ctx.self_ref().clone();
-			let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
-				let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
-			});
-
-			if self.pool
-				.send(FlowPoolMessage::RegisterFlow {
-					flow_id,
-					reply: callback,
-				})
-				.is_err()
-			{
-				(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
+		let new_flows = match self.discover_and_load_new_flows(state, &cdcs) {
+			Ok(flows) => flows,
+			Err(e) => {
+				(consume_ctx.original_reply)(coordinator_error(e));
 				return;
 			}
+		};
 
-			state.phase = Phase::RegisteringFlows {
-				flows: new_flows,
-				ctx: consume_ctx,
-			};
+		self.start_registration_or_submit(state, ctx, consume_ctx, new_flows);
+	}
+
+	#[inline]
+	fn update_tracker_and_collect(&self, cdcs: &[Cdc]) -> Vec<Change> {
+		let mut all_changes = Vec::new();
+		for cdc in cdcs {
+			let version = cdc.version;
+			for change in &cdc.changes {
+				if let ChangeOrigin::Shape(source) = &change.origin {
+					self.tracker.update(*source, version);
+				}
+			}
+			all_changes.extend(cdc.changes.iter().cloned());
 		}
+		all_changes
+	}
+
+	fn discover_and_load_new_flows(&self, state: &mut CoordinatorState, cdcs: &[Cdc]) -> Result<Vec<FlowDag>> {
+		let new_flow_ids = extract_new_flow_ids(cdcs);
+		let mut new_flows = Vec::new();
+		if new_flow_ids.is_empty() {
+			return Ok(new_flows);
+		}
+		let mut query = self.engine.begin_query(IdentityId::system())?;
+		for flow_id in new_flow_ids {
+			match self.catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
+				Ok((flow, is_new)) => {
+					if is_new {
+						new_flows.push(flow);
+					} else {
+						// Flow was already cached (e.g. by the dispatcher for
+						// transactional views). Add it to the analyzer so the
+						// dependency graph includes its source/sink info - this
+						// lets filter_cdc_for_flow resolve transitive dependencies
+						// through transactional views.
+						state.analyzer.add(flow);
+						// Remove from FlowCatalog so the lag provider doesn't
+						// include this non-deferred flow in its calculations.
+						// Transactional flows have no CDC checkpoint and would
+						// report perpetual lag, blocking `await` indefinitely.
+						self.catalog.remove(flow_id);
+					}
+				}
+				Err(e) => {
+					warn!(
+						flow_id = flow_id.0,
+						error = %e,
+						"failed to load flow in coordinator, skipping"
+					);
+					continue;
+				}
+			}
+		}
+		Ok(new_flows)
+	}
+
+	fn start_registration_or_submit(
+		&self,
+		state: &mut CoordinatorState,
+		ctx: &Context<FlowCoordinatorMessage>,
+		consume_ctx: ConsumeContext,
+		mut new_flows: Vec<FlowDag>,
+	) {
+		if new_flows.is_empty() {
+			self.proceed_to_submit(state, ctx, consume_ctx);
+			return;
+		}
+		let flow = new_flows.remove(0);
+		let flow_id = flow.id;
+
+		state.analyzer.add(flow.clone());
+		self.maybe_register_tick_schedule(state, &flow);
+		if flow.is_subscription() {
+			state.states.register_active(flow_id, consume_ctx.current_version);
+			debug!(flow_id = flow_id.0, "registered new subscription flow as active");
+		} else {
+			state.states.register_backfilling(flow_id);
+			debug!(flow_id = flow_id.0, "registered new flow in backfilling status");
+		}
+
+		let self_ref = ctx.self_ref().clone();
+		let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
+			let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
+		});
+		if self.pool
+			.send(FlowPoolMessage::RegisterFlow {
+				flow_id,
+				reply: callback,
+			})
+			.is_err()
+		{
+			(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
+			return;
+		}
+		state.phase = Phase::RegisteringFlows {
+			flows: new_flows,
+			ctx: consume_ctx,
+		};
 	}
 
 	/// Handle a PoolReply based on the current phase.
