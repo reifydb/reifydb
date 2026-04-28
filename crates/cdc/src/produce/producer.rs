@@ -235,7 +235,13 @@ where
 			diff
 		} else {
 			let mut post_buf = self.slab_pool.acquire();
-			let diff = build_insert_diff_into_with_pool(catalog, row_number, row.clone(), &mut post_buf, &self.pool);
+			let diff = build_insert_diff_into_with_pool(
+				catalog,
+				row_number,
+				row.clone(),
+				&mut post_buf,
+				&self.pool,
+			);
 			acquired_slabs.push(post_buf);
 			diff
 		}
@@ -361,8 +367,7 @@ where
 	/// match, or cutoff_version is zero).
 	#[inline]
 	fn find_eviction_target(&self) -> Result<Option<CommitVersion>> {
-		let Some(ttl) =
-			self.host.materialized_catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration)
+		let Some(ttl) = self.host.materialized_catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration)
 		else {
 			return Ok(None);
 		};

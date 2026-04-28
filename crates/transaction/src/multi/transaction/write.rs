@@ -426,19 +426,11 @@ impl MultiWriteTransaction {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-
 		let conflict_manager = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 
 		let result = self.oracle.new_commit(base_version, conflict_manager);
-		// The oracle has consumed the read snapshot - whether it committed,
-		// conflicted, or rejected as TooOld, base_version is no longer
-		// needed for conflict detection. Release it on the watermark
-		// exactly once.
-		if self.lifecycle == Lifecycle::Active {
-			self.oracle.query.mark_finished(base_version);
-			self.transition_to(Lifecycle::QueryDone);
-		}
+		self.release_read_snapshot(base_version);
 
 		match result? {
 			CreateCommitResult::Conflict(conflicts) => {
@@ -446,25 +438,7 @@ impl MultiWriteTransaction {
 				Err(TransactionError::Conflict.into())
 			}
 			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
-			CreateCommitResult::Success(version) => {
-				let _ = mem::take(&mut self.pending_writes);
-				let duplicate_writes = mem::take(&mut self.duplicates);
-				let mut all = mem::take(&mut self.delta_log);
-				all.reserve(duplicate_writes.len());
-
-				for pending in all.iter_mut() {
-					pending.version = version;
-				}
-
-				for mut pending in duplicate_writes {
-					pending.version = version;
-					all.push(pending);
-				}
-
-				debug_assert_ne!(version, 0);
-
-				Ok((version, all))
-			}
+			CreateCommitResult::Success(version) => Ok((version, self.assemble_committed_deltas(version))),
 		}
 	}
 
@@ -477,40 +451,49 @@ impl MultiWriteTransaction {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-
 		let _ = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 
 		let result = self.oracle.advance_unchecked(base_version);
+		self.release_read_snapshot(base_version);
+
+		match result? {
+			CreateCommitResult::Conflict(_) => unreachable!("advance_unchecked never reports a conflict"),
+			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
+			CreateCommitResult::Success(version) => Ok((version, self.assemble_committed_deltas(version))),
+		}
+	}
+
+	/// The oracle has consumed the read snapshot - whether it committed,
+	/// conflicted, or rejected as TooOld, base_version is no longer needed
+	/// for conflict detection. Release it on the watermark exactly once.
+	#[inline]
+	fn release_read_snapshot(&mut self, base_version: CommitVersion) {
 		if self.lifecycle == Lifecycle::Active {
 			self.oracle.query.mark_finished(base_version);
 			self.transition_to(Lifecycle::QueryDone);
 		}
+	}
 
-		match result? {
-			CreateCommitResult::Conflict(_) => {
-				unreachable!("advance_unchecked never reports a conflict")
-			}
-			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
-			CreateCommitResult::Success(version) => {
-				let _ = mem::take(&mut self.pending_writes);
-				let duplicate_writes = mem::take(&mut self.duplicates);
-				let mut all = mem::take(&mut self.delta_log);
-				all.reserve(duplicate_writes.len());
+	/// On Success: drain pending writes / duplicates / delta log, stamp every
+	/// entry with the assigned commit version, and return the merged list in
+	/// issuance order (delta log first, duplicates appended).
+	#[inline]
+	fn assemble_committed_deltas(&mut self, version: CommitVersion) -> Vec<DeltaEntry> {
+		debug_assert_ne!(version, 0);
+		let _ = mem::take(&mut self.pending_writes);
+		let duplicate_writes = mem::take(&mut self.duplicates);
+		let mut all = mem::take(&mut self.delta_log);
+		all.reserve(duplicate_writes.len());
 
-				for pending in all.iter_mut() {
-					pending.version = version;
-				}
-				for mut pending in duplicate_writes {
-					pending.version = version;
-					all.push(pending);
-				}
-
-				debug_assert_ne!(version, 0);
-
-				Ok((version, all))
-			}
+		for pending in all.iter_mut() {
+			pending.version = version;
 		}
+		for mut pending in duplicate_writes {
+			pending.version = version;
+			all.push(pending);
+		}
+		all
 	}
 }
 
@@ -521,20 +504,8 @@ impl MultiWriteTransaction {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
-
 		let (commit_version, entries) = self.commit_pending()?;
-
-		if entries.is_empty() {
-			self.discard();
-			return Ok(CommitVersion(0));
-		}
-
-		let deltas = self.optimize_for_storage(&entries);
-		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
-		self.discard();
-		self.publish(commit_version, deltas);
-
-		Ok(commit_version)
+		self.finalize_commit(commit_version, entries)
 	}
 
 	/// See the "Unchecked commits" section in `multi::transaction` for the safety contract.
@@ -544,19 +515,27 @@ impl MultiWriteTransaction {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
-
 		let (commit_version, entries) = self.commit_pending_unchecked()?;
+		self.finalize_commit(commit_version, entries)
+	}
 
+	/// Persist the commit and publish the post-commit event. Returns
+	/// `CommitVersion(0)` when `entries` is empty (every write was elided
+	/// by the optimizer or there were no writes to begin with).
+	#[inline]
+	fn finalize_commit(
+		&mut self,
+		commit_version: CommitVersion,
+		entries: Vec<DeltaEntry>,
+	) -> Result<CommitVersion> {
 		if entries.is_empty() {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
-
 		let deltas = self.optimize_for_storage(&entries);
 		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
 		self.discard();
 		self.publish(commit_version, deltas);
-
 		Ok(commit_version)
 	}
 

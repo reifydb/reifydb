@@ -115,99 +115,137 @@ impl MultiVersionCommit for StandardMultiStore {
 			return Ok(());
 		};
 
-		let mut pending_set_keys: HashSet<CowVec<u8>> = HashSet::new();
-		let mut writes: Vec<MultiWrite> = Vec::new();
-		let mut deletes: Vec<MultiDelete> = Vec::new();
-		let mut batches: TierBatch = HashMap::new();
-		let mut explicit_drops: Vec<(EntryKind, EncodedKey)> = Vec::new();
+		let classified = classify_deltas(&deltas);
+		let drop_batch = build_drop_batch(classified.explicit_drops, &classified.pending_set_keys, version);
+		self.dispatch_drops(drop_batch);
 
-		for delta in deltas.iter() {
-			let key = delta.key();
+		storage.set(version, classified.batches)?;
+		self.emit_commit_metrics(classified.writes, classified.deletes, version);
+		Ok(())
+	}
+}
 
-			let table = classify_key(key);
-			let is_single_version = is_single_version_semantics_key(key);
+/// `commit`'s per-delta classification: Set/Unset go to `batches` (and emit
+/// metric entries), Remove goes to `batches` only, Drop is queued for the
+/// drop-actor with optional pending-version tagging if the same key was Set
+/// in this commit (single-version-semantics keys).
+struct ClassifiedDeltas {
+	pending_set_keys: HashSet<CowVec<u8>>,
+	writes: Vec<MultiWrite>,
+	deletes: Vec<MultiDelete>,
+	batches: TierBatch,
+	explicit_drops: Vec<(EntryKind, EncodedKey)>,
+}
 
-			match delta {
-				Delta::Set {
-					key,
-					row,
-				} => {
-					if is_single_version {
-						pending_set_keys.insert(key.0.clone());
-					}
+#[inline]
+fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
+	let mut pending_set_keys: HashSet<CowVec<u8>> = HashSet::new();
+	let mut writes: Vec<MultiWrite> = Vec::new();
+	let mut deletes: Vec<MultiDelete> = Vec::new();
+	let mut batches: TierBatch = HashMap::new();
+	let mut explicit_drops: Vec<(EntryKind, EncodedKey)> = Vec::new();
 
-					writes.push(MultiWrite {
-						key: key.clone(),
-						value_bytes: row.len() as u64,
-					});
+	for delta in deltas.iter() {
+		let key = delta.key();
+		let table = classify_key(key);
+		let is_single_version = is_single_version_semantics_key(key);
 
-					batches.entry(table).or_default().push((key.0.clone(), Some(row.0.clone())));
+		match delta {
+			Delta::Set {
+				key,
+				row,
+			} => {
+				if is_single_version {
+					pending_set_keys.insert(key.0.clone());
 				}
-				Delta::Unset {
-					key,
-					row,
-				} => {
-					deletes.push(MultiDelete {
-						key: key.clone(),
-						value_bytes: row.len() as u64,
-					});
-
-					batches.entry(table).or_default().push((key.0.clone(), None));
-				}
-				Delta::Remove {
-					key,
-				} => {
-					batches.entry(table).or_default().push((key.0.clone(), None));
-				}
-				Delta::Drop {
-					key,
-				} => {
-					explicit_drops.push((table, key.clone()));
-				}
+				writes.push(MultiWrite {
+					key: key.clone(),
+					value_bytes: row.len() as u64,
+				});
+				batches.entry(table).or_default().push((key.0.clone(), Some(row.0.clone())));
+			}
+			Delta::Unset {
+				key,
+				row,
+			} => {
+				deletes.push(MultiDelete {
+					key: key.clone(),
+					value_bytes: row.len() as u64,
+				});
+				batches.entry(table).or_default().push((key.0.clone(), None));
+			}
+			Delta::Remove {
+				key,
+			} => {
+				batches.entry(table).or_default().push((key.0.clone(), None));
+			}
+			Delta::Drop {
+				key,
+			} => {
+				explicit_drops.push((table, key.clone()));
 			}
 		}
+	}
 
-		// Process explicit drops now that pending_set_keys is complete
-		let mut drop_batch = Vec::with_capacity(explicit_drops.len() + pending_set_keys.len());
-		for (table, key) in explicit_drops {
-			let pending_version = if pending_set_keys.contains(key.as_ref()) {
-				Some(version)
-			} else {
-				None
-			};
+	ClassifiedDeltas {
+		pending_set_keys,
+		writes,
+		deletes,
+		batches,
+		explicit_drops,
+	}
+}
 
-			drop_batch.push(DropRequest {
-				table,
-				key: key.0.clone(),
-				commit_version: version,
-				pending_version,
-			});
-		}
+/// Combine explicit `Delta::Drop` requests with implicit drops for
+/// single-version-semantics keys that were also Set in this commit. Both kinds
+/// share the same commit version; explicit drops carry a pending_version only
+/// when the same key was Set in this commit (overlap case).
+#[inline]
+fn build_drop_batch(
+	explicit_drops: Vec<(EntryKind, EncodedKey)>,
+	pending_set_keys: &HashSet<CowVec<u8>>,
+	version: CommitVersion,
+) -> Vec<DropRequest> {
+	let mut drop_batch = Vec::with_capacity(explicit_drops.len() + pending_set_keys.len());
+	for (table, key) in explicit_drops {
+		let pending_version = if pending_set_keys.contains(key.as_ref()) {
+			Some(version)
+		} else {
+			None
+		};
+		drop_batch.push(DropRequest {
+			table,
+			key: key.0.clone(),
+			commit_version: version,
+			pending_version,
+		});
+	}
+	for key in pending_set_keys.iter() {
+		let table = classify_key(&EncodedKey(key.clone()));
+		drop_batch.push(DropRequest {
+			table,
+			key: key.clone(),
+			commit_version: version,
+			pending_version: Some(version),
+		});
+	}
+	drop_batch
+}
 
-		// Add implicit drops for single-version-semantics keys
-		for key in pending_set_keys.iter() {
-			let table = classify_key(&EncodedKey(key.clone()));
-			drop_batch.push(DropRequest {
-				table,
-				key: key.clone(),
-				commit_version: version,
-				pending_version: Some(version),
-			});
-		}
-
+impl StandardMultiStore {
+	#[inline]
+	fn dispatch_drops(&self, drop_batch: Vec<DropRequest>) {
 		if !drop_batch.is_empty() && self.drop_actor.send_blocking(DropMessage::Batch(drop_batch)).is_err() {
 			warn!("Failed to send drop batch");
 		}
+	}
 
-		// Pass version explicitly to storage
-		storage.set(version, batches)?;
-
-		// Emit storage stats event for this commit
-		if !writes.is_empty() || !deletes.is_empty() {
-			self.event_bus.emit(MultiCommittedEvent::new(writes, deletes, vec![], version));
+	#[inline]
+	fn emit_commit_metrics(&self, writes: Vec<MultiWrite>, deletes: Vec<MultiDelete>, version: CommitVersion) {
+		if writes.is_empty() && deletes.is_empty() {
+			return;
 		}
-
-		Ok(())
+		self.event_bus.emit(MultiCommittedEvent::new(writes, deletes, vec![], version));
 	}
 }
 

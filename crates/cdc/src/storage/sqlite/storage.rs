@@ -1097,8 +1097,8 @@ impl SqliteCdcStorage {
 		);
 		match result {
 			Ok(bytes) => {
-				let cdc: Cdc =
-					from_bytes(&bytes).map_err(|e| CdcError::Codec(format!("postcard decode: {e}")))?;
+				let cdc: Cdc = from_bytes(&bytes)
+					.map_err(|e| CdcError::Codec(format!("postcard decode: {e}")))?;
 				Ok(Some(cdc))
 			}
 			Err(QueryReturnedNoRows) => Ok(None),

@@ -127,10 +127,7 @@ fn collect_range_into(
 }
 
 #[inline]
-fn collect_dropped_entries(
-	guard: &BTreeMap<CommitVersion, Cdc>,
-	keys: &[CommitVersion],
-) -> Vec<DroppedCdcEntry> {
+fn collect_dropped_entries(guard: &BTreeMap<CommitVersion, Cdc>, keys: &[CommitVersion]) -> Vec<DroppedCdcEntry> {
 	let mut entries = Vec::new();
 	for key in keys {
 		if let Some(cdc) = guard.get(key) {

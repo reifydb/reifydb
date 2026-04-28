@@ -27,6 +27,7 @@ use reifydb_transaction::{
 };
 use reifydb_type::{
 	fragment::Fragment,
+	params::Params,
 	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
@@ -342,28 +343,46 @@ fn encode_table_rows<V: ValidationMode>(
 	shape: &RowShape,
 	clock: &Clock,
 ) -> Result<Vec<EncodedRow>> {
-	let coerced_rows = if V::VALIDATED {
-		validate_and_coerce_rows(&pending.rows, table)?
-	} else {
-		reorder_rows_unvalidated(&pending.rows, table)?
-	};
-
+	let coerced_rows = coerce_table_rows::<V>(&pending.rows, table)?;
 	let mut encoded_rows = Vec::with_capacity(coerced_rows.len());
-
-	for mut values in coerced_rows {
-		fill_auto_increment_table(catalog, txn, table, &mut values)?;
-		dictionary_encode_table(catalog, txn, table, &mut values)?;
-
-		if V::VALIDATED {
-			for (idx, col) in table.columns.iter().enumerate() {
-				col.constraint.validate(&values[idx])?;
-			}
-		}
-
-		encoded_rows.push(encode_row(shape, &values, clock));
+	for values in coerced_rows {
+		encoded_rows.push(prepare_table_row::<V>(catalog, txn, table, shape, clock, values)?);
 	}
-
 	Ok(encoded_rows)
+}
+
+#[inline]
+fn coerce_table_rows<V: ValidationMode>(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
+	if V::VALIDATED {
+		validate_and_coerce_rows(rows, table)
+	} else {
+		reorder_rows_unvalidated(rows, table)
+	}
+}
+
+#[inline]
+fn prepare_table_row<V: ValidationMode>(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	table: &Table,
+	shape: &RowShape,
+	clock: &Clock,
+	mut values: Vec<Value>,
+) -> Result<EncodedRow> {
+	fill_auto_increment_table(catalog, txn, table, &mut values)?;
+	dictionary_encode_table(catalog, txn, table, &mut values)?;
+	if V::VALIDATED {
+		validate_table_constraints(table, &values)?;
+	}
+	Ok(encode_row(shape, &values, clock))
+}
+
+#[inline]
+fn validate_table_constraints(table: &Table, values: &[Value]) -> Result<()> {
+	for (idx, col) in table.columns.iter().enumerate() {
+		col.constraint.validate(&values[idx])?;
+	}
+	Ok(())
 }
 
 fn fill_auto_increment_table(

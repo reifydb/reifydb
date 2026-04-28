@@ -55,36 +55,43 @@ impl CatalogStore {
 		to_create: RingBufferToCreate,
 	) -> Result<RingBuffer> {
 		let namespace_id = to_create.namespace;
-
-		if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
-			&mut Transaction::Admin(&mut *txn),
-			namespace_id,
-			to_create.name.text(),
-		)? {
-			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return Err(CatalogError::AlreadyExists {
-				kind: CatalogObjectKind::RingBuffer,
-				namespace: namespace.name().to_string(),
-				name: ringbuffer.name,
-				fragment: to_create.name.clone(),
-			}
-			.into());
-		}
+		Self::reject_existing_ringbuffer(txn, namespace_id, &to_create.name)?;
 
 		let ringbuffer_id = SystemSequence::next_ringbuffer_id(txn)?;
-
-		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
-		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
-
 		let capacity = to_create.capacity;
 		let is_partitioned = !to_create.partition_by.is_empty();
 
+		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
+		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
 		Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create)?;
 		if !is_partitioned {
 			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
 		}
-
 		Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)
+	}
+
+	#[inline]
+	fn reject_existing_ringbuffer(
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		name: &Fragment,
+	) -> Result<()> {
+		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			namespace_id,
+			name.text(),
+		)?
+		else {
+			return Ok(());
+		};
+		let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
+		Err(CatalogError::AlreadyExists {
+			kind: CatalogObjectKind::RingBuffer,
+			namespace: namespace.name().to_string(),
+			name: ringbuffer.name,
+			fragment: name.clone(),
+		}
+		.into())
 	}
 
 	fn store_ringbuffer(
