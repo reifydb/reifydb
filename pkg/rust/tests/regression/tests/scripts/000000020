@@ -1,0 +1,50 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Regression: error branch.
+# `CREATE POLICY ON foo::bar` where neither `foo::bar` nor `foo` resolves to an
+# existing namespace must fail loudly. Prior bug: the planner silently fell
+# into the "specific shape" branch and stored (target_namespace=foo,
+# target_shape=bar). That policy never matched any real shape, so reads in
+# inject_from_policies hit the default-deny branch, injected Filter(false),
+# and returned silent empty results. Subscribe was unaffected because
+# subscription compilation skips inject_from_policies.
+
+!admin 'CREATE TABLE POLICY p ON foo::bar { from: { filter { true } } }'
+---
+> Error CA_002
+>   namespace `foo::bar` not found
+>
+> LOCATION
+>   line 1, column 26
+>
+> RQL
+>   1 │ CREATE TABLE POLICY p ON foo::bar { from: { filter { true } } }
+>     │                          ~~~~~~~~
+>     │
+>     │                 unknown namespace reference
+>
+> HELP
+>   make sure the namespace exists before using it or create it first
+>
+
+# Parent exists but full path does not: still must error, since `bar` is
+# neither a namespace nor a real shape inside `foo` at policy-creation time.
+(admin 'CREATE NAMESPACE foo')
+!admin 'CREATE TABLE POLICY p ON foo::missing::deeper { from: { filter { true } } }'
+---
+> Error CA_002
+>   namespace `foo::missing::deeper` not found
+>
+> LOCATION
+>   line 1, column 26
+>
+> RQL
+>   1 │ CREATE TABLE POLICY p ON foo::missing::deeper { from: { filter { true } } }
+>     │                          ~~~~~~~~~~~~~~~~~~~~
+>     │
+>     │                       unknown namespace reference
+>
+> HELP
+>   make sure the namespace exists before using it or create it first
+>

@@ -915,37 +915,45 @@ impl<'bump> Compiler<'bump> {
 					let (scope_namespace, scope_shape) = match &node.scope {
 						AstPolicyScope::Specific(segments) => {
 							if segments.len() >= 2 {
-								// Check if the full path refers to a namespace
-								// (namespace-wide on nested ns, e.g. ON app::sub)
 								let seg_strs: Vec<&str> =
 									segments.iter().map(|s| s.text()).collect();
 								let full_path = seg_strs.join("::");
+								let parent_segs = &seg_strs[..seg_strs.len() - 1];
+								let parent_path = parent_segs.join("::");
+								let ns_fragment = self
+									.interner
+									.intern_fragment(&segments[0]);
 								if self.catalog
 									.find_namespace_by_segments(rx, &seg_strs)?
 									.is_some()
 								{
-									let ns_fragment = self
-										.interner
-										.intern_fragment(&segments[0]);
+									// Full path is a namespace; namespace-wide on
+									// nested ns (e.g. ON app::sub).
 									(Some(ns_fragment.with_text(&full_path)), None)
-								} else {
-									// Join all segments except the last with "." to
-									// form the namespace path (e.g.
-									// ["app","sub","items"] → ns="app.sub")
-									let ns_name = segments[..segments.len() - 1]
-										.iter()
-										.map(|s| s.text())
-										.collect::<Vec<_>>()
-										.join("::");
-									let ns_fragment = self
-										.interner
-										.intern_fragment(&segments[0]);
+								} else if self.catalog
+									.find_namespace_by_segments(rx, parent_segs)?
+									.is_some()
+								{
+									// Parent path is a namespace, last segment is a
+									// shape inside it (e.g. ON app::items).
 									(
-										Some(ns_fragment.with_text(&ns_name)),
+										Some(ns_fragment.with_text(&parent_path)),
 										Some(self.interner.intern_fragment(
 											&segments[segments.len() - 1],
 										)),
 									)
+								} else {
+									// Neither full path nor parent path resolves to
+									// an existing namespace. Reject loudly. Silently
+									// falling back to "specific shape" here used to
+									// mis-store the policy (target_namespace=parent,
+									// target_shape=last), which then never matched
+									// any real shape, causing reads to inject
+									// Filter(false) and return empty.
+									return_error!(namespace_not_found(
+										ns_fragment.with_text(&full_path),
+										&full_path,
+									));
 								}
 							} else if segments.len() == 1 {
 								(

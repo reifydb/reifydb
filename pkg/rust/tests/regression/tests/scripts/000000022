@@ -1,0 +1,22 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Regression: specific-shape branch.
+# `CREATE POLICY ON foo::t` where `foo` is an existing namespace and `t` is a
+# table inside it must be stored as (target_namespace="foo",
+# target_shape="t"). This is the legitimate case the buggy fallback used to
+# masquerade as: prior to the fix, the planner produced this same storage
+# shape for `ON foo::missing` even when `foo::missing` did not exist as a
+# namespace OR a shape, which silently broke reads downstream.
+
+(admin 'CREATE NAMESPACE foo')
+(admin 'CREATE TABLE foo::t { id: int4 }')
+(admin 'CREATE TABLE POLICY p ON foo::t { from: { filter { true } } }')
+query 'from system::policies filter { name == "p" } map { target_namespace, target_shape }'
+---
+> +--------------------+----------------+
+> |  target_namespace  |  target_shape  |
+> +--------------------+----------------+
+> |        foo         |       t        |
+> +--------------------+----------------+
+>
