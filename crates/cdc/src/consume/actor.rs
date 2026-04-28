@@ -16,7 +16,7 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
+use reifydb_type::{Result, error::Error};
 use tracing::{debug, error};
 
 use super::{checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost};
@@ -109,88 +109,10 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			CdcPollMessage::Poll => {
-				// Ignore Poll if we're already waiting for watermark or consume
-				if !matches!(state.phase, Phase::Ready) {
-					return Directive::Continue;
-				}
-
-				if ctx.is_cancelled() {
-					debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
-					return Directive::Stop;
-				}
-
-				// Get current version and check watermark readiness (non-blocking)
-				let current_version = match self.host.current_version() {
-					Ok(v) => v,
-					Err(e) => {
-						error!(
-							"[Consumer {:?}] Error getting current version: {}",
-							self.config.consumer_id, e
-						);
-						ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
-						return Directive::Continue;
-					}
-				};
-
-				let done = self.host.done_until();
-				if done >= current_version {
-					// Watermark is ready, proceed with batch processing
-					self.start_consume(state, ctx);
-				} else {
-					state.phase = Phase::WaitingForWatermark {
-						current_version,
-						retries_remaining: 4,
-					};
-					ctx.schedule_once(Duration::from_millis(50), || CdcPollMessage::CheckWatermark);
-				}
-			}
-			CdcPollMessage::CheckWatermark => {
-				if let Phase::WaitingForWatermark {
-					current_version,
-					retries_remaining,
-				} = state.phase
-				{
-					let is_cancelled = ctx.is_cancelled();
-					if is_cancelled {
-						debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
-						return Directive::Stop;
-					}
-
-					let done = self.host.done_until();
-					if done >= current_version {
-						// Watermark caught up, proceed
-						state.phase = Phase::Ready;
-						self.start_consume(state, ctx);
-					} else if retries_remaining == 0 {
-						// Timeout - proceed anyway (matches original 200ms behavior)
-						state.phase = Phase::Ready;
-						self.start_consume(state, ctx);
-					} else {
-						// Still not ready, schedule another check
-						state.phase = Phase::WaitingForWatermark {
-							current_version,
-							retries_remaining: retries_remaining - 1,
-						};
-						ctx.schedule_once(Duration::from_millis(50), || {
-							CdcPollMessage::CheckWatermark
-						});
-					}
-				}
-				// If not in WaitingForWatermark phase, ignore
-			}
-			CdcPollMessage::ConsumeResponse(result) => {
-				// Only handle if we're waiting for a consume response
-				if let Phase::WaitingForConsume {
-					latest_version,
-					count,
-				} = mem::replace(&mut state.phase, Phase::Ready)
-				{
-					self.finish_consume(state, ctx, latest_version, count, result);
-				}
-			}
+			CdcPollMessage::Poll => self.on_poll(state, ctx),
+			CdcPollMessage::CheckWatermark => self.on_check_watermark(state, ctx),
+			CdcPollMessage::ConsumeResponse(result) => self.on_consume_response(state, ctx, result),
 		}
-		Directive::Continue
 	}
 
 	fn config(&self) -> ActorConfig {
@@ -199,138 +121,192 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 }
 
 impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
-	/// Start consuming a batch: fetch CDCs, filter, and send to consumer asynchronously.
-	/// If no data is available, schedules the next poll directly.
-	fn start_consume(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) {
-		state.phase = Phase::Ready;
-
-		let safe_version = self.host.done_until();
-
-		let checkpoint = match state.cached_checkpoint {
-			Some(v) => v,
-			None => {
-				// First poll: seed the cache from durable storage. After
-				// this we never read the durable checkpoint again - the
-				// cache is authoritative until process exit.
-				let mut query = match self.host.begin_query() {
-					Ok(q) => q,
-					Err(e) => {
-						error!(
-							"[Consumer {:?}] Error beginning query: {}",
-							self.config.consumer_id, e
-						);
-						ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
-						return;
-					}
-				};
-				let v = match CdcCheckpoint::fetch(
-					&mut Transaction::Query(&mut query),
-					&self.consumer_key,
-				) {
-					Ok(c) => c,
-					Err(e) => {
-						error!(
-							"[Consumer {:?}] Error fetching checkpoint: {}",
-							self.config.consumer_id, e
-						);
-						ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
-						return;
-					}
-				};
-				drop(query);
-				state.cached_checkpoint = Some(v);
-				v
+	#[inline]
+	fn on_poll(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) -> Directive {
+		if !matches!(state.phase, Phase::Ready) {
+			return Directive::Continue;
+		}
+		if ctx.is_cancelled() {
+			debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
+			return Directive::Stop;
+		}
+		let current_version = match self.host.current_version() {
+			Ok(v) => v,
+			Err(e) => {
+				error!("[Consumer {:?}] Error getting current version: {}", self.config.consumer_id, e);
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+				return Directive::Continue;
 			}
 		};
+		if self.host.done_until() >= current_version {
+			self.start_consume(state, ctx);
+		} else {
+			state.phase = Phase::WaitingForWatermark {
+				current_version,
+				retries_remaining: 4,
+			};
+			ctx.schedule_once(Duration::from_millis(50), || CdcPollMessage::CheckWatermark);
+		}
+		Directive::Continue
+	}
 
+	#[inline]
+	fn on_check_watermark(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) -> Directive {
+		let Phase::WaitingForWatermark {
+			current_version,
+			retries_remaining,
+		} = state.phase
+		else {
+			return Directive::Continue;
+		};
+		if ctx.is_cancelled() {
+			debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
+			return Directive::Stop;
+		}
+		let watermark_ready = self.host.done_until() >= current_version;
+		let timed_out = retries_remaining == 0;
+		if watermark_ready || timed_out {
+			state.phase = Phase::Ready;
+			self.start_consume(state, ctx);
+		} else {
+			state.phase = Phase::WaitingForWatermark {
+				current_version,
+				retries_remaining: retries_remaining - 1,
+			};
+			ctx.schedule_once(Duration::from_millis(50), || CdcPollMessage::CheckWatermark);
+		}
+		Directive::Continue
+	}
+
+	#[inline]
+	fn on_consume_response(
+		&self,
+		state: &mut PollState,
+		ctx: &Context<CdcPollMessage>,
+		result: Result<()>,
+	) -> Directive {
+		if let Phase::WaitingForConsume {
+			latest_version,
+			count,
+		} = mem::replace(&mut state.phase, Phase::Ready)
+		{
+			self.finish_consume(state, ctx, latest_version, count, result);
+		}
+		Directive::Continue
+	}
+
+	fn start_consume(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) {
+		state.phase = Phase::Ready;
+		let safe_version = self.host.done_until();
+
+		let Some(checkpoint) = self.resolve_checkpoint(state, ctx) else {
+			return;
+		};
 		if safe_version <= checkpoint {
-			// Nothing safe to fetch yet
 			ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 			return;
 		}
 
-		let transactions = match self.fetch_cdcs_until(checkpoint, safe_version) {
-			Ok(t) => t,
-			Err(e) => {
-				error!("[Consumer {:?}] Error fetching CDCs: {}", self.config.consumer_id, e);
-				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
-				return;
-			}
+		let Some(transactions) = self.fetch_or_reschedule(checkpoint, safe_version, ctx) else {
+			return;
 		};
-
 		if transactions.is_empty() {
 			ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 			return;
 		}
 
-		let count = transactions.len();
-		let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
-
-		// Filter transactions to only those with Row or Flow-related changes
-		let relevant_cdcs = transactions
-			.into_iter()
-			.filter(|cdc| {
-				// Pass through if there are decoded row changes (columnar Change objects)
-				!cdc.changes.is_empty()
-					|| cdc.system_changes.iter().any(|sys_change| match sys_change {
-						SystemChange::Insert {
-							key,
-							..
-						}
-						| SystemChange::Update {
-							key,
-							..
-						}
-						| SystemChange::Delete {
-							key,
-							..
-						} => {
-							if let Some(kind) = Key::kind(key) {
-								matches!(
-									kind,
-									KeyKind::Row
-										| KeyKind::Flow | KeyKind::FlowNode
-										| KeyKind::FlowNodeByFlow | KeyKind::FlowEdge
-										| KeyKind::FlowEdgeByFlow
-										| KeyKind::NamespaceFlow
-								)
-							} else {
-								false
-							}
-						}
-					})
-			})
-			.collect::<Vec<_>>();
+		let (count, latest_version) = summarize_batch(checkpoint, &transactions);
+		let relevant_cdcs: Vec<Cdc> = transactions.into_iter().filter(is_relevant_cdc).collect();
 
 		if relevant_cdcs.is_empty() {
-			// No relevant CDCs in the safe range. Advance the in-memory
-			// checkpoint so the next poll does not re-fetch this range, but
-			// do NOT touch the multi store - this advance is a process-local
-			// skip-ahead, not a durable checkpoint. The durable checkpoint
-			// moves only when `finish_consume` actually applies CDCs (a
-			// real-work commit that the multi store legitimately
-			// version-bumps).
-			state.cached_checkpoint = Some(latest_version);
-			let _ = ctx.self_ref().send(CdcPollMessage::Poll);
+			self.advance_checkpoint_skip_ahead(state, ctx, latest_version);
 			return;
 		}
 
-		// Transition to WaitingForConsume phase before sending
 		state.phase = Phase::WaitingForConsume {
 			latest_version,
 			count,
 		};
+		self.dispatch_to_consumer(relevant_cdcs, ctx);
+	}
 
-		// Send to consumer with a callback that delivers ConsumeResponse back to self
+	/// Advance the in-memory checkpoint past a range that had no relevant CDCs,
+	/// then poll immediately. Does NOT touch the multi store - this advance is a
+	/// process-local skip-ahead. The durable checkpoint moves only when
+	/// `finish_consume` actually applies CDCs (a real-work commit that the multi
+	/// store legitimately version-bumps).
+	#[inline]
+	fn advance_checkpoint_skip_ahead(
+		&self,
+		state: &mut PollState,
+		ctx: &Context<CdcPollMessage>,
+		latest_version: CommitVersion,
+	) {
+		state.cached_checkpoint = Some(latest_version);
+		let _ = ctx.self_ref().send(CdcPollMessage::Poll);
+	}
+
+	#[inline]
+	fn resolve_checkpoint(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) -> Option<CommitVersion> {
+		if let Some(v) = state.cached_checkpoint {
+			return Some(v);
+		}
+		let v = self.seed_checkpoint_from_durable(ctx)?;
+		state.cached_checkpoint = Some(v);
+		Some(v)
+	}
+
+	/// First-poll only: read the durable checkpoint from storage. After this we
+	/// never read the durable checkpoint again - the cache is authoritative
+	/// until process exit. On error, schedules a retry poll and returns None.
+	#[inline]
+	fn seed_checkpoint_from_durable(&self, ctx: &Context<CdcPollMessage>) -> Option<CommitVersion> {
+		let mut query = match self.host.begin_query() {
+			Ok(q) => q,
+			Err(e) => {
+				error!("[Consumer {:?}] Error beginning query: {}", self.config.consumer_id, e);
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+				return None;
+			}
+		};
+		let v = match CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &self.consumer_key) {
+			Ok(c) => c,
+			Err(e) => {
+				error!("[Consumer {:?}] Error fetching checkpoint: {}", self.config.consumer_id, e);
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+				return None;
+			}
+		};
+		drop(query);
+		Some(v)
+	}
+
+	#[inline]
+	fn fetch_or_reschedule(
+		&self,
+		checkpoint: CommitVersion,
+		safe_version: CommitVersion,
+		ctx: &Context<CdcPollMessage>,
+	) -> Option<Vec<Cdc>> {
+		match self.fetch_cdcs_until(checkpoint, safe_version) {
+			Ok(t) => Some(t),
+			Err(e) => {
+				error!("[Consumer {:?}] Error fetching CDCs: {}", self.config.consumer_id, e);
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+				None
+			}
+		}
+	}
+
+	#[inline]
+	fn dispatch_to_consumer(&self, cdcs: Vec<Cdc>, ctx: &Context<CdcPollMessage>) {
 		let self_ref = ctx.self_ref().clone();
 		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(move |result| {
 			let _ = self_ref.send(CdcPollMessage::ConsumeResponse(result));
 		});
-
-		self.consumer.consume(relevant_cdcs, reply);
+		self.consumer.consume(cdcs, reply);
 	}
 
-	/// Finish consuming: persist consumer checkpoint on success, schedule next poll.
 	fn finish_consume(
 		&self,
 		state: &mut PollState,
@@ -340,37 +316,45 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		result: Result<()>,
 	) {
 		state.phase = Phase::Ready;
-
 		match result {
-			Ok(()) => {
-				// Advance the in-memory checkpoint. The consumer has applied
-				// its writes via its own transaction; the checkpoint here is
-				// a process-local watermark used as the lower bound for the
-				// next fetch, mirrored from `state.cached_checkpoint`.
-				//
-				// We do NOT persist the checkpoint to the multi store. A
-				// per-batch persist would write a `CdcConsumer`-keyed row -
-				// filtered from CDC by `should_exclude_from_cdc` but still
-				// allocating a fresh `current_version` on every batch. That
-				// drifts version-sensitive callers (e.g. cdc-snapshot golden
-				// scripts) and produces redundant work, since the consumer's
-				// apply is idempotent: on restart the durable checkpoint is
-				// re-seeded from storage in `start_consume`, the consumer
-				// re-fetches the same range, and re-applies the same set/
-				// unset writes - cheap and correct.
-				state.cached_checkpoint = Some(latest_version);
-				if count > 0 {
-					// More events likely available - poll again immediately
-					let _ = ctx.self_ref().send(CdcPollMessage::Poll);
-				} else {
-					ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
-				}
-			}
-			Err(e) => {
-				error!("[Consumer {:?}] Error consuming events: {}", self.config.consumer_id, e);
-				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
-			}
+			Ok(()) => self.advance_after_success(state, ctx, latest_version, count),
+			Err(e) => self.reschedule_after_error(ctx, e),
 		}
+	}
+
+	/// Advance the in-memory checkpoint. The consumer has applied its writes via
+	/// its own transaction; the checkpoint here is a process-local watermark
+	/// used as the lower bound for the next fetch, mirrored from
+	/// `state.cached_checkpoint`.
+	///
+	/// We do NOT persist the checkpoint to the multi store. A per-batch persist
+	/// would write a `CdcConsumer`-keyed row - filtered from CDC by
+	/// `should_exclude_from_cdc` but still allocating a fresh `current_version`
+	/// on every batch. That drifts version-sensitive callers (e.g. cdc-snapshot
+	/// golden scripts) and produces redundant work, since the consumer's apply
+	/// is idempotent: on restart the durable checkpoint is re-seeded from
+	/// storage in `start_consume`, the consumer re-fetches the same range, and
+	/// re-applies the same set/unset writes - cheap and correct.
+	#[inline]
+	fn advance_after_success(
+		&self,
+		state: &mut PollState,
+		ctx: &Context<CdcPollMessage>,
+		latest_version: CommitVersion,
+		count: usize,
+	) {
+		state.cached_checkpoint = Some(latest_version);
+		if count > 0 {
+			let _ = ctx.self_ref().send(CdcPollMessage::Poll);
+		} else {
+			ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+		}
+	}
+
+	#[inline]
+	fn reschedule_after_error(&self, ctx: &Context<CdcPollMessage>, err: Error) {
+		error!("[Consumer {:?}] Error consuming events: {}", self.config.consumer_id, err);
+		ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 	}
 
 	fn fetch_cdcs_until(&self, since_version: CommitVersion, until_version: CommitVersion) -> Result<Vec<Cdc>> {
@@ -382,4 +366,43 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		)?;
 		Ok(batch.items)
 	}
+}
+
+#[inline]
+fn summarize_batch(checkpoint: CommitVersion, transactions: &[Cdc]) -> (usize, CommitVersion) {
+	let count = transactions.len();
+	let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
+	(count, latest_version)
+}
+
+fn is_relevant_cdc(cdc: &Cdc) -> bool {
+	!cdc.changes.is_empty() || cdc.system_changes.iter().any(is_relevant_system_change)
+}
+
+fn is_relevant_system_change(change: &SystemChange) -> bool {
+	let key = match change {
+		SystemChange::Insert {
+			key,
+			..
+		}
+		| SystemChange::Update {
+			key,
+			..
+		}
+		| SystemChange::Delete {
+			key,
+			..
+		} => key,
+	};
+	Key::kind(key)
+		.map(|kind| {
+			matches!(
+				kind,
+				KeyKind::Row
+					| KeyKind::Flow | KeyKind::FlowNode | KeyKind::FlowNodeByFlow
+					| KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow
+					| KeyKind::NamespaceFlow
+			)
+		})
+		.unwrap_or(false)
 }

@@ -28,6 +28,61 @@ use crate::error::CdcError;
 /// Result type for CDC storage operations.
 pub type CdcStorageResult<T> = Result<T, CdcError>;
 
+enum ScanContinuation {
+	Done(CommitVersion),
+	Continue(Bound<CommitVersion>),
+}
+
+/// Walk a non-empty batch looking for the first entry with `timestamp >= cutoff`.
+/// Returns `Some(version)` on hit; `None` if every entry is still older than
+/// the cutoff (the caller should fetch the next batch or terminate).
+#[inline]
+fn scan_batch_for_cutoff(items: &[Cdc], cutoff: DateTime) -> Option<CommitVersion> {
+	for cdc in items {
+		if cdc.timestamp >= cutoff {
+			return Some(cdc.version);
+		}
+	}
+	None
+}
+
+/// Decide what to do after a batch with no cutoff hit:
+/// - `Done(max + 1)` if the batch was the last one (no `has_more`).
+/// - `Continue(Excluded(last_version))` to fetch the next batch.
+#[inline]
+fn next_start_after_batch(batch: &CdcBatch, max: CommitVersion) -> ScanContinuation {
+	if !batch.has_more {
+		return ScanContinuation::Done(CommitVersion(max.0.saturating_add(1)));
+	}
+	let last = batch.items.last().unwrap().version;
+	ScanContinuation::Continue(Bound::Excluded(last))
+}
+
+/// Normalize a half-open range request from the trait API into an inclusive
+/// `[lo, hi]` pair. Returns `None` if the range is empty (lo > hi after the
+/// Excluded/Unbounded substitutions are applied).
+#[inline]
+pub(crate) fn normalize_range_inclusive(
+	start: Bound<CommitVersion>,
+	end: Bound<CommitVersion>,
+) -> Option<(CommitVersion, CommitVersion)> {
+	let lo_inc = match start {
+		Bound::Included(v) => v,
+		Bound::Excluded(v) => CommitVersion(v.0.saturating_add(1)),
+		Bound::Unbounded => CommitVersion(0),
+	};
+	let hi_inc = match end {
+		Bound::Included(v) => v,
+		Bound::Excluded(v) => CommitVersion(v.0.saturating_sub(1)),
+		Bound::Unbounded => CommitVersion(u64::MAX),
+	};
+	if lo_inc > hi_inc {
+		None
+	} else {
+		Some((lo_inc, hi_inc))
+	}
+}
+
 /// Information about a dropped CDC entry for stats tracking.
 #[derive(Debug, Clone)]
 pub struct DroppedCdcEntry {
@@ -120,16 +175,13 @@ pub trait CdcStorage: Send + Sync + Clone + 'static {
 			if batch.items.is_empty() {
 				return Ok(Some(CommitVersion(max.0.saturating_add(1))));
 			}
-			for cdc in &batch.items {
-				if cdc.timestamp >= cutoff {
-					return Ok(Some(cdc.version));
-				}
+			if let Some(version) = scan_batch_for_cutoff(&batch.items, cutoff) {
+				return Ok(Some(version));
 			}
-			if !batch.has_more {
-				return Ok(Some(CommitVersion(max.0.saturating_add(1))));
+			match next_start_after_batch(&batch, max) {
+				ScanContinuation::Done(v) => return Ok(Some(v)),
+				ScanContinuation::Continue(start) => next_start = start,
 			}
-			let last = batch.items.last().unwrap().version;
-			next_start = Bound::Excluded(last);
 		}
 	}
 

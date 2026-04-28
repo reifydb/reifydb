@@ -82,30 +82,33 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> PollConsumer<H, C> {
 			handle: None,
 		}
 	}
+
+	/// Take ownership of the host/consumer/store from their `Option` slots.
+	/// Panics if called twice; `start`'s `running` swap guards against that.
+	fn take_resources(&mut self) -> (H, C, CdcStore) {
+		let host = self.host.take().expect("host already consumed");
+		let consumer = self.consumer.take().expect("consumer already consumed");
+		let store = self.store.take().expect("store already consumed");
+		(host, consumer, store)
+	}
+
+	fn build_actor_config(&self) -> PollActorConfig {
+		PollActorConfig {
+			consumer_id: self.config.consumer_id.clone(),
+			poll_interval: self.config.poll_interval,
+			max_batch_size: self.config.max_batch_size,
+		}
+	}
 }
 
 impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollConsumer<H, C> {
 	fn start(&mut self) -> Result<()> {
 		if self.running.swap(true, Ordering::AcqRel) {
-			return Ok(()); // Already running
+			return Ok(());
 		}
-
-		let host = self.host.take().expect("host already consumed");
-		let consumer = self.consumer.take().expect("consumer already consumed");
-		let store = self.store.take().expect("store already consumed");
-
-		let actor_config = PollActorConfig {
-			consumer_id: self.config.consumer_id.clone(),
-			poll_interval: self.config.poll_interval,
-			max_batch_size: self.config.max_batch_size,
-		};
-
-		let actor = PollActor::new(actor_config, host, consumer, store);
-
-		// Use the shared actor system instead of creating a new one
-		let handle = self.actor_system.spawn(&self.config.thread_name, actor);
-		self.handle = Some(handle);
-
+		let (host, consumer, store) = self.take_resources();
+		let actor = PollActor::new(self.build_actor_config(), host, consumer, store);
+		self.handle = Some(self.actor_system.spawn(&self.config.thread_name, actor));
 		Ok(())
 	}
 

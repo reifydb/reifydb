@@ -3,9 +3,11 @@
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
+use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
+	encoded::{key::EncodedKey, row::EncodedRow},
 	event::{
 		EventBus, EventListener,
 		metric::{CdcEvictedEvent, CdcEviction, CdcWrite, CdcWrittenEvent},
@@ -124,311 +126,289 @@ where
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
 		for delta in deltas {
-			let key = delta.key().clone();
-
-			// Skip internal system keys that shouldn't appear in CDC
-			if let Some(kind) = Key::kind(&key) {
-				if should_exclude_from_cdc(kind) {
-					continue;
-				}
-
-				// Row deltas → try to decode into columnar Diff, fall back to SystemChange
-				if kind == KeyKind::Row {
-					// Try series key first (more specific encoding)
-					if let Some(series_key) = SeriesRowKey::decode(&key) {
-						let shape = ShapeId::Series(series_key.series);
-						let row_number = RowNumber::from(series_key.sequence);
-						let decoded = match &delta {
-							Delta::Set {
-								key,
-								row,
-							} => {
-								let pre = self
-									.transaction_store
-									.get_previous_version(key, version)
-									.ok()
-									.flatten();
-								if let Some(prev) = pre {
-									let mut pre_buf = self.slab_pool.acquire();
-									let mut post_buf = self.slab_pool.acquire();
-									let diff = build_update_diff_into_with_pool(
-										catalog,
-										row_number,
-										prev.row,
-										row.clone(),
-										&mut pre_buf,
-										&mut post_buf,
-										&self.pool,
-									);
-									acquired_slabs.push(pre_buf);
-									acquired_slabs.push(post_buf);
-									diff
-								} else {
-									let mut post_buf = self.slab_pool.acquire();
-									let diff = build_insert_diff_into_with_pool(
-										catalog,
-										row_number,
-										row.clone(),
-										&mut post_buf,
-										&self.pool,
-									);
-									acquired_slabs.push(post_buf);
-									diff
-								}
-							}
-							Delta::Unset {
-								row,
-								..
-							} => {
-								if !row.is_empty() {
-									let mut pre_buf = self.slab_pool.acquire();
-									let diff = build_remove_diff_into_with_pool(
-										catalog,
-										row_number,
-										row.clone(),
-										&mut pre_buf,
-										&self.pool,
-									);
-									acquired_slabs.push(pre_buf);
-									diff
-								} else {
-									None
-								}
-							}
-							_ => None,
-						};
-						if let Some(diff) = decoded {
-							diffs_by_shape.entry(shape).or_default().push(diff);
-							// Also keep as SystemChange for replication
-							push_raw_system_change(
-								&delta,
-								self.transaction_store.as_ref(),
-								version,
-								&mut system_changes,
-							);
-							continue;
-						}
-					}
-
-					// Table/view/ringbuffer row key
-					if let Some(row_key) = RowKey::decode(&key) {
-						let decoded = match &delta {
-							Delta::Set {
-								key,
-								row,
-							} => {
-								let pre = self
-									.transaction_store
-									.get_previous_version(key, version)
-									.ok()
-									.flatten();
-								if let Some(prev) = pre {
-									let mut pre_buf = self.slab_pool.acquire();
-									let mut post_buf = self.slab_pool.acquire();
-									let diff = build_update_diff_into_with_pool(
-										catalog,
-										row_key.row,
-										prev.row,
-										row.clone(),
-										&mut pre_buf,
-										&mut post_buf,
-										&self.pool,
-									);
-									acquired_slabs.push(pre_buf);
-									acquired_slabs.push(post_buf);
-									diff
-								} else {
-									let mut post_buf = self.slab_pool.acquire();
-									let diff = build_insert_diff_into_with_pool(
-										catalog,
-										row_key.row,
-										row.clone(),
-										&mut post_buf,
-										&self.pool,
-									);
-									acquired_slabs.push(post_buf);
-									diff
-								}
-							}
-							Delta::Unset {
-								row,
-								..
-							} => {
-								if !row.is_empty() {
-									let mut pre_buf = self.slab_pool.acquire();
-									let diff = build_remove_diff_into_with_pool(
-										catalog,
-										row_key.row,
-										row.clone(),
-										&mut pre_buf,
-										&self.pool,
-									);
-									acquired_slabs.push(pre_buf);
-									diff
-								} else {
-									None
-								}
-							}
-							_ => None,
-						};
-
-						if let Some(diff) = decoded {
-							diffs_by_shape.entry(row_key.shape).or_default().push(diff);
-							// Also keep as SystemChange for replication
-							push_raw_system_change(
-								&delta,
-								self.transaction_store.as_ref(),
-								version,
-								&mut system_changes,
-							);
-							continue;
-						}
-					}
-					// Fall through to SystemChange if decode failed
-				}
+			if Self::is_excluded_kind(&delta) {
+				continue;
 			}
-
-			// Non-row deltas (or row deltas that failed to decode) → SystemChange
-			let change = match delta {
-				Delta::Set {
-					key,
-					row,
-				} => {
-					let pre = self
-						.transaction_store
-						.get_previous_version(&key, version)
-						.ok()
-						.flatten();
-
-					if let Some(prev_values) = pre {
-						SystemChange::Update {
-							key,
-							pre: prev_values.row,
-							post: row,
-						}
-					} else {
-						SystemChange::Insert {
-							key,
-							post: row,
-						}
-					}
-				}
-				Delta::Unset {
-					key,
-					row,
-				} => {
-					let pre = if row.is_empty() {
-						None
-					} else {
-						Some(row)
-					};
-					SystemChange::Delete {
-						key,
-						pre,
-					}
-				}
-				Delta::Remove {
-					key,
-				} => SystemChange::Delete {
-					key,
-					pre: None,
-				},
-				Delta::Drop {
-					key: _,
-				} => {
-					continue;
-				}
-			};
-
-			system_changes.push(change);
+			if self.try_decode_row_delta(
+				&delta,
+				version,
+				catalog,
+				&mut diffs_by_shape,
+				&mut system_changes,
+				&mut acquired_slabs,
+			) {
+				continue;
+			}
+			if let Some(change) = self.delta_to_system_change(delta, version) {
+				system_changes.push(change);
+			}
 		}
 
-		// Merge diffs by (ShapeId, DiffKind) into batched Changes
-		let mut changes: Vec<Change> = Vec::new();
+		let changes = self.merge_into_changes(diffs_by_shape, version, changed_at);
+		self.write_and_emit(version, changed_at, changes, system_changes);
+		self.release_slabs(acquired_slabs);
+	}
+
+	#[inline]
+	fn is_excluded_kind(delta: &Delta) -> bool {
+		Key::kind(delta.key()).map(should_exclude_from_cdc).unwrap_or(false)
+	}
+
+	#[inline]
+	fn try_decode_row_delta(
+		&self,
+		delta: &Delta,
+		version: CommitVersion,
+		catalog: &MaterializedCatalog,
+		diffs_by_shape: &mut BTreeMap<ShapeId, Vec<Diff>>,
+		system_changes: &mut Vec<SystemChange>,
+		acquired_slabs: &mut Vec<Arc<Columns>>,
+	) -> bool {
+		let key = delta.key();
+		if Key::kind(key) != Some(KeyKind::Row) {
+			return false;
+		}
+
+		let (shape, row_number) = if let Some(sk) = SeriesRowKey::decode(key) {
+			(ShapeId::Series(sk.series), RowNumber::from(sk.sequence))
+		} else if let Some(rk) = RowKey::decode(key) {
+			(rk.shape, rk.row)
+		} else {
+			return false;
+		};
+
+		let Some(diff) = self.build_row_diff(delta, row_number, version, catalog, acquired_slabs) else {
+			return false;
+		};
+		diffs_by_shape.entry(shape).or_default().push(diff);
+		push_raw_system_change(delta, self.transaction_store.as_ref(), version, system_changes);
+		true
+	}
+
+	#[inline]
+	fn build_row_diff(
+		&self,
+		delta: &Delta,
+		row_number: RowNumber,
+		version: CommitVersion,
+		catalog: &MaterializedCatalog,
+		acquired_slabs: &mut Vec<Arc<Columns>>,
+	) -> Option<Diff> {
+		match delta {
+			Delta::Set {
+				key,
+				row,
+			} => self.build_diff_for_set(key, row, row_number, version, catalog, acquired_slabs),
+			Delta::Unset {
+				row,
+				..
+			} if !row.is_empty() => self.build_diff_for_unset(row, row_number, catalog, acquired_slabs),
+			_ => None,
+		}
+	}
+
+	#[inline]
+	fn build_diff_for_set(
+		&self,
+		key: &EncodedKey,
+		row: &EncodedRow,
+		row_number: RowNumber,
+		version: CommitVersion,
+		catalog: &MaterializedCatalog,
+		acquired_slabs: &mut Vec<Arc<Columns>>,
+	) -> Option<Diff> {
+		let pre = self.transaction_store.get_previous_version(key, version).ok().flatten();
+		if let Some(prev) = pre {
+			let mut pre_buf = self.slab_pool.acquire();
+			let mut post_buf = self.slab_pool.acquire();
+			let diff = build_update_diff_into_with_pool(
+				catalog,
+				row_number,
+				prev.row,
+				row.clone(),
+				&mut pre_buf,
+				&mut post_buf,
+				&self.pool,
+			);
+			acquired_slabs.push(pre_buf);
+			acquired_slabs.push(post_buf);
+			diff
+		} else {
+			let mut post_buf = self.slab_pool.acquire();
+			let diff = build_insert_diff_into_with_pool(catalog, row_number, row.clone(), &mut post_buf, &self.pool);
+			acquired_slabs.push(post_buf);
+			diff
+		}
+	}
+
+	#[inline]
+	fn build_diff_for_unset(
+		&self,
+		row: &EncodedRow,
+		row_number: RowNumber,
+		catalog: &MaterializedCatalog,
+		acquired_slabs: &mut Vec<Arc<Columns>>,
+	) -> Option<Diff> {
+		let mut pre_buf = self.slab_pool.acquire();
+		let diff = build_remove_diff_into_with_pool(catalog, row_number, row.clone(), &mut pre_buf, &self.pool);
+		acquired_slabs.push(pre_buf);
+		diff
+	}
+
+	#[inline]
+	fn delta_to_system_change(&self, delta: Delta, version: CommitVersion) -> Option<SystemChange> {
+		match &delta {
+			Delta::Set {
+				..
+			}
+			| Delta::Unset {
+				..
+			} => delta_to_raw_system_change(&delta, self.transaction_store.as_ref(), version),
+			Delta::Remove {
+				..
+			} => {
+				let Delta::Remove {
+					key,
+				} = delta
+				else {
+					unreachable!()
+				};
+				Some(SystemChange::Delete {
+					key,
+					pre: None,
+				})
+			}
+			Delta::Drop {
+				..
+			} => None,
+		}
+	}
+
+	#[inline]
+	fn merge_into_changes(
+		&self,
+		diffs_by_shape: BTreeMap<ShapeId, Vec<Diff>>,
+		version: CommitVersion,
+		changed_at: DateTime,
+	) -> Vec<Change> {
+		let mut changes = Vec::with_capacity(diffs_by_shape.len());
 		for (shape, diffs) in diffs_by_shape {
 			let merged = merge_diffs(diffs);
 			changes.push(Change::from_shape(shape, version, merged, changed_at));
 		}
+		changes
+	}
 
-		if !changes.is_empty() || !system_changes.is_empty() {
-			let cdc = Cdc::new(version, changed_at, changes, system_changes.clone());
-			match self.storage.write(&cdc) {
-				Ok(_) => {
-					debug!(version = version.0, "CDC written successfully");
-
-					// Emit CDC stats event
-					let entries: Vec<CdcWrite> = system_changes
-						.iter()
-						.map(|sys_change| {
-							let key = sys_change.key();
-							let value_bytes = sys_change.value_bytes() as u64;
-							CdcWrite {
-								key: key.clone(),
-								value_bytes,
-							}
-						})
-						.collect();
-
-					self.event_bus.emit(CdcWrittenEvent::new(entries, version));
-				}
-				Err(e) => {
-					error!(version = version.0, "CDC write failed: {:?}", e);
-				}
-			}
-			// `cdc` (and therefore the dispatched `Diff`s and their
-			// `Arc<Columns>` clones) drops here, returning each
-			// acquired slab's strong_count to 1.
+	#[inline]
+	fn write_and_emit(
+		&self,
+		version: CommitVersion,
+		changed_at: DateTime,
+		changes: Vec<Change>,
+		system_changes: Vec<SystemChange>,
+	) {
+		if changes.is_empty() && system_changes.is_empty() {
+			return;
 		}
+		let cdc = Cdc::new(version, changed_at, changes, system_changes.clone());
+		match self.storage.write(&cdc) {
+			Ok(_) => {
+				debug!(version = version.0, "CDC written successfully");
+				self.emit_written_event(version, &system_changes);
+			}
+			Err(e) => error!(version = version.0, "CDC write failed: {:?}", e),
+		}
+		// `cdc` (and therefore the dispatched `Diff`s and their `Arc<Columns>`
+		// clones) drops here, returning each acquired slab's strong_count to 1.
+		// After this point each slab in `acquired_slabs` has strong_count == 1
+		// unless an event-bus consumer kept its own clone alive - in which case
+		// `Slab::acquire` will skip it on a future pop.
+	}
 
-		// Return slabs to the pool. By this point the `cdc` value
-		// above (and its embedded `Diff`s) has been dropped, so each
-		// slab in `acquired_slabs` has `strong_count == 1` unless an
-		// event-bus consumer kept its own clone alive - in which
-		// case `Slab::acquire` will skip it on a future pop.
-		for slab in acquired_slabs {
+	#[inline]
+	fn emit_written_event(&self, version: CommitVersion, system_changes: &[SystemChange]) {
+		let entries: Vec<CdcWrite> = system_changes
+			.iter()
+			.map(|s| CdcWrite {
+				key: s.key().clone(),
+				value_bytes: s.value_bytes() as u64,
+			})
+			.collect();
+		self.event_bus.emit(CdcWrittenEvent::new(entries, version));
+	}
+
+	#[inline]
+	fn release_slabs(&self, slabs: Vec<Arc<Columns>>) {
+		for slab in slabs {
 			self.slab_pool.release(slab);
 		}
 	}
 
 	fn try_cleanup(&self) {
-		let result: Result<()> = (|| {
-			let Some(ttl) =
-				self.host.materialized_catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration)
-			else {
-				return Ok(());
-			};
-
-			let cutoff_nanos = self.clock.now_nanos().saturating_sub(ttl.as_nanos() as u64);
-			let cutoff = DateTime::from_nanos(cutoff_nanos);
-
-			let Some(cutoff_version) = self.storage.find_ttl_cutoff(cutoff)? else {
-				return Ok(());
-			};
-			if cutoff_version.0 == 0 {
-				return Ok(());
+		match self.find_eviction_target() {
+			Ok(Some(cutoff_version)) => {
+				if let Err(e) = self.evict_and_emit(cutoff_version) {
+					error!("CDC cleanup failed: {:?}", e);
+				}
 			}
-
-			let result = self.storage.drop_before(cutoff_version)?;
-			if result.count > 0 {
-				debug!(cutoff = cutoff_version.0, deleted = result.count, "CDC TTL eviction completed");
-
-				let drop_entries: Vec<CdcEviction> = result
-					.entries
-					.into_iter()
-					.map(|e| CdcEviction {
-						key: e.key,
-						value_bytes: e.value_bytes,
-					})
-					.collect();
-
-				self.event_bus.emit(CdcEvictedEvent::new(drop_entries, cutoff_version));
-			}
-			Ok(())
-		})();
-
-		if let Err(e) = result {
-			error!("CDC cleanup failed: {:?}", e);
+			Ok(None) => {}
+			Err(e) => error!("CDC cleanup failed: {:?}", e),
 		}
+	}
+
+	/// Returns the cutoff version below which all CDC entries should be evicted,
+	/// or `None` if eviction should be skipped (no TTL configured, no entries
+	/// match, or cutoff_version is zero).
+	#[inline]
+	fn find_eviction_target(&self) -> Result<Option<CommitVersion>> {
+		let Some(ttl) =
+			self.host.materialized_catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration)
+		else {
+			return Ok(None);
+		};
+		let cutoff_nanos = self.clock.now_nanos().saturating_sub(ttl.as_nanos() as u64);
+		let cutoff = DateTime::from_nanos(cutoff_nanos);
+		let Some(cutoff_version) = self.storage.find_ttl_cutoff(cutoff)? else {
+			return Ok(None);
+		};
+		if cutoff_version.0 == 0 {
+			return Ok(None);
+		}
+		Ok(Some(cutoff_version))
+	}
+
+	#[inline]
+	fn evict_and_emit(&self, cutoff_version: CommitVersion) -> Result<()> {
+		let result = self.storage.drop_before(cutoff_version)?;
+		if result.count == 0 {
+			return Ok(());
+		}
+		debug!(cutoff = cutoff_version.0, deleted = result.count, "CDC TTL eviction completed");
+		let drop_entries: Vec<CdcEviction> = result
+			.entries
+			.into_iter()
+			.map(|e| CdcEviction {
+				key: e.key,
+				value_bytes: e.value_bytes,
+			})
+			.collect();
+		self.event_bus.emit(CdcEvictedEvent::new(drop_entries, cutoff_version));
+		Ok(())
+	}
+
+	#[inline]
+	fn on_produce(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
+		self.process(version, changed_at, deltas);
+		// Advance the watermark AFTER process completes (whether or not a CDC
+		// entry was written). The compactor reads this watermark as a hard cap
+		// to guarantee that no later producer write can land at a version
+		// already covered by a packed block.
+		self.watermark.advance(version);
+	}
+
+	#[inline]
+	fn on_tick(&self) {
+		self.try_cleanup();
 	}
 }
 
@@ -441,13 +421,28 @@ fn push_raw_system_change(
 	version: CommitVersion,
 	system_changes: &mut Vec<SystemChange>,
 ) {
-	let change = match delta {
+	if let Some(change) = delta_to_raw_system_change(delta, transaction_store, version) {
+		system_changes.push(change);
+	}
+}
+
+/// Build a `SystemChange` for the part of `delta` that is part of CDC's raw
+/// stream (Set, Unset). `Delta::Remove` and `Delta::Drop` are handled by the
+/// caller; this helper covers only the shape both `push_raw_system_change`
+/// and `delta_to_system_change` agree on.
+#[inline]
+fn delta_to_raw_system_change(
+	delta: &Delta,
+	transaction_store: &dyn MultiVersionGetPrevious,
+	version: CommitVersion,
+) -> Option<SystemChange> {
+	match delta {
 		Delta::Set {
 			key,
 			row,
 		} => {
 			let pre = transaction_store.get_previous_version(key, version).ok().flatten();
-			if let Some(prev) = pre {
+			Some(if let Some(prev) = pre {
 				SystemChange::Update {
 					key: key.clone(),
 					pre: prev.row,
@@ -458,108 +453,80 @@ fn push_raw_system_change(
 					key: key.clone(),
 					post: row.clone(),
 				}
-			}
+			})
 		}
 		Delta::Unset {
 			key,
 			row,
-		} => {
-			let pre = if row.is_empty() {
+		} => Some(SystemChange::Delete {
+			key: key.clone(),
+			pre: if row.is_empty() {
 				None
 			} else {
 				Some(row.clone())
-			};
-			SystemChange::Delete {
-				key: key.clone(),
-				pre,
-			}
-		}
-		_ => return,
-	};
-	system_changes.push(change);
+			},
+		}),
+		_ => None,
+	}
 }
 
 /// Merge diffs that share the same variant (Insert/Update/Remove) by appending
 /// their `Columns`. Different kinds remain as separate diffs in the output.
 pub(crate) fn merge_diffs(diffs: Vec<Diff>) -> Vec<Diff> {
-	let mut insert: Option<Diff> = None;
-	let mut update: Option<Diff> = None;
-	let mut remove: Option<Diff> = None;
+	let mut insert_post: Option<Arc<Columns>> = None;
+	let mut update_pre: Option<Arc<Columns>> = None;
+	let mut update_post: Option<Arc<Columns>> = None;
+	let mut remove_pre: Option<Arc<Columns>> = None;
 
 	for diff in diffs {
 		match diff {
 			Diff::Insert {
 				post,
-			} => {
-				if let Some(Diff::Insert {
-					post: ref mut existing,
-				}) = insert
-				{
-					let owned = Arc::try_unwrap(post).unwrap_or_else(|arc| (*arc).clone());
-					if let Err(e) = Arc::make_mut(existing).append_columns(owned) {
-						error!("Failed to merge insert columns: {:?}", e);
-					}
-				} else {
-					insert = Some(Diff::Insert {
-						post,
-					});
-				}
-			}
+			} => merge_or_init(&mut insert_post, post, "insert"),
 			Diff::Update {
 				pre,
 				post,
 			} => {
-				if let Some(Diff::Update {
-					pre: ref mut existing_pre,
-					post: ref mut existing_post,
-				}) = update
-				{
-					let owned_pre = Arc::try_unwrap(pre).unwrap_or_else(|arc| (*arc).clone());
-					let owned_post = Arc::try_unwrap(post).unwrap_or_else(|arc| (*arc).clone());
-					if let Err(e) = Arc::make_mut(existing_pre).append_columns(owned_pre) {
-						error!("Failed to merge update pre columns: {:?}", e);
-					}
-					if let Err(e) = Arc::make_mut(existing_post).append_columns(owned_post) {
-						error!("Failed to merge update post columns: {:?}", e);
-					}
-				} else {
-					update = Some(Diff::Update {
-						pre,
-						post,
-					});
-				}
+				merge_or_init(&mut update_pre, pre, "update pre");
+				merge_or_init(&mut update_post, post, "update post");
 			}
 			Diff::Remove {
 				pre,
-			} => {
-				if let Some(Diff::Remove {
-					pre: ref mut existing,
-				}) = remove
-				{
-					let owned = Arc::try_unwrap(pre).unwrap_or_else(|arc| (*arc).clone());
-					if let Err(e) = Arc::make_mut(existing).append_columns(owned) {
-						error!("Failed to merge remove columns: {:?}", e);
-					}
-				} else {
-					remove = Some(Diff::Remove {
-						pre,
-					});
-				}
-			}
+			} => merge_or_init(&mut remove_pre, pre, "remove"),
 		}
 	}
 
-	let mut result = Vec::new();
-	if let Some(d) = insert {
-		result.push(d);
+	let mut result = Vec::with_capacity(3);
+	if let Some(post) = insert_post {
+		result.push(Diff::Insert {
+			post,
+		});
 	}
-	if let Some(d) = update {
-		result.push(d);
+	if let (Some(pre), Some(post)) = (update_pre, update_post) {
+		result.push(Diff::Update {
+			pre,
+			post,
+		});
 	}
-	if let Some(d) = remove {
-		result.push(d);
+	if let Some(pre) = remove_pre {
+		result.push(Diff::Remove {
+			pre,
+		});
 	}
 	result
+}
+
+#[inline]
+fn merge_or_init(slot: &mut Option<Arc<Columns>>, fresh: Arc<Columns>, ctx: &str) {
+	match slot {
+		Some(existing) => {
+			let owned = Arc::try_unwrap(fresh).unwrap_or_else(|arc| (*arc).clone());
+			if let Err(e) = Arc::make_mut(existing).append_columns(owned) {
+				error!("Failed to merge {ctx} columns: {:?}", e);
+			}
+		}
+		None => *slot = Some(fresh),
+	}
 }
 
 pub struct CdcProducerState {
@@ -588,25 +555,14 @@ where
 			debug!("CDC producer actor stopping");
 			return Directive::Stop;
 		}
-
 		match msg {
 			CdcProduceMessage::Produce {
 				version,
 				changed_at,
 				deltas,
-			} => {
-				self.process(version, changed_at, deltas);
-				// Advance the watermark AFTER process completes (whether or not a CDC
-				// entry was written). The compactor reads this watermark as a hard cap
-				// to guarantee that no later producer write can land at a version
-				// already covered by a packed block.
-				self.watermark.advance(version);
-			}
-			CdcProduceMessage::Tick => {
-				self.try_cleanup();
-			}
+			} => self.on_produce(version, changed_at, deltas),
+			CdcProduceMessage::Tick => self.on_tick(),
 		}
-
 		Directive::Continue
 	}
 

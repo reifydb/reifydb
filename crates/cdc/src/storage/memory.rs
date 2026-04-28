@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 
-use super::{CdcStorage, CdcStorageResult, DropBeforeResult, DroppedCdcEntry};
+use super::{CdcStorage, CdcStorageResult, DropBeforeResult, DroppedCdcEntry, normalize_range_inclusive};
 
 #[derive(Clone)]
 pub struct MemoryCdcStorage {
@@ -68,42 +68,17 @@ impl CdcStorage for MemoryCdcStorage {
 		end: Bound<CommitVersion>,
 		batch_size: u64,
 	) -> CdcStorageResult<CdcBatch> {
-		let lo_inc: CommitVersion = match start {
-			Bound::Included(v) => v,
-			Bound::Excluded(v) => CommitVersion(v.0.saturating_add(1)),
-			Bound::Unbounded => CommitVersion(0),
-		};
-		let hi_inc: CommitVersion = match end {
-			Bound::Included(v) => v,
-			Bound::Excluded(v) => CommitVersion(v.0.saturating_sub(1)),
-			Bound::Unbounded => CommitVersion(u64::MAX),
-		};
-		if lo_inc > hi_inc {
+		let Some((lo_inc, hi_inc)) = normalize_range_inclusive(start, end) else {
 			return Ok(CdcBatch {
 				items: Vec::new(),
 				has_more: false,
 			});
-		}
-
+		};
 		let guard = self.inner.read();
-		let batch_size = batch_size as usize;
-		let range_iter = guard.range(lo_inc..=hi_inc);
-		let mut items: Vec<Cdc> = Vec::with_capacity(batch_size.min(64));
-
-		for (count, (_, cdc)) in range_iter.enumerate() {
-			if count >= batch_size {
-				// We've hit the batch limit, there are more items
-				return Ok(CdcBatch {
-					items,
-					has_more: true,
-				});
-			}
-			items.push(cdc.clone());
-		}
-
+		let (items, has_more) = collect_range_into(&guard, lo_inc, hi_inc, batch_size as usize);
 		Ok(CdcBatch {
 			items,
-			has_more: false,
+			has_more,
 		})
 	}
 
@@ -123,26 +98,49 @@ impl CdcStorage for MemoryCdcStorage {
 		let mut guard = self.inner.write();
 		let keys_to_remove: Vec<_> = guard.range(..version).map(|(k, _)| *k).collect();
 		let count = keys_to_remove.len();
-
-		let mut entries = Vec::new();
-		for key in &keys_to_remove {
-			if let Some(cdc) = guard.get(key) {
-				for sys_change in &cdc.system_changes {
-					entries.push(DroppedCdcEntry {
-						key: sys_change.key().clone(),
-						value_bytes: sys_change.value_bytes() as u64,
-					});
-				}
-			}
-		}
-
+		let entries = collect_dropped_entries(&guard, &keys_to_remove);
 		for key in keys_to_remove {
 			guard.remove(&key);
 		}
-
 		Ok(DropBeforeResult {
 			count,
 			entries,
 		})
 	}
+}
+
+#[inline]
+fn collect_range_into(
+	guard: &BTreeMap<CommitVersion, Cdc>,
+	lo_inc: CommitVersion,
+	hi_inc: CommitVersion,
+	batch_size: usize,
+) -> (Vec<Cdc>, bool) {
+	let mut items: Vec<Cdc> = Vec::with_capacity(batch_size.min(64));
+	for (count, (_, cdc)) in guard.range(lo_inc..=hi_inc).enumerate() {
+		if count >= batch_size {
+			return (items, true);
+		}
+		items.push(cdc.clone());
+	}
+	(items, false)
+}
+
+#[inline]
+fn collect_dropped_entries(
+	guard: &BTreeMap<CommitVersion, Cdc>,
+	keys: &[CommitVersion],
+) -> Vec<DroppedCdcEntry> {
+	let mut entries = Vec::new();
+	for key in keys {
+		if let Some(cdc) = guard.get(key) {
+			for sys_change in &cdc.system_changes {
+				entries.push(DroppedCdcEntry {
+					key: sys_change.key().clone(),
+					value_bytes: sys_change.value_bytes() as u64,
+				});
+			}
+		}
+	}
+	entries
 }

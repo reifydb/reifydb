@@ -8,7 +8,10 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::config::{ConfigKey, GetConfig},
+};
 use reifydb_runtime::actor::{
 	context::Context,
 	system::ActorConfig,
@@ -78,56 +81,72 @@ impl Actor for CompactActor {
 			debug!("[CdcCompact] stopped");
 			return Directive::Stop;
 		}
-
 		match msg {
-			CompactMessage::Tick => {
-				let block_size = self.read_block_size();
-				let safety_lag = self.read_safety_lag();
-				let max_blocks = self.read_max_blocks_per_tick();
-				let zstd_level = self.read_zstd_level();
-
-				let watermark = self.watermark.get();
-				let mut produced = 0usize;
-				while produced < max_blocks {
-					match self.store.compact_oldest(block_size, safety_lag, zstd_level, watermark) {
-						Ok(Some(s)) => {
-							trace!(
-								"[CdcCompact] block: [{}..{}] entries={} bytes={}",
-								s.min_version.0,
-								s.max_version.0,
-								s.num_entries,
-								s.compressed_bytes,
-							);
-							produced += 1;
-						}
-						Ok(None) => break,
-						Err(e) => {
-							error!("[CdcCompact] {e}");
-							break;
-						}
-					}
-				}
-				if produced > 0 {
-					debug!("[CdcCompact] produced {produced} block(s) this tick");
-				}
-
-				ctx.schedule_once(self.read_interval(), || CompactMessage::Tick);
-			}
-			CompactMessage::CompactAll => {
-				let block_size = self.read_block_size();
-				let zstd_level = self.read_zstd_level();
-				let watermark = self.watermark.get();
-				match self.store.compact_all(block_size, zstd_level, watermark) {
-					Ok(s) => debug!("[CdcCompact] CompactAll produced {} block(s)", s.len()),
-					Err(e) => error!("[CdcCompact] CompactAll error: {e}"),
-				}
-			}
+			CompactMessage::Tick => self.on_tick(ctx),
+			CompactMessage::CompactAll => self.on_compact_all(),
 		}
-
 		Directive::Continue
 	}
 
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new().mailbox_capacity(8)
+	}
+}
+
+impl CompactActor {
+	#[inline]
+	fn on_tick(&self, ctx: &Context<CompactMessage>) {
+		let block_size = self.read_block_size();
+		let safety_lag = self.read_safety_lag();
+		let max_blocks = self.read_max_blocks_per_tick();
+		let zstd_level = self.read_zstd_level();
+		let watermark = self.watermark.get();
+
+		let produced = self.run_tick_loop(block_size, safety_lag, zstd_level, watermark, max_blocks);
+		if produced > 0 {
+			debug!("[CdcCompact] produced {produced} block(s) this tick");
+		}
+
+		ctx.schedule_once(self.read_interval(), || CompactMessage::Tick);
+	}
+
+	#[inline]
+	fn run_tick_loop(
+		&self,
+		block_size: usize,
+		safety_lag: u64,
+		zstd_level: u8,
+		watermark: CommitVersion,
+		max_blocks: usize,
+	) -> usize {
+		let mut produced = 0usize;
+		while produced < max_blocks {
+			match self.store.compact_oldest(block_size, safety_lag, zstd_level, watermark) {
+				Ok(Some(s)) => {
+					trace!(
+						"[CdcCompact] block: [{}..{}] entries={} bytes={}",
+						s.min_version.0, s.max_version.0, s.num_entries, s.compressed_bytes,
+					);
+					produced += 1;
+				}
+				Ok(None) => break,
+				Err(e) => {
+					error!("[CdcCompact] {e}");
+					break;
+				}
+			}
+		}
+		produced
+	}
+
+	#[inline]
+	fn on_compact_all(&self) {
+		let block_size = self.read_block_size();
+		let zstd_level = self.read_zstd_level();
+		let watermark = self.watermark.get();
+		match self.store.compact_all(block_size, zstd_level, watermark) {
+			Ok(s) => debug!("[CdcCompact] CompactAll produced {} block(s)", s.len()),
+			Err(e) => error!("[CdcCompact] CompactAll error: {e}"),
+		}
 	}
 }
