@@ -13,7 +13,7 @@ use std::{
 
 use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_runtime::{
 	SharedRuntime,
 	actor::{mailbox::ActorRef, system::ActorSystem},
@@ -269,7 +269,7 @@ impl Database {
 
 		// Apply all pending migrations
 		debug!("Running MIGRATE to apply pending migrations");
-		let result = self.admin_as_root("MIGRATE;", Params::None)?;
+		let result = self.migrate_frames()?;
 		if let Some(frame) = result.first()
 			&& let Ok(Some(count)) = frame.get::<u32>("migrations_applied", 0)
 		{
@@ -277,6 +277,32 @@ impl Database {
 		}
 
 		Ok(())
+	}
+
+	/// Apply pending migrations with retry on transaction conflicts (TXN_001).
+	///
+	/// Uses an exponential backoff with jitter so that multiple writers racing
+	/// against the migration transaction back off without thundering. Suitable
+	/// to call from any service that has registered migrations via raw
+	/// `CREATE MIGRATION ...` statements.
+	pub fn migrate(&self) -> Result<()> {
+		self.migrate_frames().map(|_| ())
+	}
+
+	fn migrate_frames(&self) -> Result<Vec<Frame>> {
+		let strategy = RetryStrategy::with_jittered_backoff(
+			30,
+			Duration::from_millis(10),
+			Duration::from_millis(2_000),
+		);
+		let rng = self.engine.rng();
+		let result = strategy.execute(rng, "MIGRATE;", || {
+			self.engine.admin_as(IdentityId::root(), "MIGRATE;", Params::None)
+		});
+		match result.error {
+			Some(e) => Err(e),
+			None => Ok(result.frames),
+		}
 	}
 
 	pub fn get_subsystem_names(&self) -> Vec<String> {
