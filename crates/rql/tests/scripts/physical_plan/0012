@@ -1,0 +1,11 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Constant folding: literal arithmetic is evaluated at compile time. The
+# original column header is preserved via an alias so user-facing output
+# columns keep their pre-fold names.
+physical 'from users map { 1 + 2 }'
+---
+> └── Map [Constant(3) as 1 + 2]
+>     └── TableScan default::users
+>

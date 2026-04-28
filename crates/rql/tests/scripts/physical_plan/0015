@@ -1,0 +1,9 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Comparison fold + algebraic short-circuit: 5 > 3 -> true, true AND e -> e
+physical 'from users filter { 5 > 3 and age > 0 }'
+---
+> └── Filter [(age > Constant(0))]
+>     └── TableScan default::users
+>

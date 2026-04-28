@@ -1,0 +1,9 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Dead branch elimination: if-true collapses to its then-branch
+physical 'from users filter { if true { age > 0 } else { age < 0 } }'
+---
+> └── Filter [(age > Constant(0))]
+>     └── TableScan default::users
+>

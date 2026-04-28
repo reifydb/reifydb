@@ -12,6 +12,7 @@ use crate::{
 	ast::parse_str,
 	bump::Bump,
 	nodes::AlterSequenceNode,
+	optimize::optimize_physical,
 	plan::{
 		logical::compile_logical,
 		physical::{
@@ -33,7 +34,8 @@ pub fn explain_physical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query:
 	}
 
 	let mut result = String::new();
-	for plan in plans.into_iter().flatten() {
+	for mut plan in plans.into_iter().flatten() {
+		optimize_physical(&mut plan);
 		let mut output = String::new();
 		render_physical_plan_inner(&plan, "", true, &mut output);
 		result += output.as_str();

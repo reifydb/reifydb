@@ -32,6 +32,7 @@ pub mod fingerprint;
 pub mod flow;
 pub mod instruction;
 pub mod nodes;
+pub mod optimize;
 pub mod plan;
 pub mod query;
 pub mod token;

@@ -29,6 +29,7 @@ use crate::{
 	instruction::{Addr, CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes,
 	nodes::CompiledViewStorageKind,
+	optimize::optimize_physical,
 	plan::{
 		logical::LogicalPlan,
 		physical::{self, PhysicalPlan},
@@ -128,7 +129,8 @@ impl Compiler {
 			let is_output = statement.is_output;
 			let fingerprint = fingerprint_statement(&statement);
 			let normalized_rql = normalize_statement(&statement);
-			if let Some(physical) = plan(&bump, &self.0.catalog, tx, statement)? {
+			if let Some(mut physical) = plan(&bump, &self.0.catalog, tx, statement)? {
+				optimize_physical(&mut physical);
 				plans.push(Compiled {
 					instructions: compile_instructions(physical)?,
 					is_output,
@@ -165,7 +167,8 @@ impl Compiler {
 		let is_output = statement.is_output;
 		let fingerprint = fingerprint_statement(&statement);
 		let normalized_rql = normalize_statement(&statement);
-		if let Some(physical) = plan(&bump, &self.0.catalog, tx, statement)? {
+		if let Some(mut physical) = plan(&bump, &self.0.catalog, tx, statement)? {
+			optimize_physical(&mut physical);
 			Ok(Some(Compiled {
 				instructions: compile_instructions(physical)?,
 				is_output,
@@ -213,7 +216,8 @@ impl Compiler {
 			let is_output = statement.is_output;
 			let fingerprint = fingerprint_statement(&statement);
 			let normalized_rql = normalize_statement(&statement);
-			if let Some(physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, &policy)? {
+			if let Some(mut physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, &policy)? {
+				optimize_physical(&mut physical);
 				plans.push(Compiled {
 					instructions: compile_instructions(physical)?,
 					is_output,
@@ -255,7 +259,8 @@ impl Compiler {
 		let is_output = statement.is_output;
 		let fingerprint = fingerprint_statement(&statement);
 		let normalized_rql = normalize_statement(&statement);
-		if let Some(physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, policy)? {
+		if let Some(mut physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, policy)? {
+			optimize_physical(&mut physical);
 			Ok(Some(Compiled {
 				instructions: compile_instructions(physical)?,
 				is_output,

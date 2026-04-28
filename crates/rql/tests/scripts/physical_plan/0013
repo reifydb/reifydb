@@ -1,0 +1,10 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Partial fold: the literal subtree collapses but the column ref remains.
+# The outer column header is preserved.
+physical 'from users map { 1 + 2 + age }'
+---
+> └── Map [(Constant(3) + age) as 1 + 2 + age]
+>     └── TableScan default::users
+>
