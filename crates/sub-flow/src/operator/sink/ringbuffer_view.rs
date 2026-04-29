@@ -23,6 +23,7 @@ use reifydb_type::{
 	value::{blob::Blob, datetime::DateTime, row_number::RowNumber, r#type::Type},
 };
 use serde::{Deserialize, Serialize};
+use smallvec::smallvec;
 
 use super::{coerce_columns, encode_row_at_index};
 use crate::{
@@ -194,7 +195,7 @@ impl Operator for SinkRingBufferViewOperator {
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
-						diffs: vec![Diff::insert(coerced)],
+						diffs: smallvec![Diff::insert(coerced)],
 						changed_at,
 					});
 				}
@@ -256,7 +257,7 @@ impl Operator for SinkRingBufferViewOperator {
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
-						diffs: vec![Diff::update(coerced_pre, coerced_post)],
+						diffs: smallvec![Diff::update(coerced_pre, coerced_post)],
 						changed_at,
 					});
 				}
@@ -282,7 +283,7 @@ impl Operator for SinkRingBufferViewOperator {
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
-						diffs: vec![Diff::remove(coerced)],
+						diffs: smallvec![Diff::remove(coerced)],
 						changed_at,
 					});
 				}

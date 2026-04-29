@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::interface::{
 	catalog::flow::FlowId,
 	change::{Change, ChangeOrigin},
@@ -47,12 +49,12 @@ impl FlowEngine {
 								txn,
 								&flow,
 								&node,
-								Change::from_flow(
+								Arc::new(Change::from_flow(
 									node_id,
 									change.version,
 									change.diffs.clone(),
 									change.changed_at,
-								),
+								)),
 							)?;
 							nodes_processed += 1;
 						}
@@ -68,7 +70,7 @@ impl FlowEngine {
 				});
 
 				if let Some((flow, node)) = flow_and_node {
-					self.process_change(txn, &flow, &node, change)?;
+					self.process_change(txn, &flow, &node, Arc::new(change))?;
 					nodes_processed += 1;
 				}
 			}
@@ -86,13 +88,17 @@ impl FlowEngine {
 		lock_wait_us = field::Empty,
 		apply_time_us = field::Empty
 	))]
-	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Arc<Change>) -> Result<Change> {
 		let lock_start = self.runtime_context.clock.instant();
 		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
+		// Single-consumer path: try to take ownership of the Change without cloning.
+		// If another consumer still holds the Arc, fall back to a deep clone.
+		let owned = Arc::try_unwrap(change).unwrap_or_else(|arc| (*arc).clone());
+
 		let apply_start = self.runtime_context.clock.instant();
-		let result = operator.apply(txn, change)?;
+		let result = operator.apply(txn, owned)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
 		Ok(result)
@@ -111,17 +117,17 @@ impl FlowEngine {
 		txn: &mut FlowTransaction,
 		flow: &FlowDag,
 		node: &FlowNode,
-		change: Change,
+		change: Arc<Change>,
 	) -> Result<()> {
 		let node_type = &node.ty;
 		let changes = &node.outputs;
 
-		let change = match &node_type {
+		let change: Arc<Change> = match &node_type {
 			SourceInlineData {} => unimplemented!(),
 			_ => {
 				let result = self.apply(txn, node, change)?;
 				Span::current().record("output_diffs", result.diffs.len());
-				result
+				Arc::new(result)
 			}
 		};
 
@@ -133,8 +139,11 @@ impl FlowEngine {
 		} else {
 			let (last, rest) = changes.split_last().unwrap();
 			for output_id in rest {
-				self.process_change(txn, flow, flow.get_node(output_id).unwrap(), change.clone())?;
+				// Fan-out: cheap Arc::clone (refcount bump) rather than deep Vec<Diff>::clone.
+				self.process_change(txn, flow, flow.get_node(output_id).unwrap(), Arc::clone(&change))?;
 			}
+			// Last consumer takes the original Arc; if no one else retained it,
+			// `apply`'s `try_unwrap` succeeds and avoids the deep clone entirely.
 			self.process_change(txn, flow, flow.get_node(last).unwrap(), change)?;
 		}
 		Span::current().record("propagation_time_us", propagation_start.elapsed().as_micros() as u64);
@@ -160,13 +169,27 @@ impl FlowEngine {
 
 			if let Some(change) = operator.tick(txn, timestamp)? {
 				let node = flow.get_node(&node_id).unwrap();
-				for &output_id in &node.outputs {
+				let outputs = &node.outputs;
+				if outputs.is_empty() {
+				} else if outputs.len() == 1 {
 					self.process_change(
 						txn,
 						&flow,
-						flow.get_node(&output_id).unwrap(),
-						change.clone(),
+						flow.get_node(&outputs[0]).unwrap(),
+						Arc::new(change),
 					)?;
+				} else {
+					let arc = Arc::new(change);
+					let (last, rest) = outputs.split_last().unwrap();
+					for output_id in rest {
+						self.process_change(
+							txn,
+							&flow,
+							flow.get_node(output_id).unwrap(),
+							Arc::clone(&arc),
+						)?;
+					}
+					self.process_change(txn, &flow, flow.get_node(last).unwrap(), arc)?;
 				}
 			}
 		}

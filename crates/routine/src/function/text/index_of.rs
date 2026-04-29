@@ -65,10 +65,10 @@ impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
 
 				for i in 0..row_count {
 					if str_container.is_defined(i) && substr_container.is_defined(i) {
-						let s = &str_container[i];
-						let substr = &substr_container[i];
+						let s = str_container.get(i).unwrap();
+						let substr = substr_container.get(i).unwrap();
 						let index = s
-							.find(substr.as_str())
+							.find(substr)
 							.map(|pos| {
 								// Convert byte position to character position
 								s[..pos].chars().count() as i32

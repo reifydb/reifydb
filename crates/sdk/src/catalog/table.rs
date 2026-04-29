@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Table FFI operations
-
 use std::{mem::MaybeUninit, slice::from_raw_parts, str};
 
 use reifydb_abi::{
@@ -20,7 +18,6 @@ use reifydb_core::{
 use super::{unmarshal_column, unmarshal_primary_key};
 use crate::{error::FFIError, operator::context::OperatorContext};
 
-/// Find table by ID
 pub(super) fn raw_catalog_find_table(
 	ctx: &OperatorContext,
 	table_id: TableId,
@@ -54,7 +51,6 @@ pub(super) fn raw_catalog_find_table(
 	}
 }
 
-/// Find table by name
 pub(super) fn raw_catalog_find_table_by_name(
 	ctx: &OperatorContext,
 	namespace_id: NamespaceId,
@@ -99,7 +95,6 @@ pub(super) fn raw_catalog_find_table_by_name(
 	}
 }
 
-/// Unmarshal TableFFI to Table
 unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<Table, FFIError> {
 	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_table.name.ptr.is_null() && ffi_table.name.len > 0 {

@@ -61,9 +61,9 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 				for i in 0..row_count {
 					match (date_container.get(i), prec_container.is_defined(i)) {
 						(Some(d), true) => {
-							let precision = &prec_container[i];
+							let precision = prec_container.get(i).unwrap();
 							let truncated =
-								match precision.as_str() {
+								match precision {
 									"year" => Date::new(d.year(), 1, 1),
 									"month" => Date::new(d.year(), d.month(), 1),
 									other => {

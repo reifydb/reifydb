@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI exports for procedure libraries
-
 use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
 use postcard::from_bytes;
@@ -18,7 +16,6 @@ use crate::procedure::{
 	wrapper::{ProcedureWrapper, create_procedure_vtable},
 };
 
-/// Convert a static string to a BufferFFI
 fn str_to_buffer(s: &'static str) -> BufferFFI {
 	BufferFFI {
 		ptr: s.as_ptr(),
@@ -27,7 +24,6 @@ fn str_to_buffer(s: &'static str) -> BufferFFI {
 	}
 }
 
-/// Create a procedure descriptor from a procedure type's metadata
 pub fn create_procedure_descriptor<T: FFIProcedureWithMetadata>() -> ProcedureDescriptorFFI {
 	ProcedureDescriptorFFI {
 		api: CURRENT_API,

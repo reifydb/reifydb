@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-#[cfg(test)]
 pub mod test {
 	use reifydb_core::{
 		encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},

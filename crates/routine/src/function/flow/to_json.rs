@@ -266,8 +266,10 @@ impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let blob = &container[i];
-						let bytes = blob.as_bytes();
+						let bytes = match container.get(i) {
+							Some(b) => b,
+							None => continue,
+						};
 
 						// Deserialize from postcard
 						let node_type: FlowNodeType = from_bytes(bytes).map_err(|e| {

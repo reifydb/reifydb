@@ -61,8 +61,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeTrunc {
 				for i in 0..row_count {
 					match (dt_container.get(i), prec_container.is_defined(i)) {
 						(Some(dt), true) => {
-							let precision = &prec_container[i];
-							let truncated = match precision.as_str() {
+							let precision = prec_container.get(i).unwrap();
+							let truncated = match precision {
 								"year" => DateTime::new(dt.year(), 1, 1, 0, 0, 0, 0),
 								"month" => DateTime::new(
 									dt.year(),

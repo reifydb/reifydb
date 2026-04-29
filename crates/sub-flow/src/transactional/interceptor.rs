@@ -39,6 +39,7 @@ use reifydb_type::{
 	Result,
 	value::{datetime::DateTime, identity::IdentityId},
 };
+use smallvec::smallvec;
 use tracing::warn;
 
 use crate::{
@@ -172,6 +173,13 @@ pub(crate) fn execute_inline_flow_changes(
 						flow_engine.process(&mut flow_txn, change, flow_id)?;
 					}
 
+					// Flush cached operator state so its writes go into
+					// `pending` and commit atomically with the rest of
+					// this transactional flow's outputs. Release per-FFI
+					// arenas at the same boundary.
+					flow_txn.flush_operator_states()?;
+					flow_txn.release_ffi_scratch();
+
 					Ok(FlowResult {
 						view_entries: flow_txn.take_accumulator_entries(),
 						pending: flow_txn.take_pending(),
@@ -187,7 +195,7 @@ pub(crate) fn execute_inline_flow_changes(
 				available_changes.push(Change {
 					origin: ChangeOrigin::Shape(*id),
 					version: read_version,
-					diffs: vec![diff.clone()],
+					diffs: smallvec![diff.clone()],
 					changed_at: DateTime::from_nanos(engine.clock().now_nanos()),
 				});
 			}

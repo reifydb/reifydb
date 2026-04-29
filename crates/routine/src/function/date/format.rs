@@ -93,7 +93,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateFormat {
 				for i in 0..row_count {
 					match (date_container.get(i), fmt_container.is_defined(i)) {
 						(Some(d), true) => {
-							let fmt_str = &fmt_container[i];
+							let fmt_str = fmt_container.get(i).unwrap();
 							let doy = compute_day_of_year(d.year(), d.month(), d.day());
 							match format_date(d.year(), d.month(), d.day(), doy, fmt_str) {
 								Ok(formatted) => {

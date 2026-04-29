@@ -59,10 +59,10 @@ macro_rules! impl_to_temporal {
 			let mut out = ColumnBuffer::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
-					let val = &container[idx];
+					let val = container.get(idx).unwrap();
 					// Use internal fragment for parsing - positions will be replaced with actual
 					// source positions
-					let temp_fragment = Fragment::internal(val.as_str());
+					let temp_fragment = Fragment::internal(val);
 
 					let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
 						// Get the original fragment for error reporting
@@ -85,17 +85,13 @@ macro_rules! impl_to_temporal {
 								// For string literals, if the source text exactly
 								// matches the value being parsed, or contains it
 								// with quotes, it's a string literal
-								if &**source_text == val.as_str()
-									|| source_text.contains(&format!(
-										"\"{}\"",
-										val.as_str()
-									)) {
+								if &**source_text == val
+									|| source_text.contains(&format!("\"{}\"", val))
+								{
 									// This is a string literal - adjust position
 									// within the string
-									let offset = val
-										.as_str()
-										.find(&**error_text)
-										.unwrap_or(0);
+									let offset =
+										val.find(&**error_text).unwrap_or(0);
 									e.0.fragment = proper_fragment
 										.sub_fragment(offset, error_text.len());
 								} else {

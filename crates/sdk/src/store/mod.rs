@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Store access for FFI operators
-//!
-//! Provides read-only access to the underlying store,
-//! allowing operators to query data beyond their own state.
-
 pub mod ffi;
 
 use std::ops::Bound;
@@ -16,7 +11,6 @@ use tracing::{Span, instrument};
 
 use crate::{error::Result, operator::context::OperatorContext};
 
-/// Store accessor providing read-only access to the underlying store
 pub struct Store<'a> {
 	ctx: &'a mut OperatorContext,
 }

@@ -56,7 +56,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextCount {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let text = &container[i];
+						let text = container.get(i).unwrap();
 						result.push(text.chars().count() as i32);
 						res_bitvec.push(true);
 					} else {

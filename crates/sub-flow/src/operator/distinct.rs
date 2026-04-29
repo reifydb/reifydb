@@ -39,9 +39,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	operator::{
 		Operator, Operators,
-		stateful::{raw::RawStatefulOperator, single::SingleStateful},
+		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
 	},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -476,34 +476,55 @@ impl Operator for DistinctOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let mut state = self.load_distinct_state(txn)?;
-		let mut result = Vec::new();
+		let node_id = self.node;
+		let shape = self.shape.clone();
 
+		// Load (or fetch from cache) the cached DistinctState for this txn.
+		// On first access we register the persist closure; subsequent batches
+		// reuse the in-memory state without re-decoding the postcard blob.
+		let state: &mut DistinctState = txn.operator_state(node_id, |txn| {
+			let s = self.load_distinct_state(txn)?;
+			let persist: PersistFn = Box::new(move |txn, value| {
+				let state = value.downcast::<DistinctState>().expect("DistinctState slot type");
+				let serialized = to_stdvec(&*state).map_err(|e| {
+					Error(Box::new(internal!("Failed to serialize DistinctState: {}", e)))
+				})?;
+				let blob = Blob::from(serialized);
+				let key = utils::empty_key();
+				let mut row = utils::load_or_create_row(node_id, txn, &key, &shape)?;
+				shape.set_blob(&mut row, 0, &blob);
+				utils::save_row(node_id, txn, &key, row)?;
+				Ok(())
+			});
+			Ok((s, persist))
+		})?;
+
+		let mut result = Vec::new();
 		for diff in change.diffs {
 			match diff {
 				Diff::Insert {
 					post,
 				} => {
-					let insert_result = self.process_insert(&mut state, &post)?;
+					let insert_result = self.process_insert(state, &post)?;
 					result.extend(insert_result);
 				}
 				Diff::Update {
 					pre,
 					post,
 				} => {
-					let update_result = self.process_update(&mut state, &pre, &post)?;
+					let update_result = self.process_update(state, &pre, &post)?;
 					result.extend(update_result);
 				}
 				Diff::Remove {
 					pre,
 				} => {
-					let remove_result = self.process_remove(&mut state, &pre)?;
+					let remove_result = self.process_remove(state, &pre)?;
 					result.extend(remove_result);
 				}
 			}
 		}
 
-		self.save_distinct_state(txn, &state)?;
+		txn.mark_state_dirty(node_id);
 
 		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
 	}

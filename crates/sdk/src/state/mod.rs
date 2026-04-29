@@ -35,32 +35,32 @@ impl<'a> State<'a> {
 
 	/// Get a value from state by key
 	pub fn get(&self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		ffi::raw_state_get(self.ctx, key)
+		ffi::get(self.ctx, key)
 	}
 
 	/// Set a value in state by key
 	pub fn set(&mut self, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
-		ffi::raw_state_set(self.ctx, key, value)
+		ffi::set(self.ctx, key, value)
 	}
 
 	/// Remove a value from state by key
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		ffi::raw_state_remove(self.ctx, key)
+		ffi::remove(self.ctx, key)
 	}
 
 	/// Check if a key exists in state
 	pub fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		Ok(ffi::raw_state_get(self.ctx, key)?.is_some())
+		Ok(ffi::get(self.ctx, key)?.is_some())
 	}
 
 	/// Clear all state for this operator
 	pub fn clear(&mut self) -> Result<()> {
-		ffi::raw_state_clear(self.ctx)
+		ffi::clear(self.ctx)
 	}
 
 	/// Scan state entries with a given key prefix
 	pub fn scan_prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
-		ffi::raw_state_prefix(self.ctx, prefix)
+		ffi::prefix(self.ctx, prefix)
 	}
 
 	/// Get all keys with a given prefix
@@ -75,7 +75,7 @@ impl<'a> State<'a> {
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, EncodedRow)>> {
-		ffi::raw_state_range(self.ctx, start, end)
+		ffi::range(self.ctx, start, end)
 	}
 }
 

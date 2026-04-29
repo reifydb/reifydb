@@ -267,7 +267,7 @@ fn text_to_integer(data: &ColumnBuffer, target: Type, lazy_fragment: impl LazyFr
 			let mut out = ColumnBuffer::with_capacity(target.clone(), container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
-					let val = &container[idx];
+					let val = container.get(idx).unwrap();
 					let temp_fragment = Fragment::internal(val);
 
 					match target.clone() {
@@ -448,7 +448,7 @@ fn text_to_float(column_data: &ColumnBuffer, target: Type, lazy_fragment: impl L
 		let mut out = ColumnBuffer::with_capacity(target.clone(), container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
-				let val = &container[idx];
+				let val = container.get(idx).unwrap();
 				// Create efficient borrowed fragment for
 				// parsing
 				let temp_fragment = Fragment::internal(val);
@@ -511,7 +511,7 @@ fn text_to_decimal(column_data: &ColumnBuffer, target: Type, lazy_fragment: impl
 		let mut out = ColumnBuffer::with_capacity(target.clone(), container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
-				let val = &container[idx];
+				let val = container.get(idx).unwrap();
 				let temp_fragment = Fragment::internal(val);
 
 				let result = parse_decimal(temp_fragment.clone()).map_err(|mut e| {

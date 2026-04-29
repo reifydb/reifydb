@@ -321,9 +321,8 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			(Type::Uint16.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Utf8(c) => {
-			let slice: &[String] = c;
 			let mut buf = Vec::new();
-			for s in slice {
+			for s in c.iter_str() {
 				let bytes = s.as_bytes();
 				buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
 				buf.extend_from_slice(bytes);
@@ -389,10 +388,8 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			(Type::Uuid7.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Blob(c) => {
-			let slice: &[Blob] = c;
 			let mut buf = Vec::new();
-			for v in slice {
-				let bytes = v.as_bytes();
+			for bytes in c.iter_bytes() {
 				buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
 				buf.extend_from_slice(bytes);
 			}

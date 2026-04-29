@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Operator context providing access to state and resources
-
 use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId};
 use reifydb_type::{
@@ -13,6 +11,7 @@ use reifydb_type::{
 use crate::{
 	catalog::Catalog,
 	error::Result,
+	operator::builder::ColumnsBuilder,
 	rql::raw_rql,
 	state::{State, row::RowNumberProvider},
 	store::Store,
@@ -68,8 +67,28 @@ impl OperatorContext {
 		provider.get_or_create_row_number(self, key)
 	}
 
+	/// Get or create stable row numbers for a batch of keys.
+	///
+	/// The returned slice has one `RowNumber` per input key, in the same
+	/// order. Re-calling with the same key returns the same number, which
+	/// the materialiser uses to upsert the existing storage row instead of
+	/// inserting a duplicate. Stateful FFI operators feed this directly
+	/// into `builder.emit_insert(.., row_numbers)`.
+	pub fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<RowNumber>> {
+		let provider = RowNumberProvider::new(self.operator_id());
+		Ok(provider.get_or_create_row_numbers_batch(self, keys.iter())?.into_iter().map(|(rn, _)| rn).collect())
+	}
+
 	/// Execute an RQL statement within the current transaction.
 	pub fn rql(&self, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		raw_rql(self, rql, params)
+	}
+
+	/// Acquire a `ColumnsBuilder` for emitting output columns directly into
+	/// host-pool-owned buffers. The builder borrows this context for the
+	/// duration of the FFI call; commit columns and emit diffs through it
+	/// instead of writing to the legacy `output: ChangeFFI` parameter.
+	pub fn builder(&mut self) -> ColumnsBuilder<'_> {
+		ColumnsBuilder::new(self)
 	}
 }

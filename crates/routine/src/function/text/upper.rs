@@ -51,11 +51,11 @@ impl<'a> Routine<FunctionContext<'a>> for TextUpper {
 				container,
 				max_bytes,
 			} => {
-				let mut result_data = Vec::with_capacity(container.data().len());
+				let mut result_data = Vec::with_capacity(container.len());
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let original_str = &container[i];
+						let original_str = container.get(i).unwrap();
 						let upper_str = original_str.to_uppercase();
 						result_data.push(upper_str);
 					} else {

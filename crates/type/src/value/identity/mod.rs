@@ -166,7 +166,11 @@ impl<'de> Deserialize<'de> for IdentityId {
 			}
 		}
 
-		deserializer.deserialize_any(Uuid7Visitor)
+		if deserializer.is_human_readable() {
+			deserializer.deserialize_str(Uuid7Visitor)
+		} else {
+			deserializer.deserialize_bytes(Uuid7Visitor)
+		}
 	}
 }
 

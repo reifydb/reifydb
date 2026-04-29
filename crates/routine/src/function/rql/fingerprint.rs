@@ -61,7 +61,7 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let query = &container[i];
+						let query = container.get(i).unwrap();
 						let bump = Bump::new();
 						let stmts = parse_str(&bump, query).map_err(|e| {
 							RoutineError::FunctionExecutionFailed {

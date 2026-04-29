@@ -60,7 +60,7 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV7 {
 			} => {
 				let mut result = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					let s = &container[i];
+					let s = container.get(i).unwrap();
 					let parsed = Uuid::parse_str(s).map_err(|e| {
 						RoutineError::FunctionExecutionFailed {
 							function: ctx.fragment.clone(),

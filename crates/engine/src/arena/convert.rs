@@ -10,7 +10,6 @@ use reifydb_type::{
 	util::{bitvec::BitVec, cowvec::CowVec},
 	value::{
 		Value,
-		blob::Blob,
 		container::{
 			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
 			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
@@ -103,19 +102,31 @@ fn uuid_to_bump<'bump, T: IsUuid + Clone + Debug + Default, S: Storage>(
 }
 
 fn utf8_to_cow<S: Storage>(src: &Utf8Container<S>) -> Utf8Container<Cow> {
-	Utf8Container::from_parts(vec_to_cow::<String, S>(src.data()))
+	// Copy bytes + offsets into Cow storage. Layout is preserved exactly,
+	// so reading the result via the FFI marshal path is still zero-copy
+	// against the Cow buffers.
+	let data = vec_to_cow::<u8, S>(src.data_storage());
+	let offsets = vec_to_cow::<u64, S>(src.offsets_storage());
+	Utf8Container::from_storage_parts(data, offsets)
 }
 
 fn utf8_to_bump<'bump, S: Storage>(src: &Utf8Container<S>, bump: &'bump BumpAlloc) -> Utf8Container<Bump<'bump>> {
-	Utf8Container::from_parts(vec_to_bump::<String, S>(src.data(), bump))
+	// Bump-storage variant: copy bytes + offsets into bump-allocated vecs.
+	let data = vec_to_bump::<u8, S>(src.data_storage(), bump);
+	let offsets = vec_to_bump::<u64, S>(src.offsets_storage(), bump);
+	Utf8Container::from_storage_parts(data, offsets)
 }
 
 fn blob_to_cow<S: Storage>(src: &BlobContainer<S>) -> BlobContainer<Cow> {
-	BlobContainer::from_parts(vec_to_cow::<Blob, S>(src.data()))
+	let data = vec_to_cow::<u8, S>(src.data_storage());
+	let offsets = vec_to_cow::<u64, S>(src.offsets_storage());
+	BlobContainer::from_storage_parts(data, offsets)
 }
 
 fn blob_to_bump<'bump, S: Storage>(src: &BlobContainer<S>, bump: &'bump BumpAlloc) -> BlobContainer<Bump<'bump>> {
-	BlobContainer::from_parts(vec_to_bump::<Blob, S>(src.data(), bump))
+	let data = vec_to_bump::<u8, S>(src.data_storage(), bump);
+	let offsets = vec_to_bump::<u64, S>(src.offsets_storage(), bump);
+	BlobContainer::from_storage_parts(data, offsets)
 }
 
 fn identity_id_to_cow<S: Storage>(src: &IdentityIdContainer<S>) -> IdentityIdContainer<Cow> {

@@ -8,7 +8,10 @@ use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
-	interface::{catalog::flow::FlowNodeId, change::Change},
+	interface::{
+		catalog::flow::FlowNodeId,
+		change::{Change, ChangeOrigin},
+	},
 	key::EncodableKey,
 	row::Row,
 	value::column::columns::Columns,
@@ -20,9 +23,13 @@ use reifydb_type::{
 
 use crate::{
 	error::Result,
-	operator::{FFIOperator, FFIOperatorMetadata, context::OperatorContext},
+	ffi::arena::Arena,
+	operator::{FFIOperator, FFIOperatorMetadata, change::BorrowedChange, context::OperatorContext},
 	testing::{
-		builders::TestChangeBuilder, callbacks::create_test_callbacks, context::TestContext,
+		builders::TestChangeBuilder,
+		callbacks::create_test_callbacks,
+		context::TestContext,
+		registry::{TestBuilderRegistry, into_diffs, with_registry},
 		state::TestStateStore,
 	},
 };
@@ -34,7 +41,7 @@ use crate::{
 /// - State management via TestContext
 /// - Version tracking
 /// - Log capture (to stderr for now)
-/// - Full support for apply() and pull()
+/// - Full support for apply() and pull() driven through the zero-copy ABI
 pub struct OperatorTestHarness<T: FFIOperator> {
 	operator: T,
 	context: Box<TestContext>, // Boxed for stable address (pointed to by ffi_context)
@@ -42,6 +49,14 @@ pub struct OperatorTestHarness<T: FFIOperator> {
 	config: HashMap<String, Value>,
 	node_id: FlowNodeId,
 	history: Vec<Change>,
+	/// Test-side mirror of the host's BuilderRegistry. Captures whatever
+	/// the operator emits via `ctx.builder()` during `apply` / `pull` /
+	/// `tick` so the harness can synthesise an output `Change` for the
+	/// caller to inspect.
+	builder_registry: TestBuilderRegistry,
+	/// Arena used to marshal input `Change` -> `ChangeFFI` so the
+	/// operator can read it as a `BorrowedChange`.
+	input_arena: Arena,
 }
 
 impl<T: FFIOperator> OperatorTestHarness<T> {
@@ -50,13 +65,38 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		TestHarnessBuilder::new()
 	}
 
-	/// Apply a flow change to the operator.
+	/// Apply a flow change to the operator via the zero-copy ABI.
 	///
-	/// The returned `Change` is also appended to the harness history, so it can be
-	/// inspected later via `harness[i]`, `last_change()`, or `history_len()`.
+	/// Marshals the input as a `ChangeFFI` borrow, drives the operator,
+	/// and assembles an output `Change` from whatever the operator emitted
+	/// via `ctx.builder()`. The result is also appended to the harness
+	/// history so it can be inspected via `harness[i]`, `last_change()`,
+	/// or `history_len()`.
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
-		let mut ctx = self.create_operator_context();
-		let output = self.operator.apply(&mut ctx, input)?;
+		let version = input.version;
+		let changed_at = input.changed_at;
+		let origin = input.origin.clone();
+		// Reset arena for this call (cheap; bumpalo reset).
+		self.input_arena.clear();
+		let ffi_change = self.input_arena.marshal_change(&input);
+		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+
+		let result: Result<()> = with_registry(&self.builder_registry, || {
+			let mut op_ctx = OperatorContext::new(ffi_ctx_ptr);
+			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
+			self.operator.apply(&mut op_ctx, borrowed)
+		});
+		// Drop the input arena's outstanding scaffolding before doing
+		// anything else (input pointers are now invalid).
+		drop(input);
+		result?;
+
+		let emitted = self.builder_registry.drain_diffs();
+		let diffs = into_diffs(emitted);
+		let output = match origin {
+			ChangeOrigin::Flow(node) => Change::from_flow(node, version, diffs, changed_at),
+			ChangeOrigin::Shape(_) => Change::from_flow(self.node_id, version, diffs, changed_at),
+		};
 		self.history.push(output.clone());
 		Ok(output)
 	}
@@ -103,10 +143,24 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		self.history.clear();
 	}
 
-	/// Pull rows by their row numbers
+	/// Pull rows by their row numbers. The operator emits its result via
+	/// `ctx.builder()` as a single Insert-shaped diff; we read its `post`
+	/// columns as the return value.
 	pub fn pull(&mut self, row_numbers: &[RowNumber]) -> Result<Columns> {
-		let mut ctx = self.create_operator_context();
-		self.operator.pull(&mut ctx, row_numbers)
+		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+		let result: Result<()> = with_registry(&self.builder_registry, || {
+			let mut op_ctx = OperatorContext::new(ffi_ctx_ptr);
+			self.operator.pull(&mut op_ctx, row_numbers)
+		});
+		result?;
+
+		let mut emitted = self.builder_registry.drain_diffs();
+		let cols = if let Some(first) = emitted.drain(..).next() {
+			first.post.or(first.pre).unwrap_or_else(Columns::empty)
+		} else {
+			Columns::empty()
+		};
+		Ok(cols)
 	}
 
 	/// Get the current version
@@ -313,6 +367,8 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 			config: self.config,
 			node_id: self.node_id,
 			history: Vec::new(),
+			builder_registry: TestBuilderRegistry::new(),
+			input_arena: Arena::new(),
 		})
 	}
 }
@@ -351,21 +407,26 @@ impl TestMetadataHarness {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+	use reifydb_abi::{
+		callbacks::builder::EmitDiffKind, data::column::ColumnTypeCode, flow::diff::DiffType,
+		operator::capabilities::CAPABILITY_ALL_STANDARD,
+	};
 	use reifydb_core::{
 		common::CommitVersion,
 		encoded::{key::IntoEncodedKey, shape::RowShape},
-		interface::{
-			catalog::flow::FlowNodeId,
-			change::{Change, Diff},
-		},
-		value::column::columns::Columns,
+		interface::catalog::flow::FlowNodeId,
 	};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::{super::helpers::encode_key, *};
 	use crate::{
-		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumn, context::OperatorContext},
+		operator::{
+			FFIOperator, FFIOperatorMetadata,
+			builder::{ColumnsBuilder, CommittedColumn},
+			change::{BorrowedChange, BorrowedColumns},
+			column::OperatorColumn,
+			context::OperatorContext,
+		},
 		testing::builders::{TestChangeBuilder, TestRowBuilder},
 	};
 
@@ -393,13 +454,13 @@ pub mod tests {
 			})
 		}
 
-		fn apply(&mut self, _ctx: &mut OperatorContext, input: Change) -> Result<Change> {
-			// Simple pass-through for testing
-			Ok(input)
+		fn apply(&mut self, ctx: &mut OperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+			// Pass-through: forward each input diff via the builder.
+			forward_diffs_passthrough(ctx, &input)
 		}
 
-		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<Columns> {
-			Ok(Columns::empty())
+		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
+			Ok(())
 		}
 	}
 
@@ -421,45 +482,128 @@ pub mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, ctx: &mut OperatorContext, input: Change) -> Result<Change> {
-			let mut state = ctx.state();
-
-			for diff in &input.diffs {
-				let post_row = match diff {
-					Diff::Insert {
-						post,
-					} => Some(post),
-					Diff::Update {
-						post,
-						..
-					} => Some(post),
-					Diff::Remove {
-						..
-					} => unreachable!(),
+		fn apply(&mut self, ctx: &mut OperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+			// Stash the post-row's first int8 value into operator
+			// state, keyed by the row number. Then forward the
+			// diffs unchanged via the builder so callers can still
+			// inspect the apply output.
+			for diff in input.diffs() {
+				let post = match diff.kind() {
+					DiffType::Insert | DiffType::Update => Some(diff.post()),
+					DiffType::Remove => None,
 				};
-
-				if let Some(columns) = post_row {
-					// Convert Columns to Row for processing
-					let row = columns.to_single_row();
-					let row_key = format!("row_{}", row.number.0);
-
-					let first_value = row.shape.get_value(&row.encoded, 0);
-
-					// Encode the value and store in state
-					let shape = RowShape::testing(&[Type::Int8]);
-					let mut encoded = shape.allocate();
-					shape.set_values(&mut encoded, &[first_value]);
-
-					state.set(&row_key.into_encoded_key(), &encoded)?;
+				if let Some(columns) = post {
+					let row_numbers = columns.row_numbers();
+					let first_int8 = columns
+						.columns()
+						.next()
+						.and_then(|c| unsafe { c.as_slice::<i64>() })
+						.and_then(|s| s.first().copied());
+					if let (Some(&rn), Some(v)) = (row_numbers.first(), first_int8) {
+						let row_key = format!("row_{}", rn);
+						let shape = RowShape::testing(&[Type::Int8]);
+						let mut encoded = shape.allocate();
+						shape.set_values(&mut encoded, &[Value::Int8(v)]);
+						ctx.state().set(&row_key.into_encoded_key(), &encoded)?;
+					}
 				}
 			}
-
-			Ok(input)
+			forward_diffs_passthrough(ctx, &input)
 		}
 
-		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<Columns> {
-			Ok(Columns::empty())
+		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
+			Ok(())
 		}
+	}
+
+	/// Helper used by both test operators: read each input diff and emit
+	/// it back unchanged via `ctx.builder()`. This keeps the harness's
+	/// `apply` returning a `Change` that mirrors the input - same shape
+	/// the legacy `Ok(input)` pass-through produced.
+	fn forward_diffs_passthrough(ctx: &mut OperatorContext, input: &BorrowedChange<'_>) -> Result<()> {
+		let mut builder = ctx.builder();
+		for diff in input.diffs() {
+			match diff.kind() {
+				DiffType::Insert => {
+					let (cols, names) = clone_columns(&mut builder, diff.post())?;
+					let post: Vec<CommittedColumn> = cols;
+					let post_names: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+					let row_numbers: Vec<RowNumber> =
+						diff.post().row_numbers().iter().copied().map(RowNumber).collect();
+					let _ = post; // satisfy borrow checker if unused
+					builder.emit_insert(&post, &post_names, &row_numbers)?;
+				}
+				DiffType::Update => {
+					let (pre_cols, pre_names) = clone_columns(&mut builder, diff.pre())?;
+					let (post_cols, post_names) = clone_columns(&mut builder, diff.post())?;
+					let pre_names: Vec<&str> = pre_names.iter().map(|s| s.as_str()).collect();
+					let post_names: Vec<&str> = post_names.iter().map(|s| s.as_str()).collect();
+					let pre_row_count = diff.pre().row_count();
+					let post_row_count = diff.post().row_count();
+					let pre_row_numbers: Vec<RowNumber> =
+						diff.pre().row_numbers().iter().copied().map(RowNumber).collect();
+					let post_row_numbers: Vec<RowNumber> =
+						diff.post().row_numbers().iter().copied().map(RowNumber).collect();
+					builder.emit_update(
+						&pre_cols,
+						&pre_names,
+						pre_row_count,
+						&pre_row_numbers,
+						&post_cols,
+						&post_names,
+						post_row_count,
+						&post_row_numbers,
+					)?;
+				}
+				DiffType::Remove => {
+					let (cols, names) = clone_columns(&mut builder, diff.pre())?;
+					let names: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+					let row_numbers: Vec<RowNumber> =
+						diff.pre().row_numbers().iter().copied().map(RowNumber).collect();
+					builder.emit_remove(&cols, &names, &row_numbers)?;
+				}
+			}
+		}
+		// Suppress emit-kind-not-used warning by silencing the import.
+		let _ = EmitDiffKind::Insert;
+		Ok(())
+	}
+
+	/// Acquire matching builders for each column in `cols`, copy bytes +
+	/// offsets across, commit, and return the committed handles + names.
+	fn clone_columns(
+		builder: &mut ColumnsBuilder<'_>,
+		cols: BorrowedColumns<'_>,
+	) -> Result<(Vec<CommittedColumn>, Vec<String>)> {
+		let row_count = cols.row_count();
+		let mut committed: Vec<CommittedColumn> = Vec::new();
+		let mut names: Vec<String> = Vec::new();
+		for col in cols.columns() {
+			let type_code = col.type_code();
+			let bytes = col.data_bytes();
+			let active = builder.acquire(type_code, row_count.max(1))?;
+			active.grow(bytes.len().max(row_count))?;
+			let dst = active.data_ptr();
+			if !dst.is_null() && !bytes.is_empty() {
+				unsafe {
+					core::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
+				}
+			}
+			// For var-len types, copy offsets too.
+			if matches!(type_code, ColumnTypeCode::Utf8 | ColumnTypeCode::Blob) {
+				let off = col.offsets();
+				let dst_off = active.offsets_ptr();
+				if !dst_off.is_null() && !off.is_empty() {
+					unsafe {
+						core::ptr::copy_nonoverlapping(off.as_ptr(), dst_off, off.len());
+					}
+				}
+			}
+			let c = active.commit(row_count)?;
+			committed.push(c);
+			names.push(col.name().to_string());
+		}
+		Ok((committed, names))
 	}
 
 	#[test]

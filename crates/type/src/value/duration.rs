@@ -18,6 +18,11 @@ use crate::{
 ///
 /// All non-zero components must share the same sign. Nanos are normalized
 /// so that `|nanos| < NANOS_PER_DAY`, with excess rolling into `days`.
+///
+/// `#[repr(C)]` locks the field layout for the FFI ABI. The wire format for
+/// a `Vec<Duration>` borrow is `(months: i32, days: i32, nanos: i64)` packed
+/// = 16 bytes per element, native endian.
+#[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Duration {
 	months: i32, // Store years*12 + months

@@ -65,9 +65,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextContains {
 
 				for i in 0..row_count {
 					if str_container.is_defined(i) && substr_container.is_defined(i) {
-						let s = &str_container[i];
-						let substr = &substr_container[i];
-						result_data.push(s.contains(substr.as_str()));
+						let s = str_container.get(i).unwrap();
+						let substr = substr_container.get(i).unwrap();
+						result_data.push(s.contains(substr));
 						result_bitvec.push(true);
 					} else {
 						result_data.push(false);

@@ -54,12 +54,12 @@ impl<'a> Routine<FunctionContext<'a>> for BlobB64 {
 				container,
 				..
 			} => {
-				let mut result_data = Vec::with_capacity(container.data().len());
+				let mut result_data = Vec::with_capacity(container.len());
 				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let b64_str = &container[i];
+						let b64_str = container.get(i).unwrap();
 						let blob = Blob::from_b64(Fragment::internal(b64_str))?;
 						result_data.push(blob);
 						result_bitvec.push(true);

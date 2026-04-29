@@ -13,12 +13,21 @@ use std::{
 
 use reifydb_abi::{
 	callbacks::{
-		catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-		rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+		builder::{BuilderCallbacks, ColumnBufferHandle, EmitDiffKind},
+		catalog::CatalogCallbacks,
+		host::HostCallbacks,
+		log::LogCallbacks,
+		memory::MemoryCallbacks,
+		rql::RqlCallbacks,
+		state::StateCallbacks,
+		store::StoreCallbacks,
 	},
 	constants::FFI_ERROR_INTERNAL,
 	context::context::ContextFFI,
-	data::{buffer::BufferFFI, column::ColumnsFFI},
+	data::{
+		buffer::BufferFFI,
+		column::{ColumnTypeCode, ColumnsFFI},
+	},
 	procedure::{descriptor::ProcedureDescriptorFFI, vtable::ProcedureVTableFFI},
 };
 use reifydb_core::value::column::columns::Columns;
@@ -74,7 +83,7 @@ impl Drop for NativeProcedureFFI {
 
 /// Create host callbacks for FFI procedures.
 ///
-/// Uses real memory/logging/rql callbacks, and stubs for state/store/catalog
+/// Uses real memory/logging/rql callbacks, and stubs for state/store/catalog/builder
 /// (which are not relevant for procedure execution).
 fn create_procedure_host_callbacks() -> HostCallbacks {
 	HostCallbacks {
@@ -92,7 +101,61 @@ fn create_procedure_host_callbacks() -> HostCallbacks {
 		rql: RqlCallbacks {
 			rql: rql::host_rql,
 		},
+		builder: stub_builder_callbacks(),
 	}
+}
+
+fn stub_builder_callbacks() -> BuilderCallbacks {
+	BuilderCallbacks {
+		acquire: stub_builder_acquire,
+		data_ptr: stub_builder_data_ptr,
+		offsets_ptr: stub_builder_offsets_ptr,
+		bitvec_ptr: stub_builder_bitvec_ptr,
+		grow: stub_builder_grow,
+		commit: stub_builder_commit,
+		release: stub_builder_release,
+		emit_diff: stub_builder_emit_diff,
+	}
+}
+
+unsafe extern "C" fn stub_builder_acquire(_: *mut ContextFFI, _: ColumnTypeCode, _: usize) -> *mut ColumnBufferHandle {
+	ptr::null_mut()
+}
+unsafe extern "C" fn stub_builder_data_ptr(_: *mut ColumnBufferHandle) -> *mut u8 {
+	ptr::null_mut()
+}
+unsafe extern "C" fn stub_builder_offsets_ptr(_: *mut ColumnBufferHandle) -> *mut u64 {
+	ptr::null_mut()
+}
+unsafe extern "C" fn stub_builder_bitvec_ptr(_: *mut ColumnBufferHandle) -> *mut u8 {
+	ptr::null_mut()
+}
+unsafe extern "C" fn stub_builder_grow(_: *mut ColumnBufferHandle, _: usize) -> i32 {
+	FFI_ERROR_INTERNAL
+}
+unsafe extern "C" fn stub_builder_commit(_: *mut ColumnBufferHandle, _: usize) -> i32 {
+	FFI_ERROR_INTERNAL
+}
+unsafe extern "C" fn stub_builder_release(_: *mut ColumnBufferHandle) {}
+unsafe extern "C" fn stub_builder_emit_diff(
+	_: *mut ContextFFI,
+	_: EmitDiffKind,
+	_: *const *mut ColumnBufferHandle,
+	_: *const *const u8,
+	_: *const usize,
+	_: usize,
+	_: usize,
+	_: *const u64,
+	_: usize,
+	_: *const *mut ColumnBufferHandle,
+	_: *const *const u8,
+	_: *const usize,
+	_: usize,
+	_: usize,
+	_: *const u64,
+	_: usize,
+) -> i32 {
+	FFI_ERROR_INTERNAL
 }
 
 impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {

@@ -28,6 +28,7 @@ use reifydb_type::{
 	return_error,
 	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
+use smallvec::smallvec;
 use tracing::instrument;
 
 use super::{context::SeriesTarget, returning::evaluate_returning};
@@ -307,7 +308,7 @@ fn track_series_update_flow_change(
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::update(pre, post)],
+		diffs: smallvec![Diff::update(pre, post)],
 		changed_at: DateTime::default(),
 	});
 	Ok(())

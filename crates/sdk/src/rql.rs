@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Guest-side RQL execution via FFI callbacks
-
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{constants::FFI_OK, data::buffer::BufferFFI};
 use reifydb_type::{params::Params, value::frame::frame::Frame};
@@ -12,7 +10,6 @@ use crate::{
 	operator::context::OperatorContext,
 };
 
-/// Execute an RQL statement through the host's RQL callback.
 pub(crate) fn raw_rql(ctx: &OperatorContext, rql: &str, params: Params) -> Result<Vec<Frame>> {
 	let params_bytes = to_stdvec(&params)
 		.map_err(|e| FFIError::Serialization(format!("failed to serialize params: {}", e)))?;

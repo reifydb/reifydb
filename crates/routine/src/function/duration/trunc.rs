@@ -62,12 +62,12 @@ impl<'a> Routine<FunctionContext<'a>> for DurationTrunc {
 				for i in 0..row_count {
 					match (dur_container.get(i), prec_container.is_defined(i)) {
 						(Some(dur), true) => {
-							let precision = &prec_container[i];
+							let precision = prec_container.get(i).unwrap();
 							let months = dur.get_months();
 							let days = dur.get_days();
 							let nanos = dur.get_nanos();
 
-							let truncated = match precision.as_str() {
+							let truncated = match precision {
 								"year" => Duration::new((months / 12) * 12, 0, 0)?,
 								"month" => Duration::new(months, 0, 0)?,
 								"day" => Duration::new(months, days, 0)?,

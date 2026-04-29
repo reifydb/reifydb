@@ -13,8 +13,6 @@ use reifydb_type::value::Value;
 
 use crate::error::Result;
 
-/// Static metadata about a transform type
-/// This trait provides compile-time constant metadata
 pub trait FFITransformMetadata {
 	/// Transform name (must be unique within a library)
 	const NAME: &'static str;
@@ -26,15 +24,11 @@ pub trait FFITransformMetadata {
 	const DESCRIPTION: &'static str;
 }
 
-/// Runtime transform behavior
-/// Transforms are stateless Columns -> Columns operations
 pub trait FFITransform: 'static {
-	/// Create a new transform instance with configuration
 	fn new(config: &HashMap<String, Value>) -> Result<Self>
 	where
 		Self: Sized;
 
-	/// Apply the transform to input columns, producing output columns
 	fn transform(&mut self, input: Columns) -> Result<Columns>;
 }
 

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Row number provider for stable row numbering in stateful operators
-
 use std::iter;
 
 use reifydb_core::{
@@ -28,7 +26,6 @@ pub struct RowNumberProvider {
 }
 
 impl RowNumberProvider {
-	/// Create a new RowNumberProvider for the given operator
 	pub fn new(node: FlowNodeId) -> Self {
 		Self {
 			node,
@@ -87,8 +84,6 @@ impl RowNumberProvider {
 		Ok(results)
 	}
 
-	/// Get or create a RowNumber for a given key
-	/// Returns (RowNumber, is_new) where is_new indicates if it was newly created
 	pub fn get_or_create_row_number(
 		&self,
 		ctx: &mut OperatorContext,
@@ -97,7 +92,6 @@ impl RowNumberProvider {
 		Ok(self.get_or_create_row_numbers_batch(ctx, iter::once(key))?.into_iter().next().unwrap())
 	}
 
-	/// Load the current counter value
 	fn load_counter(&self, ctx: &mut OperatorContext) -> Result<u64> {
 		let key = self.make_counter_key();
 		let internal_key = FlowNodeInternalStateKey::new(self.node, key.as_ref().to_vec());
@@ -118,7 +112,6 @@ impl RowNumberProvider {
 		}
 	}
 
-	/// Save the counter value
 	fn save_counter(&self, ctx: &mut OperatorContext, counter: u64) -> Result<()> {
 		let key = self.make_counter_key();
 		let internal_key = FlowNodeInternalStateKey::new(self.node, key.as_ref().to_vec());
@@ -127,14 +120,12 @@ impl RowNumberProvider {
 		Ok(())
 	}
 
-	/// Create a key for the counter (node_id added by FlowNodeInternalStateKey wrapper)
 	fn make_counter_key(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'C'); // 'C' for counter
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Create a mapping key for a given encoded key (node_id added by FlowNodeInternalStateKey wrapper)
 	fn make_map_key(&self, key: &EncodedKey) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'M'); // 'M' for mapping
@@ -142,8 +133,6 @@ impl RowNumberProvider {
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Remove all row number mappings with the given prefix
-	/// This is useful for cleaning up all join results from a specific left row
 	pub fn remove_by_prefix(&self, ctx: &mut OperatorContext, key_prefix: &[u8]) -> Result<()> {
 		// Create the prefix for scanning (node_id added by FlowNodeInternalStateKey wrapper)
 		let mut prefix = Vec::new();
@@ -172,20 +161,21 @@ pub mod tests {
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		encoded::key::EncodedKey,
-		interface::{catalog::flow::FlowNodeId, change::Change},
+		interface::catalog::flow::FlowNodeId,
 		key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
-		value::column::columns::Columns,
 	};
 	use reifydb_type::value::{Value, row_number::RowNumber};
 
 	use crate::{
 		error::Result,
-		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumn, context::OperatorContext},
+		operator::{
+			FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::OperatorColumn,
+			context::OperatorContext,
+		},
 		state::{FFIRawStatefulOperator, row::RowNumberProvider},
 		testing::{harness::TestHarnessBuilder, helpers::encode_key},
 	};
 
-	/// Test operator for RowNumberProvider tests
 	struct RowNumberTestOperator;
 
 	impl FFIOperatorMetadata for RowNumberTestOperator {
@@ -203,12 +193,12 @@ pub mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut OperatorContext, input: Change) -> Result<Change> {
-			Ok(input)
+		fn apply(&mut self, _ctx: &mut OperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+			Ok(())
 		}
 
-		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<Columns> {
-			Ok(Columns::empty())
+		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
+			Ok(())
 		}
 	}
 

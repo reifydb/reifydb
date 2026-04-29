@@ -55,7 +55,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextTrimEnd {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let original_str = &container[i];
+						let original_str = container.get(i).unwrap();
 						let trimmed_str = original_str.trim_end();
 						result_data.push(trimmed_str.to_string());
 					} else {

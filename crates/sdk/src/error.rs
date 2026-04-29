@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Error types for the operator SDK
-
 use std::{error, fmt};
 
 use reifydb_core::internal;
 use reifydb_type::error::Error;
 
-/// FFI operator error type
 #[derive(Debug)]
 pub enum FFIError {
 	/// Configuration error
@@ -65,19 +62,16 @@ impl fmt::Display for FFIError {
 
 impl error::Error for FFIError {}
 
-/// Convert FFIError to Error
 impl From<FFIError> for Error {
 	fn from(err: FFIError) -> Self {
 		Error(Box::new(internal!(format!("{}", err))))
 	}
 }
 
-/// Convert Error to FFIError
 impl From<Error> for FFIError {
 	fn from(err: Error) -> Self {
 		FFIError::Other(err.to_string())
 	}
 }
 
-/// Result type alias for FFI operations
 pub type Result<T, E = FFIError> = std::result::Result<T, E>;

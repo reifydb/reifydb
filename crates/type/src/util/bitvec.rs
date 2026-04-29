@@ -7,6 +7,13 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::storage::DataBitVec;
 
+/// Compact bit vector backed by a packed `Vec<u8>`.
+///
+/// Bit ordering (LOAD-BEARING - this is part of the FFI wire format):
+/// bit `i` lives in byte `i / 8`, position `i % 8`, **LSB-first** within the
+/// byte. Setting bit 0 of an empty 8-bit byte yields `0b0000_0001`. The FFI
+/// ABI's `defined_bitvec` and any borrowed Bool column data depend on this
+/// exact layout. Do not change.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BitVec {
 	inner: Arc<BitVecInner>,
@@ -192,6 +199,15 @@ impl BitVec {
 
 	pub fn capacity(&self) -> usize {
 		self.inner.bits.capacity() * 8
+	}
+
+	/// Borrow the packed byte representation.
+	///
+	/// Length is `len.div_ceil(8)` bytes. Bit ordering is LSB-first within
+	/// each byte (see type-level doc). Used by the FFI marshal path to hand
+	/// guests a zero-copy view of bool columns and option-defined bitmaps.
+	pub fn as_packed_bytes(&self) -> &[u8] {
+		&self.inner.bits
 	}
 
 	pub fn get(&self, idx: usize) -> bool {

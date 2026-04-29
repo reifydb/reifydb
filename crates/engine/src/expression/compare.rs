@@ -283,11 +283,11 @@ fn compare_identity_id<Op: CompareOp>(
 fn compare_blob<Op: CompareOp>(l: &BlobContainer, r: &BlobContainer, fragment: Fragment) -> ColumnWithName {
 	debug_assert_eq!(l.len(), r.len());
 
-	let data: Vec<bool> =
-		l.data().iter()
-			.zip(r.data().iter())
-			.map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val)))
-			.collect();
+	let data: Vec<bool> = l
+		.iter_bytes()
+		.zip(r.iter_bytes())
+		.map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val)))
+		.collect();
 
 	ColumnWithName::new(Fragment::internal(fragment.text()), ColumnBuffer::bool(data))
 }
@@ -296,11 +296,11 @@ fn compare_blob<Op: CompareOp>(l: &BlobContainer, r: &BlobContainer, fragment: F
 fn compare_utf8<Op: CompareOp>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment) -> ColumnWithName {
 	debug_assert_eq!(l.len(), r.len());
 
-	let data: Vec<bool> =
-		l.data().iter()
-			.zip(r.data().iter())
-			.map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val)))
-			.collect();
+	let data: Vec<bool> = l
+		.iter_str()
+		.zip(r.iter_str())
+		.map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(r_val)))
+		.collect();
 
 	ColumnWithName::new(Fragment::internal(fragment.text()), ColumnBuffer::bool(data))
 }

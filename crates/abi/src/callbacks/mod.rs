@@ -3,6 +3,7 @@
 
 //! Host callback function pointer types for operator-host communication
 
+pub mod builder;
 pub mod catalog;
 pub mod host;
 pub mod log;

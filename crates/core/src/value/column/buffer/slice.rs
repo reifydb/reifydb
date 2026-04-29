@@ -91,12 +91,9 @@ impl_as_slice!(u16, Uint2);
 impl_as_slice!(u32, Uint4);
 impl_as_slice!(u64, Uint8);
 impl_as_slice!(u128, Uint16);
-impl_as_slice!(
-	String,
-	Utf8 {
-		container
-	}
-);
+// Utf8 is intentionally not implemented: storage is bytes+offsets, not [String].
+// Use `Utf8Container::iter()` / `.get(idx)` for `&str` access, or
+// `data_bytes()` + `offsets()` for the raw layout.
 impl_as_slice!(Date, Date);
 impl_as_slice!(DateTime, DateTime);
 impl_as_slice!(Time, Time);

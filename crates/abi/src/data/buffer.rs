@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// FFI-safe buffer representing a slice of bytes
+/// FFI-safe buffer representing a slice of bytes.
+///
+/// **Ownership / borrow sentinel.** `cap == 0` is the borrow sentinel: the
+/// pointer is borrowed from the host's native column storage, valid only for
+/// the duration of the current FFI call (`apply` / `pull` / `tick`). The
+/// guest must not retain the pointer past return, must not write through it,
+/// and must not free it. `cap >= len` (typically `cap == len`) means the
+/// buffer is owned by whoever produced it.
+///
+/// The host marshal path emits `cap == 0` for every borrowed column buffer
+/// (numerics, bools, temporals, ids, var-len data + offsets, etc.).
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct BufferFFI {
@@ -9,7 +19,7 @@ pub struct BufferFFI {
 	pub ptr: *const u8,
 	/// Length of the data
 	pub len: usize,
-	/// Capacity of the allocated buffer
+	/// Capacity of the allocated buffer; `0` means borrowed (see type doc)
 	pub cap: usize,
 }
 

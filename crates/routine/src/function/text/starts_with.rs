@@ -65,9 +65,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextStartsWith {
 
 				for i in 0..row_count {
 					if str_container.is_defined(i) && prefix_container.is_defined(i) {
-						let s = &str_container[i];
-						let prefix = &prefix_container[i];
-						result_data.push(s.starts_with(prefix.as_str()));
+						let s = str_container.get(i).unwrap();
+						let prefix = prefix_container.get(i).unwrap();
+						result_data.push(s.starts_with(prefix));
 						result_bitvec.push(true);
 					} else {
 						result_data.push(false);

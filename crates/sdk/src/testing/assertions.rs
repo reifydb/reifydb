@@ -12,20 +12,17 @@ use reifydb_type::value::{Value, row_number::RowNumber};
 use super::helpers::get_values;
 use crate::testing::state::TestStateStore;
 
-/// Assertions for Change outputs
 pub struct ChangeAssertion<'a> {
 	change: &'a Change,
 }
 
 impl<'a> ChangeAssertion<'a> {
-	/// Create a new Change assertion
 	pub fn new(change: &'a Change) -> Self {
 		Self {
 			change,
 		}
 	}
 
-	/// Assert the number of diffs in the change
 	pub fn has_diffs(&self, count: usize) -> &Self {
 		assert_eq!(
 			self.change.diffs.len(),
@@ -37,34 +34,29 @@ impl<'a> ChangeAssertion<'a> {
 		self
 	}
 
-	/// Assert the change is empty (no diffs)
 	pub fn is_empty(&self) -> &Self {
 		assert!(self.change.diffs.is_empty(), "Expected empty change, found {} diffs", self.change.diffs.len());
 		self
 	}
 
-	/// Assert the change has at least one insert
 	pub fn has_insert(&self) -> &Self {
 		let has_insert = self.change.diffs.iter().any(|d| matches!(d, Diff::Insert { .. }));
 		assert!(has_insert, "Expected at least one insert diff");
 		self
 	}
 
-	/// Assert the change has at least one update
 	pub fn has_update(&self) -> &Self {
 		let has_update = self.change.diffs.iter().any(|d| matches!(d, Diff::Update { .. }));
 		assert!(has_update, "Expected at least one update diff");
 		self
 	}
 
-	/// Assert the change has at least one remove
 	pub fn has_remove(&self) -> &Self {
 		let has_remove = self.change.diffs.iter().any(|d| matches!(d, Diff::Remove { .. }));
 		assert!(has_remove, "Expected at least one remove diff");
 		self
 	}
 
-	/// Assert a specific diff exists at the given index
 	pub fn diff_at(&self, index: usize) -> DiffAssertion<'_> {
 		assert!(
 			index < self.change.diffs.len(),
@@ -75,7 +67,6 @@ impl<'a> ChangeAssertion<'a> {
 		DiffAssertion::new(&self.change.diffs[index])
 	}
 
-	/// Get all insert diffs
 	pub fn inserts(&self) -> Vec<&Columns> {
 		self.change
 			.diffs
@@ -89,7 +80,6 @@ impl<'a> ChangeAssertion<'a> {
 			.collect()
 	}
 
-	/// Get all update diffs
 	pub fn updates(&self) -> Vec<(&Columns, &Columns)> {
 		self.change
 			.diffs
@@ -104,7 +94,6 @@ impl<'a> ChangeAssertion<'a> {
 			.collect()
 	}
 
-	/// Get all remove diffs
 	pub fn removes(&self) -> Vec<&Columns> {
 		self.change
 			.diffs
@@ -118,21 +107,18 @@ impl<'a> ChangeAssertion<'a> {
 			.collect()
 	}
 
-	/// Assert the number of inserts
 	pub fn has_inserts(&self, count: usize) -> &Self {
 		let actual = self.inserts().len();
 		assert_eq!(actual, count, "Expected {} inserts, found {}", count, actual);
 		self
 	}
 
-	/// Assert the number of updates
 	pub fn has_updates(&self, count: usize) -> &Self {
 		let actual = self.updates().len();
 		assert_eq!(actual, count, "Expected {} updates, found {}", count, actual);
 		self
 	}
 
-	/// Assert the number of removes
 	pub fn has_removes(&self, count: usize) -> &Self {
 		let actual = self.removes().len();
 		assert_eq!(actual, count, "Expected {} removes, found {}", count, actual);
@@ -140,7 +126,6 @@ impl<'a> ChangeAssertion<'a> {
 	}
 }
 
-/// Assertions for a single diff
 pub struct DiffAssertion<'a> {
 	diff: &'a Diff,
 }
@@ -152,7 +137,6 @@ impl<'a> DiffAssertion<'a> {
 		}
 	}
 
-	/// Assert this is an insert diff
 	pub fn is_insert(&self) -> &Columns {
 		match self.diff {
 			Diff::Insert {
@@ -162,7 +146,6 @@ impl<'a> DiffAssertion<'a> {
 		}
 	}
 
-	/// Assert this is an update diff
 	pub fn is_update(&self) -> (&Columns, &Columns) {
 		match self.diff {
 			Diff::Update {
@@ -173,7 +156,6 @@ impl<'a> DiffAssertion<'a> {
 		}
 	}
 
-	/// Assert this is a remove diff
 	pub fn is_remove(&self) -> &Columns {
 		match self.diff {
 			Diff::Remove {
@@ -184,20 +166,17 @@ impl<'a> DiffAssertion<'a> {
 	}
 }
 
-/// Assertions for Row values
 pub struct RowAssertion<'a> {
 	row: &'a Row,
 }
 
 impl<'a> RowAssertion<'a> {
-	/// Create a new row assertion
 	pub fn new(row: &'a Row) -> Self {
 		Self {
 			row,
 		}
 	}
 
-	/// Assert the row number
 	pub fn has_number(&self, number: impl Into<RowNumber>) -> &Self {
 		let expected = number.into();
 		assert_eq!(
@@ -208,14 +187,12 @@ impl<'a> RowAssertion<'a> {
 		self
 	}
 
-	/// Assert the row values match (using the row's layout)
 	pub fn has_values(&self, expected: &[Value]) -> &Self {
 		let actual = get_values(&self.row.shape, &self.row.encoded);
 		assert_eq!(actual, expected, "Row values mismatch. Expected: {:?}, Actual: {:?}", expected, actual);
 		self
 	}
 
-	/// Assert a specific field value (for named layouts)
 	pub fn has_field(&self, field_name: &str, expected: Value) -> &Self {
 		let values = get_values(&self.row.shape, &self.row.encoded);
 		let field_index =
@@ -231,56 +208,47 @@ impl<'a> RowAssertion<'a> {
 		self
 	}
 
-	/// Get the values from the row
 	pub fn values(&self) -> Vec<Value> {
 		get_values(&self.row.shape, &self.row.encoded)
 	}
 }
 
-/// Assertions for state store
 pub struct StateAssertion<'a> {
 	store: &'a TestStateStore,
 }
 
 impl<'a> StateAssertion<'a> {
-	/// Create a new state assertion
 	pub fn new(store: &'a TestStateStore) -> Self {
 		Self {
 			store,
 		}
 	}
 
-	/// Assert the state is empty
 	pub fn is_empty(&self) -> &Self {
 		assert!(self.store.is_empty(), "Expected empty state, found {} entries", self.store.len());
 		self
 	}
 
-	/// Assert the state has a specific number of entries
 	pub fn has_entries(&self, count: usize) -> &Self {
 		self.store.assert_count(count);
 		self
 	}
 
-	/// Assert a key exists
 	pub fn has_key(&self, key: &EncodedKey) -> &Self {
 		self.store.assert_exists(key);
 		self
 	}
 
-	/// Assert a key does not exist
 	pub fn not_has_key(&self, key: &EncodedKey) -> &Self {
 		self.store.assert_not_exists(key);
 		self
 	}
 
-	/// Assert a key has specific values
 	pub fn key_has_values(&self, key: &EncodedKey, expected: &[Value], shape: &RowShape) -> &Self {
 		self.store.assert_value(key, expected, shape);
 		self
 	}
 
-	/// Assert all keys match a predicate
 	pub fn all_keys<F>(&self, predicate: F) -> &Self
 	where
 		F: Fn(&EncodedKey) -> bool,
@@ -292,7 +260,6 @@ impl<'a> StateAssertion<'a> {
 	}
 }
 
-/// Helper to create assertions
 pub trait Assertable {
 	type Assertion<'a>
 	where

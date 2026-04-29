@@ -107,8 +107,8 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadLeft {
 
 					match target_len {
 						Some(n) if n >= 0 => {
-							let s = &str_container[i];
-							let pad_char = &pad_container[i];
+							let s = str_container.get(i).unwrap();
+							let pad_char = pad_container.get(i).unwrap();
 							let char_count = s.chars().count();
 							let target = n as usize;
 

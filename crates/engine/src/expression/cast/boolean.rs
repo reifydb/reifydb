@@ -135,7 +135,7 @@ fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Res
 		if container.is_defined(idx) {
 			// Parse with internal fragment, then replace with
 			// proper source fragment if error
-			let temp_fragment = Fragment::internal(&container[idx]);
+			let temp_fragment = Fragment::internal(container.get(idx).unwrap());
 			match parse_bool(temp_fragment) {
 				Ok(b) => out.push(b),
 				Err(mut e) => {

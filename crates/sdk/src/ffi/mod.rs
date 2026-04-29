@@ -6,5 +6,3 @@
 pub mod arena;
 pub mod exports;
 pub mod wrapper;
-
-use arena::Arena;

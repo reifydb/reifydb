@@ -15,14 +15,12 @@ use reifydb_type::{
 
 use super::helpers::get_values;
 
-/// Test helper for FFISingleStateful operators
 pub struct SingleStatefulTestHelper {
 	shape: RowShape,
 	state: Option<Vec<u8>>,
 }
 
 impl SingleStatefulTestHelper {
-	/// Create a new single stateful test helper
 	pub fn new(shape: RowShape) -> Self {
 		Self {
 			shape,
@@ -30,19 +28,16 @@ impl SingleStatefulTestHelper {
 		}
 	}
 
-	/// Create with a simple counter shape (single int8)
 	pub fn counter() -> Self {
 		Self::new(RowShape::testing(&[Type::Int8]))
 	}
 
-	/// Set the current state
 	pub fn set_state(&mut self, values: &[Value]) {
 		let mut encoded = self.shape.allocate();
 		self.shape.set_values(&mut encoded, values);
 		self.state = Some(encoded.0.to_vec());
 	}
 
-	/// Get the current state
 	pub fn get_state(&self) -> Option<Vec<Value>> {
 		self.state.as_ref().map(|bytes| {
 			let encoded = EncodedRow(CowVec::new(bytes.clone()));
@@ -50,31 +45,26 @@ impl SingleStatefulTestHelper {
 		})
 	}
 
-	/// Assert the state matches expected values
 	pub fn assert_state(&self, expected: &[Value]) {
 		let actual = self.get_state().expect("No state set");
 		assert_eq!(actual, expected, "State mismatch");
 	}
 
-	/// Clear the state
 	pub fn clear(&mut self) {
 		self.state = None;
 	}
 
-	/// Check if state exists
 	pub fn has_state(&self) -> bool {
 		self.state.is_some()
 	}
 }
 
-/// Test helper for FFIKeyedStateful operators
 pub struct KeyedStatefulTestHelper {
 	shape: RowShape,
 	states: HashMap<EncodedKey, EncodedRow>,
 }
 
 impl KeyedStatefulTestHelper {
-	/// Create a new keyed stateful test helper
 	pub fn new(shape: RowShape) -> Self {
 		Self {
 			shape,
@@ -82,17 +72,14 @@ impl KeyedStatefulTestHelper {
 		}
 	}
 
-	/// Create with a simple counter shape (single int8)
 	pub fn counter() -> Self {
 		Self::new(RowShape::testing(&[Type::Int8]))
 	}
 
-	/// Create with a sum shape (single int8 or int4)
 	pub fn sum() -> Self {
 		Self::new(RowShape::testing(&[Type::Int4]))
 	}
 
-	/// Set state for a key
 	pub fn set_state<K>(&mut self, key: K, values: &[Value])
 	where
 		K: IntoEncodedKey,
@@ -102,7 +89,6 @@ impl KeyedStatefulTestHelper {
 		self.states.insert(key.into_encoded_key(), encoded);
 	}
 
-	/// Get state for a key
 	pub fn get_state<K>(&self, key: K) -> Option<Vec<Value>>
 	where
 		K: IntoEncodedKey,
@@ -110,7 +96,6 @@ impl KeyedStatefulTestHelper {
 		self.states.get(&key.into_encoded_key()).map(|encoded| get_values(&self.shape, encoded))
 	}
 
-	/// Assert state for a key matches expected values
 	pub fn assert_state<K>(&self, key: K, expected: &[Value])
 	where
 		K: IntoEncodedKey,
@@ -124,7 +109,6 @@ impl KeyedStatefulTestHelper {
 		assert_eq!(actual, expected, "State mismatch for key");
 	}
 
-	/// Remove state for a key
 	pub fn remove_state<K>(&mut self, key: K) -> Option<Vec<Value>>
 	where
 		K: IntoEncodedKey,
@@ -132,7 +116,6 @@ impl KeyedStatefulTestHelper {
 		self.states.remove(&key.into_encoded_key()).map(|encoded| get_values(&self.shape, &encoded))
 	}
 
-	/// Check if a key has state
 	pub fn has_state<K>(&self, key: K) -> bool
 	where
 		K: IntoEncodedKey,
@@ -140,28 +123,23 @@ impl KeyedStatefulTestHelper {
 		self.states.contains_key(&key.into_encoded_key())
 	}
 
-	/// Get the number of keys with state
 	pub fn state_count(&self) -> usize {
 		self.states.len()
 	}
 
-	/// Clear all states
 	pub fn clear(&mut self) {
 		self.states.clear();
 	}
 
-	/// Get all keys
 	pub fn keys(&self) -> Vec<&EncodedKey> {
 		self.states.keys().collect()
 	}
 
-	/// Assert the number of states
 	pub fn assert_count(&self, expected: usize) {
 		assert_eq!(self.state_count(), expected, "Expected {} states, found {}", expected, self.state_count());
 	}
 }
 
-/// Test helper for FFIWindowStateful operators
 pub struct WindowStatefulTestHelper {
 	shape: RowShape,
 	windows: HashMap<i64, HashMap<EncodedKey, EncodedRow>>, // window_id -> key -> state
@@ -169,7 +147,6 @@ pub struct WindowStatefulTestHelper {
 }
 
 impl WindowStatefulTestHelper {
-	/// Create a new window stateful test helper
 	pub fn new(shape: RowShape, window_size: i64) -> Self {
 		Self {
 			shape,
@@ -178,17 +155,14 @@ impl WindowStatefulTestHelper {
 		}
 	}
 
-	/// Create with a counter shape for time windows
 	pub fn time_window_counter(window_size_seconds: i64) -> Self {
 		Self::new(RowShape::testing(&[Type::Int8]), window_size_seconds)
 	}
 
-	/// Create with a sum shape for count windows
 	pub fn count_window_sum(window_size_count: i64) -> Self {
 		Self::new(RowShape::testing(&[Type::Int4]), window_size_count)
 	}
 
-	/// Set state for a window and key
 	pub fn set_window_state<K>(&mut self, window_id: i64, key: K, values: &[Value])
 	where
 		K: IntoEncodedKey,
@@ -199,7 +173,6 @@ impl WindowStatefulTestHelper {
 		self.windows.entry(window_id).or_default().insert(key.into_encoded_key(), encoded);
 	}
 
-	/// Get state for a window and key
 	pub fn get_window_state<K>(&self, window_id: i64, key: K) -> Option<Vec<Value>>
 	where
 		K: IntoEncodedKey,
@@ -210,7 +183,6 @@ impl WindowStatefulTestHelper {
 			.map(|encoded| get_values(&self.shape, encoded))
 	}
 
-	/// Assert state for a window and key
 	pub fn assert_window_state<K>(&self, window_id: i64, key: K, expected: &[Value])
 	where
 		K: IntoEncodedKey,
@@ -225,44 +197,36 @@ impl WindowStatefulTestHelper {
 		assert_eq!(actual, expected, "State mismatch for window {} and key", window_id);
 	}
 
-	/// Get all states for a window
 	pub fn get_window(&self, window_id: i64) -> Option<&HashMap<EncodedKey, EncodedRow>> {
 		self.windows.get(&window_id)
 	}
 
-	/// Remove a window
 	pub fn remove_window(&mut self, window_id: i64) -> Option<HashMap<EncodedKey, EncodedRow>> {
 		self.windows.remove(&window_id)
 	}
 
-	/// Check if a window exists
 	pub fn has_window(&self, window_id: i64) -> bool {
 		self.windows.contains_key(&window_id)
 	}
 
-	/// Get the number of windows
 	pub fn window_count(&self) -> usize {
 		self.windows.len()
 	}
 
-	/// Get the number of keys in a window
 	pub fn window_key_count(&self, window_id: i64) -> usize {
 		self.windows.get(&window_id).map(|w| w.len()).unwrap_or(0)
 	}
 
-	/// Clear all windows
 	pub fn clear(&mut self) {
 		self.windows.clear();
 	}
 
-	/// Get all window IDs
 	pub fn window_ids(&self) -> Vec<i64> {
 		let mut ids: Vec<_> = self.windows.keys().copied().collect();
 		ids.sort();
 		ids
 	}
 
-	/// Assert the number of windows
 	pub fn assert_window_count(&self, expected: usize) {
 		assert_eq!(
 			self.window_count(),
@@ -273,13 +237,11 @@ impl WindowStatefulTestHelper {
 		);
 	}
 
-	/// Calculate the window ID for a timestamp
 	pub fn window_for_timestamp(&self, timestamp: i64) -> i64 {
 		timestamp / self.window_size
 	}
 }
 
-/// Common test scenarios for stateful operators
 pub mod scenarios {
 	use reifydb_core::interface::change::Change;
 	use reifydb_type::value::row_number::RowNumber;
@@ -287,7 +249,6 @@ pub mod scenarios {
 	use super::*;
 	use crate::testing::builders::TestChangeBuilder;
 
-	/// Create a sequence of inserts for testing counters
 	pub fn counter_inserts(count: usize) -> Vec<Change> {
 		(0..count)
 			.map(|i| {
@@ -298,7 +259,6 @@ pub mod scenarios {
 			.collect()
 	}
 
-	/// Create a sequence of keyed inserts for group-by testing
 	pub fn grouped_inserts(groups: &[(&str, i32)]) -> Change {
 		let mut builder = TestChangeBuilder::new();
 		for (i, (key, value)) in groups.iter().enumerate() {
@@ -308,7 +268,6 @@ pub mod scenarios {
 		builder.build()
 	}
 
-	/// Create a sequence of updates for testing state changes
 	pub fn state_updates(row_number: i64, old_value: i8, new_value: i8) -> Change {
 		TestChangeBuilder::new()
 			.update_row(
@@ -319,7 +278,6 @@ pub mod scenarios {
 			.build()
 	}
 
-	/// Create a windowed sequence of events
 	pub fn windowed_events(window_size: i64, events_per_window: usize, windows: usize) -> Vec<(i64, Change)> {
 		let mut result = Vec::new();
 

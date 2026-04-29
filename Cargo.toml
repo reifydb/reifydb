@@ -251,6 +251,7 @@ dashmap = { version = "7.0.0-rc2", features = ["raw-api"] }
 indexmap = { version = "2.14", features = ["serde"] }
 rayon = { version = "1.12.0" }
 bumpalo = { version = "3.20.2", features = ["collections", "boxed"] }
+smallvec = { version = "1.13", features = ["serde", "const_generics", "union"] }
 parking_lot = {version = "0.12.5"}
 crossbeam-channel = { version = "0.5.15" }
 

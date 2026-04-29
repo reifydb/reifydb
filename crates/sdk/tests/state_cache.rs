@@ -10,13 +10,13 @@
 use std::collections::HashMap;
 
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
-use reifydb_core::{
-	interface::{catalog::flow::FlowNodeId, change::Change},
-	value::column::columns::Columns,
-};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
 	error::Result,
-	operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumn, context::OperatorContext},
+	operator::{
+		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::OperatorColumn,
+		context::OperatorContext,
+	},
 	state::cache::StateCache,
 	testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
 };
@@ -52,12 +52,12 @@ impl FFIOperator for PassthroughOperator {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, _ctx: &mut OperatorContext, input: Change) -> Result<Change> {
-		Ok(input)
+	fn apply(&mut self, _ctx: &mut OperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+		Ok(())
 	}
 
-	fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<Columns> {
-		Ok(Columns::empty())
+	fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
+		Ok(())
 	}
 }
 
@@ -85,7 +85,7 @@ fn test_cache_set_and_get() {
 }
 
 #[test]
-fn test_cache_write_through_persists_to_ffi() {
+fn test_cache_flush_persists_to_ffi() {
 	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
@@ -94,13 +94,15 @@ fn test_cache_write_through_persists_to_ffi() {
 		count: 100,
 	};
 
-	// Set a value through cache
+	// Set marks the key dirty without writing through.
 	let mut ctx = harness.create_operator_context();
 	cache.set(&mut ctx, &key, &value).expect("Set failed");
+	assert_eq!(harness.state().len(), 0, "Set must not write through pre-flush");
 
-	// Verify state was persisted to FFI (not just cached)
-	let state = harness.state();
-	assert!(state.len() > 0, "State should be persisted to FFI");
+	// Flush drains dirty entries to host storage.
+	let mut ctx = harness.create_operator_context();
+	cache.flush(&mut ctx).expect("Flush failed");
+	assert!(harness.state().len() > 0, "State should be persisted after flush");
 }
 
 #[test]
@@ -189,20 +191,22 @@ fn test_cache_remove() {
 		count: 42,
 	};
 
-	// Set a value
+	// Set then flush so FFI state reflects the write.
 	{
 		let mut ctx = harness.create_operator_context();
 		cache.set(&mut ctx, &key, &value).expect("Set failed");
+		cache.flush(&mut ctx).expect("Flush failed");
 	}
 
 	// Verify it's cached and in FFI
 	assert!(cache.is_cached(&key));
 	assert!(harness.state().len() > 0);
 
-	// Remove
+	// Remove + flush
 	{
 		let mut ctx = harness.create_operator_context();
 		cache.remove(&mut ctx, &key).expect("Remove failed");
+		cache.flush(&mut ctx).expect("Flush failed");
 	}
 
 	// Verify removed from cache
@@ -226,10 +230,11 @@ fn test_cache_invalidate_only_clears_cache() {
 		count: 77,
 	};
 
-	// Set a value
+	// Set then flush so FFI storage is populated.
 	{
 		let mut ctx = harness.create_operator_context();
 		cache.set(&mut ctx, &key, &value).expect("Set failed");
+		cache.flush(&mut ctx).expect("Flush failed");
 	}
 
 	// Verify it's cached
@@ -258,7 +263,7 @@ fn test_cache_clear_cache() {
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 
-	// Set multiple values
+	// Set multiple values + flush.
 	{
 		let mut ctx = harness.create_operator_context();
 		for i in 0..3 {
@@ -268,6 +273,7 @@ fn test_cache_clear_cache() {
 			};
 			cache.set(&mut ctx, &key, &value).expect("Set failed");
 		}
+		cache.flush(&mut ctx).expect("Flush failed");
 	}
 
 	// Verify all cached
@@ -330,7 +336,7 @@ fn test_cache_lru_eviction() {
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(3);
 
-	// Fill cache to capacity
+	// Fill cache to capacity, flush so storage reflects writes.
 	{
 		let mut ctx = harness.create_operator_context();
 		for i in 0..3 {
@@ -340,6 +346,7 @@ fn test_cache_lru_eviction() {
 			};
 			cache.set(&mut ctx, &key, &value).expect("Set failed");
 		}
+		cache.flush(&mut ctx).expect("Flush failed");
 	}
 
 	assert_eq!(cache.len(), 3);
@@ -347,7 +354,7 @@ fn test_cache_lru_eviction() {
 	assert!(cache.is_cached(&"key_1".to_string()));
 	assert!(cache.is_cached(&"key_2".to_string()));
 
-	// Insert a 4th item - should evict key_0 (LRU)
+	// Insert a 4th item - should evict key_0 (LRU). Flush so storage carries it too.
 	{
 		let mut ctx = harness.create_operator_context();
 		let key = "key_3".to_string();
@@ -355,6 +362,7 @@ fn test_cache_lru_eviction() {
 			count: 3,
 		};
 		cache.set(&mut ctx, &key, &value).expect("Set failed");
+		cache.flush(&mut ctx).expect("Flush failed");
 	}
 
 	// key_0 should be evicted from cache
@@ -530,10 +538,12 @@ fn test_cache_miss_then_hit() {
 		count: 123,
 	};
 
-	// Set value (goes to FFI and cache)
+	// Set + flush so the value lands in FFI storage (the test then
+	// invalidates the cache to force a reload from FFI).
 	{
 		let mut ctx = harness.create_operator_context();
 		cache.set(&mut ctx, &key, &value).expect("Set failed");
+		cache.flush(&mut ctx).expect("Flush failed");
 	}
 
 	// Invalidate to clear cache

@@ -25,6 +25,7 @@ use reifydb_type::{
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId},
 };
+use smallvec::smallvec;
 
 use crate::Result;
 
@@ -165,7 +166,7 @@ impl DictionaryOperations for AdminTransaction {
 		self.track_flow_change(Change {
 			origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
 			version: CommitVersion(0),
-			diffs: vec![Diff::insert(Columns::single_row([("value", value)]))],
+			diffs: smallvec![Diff::insert(Columns::single_row([("value", value)]))],
 			changed_at: DateTime::default(),
 		});
 

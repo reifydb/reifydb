@@ -62,8 +62,8 @@ impl<'a> Routine<FunctionContext<'a>> for TimeTrunc {
 				for i in 0..row_count {
 					match (time_container.get(i), prec_container.is_defined(i)) {
 						(Some(t), true) => {
-							let precision = &prec_container[i];
-							let truncated = match precision.as_str() {
+							let precision = prec_container.get(i).unwrap();
+							let truncated = match precision {
 								"hour" => Time::new(t.hour(), 0, 0, 0),
 								"minute" => Time::new(t.hour(), t.minute(), 0, 0),
 								"second" => {

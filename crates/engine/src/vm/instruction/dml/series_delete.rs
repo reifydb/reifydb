@@ -31,6 +31,7 @@ use reifydb_type::{
 	return_error,
 	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
+use smallvec::smallvec;
 use tracing::instrument;
 
 use super::{
@@ -354,7 +355,7 @@ fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Series, pre: Co
 	txn.track_flow_change(Change {
 		origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::remove(pre)],
+		diffs: smallvec![Diff::remove(pre)],
 		changed_at: DateTime::default(),
 	});
 }

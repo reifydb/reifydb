@@ -34,6 +34,7 @@ use reifydb_type::{
 	Result,
 	value::{datetime::DateTime, identity::IdentityId},
 };
+use smallvec::smallvec;
 use tracing::{Span, error, field, instrument};
 
 use crate::{catalog::FlowCatalog, engine::FlowEngine, transaction::FlowTransaction};
@@ -209,6 +210,14 @@ impl FlowWorkerActor {
 			}
 		}
 
+		// Persist any operator state mutated during this txn before extracting
+		// pending writes. The cache holds the deserialised state across all the
+		// process_tick calls above; this flush is what actually writes it back
+		// to storage (via `pending`). See FlowTransaction::operator_state.
+		txn.flush_operator_states()?;
+		// Release per-FFI-op scratch arenas now that the txn is done.
+		txn.release_ffi_scratch();
+
 		Ok((txn.take_pending(), txn.take_pending_shapes()))
 	}
 
@@ -257,13 +266,19 @@ impl FlowWorkerActor {
 				}
 			}
 
+			// Persist any operator state mutated during this batch before
+			// extracting pending writes - state writes need to land in
+			// `pending` so the worker commits them with the rest.
+			txn.flush_operator_states()?;
+			txn.release_ffi_scratch();
+
 			let view_entries = txn.take_accumulator_entries();
 			let changed_at = DateTime::from_nanos(self.engine.clock().now_nanos());
 			for (id, diff) in view_entries {
 				all_view_changes.push(Change {
 					origin: ChangeOrigin::Shape(id),
 					version: primitive_version,
-					diffs: vec![diff],
+					diffs: smallvec![diff],
 					changed_at,
 				});
 			}

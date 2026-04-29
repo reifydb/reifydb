@@ -13,8 +13,8 @@
 
 use reifydb_abi::{
 	callbacks::{
-		catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-		rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+		builder::BuilderCallbacks, catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks,
+		memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 	},
 	constants::FFI_ERROR_INTERNAL,
 	context::context::ContextFFI,
@@ -22,6 +22,7 @@ use reifydb_abi::{
 };
 use reifydb_extension::procedure::ffi_callbacks::{logging, memory};
 
+pub mod builder;
 pub mod catalog;
 pub mod state;
 pub mod state_iterator;
@@ -71,6 +72,16 @@ pub fn create_host_callbacks() -> HostCallbacks {
 		},
 		rql: RqlCallbacks {
 			rql: host_rql_unsupported,
+		},
+		builder: BuilderCallbacks {
+			acquire: builder::host_builder_acquire,
+			data_ptr: builder::host_builder_data_ptr,
+			offsets_ptr: builder::host_builder_offsets_ptr,
+			bitvec_ptr: builder::host_builder_bitvec_ptr,
+			grow: builder::host_builder_grow,
+			commit: builder::host_builder_commit,
+			release: builder::host_builder_release,
+			emit_diff: builder::host_builder_emit_diff,
 		},
 	}
 }

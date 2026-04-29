@@ -64,8 +64,8 @@ macro_rules! impl_to_uuid {
 			let mut out = ColumnBuffer::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
-					let val = &container[idx];
-					let temp_fragment = Fragment::internal(val.as_str());
+					let val = container.get(idx).unwrap();
+					let temp_fragment = Fragment::internal(val);
 
 					let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
 						// Get the original fragment for error reporting

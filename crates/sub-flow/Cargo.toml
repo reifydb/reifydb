@@ -33,6 +33,7 @@ reifydb-type = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 postcard = { workspace = true }
+smallvec = { workspace = true }
 crossbeam-channel = { workspace = true }
 
 rayon = { workspace = true }
@@ -43,3 +44,29 @@ tracing = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 libloading = { workspace = true }
+
+[[bench]]
+name = "marshal_input_borrow"
+harness = false
+path = "benches/ffi_zero_copy/marshal_input_borrow.rs"
+
+[[bench]]
+name = "ffi_filter"
+harness = false
+path = "benches/ffi_zero_copy/ffi_filter.rs"
+
+[[bench]]
+name = "ffi_aggregate_flush"
+harness = false
+path = "benches/ffi_zero_copy/ffi_aggregate_flush.rs"
+
+[[bench]]
+name = "distinct_warm_cache"
+harness = false
+path = "benches/ffi_zero_copy/distinct_warm_cache.rs"
+
+[dev-dependencies]
+reifydb-sdk = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-type = { workspace = true }
+reifydb-abi = { workspace = true }

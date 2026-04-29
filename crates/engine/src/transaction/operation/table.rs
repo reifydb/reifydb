@@ -21,6 +21,7 @@ use reifydb_type::{
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
+use smallvec::smallvec;
 
 use crate::Result;
 
@@ -51,7 +52,7 @@ fn build_table_insert_change(table: &Table, shape: &RowShape, row_number: RowNum
 	Change {
 		origin: ChangeOrigin::Shape(ShapeId::Table(table.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::insert(build_encoded_columns(shape, row_number, encoded))],
+		diffs: smallvec![Diff::insert(build_encoded_columns(shape, row_number, encoded))],
 		changed_at: DateTime::default(),
 	}
 }
@@ -61,7 +62,7 @@ fn build_table_update_change(table: &Table, row_number: RowNumber, pre: &Encoded
 	Change {
 		origin: ChangeOrigin::Shape(ShapeId::Table(table.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::update(
+		diffs: smallvec![Diff::update(
 			build_encoded_columns(&shape, row_number, pre),
 			build_encoded_columns(&shape, row_number, post),
 		)],
@@ -74,7 +75,7 @@ fn build_table_remove_change(table: &Table, row_number: RowNumber, encoded: &Enc
 	Change {
 		origin: ChangeOrigin::Shape(ShapeId::Table(table.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::remove(build_encoded_columns(&shape, row_number, encoded))],
+		diffs: smallvec![Diff::remove(build_encoded_columns(&shape, row_number, encoded))],
 		changed_at: DateTime::default(),
 	}
 }

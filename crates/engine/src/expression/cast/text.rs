@@ -8,6 +8,7 @@ use reifydb_type::{
 	error::TypeError,
 	fragment::LazyFragment,
 	value::{
+		blob::Blob,
 		container::{
 			blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
 			number::NumberContainer, temporal::TemporalContainer, uuid::UuidContainer,
@@ -62,7 +63,10 @@ pub fn from_blob(container: &BlobContainer, lazy_fragment: impl LazyFragment) ->
 	let mut out = ColumnBuffer::with_capacity(Type::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
-			match container[idx].to_utf8() {
+			// Reconstruct a Blob from the borrowed bytes so the existing
+			// to_utf8 invariant logic + diagnostic stays unchanged.
+			let blob = Blob::new(container.get(idx).unwrap_or(&[]).to_vec());
+			match blob.to_utf8() {
 				Ok(s) => out.push(s),
 				Err(e) => {
 					return Err(CastError::InvalidBlobToUtf8 {
@@ -178,8 +182,8 @@ pub mod tests {
 				container,
 				..
 			} => {
-				assert_eq!(container[0], "Hello");
-				assert_eq!(container[1], "World");
+				assert_eq!(container.get(0), Some("Hello"));
+				assert_eq!(container.get(1), Some("World"));
 			}
 			_ => panic!("Expected UTF8 column data"),
 		}

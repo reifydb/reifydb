@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Catalog access for FFI operators
-//!
-//! Provides read-only access to catalog metadata (namespaces, tables) with
-//! version-based queries for time-travel support.
-
 pub mod namespace;
 pub mod table;
 
@@ -29,34 +24,17 @@ use reifydb_type::value::{
 
 use crate::{error::FFIError, operator::context::OperatorContext};
 
-/// Read-only catalog access wrapper
-///
-/// Provides safe access to catalog metadata through FFI callbacks.
-/// Mirrors the API of MaterializedCatalog.
 pub struct Catalog<'a> {
 	ctx: &'a mut OperatorContext,
 }
 
 impl<'a> Catalog<'a> {
-	/// Create a new catalog accessor from an operator context
 	pub(crate) fn new(ctx: &'a mut OperatorContext) -> Self {
 		Self {
 			ctx,
 		}
 	}
 
-	/// Find a namespace by ID at a specific version
-	///
-	/// Mirrors MaterializedCatalog::find_namespace
-	///
-	/// # Parameters
-	/// - `namespace`: The namespace ID to look up
-	/// - `version`: The commit version for time-travel queries
-	///
-	/// # Returns
-	/// - `Ok(Some(namespace))` if found
-	/// - `Ok(None)` if not found
-	/// - `Err(_)` on error
 	pub fn find_namespace(
 		&self,
 		namespace: NamespaceId,
@@ -65,18 +43,6 @@ impl<'a> Catalog<'a> {
 		namespace::raw_catalog_find_namespace(self.ctx, namespace, version)
 	}
 
-	/// Find a namespace by name at a specific version
-	///
-	/// Mirrors MaterializedCatalog::find_namespace_by_name
-	///
-	/// # Parameters
-	/// - `namespace`: The namespace name to look up
-	/// - `version`: The commit version for time-travel queries
-	///
-	/// # Returns
-	/// - `Ok(Some(namespace))` if found
-	/// - `Ok(None)` if not found
-	/// - `Err(_)` on error
 	pub fn find_namespace_by_name(
 		&self,
 		namespace: &str,
@@ -85,35 +51,10 @@ impl<'a> Catalog<'a> {
 		namespace::raw_catalog_find_namespace_by_name(self.ctx, namespace, version)
 	}
 
-	/// Find a table by ID at a specific version
-	///
-	/// Mirrors MaterializedCatalog::find_table
-	///
-	/// # Parameters
-	/// - `table`: The table ID to look up
-	/// - `version`: The commit version for time-travel queries
-	///
-	/// # Returns
-	/// - `Ok(Some(table))` if found
-	/// - `Ok(None)` if not found
-	/// - `Err(_)` on error
 	pub fn find_table(&self, table: TableId, version: CommitVersion) -> Result<Option<Table>, FFIError> {
 		table::raw_catalog_find_table(self.ctx, table, version)
 	}
 
-	/// Find a table by name in a namespace at a specific version
-	///
-	/// Mirrors MaterializedCatalog::find_table_by_name
-	///
-	/// # Parameters
-	/// - `namespace`: The namespace ID containing the table
-	/// - `name`: The table name to look up
-	/// - `version`: The commit version for time-travel queries
-	///
-	/// # Returns
-	/// - `Ok(Some(table))` if found
-	/// - `Ok(None)` if not found
-	/// - `Err(_)` on error
 	pub fn find_table_by_name(
 		&self,
 		namespace: NamespaceId,
@@ -124,7 +65,6 @@ impl<'a> Catalog<'a> {
 	}
 }
 
-/// Unmarshal ColumnFFI to Column
 pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, FFIError> {
 	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_col.name.ptr.is_null() && ffi_col.name.len > 0 {
@@ -156,7 +96,6 @@ pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, FFI
 	})
 }
 
-/// Unmarshal PrimaryKeyFFI to PrimaryKey
 pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<PrimaryKey, FFIError> {
 	// Get column IDs
 	let column_ids = if !ffi_pk.column_ids.is_null() && ffi_pk.column_count > 0 {
@@ -188,13 +127,6 @@ pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<Pri
 	})
 }
 
-/// Decode TypeConstraint from FFI format
-///
-/// # Parameters
-/// - `base_type`: Type::to_u8() value
-/// - `constraint_type`: 0=None, 1=MaxBytes, 2=PrecisionScale
-/// - `param1`: MaxBytes value OR precision
-/// - `param2`: scale
 fn decode_type_constraint(
 	base_type: u8,
 	constraint_type: u8,

@@ -87,7 +87,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextRepeat {
 
 					match count {
 						Some(n) if n >= 0 => {
-							let s = &str_container[i];
+							let s = str_container.get(i).unwrap();
 							result_data.push(s.repeat(n as usize));
 						}
 						Some(_) => {

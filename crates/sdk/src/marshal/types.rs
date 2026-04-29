@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Type-specific unmarshalling functions
-
 use std::{slice::from_raw_parts, str::from_utf8};
 
 use postcard::from_bytes;
@@ -11,11 +9,13 @@ use reifydb_type::value::{
 	Value,
 	blob::Blob,
 	container::{
-		any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
-		number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
+		any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
+		identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
+		utf8::Utf8Container, uuid::UuidContainer,
 	},
 	date::Date,
 	datetime::DateTime,
+	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
 	is::IsNumber,
@@ -302,6 +302,31 @@ impl Arena {
 			}
 
 			AnyContainer::new(values)
+		}
+	}
+
+	/// Unmarshal DictionaryId data with offsets - postcard-per-element
+	/// preserves the U1/U2/U4/U8/U16 enum variant.
+	pub(super) fn unmarshal_dictionary_id_data(&self, ffi: &ColumnDataFFI) -> DictionaryContainer {
+		let row_count = ffi.row_count;
+		if ffi.data.is_empty() || ffi.offsets.is_empty() {
+			return DictionaryContainer::new(vec![DictionaryEntryId::U16(0); row_count]);
+		}
+
+		unsafe {
+			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let offsets = self.read_offsets(&ffi.offsets);
+
+			let mut entries = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				let start = offsets[i] as usize;
+				let end = offsets[i + 1] as usize;
+				let entry: DictionaryEntryId =
+					from_bytes(&data[start..end]).unwrap_or(DictionaryEntryId::U16(0));
+				entries.push(entry);
+			}
+
+			DictionaryContainer::new(entries)
 		}
 	}
 

@@ -607,7 +607,8 @@ pub mod tests {
 		else {
 			panic!("Expected Utf8");
 		};
-		assert_eq!(container.data().as_slice(), &["hello".to_string(), "world".to_string()]);
+		let collected: Vec<&str> = container.iter_str().collect();
+		assert_eq!(collected, vec!["hello", "world"]);
 	}
 
 	#[test]

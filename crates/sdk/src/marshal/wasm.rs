@@ -47,7 +47,6 @@ use uuid::Uuid;
 
 use super::util::column_data_to_type_code;
 
-/// Marshal `Columns` into a flat binary buffer suitable for WASM linear memory.
 pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 	let row_count = columns.row_count();
 	let column_count = columns.len();
@@ -136,7 +135,6 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 	buf
 }
 
-/// Unmarshal `Columns` from a flat binary buffer.
 pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 	if bytes.len() < COLUMNS_WASM_HEADER_SIZE {
 		return Columns::empty();
@@ -264,7 +262,6 @@ fn unmarshal_bitvec_from_bytes(bytes: &[u8], len: usize) -> BitVec {
 	BitVec::from_slice(&bits)
 }
 
-/// Marshal column data bytes + offsets into buf, returning (data_offset, data_len, offsets_offset, offsets_len).
 fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (u32, u32, u32, u32) {
 	match data {
 		ColumnBuffer::Bool(container) => {
@@ -338,17 +335,11 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 		ColumnBuffer::Utf8 {
 			container,
 			..
-		} => {
-			let strings: &[String] = container;
-			marshal_strings_to_buf(buf, strings)
-		}
+		} => marshal_strings_iter_to_buf(buf, container.iter_str()),
 		ColumnBuffer::Blob {
 			container,
 			..
-		} => {
-			let blobs: &[Blob] = container;
-			marshal_blobs_to_buf(buf, blobs)
-		}
+		} => marshal_blobs_iter_to_buf(buf, container.iter_bytes()),
 
 		ColumnBuffer::Int {
 			container,
@@ -396,7 +387,6 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 	}
 }
 
-/// Marshal a numeric slice into buf. Returns (data_offset, data_len, 0, 0).
 fn marshal_numeric_to_buf<T: Copy>(buf: &mut Vec<u8>, slice: &[T]) -> (u32, u32, u32, u32) {
 	let byte_len = mem::size_of_val(slice);
 	if byte_len == 0 {
@@ -408,7 +398,6 @@ fn marshal_numeric_to_buf<T: Copy>(buf: &mut Vec<u8>, slice: &[T]) -> (u32, u32,
 	(offset, byte_len as u32, 0, 0)
 }
 
-/// Marshal raw bytes into buf. Returns (data_offset, data_len, 0, 0).
 fn marshal_raw_bytes_to_buf(buf: &mut Vec<u8>, data: &[u8]) -> (u32, u32, u32, u32) {
 	if data.is_empty() {
 		return (0, 0, 0, 0);
@@ -418,9 +407,8 @@ fn marshal_raw_bytes_to_buf(buf: &mut Vec<u8>, data: &[u8]) -> (u32, u32, u32, u
 	(offset, data.len() as u32, 0, 0)
 }
 
-/// Marshal strings with offsets into buf.
-fn marshal_strings_to_buf(buf: &mut Vec<u8>, strings: &[String]) -> (u32, u32, u32, u32) {
-	let mut offsets: Vec<u64> = Vec::with_capacity(strings.len() + 1);
+fn marshal_strings_iter_to_buf<'a, I: Iterator<Item = &'a str>>(buf: &mut Vec<u8>, strings: I) -> (u32, u32, u32, u32) {
+	let mut offsets: Vec<u64> = Vec::new();
 	let mut data: Vec<u8> = Vec::new();
 	offsets.push(0);
 	for s in strings {
@@ -430,19 +418,17 @@ fn marshal_strings_to_buf(buf: &mut Vec<u8>, strings: &[String]) -> (u32, u32, u
 	marshal_data_with_offsets_to_buf(buf, &data, &offsets)
 }
 
-/// Marshal blobs with offsets into buf.
-fn marshal_blobs_to_buf(buf: &mut Vec<u8>, blobs: &[Blob]) -> (u32, u32, u32, u32) {
-	let mut offsets: Vec<u64> = Vec::with_capacity(blobs.len() + 1);
+fn marshal_blobs_iter_to_buf<'a, I: Iterator<Item = &'a [u8]>>(buf: &mut Vec<u8>, blobs: I) -> (u32, u32, u32, u32) {
+	let mut offsets: Vec<u64> = Vec::new();
 	let mut data: Vec<u8> = Vec::new();
 	offsets.push(0);
-	for blob in blobs {
-		data.extend_from_slice(blob.as_bytes());
+	for b in blobs {
+		data.extend_from_slice(b);
 		offsets.push(data.len() as u64);
 	}
 	marshal_data_with_offsets_to_buf(buf, &data, &offsets)
 }
 
-/// Marshal serialized values with offsets into buf.
 fn marshal_serialized_to_buf<T: Serialize>(buf: &mut Vec<u8>, values: &[T]) -> (u32, u32, u32, u32) {
 	let mut offsets: Vec<u64> = Vec::with_capacity(values.len() + 1);
 	let mut data: Vec<u8> = Vec::new();
@@ -455,8 +441,6 @@ fn marshal_serialized_to_buf<T: Serialize>(buf: &mut Vec<u8>, values: &[T]) -> (
 	marshal_data_with_offsets_to_buf(buf, &data, &offsets)
 }
 
-/// Append data bytes and offset array to buf.
-/// Returns (data_offset, data_len, offsets_offset, offsets_len).
 fn marshal_data_with_offsets_to_buf(buf: &mut Vec<u8>, data: &[u8], offsets: &[u64]) -> (u32, u32, u32, u32) {
 	let data_offset = buf.len() as u32;
 	buf.extend_from_slice(data);
@@ -603,7 +587,6 @@ fn read_offsets(bytes: &[u8]) -> Vec<u64> {
 	bytes.chunks_exact(size_of::<u64>()).map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap())).collect()
 }
 
-/// Wrap ColumnBuffer in Option if bitvec has any false (null) entries.
 fn maybe_wrap_option(inner: ColumnBuffer, bitvec: BitVec) -> ColumnBuffer {
 	let has_nulls = bitvec.iter().any(|b| !b);
 	if has_nulls {

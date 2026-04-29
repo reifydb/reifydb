@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, mem, sync::Arc};
+use std::{
+	collections::HashMap,
+	mem,
+	sync::{Arc, Weak},
+};
 
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
@@ -10,11 +14,12 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
-		catalog::shape::ShapeId,
+		catalog::{flow::FlowNodeId, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 };
-use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::{context::clock::Clock, sync::mutex::Mutex as RuntimeMutex};
+use reifydb_sdk::ffi::arena::Arena;
 use reifydb_transaction::{
 	change_accumulator::ChangeAccumulator,
 	interceptor::{
@@ -82,12 +87,15 @@ use reifydb_transaction::{
 	multi::transaction::read::MultiReadTransaction,
 	transaction::admin::AdminTransaction,
 };
+use reifydb_type::Result;
 use tracing::instrument;
 
-pub mod range;
 pub mod read;
+pub mod slot;
 pub mod state;
 pub mod write;
+
+use slot::{OperatorStateSlot, PersistFn};
 
 /// Parameters for creating a transactional (inline) FlowTransaction.
 pub struct TransactionalParams {
@@ -118,6 +126,19 @@ pub struct FlowTransactionInner {
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
 	pub clock: Clock,
+	/// Per-txn operator state cache. Populated lazily on first
+	/// `operator_state(node, ...)` call; flushed once at
+	/// `flush_operator_states` (typically right before `take_pending`).
+	pub operator_states: HashMap<FlowNodeId, OperatorStateSlot>,
+	/// FFI scratch arenas registered during the txn. Each FFIOperator
+	/// pushes its arena handle on first `apply`/`pull`/`tick`; the host
+	/// drops them all at txn end via `release_ffi_scratch` so the
+	/// bumpalo memory is reclaimed in one shot rather than per call.
+	/// `reifydb_runtime::sync::mutex::Mutex` is required because
+	/// `FlowTransaction` is sent across the rayon parallel iterator in
+	/// the transactional flow path.
+	/// See `crates/sub-flow/src/operator/ffi.rs` and Step 7 of plan-ffi.md.
+	pub ffi_arenas: Vec<Weak<RuntimeMutex<Arena>>>,
 }
 
 pub enum FlowTransaction {
@@ -214,6 +235,8 @@ impl FlowTransaction {
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock,
+				operator_states: HashMap::new(),
+				ffi_arenas: Vec::new(),
 			},
 		}
 	}
@@ -241,6 +264,8 @@ impl FlowTransaction {
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock,
+				operator_states: HashMap::new(),
+				ffi_arenas: Vec::new(),
 			},
 		}
 	}
@@ -262,6 +287,8 @@ impl FlowTransaction {
 				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
+				operator_states: HashMap::new(),
+				ffi_arenas: Vec::new(),
 			},
 			base_pending: params.base_pending,
 			view_overlay: params.view_overlay,
@@ -310,6 +337,8 @@ impl FlowTransaction {
 				interceptors: Interceptors::new(),
 				accumulator: ChangeAccumulator::new(),
 				clock,
+				operator_states: HashMap::new(),
+				ffi_arenas: Vec::new(),
 			},
 			state,
 		}
@@ -414,6 +443,113 @@ impl FlowTransaction {
 	/// Get access to the clock for timestamp generation
 	pub fn clock(&self) -> &Clock {
 		&self.inner().clock
+	}
+
+	/// Get or initialise the cached operator state for `node`.
+	///
+	/// On first access in this txn, `load` is invoked to build `(state, persist)`.
+	/// `state` is held boxed, `persist` is stashed for `flush_operator_states`.
+	/// On subsequent calls, the cached state is returned directly without
+	/// re-decoding, regardless of how many batches have flowed through.
+	///
+	/// Operators that mutate the returned `&mut S` must call
+	/// `mark_state_dirty(node)` so the slot is persisted at flush time.
+	pub fn operator_state<S, F>(&mut self, node: FlowNodeId, load: F) -> Result<&mut S>
+	where
+		S: 'static + Send,
+		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
+	{
+		if !self.inner().operator_states.contains_key(&node) {
+			let (state, persist) = load(self)?;
+			let slot = OperatorStateSlot {
+				value: Box::new(state),
+				dirty: false,
+				persist,
+			};
+			self.inner_mut().operator_states.insert(node, slot);
+		}
+		let slot = self.inner_mut().operator_states.get_mut(&node).expect("just inserted");
+		Ok(slot.value.downcast_mut::<S>().expect("operator state type mismatch"))
+	}
+
+	/// Mark the cached state for `node` as dirty so it is persisted on flush.
+	/// No-op if the slot does not exist (e.g. operator never touched state).
+	pub fn mark_state_dirty(&mut self, node: FlowNodeId) {
+		if let Some(slot) = self.inner_mut().operator_states.get_mut(&node) {
+			slot.dirty = true;
+		}
+	}
+
+	/// Take the cached state for `node`, returning the owned value and the
+	/// existing persist closure. Used by operators whose helpers need
+	/// `&mut FlowTransaction` alongside `&mut State` (e.g. `Take` calling
+	/// `parent.pull(txn, ...)` while mutating its `TakeState`). Pair every
+	/// `take_operator_state` with `put_operator_state` before returning so
+	/// the slot is restored for the next batch.
+	pub fn take_operator_state<S, F>(&mut self, node: FlowNodeId, load: F) -> Result<(S, PersistFn)>
+	where
+		S: 'static + Send,
+		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
+	{
+		if let Some(slot) = self.inner_mut().operator_states.remove(&node) {
+			let value = slot.value.downcast::<S>().map_err(|_| ()).expect("operator state type mismatch");
+			Ok((*value, slot.persist))
+		} else {
+			load(self)
+		}
+	}
+
+	/// Restore a state slot taken by `take_operator_state`, marking it dirty
+	/// since the operator just mutated it.
+	pub fn put_operator_state<S>(&mut self, node: FlowNodeId, state: S, persist: PersistFn)
+	where
+		S: 'static + Send,
+	{
+		self.inner_mut().operator_states.insert(
+			node,
+			OperatorStateSlot {
+				value: Box::new(state),
+				dirty: true,
+				persist,
+			},
+		);
+	}
+
+	/// Drain dirty slots and persist them. Must be called before
+	/// `take_pending` so the resulting state writes are included in the
+	/// pending buffer that the caller later commits.
+	pub fn flush_operator_states(&mut self) -> Result<()> {
+		let states = mem::take(&mut self.inner_mut().operator_states);
+		for (_, slot) in states {
+			if slot.dirty {
+				(slot.persist)(self, slot.value)?;
+			}
+		}
+		Ok(())
+	}
+
+	/// Register an FFI scratch arena with the txn so it gets cleared once
+	/// at commit/rollback rather than per FFI call. Idempotent: callers
+	/// may register the same arena on every operator method invocation.
+	pub fn register_ffi_arena(&mut self, arena: Weak<RuntimeMutex<Arena>>) {
+		let inner = self.inner_mut();
+		let already_present = inner.ffi_arenas.iter().any(|existing| existing.ptr_eq(&arena));
+		if !already_present {
+			inner.ffi_arenas.push(arena);
+		}
+	}
+
+	/// Reset all registered FFI scratch arenas. Called from the txn
+	/// commit / rollback paths (alongside `flush_operator_states`) so the
+	/// bumpalo memory is reclaimed in one shot.
+	pub fn release_ffi_scratch(&mut self) {
+		let arenas = mem::take(&mut self.inner_mut().ffi_arenas);
+		for weak in arenas {
+			if let Some(arena_arc) = weak.upgrade() {
+				let mut arena = arena_arc.lock();
+				arena.clear();
+			}
+		}
 	}
 }
 

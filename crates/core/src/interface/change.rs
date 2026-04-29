@@ -5,12 +5,18 @@ use std::sync::Arc;
 
 use reifydb_type::value::datetime::DateTime;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 
 use crate::{
 	common::CommitVersion,
 	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 	value::column::columns::Columns,
 };
+
+/// Inline-storage container for `Change.diffs`. Most operator emissions
+/// produce 1-3 diffs per call; reserving 4 inline avoids the heap allocation
+/// in the typical case while spilling to the heap for fan-out-heavy ops.
+pub type Diffs = SmallVec<[Diff; 4]>;
 
 /// Origin of a change
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,7 +99,7 @@ pub struct Change {
 	/// Origin of this change
 	pub origin: ChangeOrigin,
 	/// The list of diffs (changes)
-	pub diffs: Vec<Diff>,
+	pub diffs: Diffs,
 	/// Version of this change.
 	pub version: CommitVersion,
 	/// Timestamp when this was changed
@@ -102,20 +108,30 @@ pub struct Change {
 
 impl Change {
 	/// Create a change from a shape (external) source
-	pub fn from_shape(shape: ShapeId, version: CommitVersion, diffs: Vec<Diff>, changed_at: DateTime) -> Self {
+	pub fn from_shape(
+		shape: ShapeId,
+		version: CommitVersion,
+		diffs: impl Into<Diffs>,
+		changed_at: DateTime,
+	) -> Self {
 		Self {
 			origin: ChangeOrigin::Shape(shape),
-			diffs,
+			diffs: diffs.into(),
 			version,
 			changed_at,
 		}
 	}
 
 	/// Create a change from a flow node (internal)
-	pub fn from_flow(from: FlowNodeId, version: CommitVersion, diffs: Vec<Diff>, changed_at: DateTime) -> Self {
+	pub fn from_flow(
+		from: FlowNodeId,
+		version: CommitVersion,
+		diffs: impl Into<Diffs>,
+		changed_at: DateTime,
+	) -> Self {
 		Self {
 			origin: ChangeOrigin::Flow(from),
-			diffs,
+			diffs: diffs.into(),
 			version,
 			changed_at,
 		}

@@ -1,100 +1,82 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Builder for constructing Change objects
-
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::flow::FlowNodeId,
-		change::{Change, Diff},
+		change::{Change, Diff, Diffs},
 	},
 	row::Row,
 	value::column::columns::Columns,
 };
 use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
 
-/// Builder for constructing Change objects for internal flow operators
 pub struct ChangeBuilder {
 	operator_id: FlowNodeId,
 	version: CommitVersion,
-	diffs: Vec<Diff>,
+	diffs: Diffs,
 	changed_at: DateTime,
 }
 
 impl ChangeBuilder {
-	/// Create a new ChangeBuilder for an internal operator
-	///
-	/// # Arguments
-	/// * `operator_id` - The ID of the operator creating this change
-	/// * `version` - The commit version for this change
 	pub fn new(operator_id: FlowNodeId, version: CommitVersion) -> Self {
 		Self {
 			operator_id,
 			version,
-			diffs: Vec::new(),
+			diffs: Diffs::new(),
 			changed_at: DateTime::default(),
 		}
 	}
 
-	/// Set the timestamp when this change was made
 	pub fn changed_at(mut self, changed_at: DateTime) -> Self {
 		self.changed_at = changed_at;
 		self
 	}
 
-	/// Add an insert diff with Columns
 	pub fn insert(mut self, post: Columns) -> Self {
 		self.diffs.push(Diff::insert(post));
 		self
 	}
 
-	/// Add an insert diff from a Row (converts to Columns)
 	pub fn insert_row(mut self, row: Row) -> Self {
 		self.diffs.push(Diff::insert(Columns::from_row(&row)));
 		self
 	}
 
-	/// Add an update diff with Columns
 	pub fn update(mut self, pre: Columns, post: Columns) -> Self {
 		self.diffs.push(Diff::update(pre, post));
 		self
 	}
 
-	/// Add an update diff from Rows (converts to Columns)
 	pub fn update_rows(mut self, pre: Row, post: Row) -> Self {
 		self.diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 		self
 	}
 
-	/// Add a remove diff with Columns
 	pub fn remove(mut self, pre: Columns) -> Self {
 		self.diffs.push(Diff::remove(pre));
 		self
 	}
 
-	/// Add a remove diff from a Row (converts to Columns)
 	pub fn remove_row(mut self, row: Row) -> Self {
 		self.diffs.push(Diff::remove(Columns::from_row(&row)));
 		self
 	}
 
-	/// Add a single diff
 	pub fn diff(mut self, diff: Diff) -> Self {
 		self.diffs.push(diff);
 		self
 	}
 
-	/// Add multiple diffs
 	pub fn diffs(mut self, iter: impl IntoIterator<Item = Diff>) -> Self {
 		self.diffs.extend(iter);
 		self
 	}
 
-	/// Build the Change
 	pub fn build(self) -> Change {
 		let timestamp = self.changed_at;
-		let diffs = self
+		let diffs: Diffs = self
 			.diffs
 			.into_iter()
 			.map(|diff| match diff {

@@ -125,7 +125,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
 				for i in 0..row_count {
 					match (time_container.get(i), fmt_container.is_defined(i)) {
 						(Some(t), true) => {
-							let fmt_str = &fmt_container[i];
+							let fmt_str = fmt_container.get(i).unwrap();
 							match format_time(
 								t.hour(),
 								t.minute(),

@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Utility functions for marshalling
-
 use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_core::value::column::buffer::ColumnBuffer;
 
-/// Convert ColumnBuffer variant to type code
 pub(crate) fn column_data_to_type_code(data: &ColumnBuffer) -> ColumnTypeCode {
 	match data {
 		ColumnBuffer::Bool(_) => ColumnTypeCode::Bool,

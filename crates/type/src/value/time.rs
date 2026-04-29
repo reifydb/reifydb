@@ -17,6 +17,10 @@ use crate::{
 /// without date information.
 ///
 /// Internally stored as nanoseconds since midnight (00:00:00.000000000).
+///
+/// `#[repr(transparent)]` is required: the FFI ABI hands guests a borrow of
+/// `Vec<Time>` storage as a contiguous `[u64]` payload.
+#[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Time {
 	// Nanoseconds since midnight (0 to 86_399_999_999_999)

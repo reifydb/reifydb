@@ -26,6 +26,11 @@ pub static UPDATED_AT_COLUMN_NAME: &str = "updated_at";
 ///
 /// Internally stored as nanoseconds since Unix epoch (1970-01-01T00:00:00Z).
 /// Only supports dates from 1970-01-01 onward.
+///
+/// `#[repr(transparent)]` is required: the FFI ABI hands guests a borrow of
+/// `Vec<DateTime>` storage as a contiguous `[u64]` payload (also used for
+/// per-row `created_at`/`updated_at` arrays in `ColumnsFFI`).
+#[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct DateTime {
 	nanos: u64,

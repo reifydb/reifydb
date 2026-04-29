@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "SDK for building ReifyDB operators"
+description = "SDK for building ReifyDB operators, procedures, transforms and more"
 
 [dependencies]
 bumpalo.workspace = true
@@ -21,4 +21,8 @@ uuid.workspace = true
 [features]
 default = []
 test-support = []
+
+[[test]]
+name = "ffi"
+path = "tests/ffi.rs"
 

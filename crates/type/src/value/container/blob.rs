@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Blob column container backed by a contiguous bytes + offsets layout.
+//!
+//! Internal storage matches the FFI wire format byte-for-byte. Mirrors
+//! `Utf8Container` but without the UTF-8 invariant - reads return `&[u8]`.
+
 use std::{
 	fmt::{self, Debug},
-	ops::Deref,
 	result::Result as StdResult,
 };
 
@@ -11,211 +15,208 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{Cow, DataBitVec, DataVec, Storage},
-	util::cowvec::CowVec,
-	value::{Value, blob::Blob, r#type::Type},
+	storage::{Cow, Storage},
+	value::{Value, blob::Blob, container::varlen::VarlenContainer, r#type::Type},
 };
 
 pub struct BlobContainer<S: Storage = Cow> {
-	data: S::Vec<Blob>,
+	inner: VarlenContainer<S>,
 }
 
 impl<S: Storage> Clone for BlobContainer<S> {
 	fn clone(&self) -> Self {
 		Self {
-			data: self.data.clone(),
+			inner: self.inner.clone(),
 		}
 	}
 }
 
 impl<S: Storage> Debug for BlobContainer<S>
 where
-	S::Vec<Blob>: Debug,
+	VarlenContainer<S>: Debug,
 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("BlobContainer").field("data", &self.data).finish()
+		f.debug_struct("BlobContainer").field("inner", &self.inner).finish()
 	}
 }
 
 impl<S: Storage> PartialEq for BlobContainer<S>
 where
-	S::Vec<Blob>: PartialEq,
+	VarlenContainer<S>: PartialEq,
 {
 	fn eq(&self, other: &Self) -> bool {
-		self.data == other.data
+		self.inner == other.inner
 	}
 }
 
 impl Serialize for BlobContainer<Cow> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
-		#[derive(Serialize)]
-		struct Helper<'a> {
-			data: &'a CowVec<Blob>,
-		}
-		Helper {
-			data: &self.data,
-		}
-		.serialize(serializer)
+		// Postcard-stable: the inner VarlenContainer encodes as a sequence
+		// of byte slices, matching the previous `Vec<Blob>` (== `Vec<Vec<u8>>`)
+		// wire form byte-for-byte.
+		self.inner.serialize(serializer)
 	}
 }
 
 impl<'de> Deserialize<'de> for BlobContainer<Cow> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
-		#[derive(Deserialize)]
-		struct Helper {
-			data: CowVec<Blob>,
-		}
-		let h = Helper::deserialize(deserializer)?;
-		Ok(BlobContainer {
-			data: h.data,
+		let inner = VarlenContainer::deserialize(deserializer)?;
+		Ok(Self {
+			inner,
 		})
-	}
-}
-
-impl<S: Storage> Deref for BlobContainer<S> {
-	type Target = [Blob];
-
-	fn deref(&self) -> &Self::Target {
-		self.data.as_slice()
 	}
 }
 
 impl BlobContainer<Cow> {
 	pub fn new(data: Vec<Blob>) -> Self {
+		Self::from_vec(data)
+	}
+
+	pub fn from_vec(data: Vec<Blob>) -> Self {
+		let inner = VarlenContainer::from_byte_slices(data.iter().map(|b| b.as_bytes()));
 		Self {
-			data: CowVec::new(data),
+			inner,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
+		// Heuristic: assume ~32 bytes per blob initially.
 		Self {
-			data: CowVec::with_capacity(capacity),
+			inner: VarlenContainer::with_capacity(capacity, capacity * 32),
 		}
 	}
 
-	pub fn from_vec(data: Vec<Blob>) -> Self {
+	/// Build directly from contiguous bytes + offsets.
+	pub fn from_bytes_offsets(data: Vec<u8>, offsets: Vec<u64>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			inner: VarlenContainer::from_raw_parts(data, offsets),
 		}
 	}
 }
 
 impl<S: Storage> BlobContainer<S> {
-	pub fn from_parts(data: S::Vec<Blob>) -> Self {
+	pub fn from_inner(inner: VarlenContainer<S>) -> Self {
 		Self {
-			data,
+			inner,
 		}
+	}
+
+	pub fn from_storage_parts(data: S::Vec<u8>, offsets: S::Vec<u64>) -> Self {
+		Self {
+			inner: VarlenContainer::from_storage_parts(data, offsets),
+		}
+	}
+
+	pub fn data_storage(&self) -> &S::Vec<u8> {
+		self.inner.data()
+	}
+
+	pub fn offsets_storage(&self) -> &S::Vec<u64> {
+		self.inner.offsets_data()
 	}
 
 	pub fn len(&self) -> usize {
-		DataVec::len(&self.data)
+		self.inner.len()
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataVec::capacity(&self.data)
+		self.inner.capacity()
 	}
 
 	pub fn is_empty(&self) -> bool {
-		DataVec::is_empty(&self.data)
+		self.inner.is_empty()
 	}
 
 	pub fn clear(&mut self) {
-		DataVec::clear(&mut self.data);
+		self.inner.clear_generic();
 	}
 
-	pub fn push(&mut self, value: Blob) {
-		DataVec::push(&mut self.data, value);
-	}
-
-	pub fn push_default(&mut self) {
-		DataVec::push(&mut self.data, Blob::new(vec![]));
-	}
-
-	pub fn get(&self, index: usize) -> Option<&Blob> {
-		if index < self.len() {
-			DataVec::get(&self.data, index)
-		} else {
-			None
-		}
+	/// Borrow the i-th blob's bytes.
+	pub fn get(&self, index: usize) -> Option<&[u8]> {
+		self.inner.get_bytes(index)
 	}
 
 	pub fn is_defined(&self, idx: usize) -> bool {
 		idx < self.len()
 	}
 
-	pub fn data(&self) -> &S::Vec<Blob> {
-		&self.data
+	/// Borrow the underlying concatenated payload bytes. Used by the FFI
+	/// marshal path for zero-copy borrow.
+	pub fn data_bytes(&self) -> &[u8] {
+		self.inner.data_bytes()
 	}
 
-	pub fn data_mut(&mut self) -> &mut S::Vec<Blob> {
-		&mut self.data
+	/// Borrow the underlying offsets array (length = `len + 1`).
+	pub fn offsets(&self) -> &[u64] {
+		self.inner.offsets()
+	}
+
+	/// Borrow the inner VarlenContainer (test/debug only).
+	pub fn inner(&self) -> &VarlenContainer<S> {
+		&self.inner
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
-		if index < self.len() {
-			self.data[index].to_string()
-		} else {
-			"none".to_string()
+		match self.get(index) {
+			Some(bytes) => Blob::new(bytes.to_vec()).to_string(),
+			None => "none".to_string(),
 		}
 	}
 
 	pub fn get_value(&self, index: usize) -> Value {
-		if index < self.len() {
-			Value::Blob(self.data[index].clone())
-		} else {
-			Value::none_of(Type::Blob)
+		match self.get(index) {
+			Some(bytes) => Value::Blob(Blob::new(bytes.to_vec())),
+			None => Value::none_of(Type::Blob),
 		}
+	}
+
+	/// Iterate blobs as `Option<&[u8]>`.
+	pub fn iter(&self) -> impl Iterator<Item = Option<&[u8]>> + '_ {
+		(0..self.len()).map(|i| self.get(i))
+	}
+
+	/// Iterate blobs as `&[u8]` directly.
+	pub fn iter_bytes(&self) -> impl Iterator<Item = &[u8]> + '_ {
+		(0..self.len()).map(|i| self.get(i).unwrap_or(&[]))
+	}
+}
+
+impl BlobContainer<Cow> {
+	pub fn push(&mut self, value: Blob) {
+		self.inner.push_bytes(value.as_bytes());
+	}
+
+	pub fn push_bytes(&mut self, value: &[u8]) {
+		self.inner.push_bytes(value);
+	}
+
+	pub fn push_default(&mut self) {
+		self.inner.push_bytes(&[]);
 	}
 
 	pub fn extend(&mut self, other: &Self) -> Result<()> {
-		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
+		self.inner.extend_from(&other.inner);
 		Ok(())
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = Option<&Blob>> + '_ {
-		self.data.iter().map(Some)
-	}
-
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let count = (end - start).min(self.len().saturating_sub(start));
-		let mut new_data = DataVec::spawn(&self.data, count);
-		for i in start..(start + count) {
-			DataVec::push(&mut new_data, self.data[i].clone());
-		}
 		Self {
-			data: new_data,
+			inner: self.inner.slice(start, end),
 		}
 	}
 
-	pub fn filter(&mut self, mask: &S::BitVec) {
-		let mut new_data = DataVec::spawn(&self.data, DataBitVec::count_ones(mask));
-
-		for (i, keep) in DataBitVec::iter(mask).enumerate() {
-			if keep && i < self.len() {
-				DataVec::push(&mut new_data, self.data[i].clone());
-			}
-		}
-
-		self.data = new_data;
+	pub fn filter(&mut self, mask: &<Cow as Storage>::BitVec) {
+		let bits: Vec<bool> = mask.iter().collect();
+		self.inner.filter_in_place(|i| bits.get(i).copied().unwrap_or(false));
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
-		let mut new_data = DataVec::spawn(&self.data, indices.len());
-
-		for &idx in indices {
-			if idx < self.len() {
-				DataVec::push(&mut new_data, self.data[idx].clone());
-			} else {
-				DataVec::push(&mut new_data, Blob::new(vec![]));
-			}
-		}
-
-		self.data = new_data;
+		self.inner.reorder_in_place(indices);
 	}
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
-			data: DataVec::take(&self.data, num),
+			inner: self.inner.take_n(num),
 		}
 	}
 }
@@ -228,6 +229,8 @@ impl Default for BlobContainer<Cow> {
 
 #[cfg(test)]
 pub mod tests {
+	use postcard::to_allocvec as postcard_to_allocvec;
+
 	use super::*;
 
 	#[test]
@@ -238,8 +241,8 @@ pub mod tests {
 		let container = BlobContainer::new(blobs);
 
 		assert_eq!(container.len(), 2);
-		assert_eq!(container.get(0), Some(&blob1));
-		assert_eq!(container.get(1), Some(&blob2));
+		assert_eq!(container.get(0), Some(blob1.as_bytes()));
+		assert_eq!(container.get(1), Some(blob2.as_bytes()));
 	}
 
 	#[test]
@@ -250,8 +253,8 @@ pub mod tests {
 		let container = BlobContainer::from_vec(blobs);
 
 		assert_eq!(container.len(), 2);
-		assert_eq!(container.get(0), Some(&blob1));
-		assert_eq!(container.get(1), Some(&blob2));
+		assert_eq!(container.get(0), Some(blob1.as_bytes()));
+		assert_eq!(container.get(1), Some(blob2.as_bytes()));
 
 		for i in 0..2 {
 			assert!(container.is_defined(i));
@@ -277,9 +280,9 @@ pub mod tests {
 		container.push(blob2.clone());
 
 		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(0), Some(&blob1));
-		assert_eq!(container.get(1), Some(&Blob::new(vec![]))); // default
-		assert_eq!(container.get(2), Some(&blob2));
+		assert_eq!(container.get(0), Some(blob1.as_bytes()));
+		assert_eq!(container.get(1), Some(b"".as_slice()));
+		assert_eq!(container.get(2), Some(blob2.as_bytes()));
 
 		assert!(container.is_defined(0));
 		assert!(container.is_defined(1));
@@ -291,5 +294,26 @@ pub mod tests {
 		let container = BlobContainer::default();
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());
+	}
+
+	#[test]
+	fn test_data_bytes_and_offsets_match_zero_copy_layout() {
+		let container = BlobContainer::from_vec(vec![Blob::new(vec![0xAA, 0xBB]), Blob::new(vec![0xCC])]);
+		assert_eq!(container.data_bytes(), &[0xAAu8, 0xBB, 0xCC]);
+		assert_eq!(container.offsets(), &[0u64, 2, 3]);
+	}
+
+	#[test]
+	fn test_postcard_wire_compat() {
+		// The inner VarlenContainer is byte-compatible with `Vec<Vec<u8>>`
+		// via postcard. `Blob` derefs to `Vec<u8>`, so a `Vec<Blob>` is
+		// also byte-compatible.
+		let blobs = vec![Blob::new(vec![1, 2, 3]), Blob::new(vec![4, 5])];
+		let blobs_bytes: Vec<u8> = postcard_to_allocvec(&blobs).unwrap();
+
+		let container = BlobContainer::from_vec(blobs.clone());
+		let container_bytes: Vec<u8> = postcard_to_allocvec(&container).unwrap();
+
+		assert_eq!(blobs_bytes, container_bytes);
 	}
 }

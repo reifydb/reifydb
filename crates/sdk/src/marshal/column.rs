@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Column marshalling and unmarshalling
-
 use std::{mem, mem::size_of, ptr, slice, str};
 
 use postcard::to_allocvec;
@@ -15,9 +13,8 @@ use reifydb_type::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
 	value::{
-		blob::Blob,
+		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
-		container::dictionary::DictionaryContainer,
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
@@ -38,7 +35,20 @@ use super::util::column_data_to_type_code;
 use crate::ffi::arena::Arena;
 
 impl Arena {
-	/// Marshal Columns to FFI representation
+	/// Marshal `Columns` into the FFI ABI as a **zero-copy borrow** of the
+	/// caller's native storage.
+	///
+	/// `RowNumber`, `DateTime`, and the per-type column buffers are all laid
+	/// out as flat primitive arrays (numerics as `[T]`, temporals as
+	/// `[u64]` / `[i32]` via `#[repr(transparent)]`, etc). The marshal path
+	/// hands the guest raw pointers into that storage with `cap == 0` as
+	/// the borrow sentinel; the only arena allocation is the small
+	/// scaffolding for the `ColumnFFI` array.
+	///
+	/// Borrow contract: every `BufferFFI` produced here is valid for the
+	/// duration of the FFI call only. The caller (`FFIOperator::apply` /
+	/// `pull` / `tick`) keeps the source `Columns` alive across the call,
+	/// so the pointers remain valid until return.
 	pub fn marshal_columns(&mut self, columns: &Columns) -> ColumnsFFI {
 		let row_count = columns.row_count();
 		let column_count = columns.len();
@@ -47,51 +57,31 @@ impl Arena {
 			return ColumnsFFI::empty();
 		}
 
-		// Marshal row numbers
+		// Borrow row_numbers directly: `RowNumber` is `#[repr(transparent)]`
+		// over `u64`, so `&[RowNumber]` and `&[u64]` share layout. The
+		// FFI ABI receives the raw pointer; cap == 0 signals borrow.
 		let row_numbers_ptr = if !columns.row_numbers.is_empty() {
-			let size = columns.row_numbers.len() * size_of::<u64>();
-			let ptr = self.alloc(size) as *mut u64;
-			if !ptr.is_null() {
-				unsafe {
-					for (i, rn) in columns.row_numbers.iter().enumerate() {
-						*ptr.add(i) = (*rn).into();
-					}
-				}
-			}
-			ptr as *const u64
+			columns.row_numbers.as_slice().as_ptr() as *const u64
 		} else {
 			ptr::null()
 		};
 
-		// Marshal created_at timestamps
-		let created_at_ptr = {
-			let size = columns.created_at.len() * size_of::<u64>();
-			let ptr = self.alloc(size) as *mut u64;
-			if !ptr.is_null() {
-				unsafe {
-					for (i, dt) in columns.created_at.iter().enumerate() {
-						*ptr.add(i) = dt.to_nanos();
-					}
-				}
-			}
-			ptr as *const u64
+		// Same for created_at / updated_at: `DateTime` is
+		// `#[repr(transparent)]` over `u64` (nanos since epoch).
+		let created_at_ptr = if !columns.created_at.is_empty() {
+			columns.created_at.as_slice().as_ptr() as *const u64
+		} else {
+			ptr::null()
+		};
+		let updated_at_ptr = if !columns.updated_at.is_empty() {
+			columns.updated_at.as_slice().as_ptr() as *const u64
+		} else {
+			ptr::null()
 		};
 
-		// Marshal updated_at timestamps
-		let updated_at_ptr = {
-			let size = columns.updated_at.len() * size_of::<u64>();
-			let ptr = self.alloc(size) as *mut u64;
-			if !ptr.is_null() {
-				unsafe {
-					for (i, dt) in columns.updated_at.iter().enumerate() {
-						*ptr.add(i) = dt.to_nanos();
-					}
-				}
-			}
-			ptr as *const u64
-		};
-
-		// Marshal each column
+		// The only thing that still needs arena scaffolding: the
+		// per-column `ColumnFFI` array. Each entry's `data` and `name`
+		// are themselves borrows (cap == 0).
 		let columns_size = column_count * size_of::<ColumnFFI>();
 		let columns_ptr = self.alloc(columns_size) as *mut ColumnFFI;
 
@@ -114,7 +104,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal Columns from FFI representation
 	pub fn unmarshal_columns(&self, ffi: &ColumnsFFI) -> Columns {
 		if ffi.is_empty() || ffi.columns.is_null() {
 			return Columns::empty();
@@ -169,12 +158,14 @@ impl Arena {
 
 impl Arena {
 	pub(super) fn marshal_column_ref(&mut self, name: &Fragment, data: &ColumnBuffer) -> ColumnFFI {
+		// Borrow the name's UTF-8 bytes directly. The `Fragment` outlives
+		// the FFI call (it's owned by the source `Columns`), so the
+		// borrow is valid for the call duration. cap == 0 marks borrow.
 		let name_bytes = name.text().as_bytes();
-		let name_ptr = self.copy_bytes(name_bytes);
 		let name_buf = BufferFFI {
-			ptr: name_ptr,
+			ptr: name_bytes.as_ptr(),
 			len: name_bytes.len(),
-			cap: name_bytes.len(),
+			cap: 0,
 		};
 
 		let data = self.marshal_column_data(data);
@@ -239,7 +230,6 @@ impl Arena {
 		ColumnWithName::new(name, data)
 	}
 
-	/// Unmarshal ColumnBuffer from FFI representation
 	pub(super) fn unmarshal_column_data(&self, ffi: &ColumnDataFFI, row_count: usize) -> ColumnBuffer {
 		if row_count == 0 {
 			return ColumnBuffer::none_typed(Type::Boolean, 0);
@@ -367,10 +357,8 @@ impl Arena {
 				ColumnBuffer::Any(container)
 			}
 			ColumnTypeCode::DictionaryId => {
-				let u128_container = self.unmarshal_numeric_data::<u128>(ffi);
-				let entries: Vec<DictionaryEntryId> =
-					u128_container.data().iter().map(|&v| DictionaryEntryId::U16(v)).collect();
-				ColumnBuffer::DictionaryId(DictionaryContainer::new(entries))
+				let container = self.unmarshal_dictionary_id_data(ffi);
+				ColumnBuffer::DictionaryId(container)
 			}
 			ColumnTypeCode::Undefined => ColumnBuffer::none_typed(Type::Boolean, row_count),
 		};
@@ -389,39 +377,43 @@ impl Arena {
 }
 
 impl Arena {
+	/// Convert a `ColumnBuffer` into the FFI wire layout, **borrowing** the
+	/// native storage where possible (`cap == 0` sentinel).
+	///
+	/// The workspace's column types are laid out so most of them can be
+	/// borrowed without transformation:
+	///
+	/// - Numerics (`Float{4,8}`, `Int{1..16}`, `Uint{1..16}`): `NumberContainer` wraps `Vec<T>`; the FFI `data`
+	///   borrow is `as_ptr() + byte_len`.
+	/// - Bool: `BoolContainer` wraps a `BitVec` whose `bits: Vec<u8>` is already in the LSB-first packed format the
+	///   FFI expects.
+	/// - Date/DateTime/Time: each is `#[repr(transparent)]` over its encoded primitive (`i32` or `u64`), so
+	///   `Vec<T>` is layout-compatible with `[i32]`/`[u64]`.
+	/// - Duration: `#[repr(C)]` over `(i32, i32, i64)` = 16 bytes/element.
+	/// - IdentityId / Uuid4 / Uuid7: `#[repr(transparent)]` newtypes over 16-byte UUIDs; storage is `Vec<T>` packed
+	///   contiguously.
+	/// - Utf8 / Blob: storage is `(Vec<u8>, Vec<u64>)` (data + offsets), the exact FFI wire format. Both buffers
+	///   borrow with `cap == 0`.
+	/// - DictionaryId: `[u128]`-compatible borrow.
+	/// - Int/Uint/Decimal/Any: still serialized via postcard (out of scope for the borrow path; tracked as future
+	///   work).
 	pub(super) fn marshal_column_data_bytes(&mut self, data: &ColumnBuffer) -> (BufferFFI, BufferFFI) {
 		match data {
-			// Fixed-size numeric types - use Deref to get slice
 			ColumnBuffer::Bool(container) => {
-				// BoolContainer stores packed bits internally
-				let len = container.len();
-				let byte_count = len.div_ceil(8);
-				let ptr = self.alloc(byte_count);
-				if !ptr.is_null() {
-					unsafe {
-						ptr::write_bytes(ptr, 0, byte_count);
-					}
-					for i in 0..len {
-						if let Some(val) = container.get(i)
-							&& val
-						{
-							unsafe {
-								*ptr.add(i / 8) |= 1 << (i % 8);
-							}
-						}
-					}
-				}
+				// `BitVec.bits: Vec<u8>` is already the packed wire format
+				// (LSB-first within each byte). Borrow it directly.
+				let bytes = container.data().as_packed_bytes();
 				(
 					BufferFFI {
-						ptr,
-						len: byte_count,
-						cap: byte_count,
+						ptr: bytes.as_ptr(),
+						len: bytes.len(),
+						cap: 0,
 					},
 					BufferFFI::empty(),
 				)
 			}
 
-			// Numeric types - use Deref to [T]
+			// Numeric types - direct slice borrow.
 			ColumnBuffer::Float4(container) => self.marshal_numeric_slice::<f32>(container),
 			ColumnBuffer::Float8(container) => self.marshal_numeric_slice::<f64>(container),
 			ColumnBuffer::Int1(container) => self.marshal_numeric_slice::<i8>(container),
@@ -435,90 +427,89 @@ impl Arena {
 			ColumnBuffer::Uint8(container) => self.marshal_numeric_slice::<u64>(container),
 			ColumnBuffer::Uint16(container) => self.marshal_numeric_slice::<u128>(container),
 
-			// Temporal types - extract encoded values
+			// Temporal types - `#[repr(transparent)]` makes `Vec<T>` layout-
+			// compatible with `[i32]` / `[u64]` so we borrow directly. No
+			// per-element transformation needed.
 			ColumnBuffer::Date(container) => {
 				let dates: &[Date] = container;
-				let encoded: Vec<i32> = dates.iter().map(|d| d.to_days_since_epoch()).collect();
-				self.marshal_numeric_slice(&encoded)
+				self.marshal_numeric_slice::<Date>(dates)
 			}
 			ColumnBuffer::DateTime(container) => {
 				let datetimes: &[DateTime] = container;
-				let encoded: Vec<i64> = datetimes.iter().map(|dt| dt.timestamp()).collect();
-				self.marshal_numeric_slice(&encoded)
+				self.marshal_numeric_slice::<DateTime>(datetimes)
 			}
 			ColumnBuffer::Time(container) => {
 				let times: &[Time] = container;
-				let encoded: Vec<u64> = times.iter().map(|t| t.to_nanos_since_midnight()).collect();
-				self.marshal_numeric_slice(&encoded)
+				self.marshal_numeric_slice::<Time>(times)
 			}
 			ColumnBuffer::Duration(container) => {
-				// Duration has 3 fields (months, days, nanos), serialize with postcard
+				// `Duration` is `#[repr(C)]` (i32 months, i32 days, i64 nanos)
+				// = 16 bytes/element. Borrow the slice as raw bytes.
 				let durations: &[Duration] = container;
-				self.marshal_serialized(durations)
+				self.marshal_numeric_slice::<Duration>(durations)
 			}
 
-			// UUID types - 16 bytes each
+			// UUID-style types - `#[repr(transparent)]` newtypes over 16-byte
+			// UUIDs. Borrow the `Vec<T>` directly as 16-bytes-per-element.
 			ColumnBuffer::IdentityId(container) => {
 				let ids: &[IdentityId] = container;
-				let bytes: Vec<u8> =
-					ids.iter().flat_map(|id| id.0.as_bytes().iter().copied()).collect();
-				let ptr = self.copy_bytes(&bytes);
-				(
-					BufferFFI {
-						ptr,
-						len: bytes.len(),
-						cap: bytes.len(),
-					},
-					BufferFFI::empty(),
-				)
+				self.marshal_numeric_slice::<IdentityId>(ids)
 			}
 			ColumnBuffer::Uuid4(container) => {
 				let uuids: &[Uuid4] = container;
-				let bytes: Vec<u8> =
-					uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
-				let ptr = self.copy_bytes(&bytes);
-				(
-					BufferFFI {
-						ptr,
-						len: bytes.len(),
-						cap: bytes.len(),
-					},
-					BufferFFI::empty(),
-				)
+				self.marshal_numeric_slice::<Uuid4>(uuids)
 			}
 			ColumnBuffer::Uuid7(container) => {
 				let uuids: &[Uuid7] = container;
-				let bytes: Vec<u8> =
-					uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
-				let ptr = self.copy_bytes(&bytes);
-				(
-					BufferFFI {
-						ptr,
-						len: bytes.len(),
-						cap: bytes.len(),
-					},
-					BufferFFI::empty(),
-				)
+				self.marshal_numeric_slice::<Uuid7>(uuids)
 			}
 
-			// Variable-length types with offsets
+			// Variable-length types - native storage matches the wire format
+			// exactly, so borrow `data_bytes()` + `offsets()` directly.
 			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
-				let strings: &[String] = container;
-				self.marshal_strings(strings)
+				let data_bytes = container.data_bytes();
+				let offsets = container.offsets();
+				let offsets_byte_len = mem::size_of_val(offsets);
+				(
+					BufferFFI {
+						ptr: data_bytes.as_ptr(),
+						len: data_bytes.len(),
+						cap: 0,
+					},
+					BufferFFI {
+						ptr: offsets.as_ptr() as *const u8,
+						len: offsets_byte_len,
+						cap: 0,
+					},
+				)
 			}
 			ColumnBuffer::Blob {
 				container,
 				..
 			} => {
-				// Blob is a newtype around Vec<u8>, get bytes from each
-				let blobs: &[Blob] = container;
-				self.marshal_blob_slices(blobs)
+				let data_bytes = container.data_bytes();
+				let offsets = container.offsets();
+				let offsets_byte_len = mem::size_of_val(offsets);
+				(
+					BufferFFI {
+						ptr: data_bytes.as_ptr(),
+						len: data_bytes.len(),
+						cap: 0,
+					},
+					BufferFFI {
+						ptr: offsets.as_ptr() as *const u8,
+						len: offsets_byte_len,
+						cap: 0,
+					},
+				)
 			}
 
-			// Complex types - serialize with postcard
+			// Complex types - still serialized via postcard. Out of scope for
+			// the borrow path because their native storage (BigInt heap
+			// allocations etc.) doesn't lend itself to a flat payload.
 			ColumnBuffer::Int {
 				container,
 				..
@@ -545,18 +536,25 @@ impl Arena {
 				let mut data_bytes: Vec<u8> = Vec::new();
 				offsets.push(0);
 				for i in 0..container.len() {
-					let value = container.get(i);
-					let serialized = to_allocvec(&value).unwrap_or_default();
+					// Serialize as `&Value` (not `Option<&Value>`) to stay
+					// symmetric with `unmarshal_any_data`, which decodes
+					// plain `Value`.
+					let serialized = match container.get(i) {
+						Some(v) => to_allocvec(v).unwrap_or_default(),
+						None => to_allocvec(&Value::none()).unwrap_or_default(),
+					};
 					data_bytes.extend_from_slice(&serialized);
 					offsets.push(data_bytes.len() as u64);
 				}
 				self.marshal_with_offsets(&data_bytes, &offsets)
 			}
 
-			// DictionaryId - serialize as u128 values
+			// DictionaryId - postcard-per-element so the U1/U2/U4/U8/U16
+			// enum variant survives the round trip. Output side mirror in
+			// `host_builder` and `test_registry` `finalize_buffer`.
 			ColumnBuffer::DictionaryId(container) => {
-				let encoded: Vec<u128> = container.data().iter().map(|id| id.to_u128()).collect();
-				self.marshal_numeric_slice(&encoded)
+				let values: Vec<&DictionaryEntryId> = container.data().iter().collect();
+				self.marshal_serialized(&values)
 			}
 
 			ColumnBuffer::Option {
@@ -566,55 +564,28 @@ impl Arena {
 		}
 	}
 
-	/// Marshal a numeric slice to raw bytes
+	/// Marshal a numeric slice as a **borrow** of the native column buffer.
+	///
+	/// `NumberContainer<T>` stores its data as a contiguous `Vec<T>`; its
+	/// pointer is stable for the lifetime of the source `Columns`, which the
+	/// caller keeps alive throughout the FFI call. We hand the guest a
+	/// `BufferFFI` aimed directly at that storage, with `cap = 0` as the
+	/// borrow sentinel: the guest must read it during the call only and not
+	/// retain or free it. The arena no longer copies these bytes.
 	pub(super) fn marshal_numeric_slice<T: Copy>(&mut self, slice: &[T]) -> (BufferFFI, BufferFFI) {
 		let byte_len = mem::size_of_val(slice);
 		if byte_len == 0 {
 			return (BufferFFI::empty(), BufferFFI::empty());
 		}
 
-		let ptr = self.alloc(byte_len);
-		if !ptr.is_null() {
-			unsafe {
-				ptr::copy_nonoverlapping(slice.as_ptr() as *const u8, ptr, byte_len);
-			}
-		}
 		(
 			BufferFFI {
-				ptr,
+				ptr: slice.as_ptr() as *const u8,
 				len: byte_len,
-				cap: byte_len,
+				cap: 0,
 			},
 			BufferFFI::empty(),
 		)
-	}
-
-	/// Marshal strings with offsets (Arrow-style)
-	pub(super) fn marshal_strings(&mut self, strings: &[String]) -> (BufferFFI, BufferFFI) {
-		let mut offsets: Vec<u64> = Vec::with_capacity(strings.len() + 1);
-		let mut data: Vec<u8> = Vec::new();
-
-		offsets.push(0);
-		for s in strings {
-			data.extend_from_slice(s.as_bytes());
-			offsets.push(data.len() as u64);
-		}
-
-		self.marshal_with_offsets(&data, &offsets)
-	}
-
-	/// Marshal Blob slices with offsets (Arrow-style)
-	pub(super) fn marshal_blob_slices(&mut self, blobs: &[Blob]) -> (BufferFFI, BufferFFI) {
-		let mut offsets: Vec<u64> = Vec::with_capacity(blobs.len() + 1);
-		let mut data: Vec<u8> = Vec::new();
-
-		offsets.push(0);
-		for blob in blobs {
-			data.extend_from_slice(blob.as_bytes());
-			offsets.push(data.len() as u64);
-		}
-
-		self.marshal_with_offsets(&data, &offsets)
 	}
 
 	/// Marshal serialized values with offsets

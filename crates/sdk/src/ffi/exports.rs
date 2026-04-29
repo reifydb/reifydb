@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-// Redesigned FFI exports that work with static metadata
-
 use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
 use postcard::from_bytes;
@@ -23,7 +21,6 @@ use crate::{
 	operator::{FFIOperatorWithMetadata, column::OperatorColumn},
 };
 
-/// Convert a static string to a BufferFFI
 fn str_to_buffer(s: &'static str) -> BufferFFI {
 	BufferFFI {
 		ptr: s.as_ptr(),
@@ -32,7 +29,6 @@ fn str_to_buffer(s: &'static str) -> BufferFFI {
 	}
 }
 
-/// Convert operator column definitions to FFI representation
 fn columns_to_ffi(columns: &'static [OperatorColumn]) -> OperatorColumnsFFI {
 	if columns.is_empty() {
 		return OperatorColumnsFFI::empty();
@@ -41,7 +37,7 @@ fn columns_to_ffi(columns: &'static [OperatorColumn]) -> OperatorColumnsFFI {
 	let ffi_columns: Vec<OperatorColumnFFI> = columns
 		.iter()
 		.map(|c| {
-			let ffi_type = c.field_type.to_ffi();
+			let ffi_type = c.type_constraint.to_ffi();
 			OperatorColumnFFI {
 				name: str_to_buffer(c.name),
 				base_type: ffi_type.base_type,

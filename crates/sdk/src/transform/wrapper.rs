@@ -20,14 +20,12 @@ use tracing::error;
 
 use crate::{ffi::arena::Arena, transform::FFITransform};
 
-/// Wrapper that adapts a Rust transform to the FFI interface
 pub struct TransformWrapper<T: FFITransform> {
 	transform: T,
 	arena: RefCell<Arena>,
 }
 
 impl<T: FFITransform> TransformWrapper<T> {
-	/// Create a new transform wrapper
 	pub fn new(transform: T) -> Self {
 		Self {
 			transform,
@@ -35,19 +33,16 @@ impl<T: FFITransform> TransformWrapper<T> {
 		}
 	}
 
-	/// Create from a raw pointer
 	pub fn from_ptr(ptr: *mut c_void) -> &'static mut Self {
 		unsafe { &mut *(ptr as *mut Self) }
 	}
 }
 
-/// FFI transform function - unmarshal input, call transform, marshal output
-///
 /// # Safety
 ///
-/// - `instance` must be a valid pointer to a `TransformWrapper<T>` created by `Box::new`.
-/// - `input` must be a valid pointer to a `ColumnsFFI` for reading.
-/// - `output` must be a valid pointer to a `ColumnsFFI` for writing.
+/// - `instance` must be a valid pointer to a `TransformWrapper<T>`.
+/// - `input` must point to a valid `ColumnsFFI`.
+/// - `output` must point to a valid `ColumnsFFI` that can be written to.
 pub unsafe extern "C" fn ffi_transform<T: FFITransform>(
 	instance: *mut c_void,
 	input: *const ColumnsFFI,
@@ -90,12 +85,9 @@ pub unsafe extern "C" fn ffi_transform<T: FFITransform>(
 	code
 }
 
-/// FFI destroy function - drop the transform wrapper
-///
 /// # Safety
 ///
-/// - `instance` must be a valid pointer to a `TransformWrapper<T>` originally created by `Box::new`, or null (in which
-///   case this is a no-op).
+/// - `instance` must be a valid pointer to a `TransformWrapper<T>`, or null.
 pub unsafe extern "C" fn ffi_transform_destroy<T: FFITransform>(instance: *mut c_void) {
 	if instance.is_null() {
 		return;
@@ -111,7 +103,6 @@ pub unsafe extern "C" fn ffi_transform_destroy<T: FFITransform>(instance: *mut c
 	}
 }
 
-/// Create the vtable for a transform type
 pub fn create_transform_vtable<T: FFITransform>() -> TransformVTableFFI {
 	TransformVTableFFI {
 		transform: ffi_transform::<T>,

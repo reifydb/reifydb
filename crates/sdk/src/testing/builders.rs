@@ -6,7 +6,7 @@ use reifydb_core::{
 	encoded::shape::{RowShape, RowShapeField},
 	interface::{
 		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
-		change::{Change, ChangeOrigin, Diff},
+		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	row::Row,
 	value::column::columns::Columns,
@@ -78,7 +78,7 @@ impl TestRowBuilder {
 /// Builder for creating test flow changes
 pub struct TestChangeBuilder {
 	origin: ChangeOrigin,
-	diffs: Vec<Diff>,
+	diffs: Diffs,
 	version: CommitVersion,
 	changed_at: DateTime,
 }
@@ -94,7 +94,7 @@ impl TestChangeBuilder {
 	pub fn new() -> Self {
 		Self {
 			origin: ChangeOrigin::Shape(ShapeId::Table(TableId(1))),
-			diffs: Vec::new(),
+			diffs: Diffs::new(),
 			version: CommitVersion(1),
 			changed_at: DateTime::default(),
 		}

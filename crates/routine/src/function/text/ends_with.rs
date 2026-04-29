@@ -65,9 +65,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextEndsWith {
 
 				for i in 0..row_count {
 					if str_container.is_defined(i) && suffix_container.is_defined(i) {
-						let s = &str_container[i];
-						let suffix = &suffix_container[i];
-						result_data.push(s.ends_with(suffix.as_str()));
+						let s = str_container.get(i).unwrap();
+						let suffix = suffix_container.get(i).unwrap();
+						result_data.push(s.ends_with(suffix));
 						result_bitvec.push(true);
 					} else {
 						result_data.push(false);

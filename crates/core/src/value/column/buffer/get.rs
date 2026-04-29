@@ -91,7 +91,7 @@ impl FromColumnBuffer for String {
 			ColumnBuffer::Utf8 {
 				container,
 				..
-			} => container.get(index).cloned(),
+			} => container.get(index).map(str::to_string),
 			_ => None,
 		}
 	}

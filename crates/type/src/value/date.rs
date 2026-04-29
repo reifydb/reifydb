@@ -17,6 +17,11 @@ use crate::{
 /// information. Always interpreted in SVTC.
 ///
 /// Internally stored as days since Unix epoch (1970-01-01).
+///
+/// `#[repr(transparent)]` is required: the FFI ABI hands guests a borrow of
+/// `Vec<Date>` storage as a contiguous `[i32]` payload. Adding a field or
+/// changing the wrapping breaks the wire format.
+#[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Date {
 	// Days since Unix epoch (1970-01-01)

@@ -35,8 +35,8 @@ pub struct DictEncoded {
 
 /// Try to dictionary-encode a Utf8 column. Returns None if not beneficial.
 pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option<DictEncoded> {
-	let slice: &[String] = container;
-	if slice.is_empty() {
+	let row_count = container.len();
+	if row_count == 0 {
 		return None;
 	}
 
@@ -44,18 +44,18 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 	let mut dict_map: HashMap<&str, u32> = HashMap::new();
 	let mut dict_entries: Vec<&str> = Vec::new();
 
-	for s in slice {
-		if !dict_map.contains_key(s.as_str()) {
+	for s in container.iter_str() {
+		if !dict_map.contains_key(s) {
 			let idx = dict_entries.len() as u32;
-			dict_map.insert(s.as_str(), idx);
-			dict_entries.push(s.as_str());
+			dict_map.insert(s, idx);
+			dict_entries.push(s);
 		}
 	}
 
 	let dict_count = dict_entries.len();
 
 	// Check cardinality ratio: dict is only worth it if distinct < row_count * min_ratio
-	if dict_count as f64 >= slice.len() as f64 * min_ratio {
+	if dict_count as f64 >= row_count as f64 * min_ratio {
 		return None;
 	}
 
@@ -69,9 +69,9 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 	};
 
 	// Build index array
-	let mut data = Vec::with_capacity(slice.len() * index_width);
-	for s in slice {
-		let idx = dict_map[s.as_str()];
+	let mut data = Vec::with_capacity(row_count * index_width);
+	for s in container.iter_str() {
+		let idx = dict_map[s];
 		match index_width {
 			1 => data.push(idx as u8),
 			2 => data.extend_from_slice(&(idx as u16).to_le_bytes()),
@@ -107,8 +107,8 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 
 /// Try to dictionary-encode a Blob column. Returns None if not beneficial.
 pub fn try_dict_encode_blob(container: &BlobContainer, min_ratio: f64) -> Option<DictEncoded> {
-	let slice: &[Blob] = container;
-	if slice.is_empty() {
+	let row_count = container.len();
+	if row_count == 0 {
 		return None;
 	}
 
@@ -116,8 +116,7 @@ pub fn try_dict_encode_blob(container: &BlobContainer, min_ratio: f64) -> Option
 	let mut dict_map: HashMap<&[u8], u32> = HashMap::new();
 	let mut dict_entries: Vec<&[u8]> = Vec::new();
 
-	for b in slice {
-		let bytes = b.as_bytes();
+	for bytes in container.iter_bytes() {
 		if !dict_map.contains_key(bytes) {
 			let idx = dict_entries.len() as u32;
 			dict_map.insert(bytes, idx);
@@ -127,7 +126,7 @@ pub fn try_dict_encode_blob(container: &BlobContainer, min_ratio: f64) -> Option
 
 	let dict_count = dict_entries.len();
 
-	if dict_count as f64 >= slice.len() as f64 * min_ratio {
+	if dict_count as f64 >= row_count as f64 * min_ratio {
 		return None;
 	}
 
@@ -139,9 +138,9 @@ pub fn try_dict_encode_blob(container: &BlobContainer, min_ratio: f64) -> Option
 		(4, dict_index_width_to_flags(4))
 	};
 
-	let mut data = Vec::with_capacity(slice.len() * index_width);
-	for b in slice {
-		let idx = dict_map[b.as_bytes()];
+	let mut data = Vec::with_capacity(row_count * index_width);
+	for bytes in container.iter_bytes() {
+		let idx = dict_map[bytes];
 		match index_width {
 			1 => data.push(idx as u8),
 			2 => data.extend_from_slice(&(idx as u16).to_le_bytes()),

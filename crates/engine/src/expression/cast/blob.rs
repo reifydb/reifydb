@@ -19,7 +19,7 @@ pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 			let mut out = ColumnBuffer::with_capacity(Type::Blob, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
-					let temp_fragment = Fragment::internal(container[idx].as_str());
+					let temp_fragment = Fragment::internal(container.get(idx).unwrap());
 					out.push(Blob::from_utf8(temp_fragment));
 				} else {
 					out.push_none()
@@ -58,8 +58,8 @@ pub mod tests {
 				container,
 				..
 			} => {
-				assert_eq!(container[0].as_bytes(), b"Hello");
-				assert_eq!(container[1].as_bytes(), b"World");
+				assert_eq!(container.get(0), Some(b"Hello".as_slice()));
+				assert_eq!(container.get(1), Some(b"World".as_slice()));
 			}
 			_ => panic!("Expected BLOB column data"),
 		}

@@ -12,9 +12,6 @@ use reifydb_core::{
 };
 use reifydb_type::util::cowvec::CowVec;
 
-use crate::operator::context::OperatorContext;
-
-/// Mock implementation of OperatorContext for testing
 #[derive(Clone)]
 pub struct TestContext {
 	state_store: Arc<Mutex<HashMap<EncodedKey, EncodedRow>>>,
@@ -29,7 +26,6 @@ impl Default for TestContext {
 }
 
 impl TestContext {
-	/// Create a new test context with the given version
 	pub fn new(version: CommitVersion) -> Self {
 		Self {
 			state_store: Arc::new(Mutex::new(HashMap::new())),
@@ -38,84 +34,52 @@ impl TestContext {
 		}
 	}
 
-	/// Get a reference to the internal state store for inspection
 	pub fn state_store(&self) -> &Arc<Mutex<HashMap<EncodedKey, EncodedRow>>> {
 		&self.state_store
 	}
 
-	/// Get all captured log messages
 	pub fn logs(&self) -> Vec<String> {
 		self.logs.lock().unwrap().clone()
 	}
 
-	/// Clear all captured logs
 	pub fn clear_logs(&self) {
 		self.logs.lock().unwrap().clear();
 	}
 
-	/// Get the current version
 	pub fn version(&self) -> CommitVersion {
 		self.version
 	}
 
-	/// Set the current version
 	pub fn set_version(&mut self, version: CommitVersion) {
 		self.version = version;
 	}
 
-	/// Get state value by key
 	pub fn get_state(&self, key: &EncodedKey) -> Option<Vec<u8>> {
 		self.state_store.lock().unwrap().get(key).map(|v| v.0.to_vec())
 	}
 
-	/// Set state value
 	pub fn set_state(&self, key: EncodedKey, value: Vec<u8>) {
 		self.state_store.lock().unwrap().insert(key, EncodedRow(CowVec::new(value)));
 	}
 
-	/// Remove state value
 	pub fn remove_state(&self, key: &EncodedKey) -> Option<Vec<u8>> {
 		self.state_store.lock().unwrap().remove(key).map(|v| v.0.to_vec())
 	}
 
-	/// Check if a key exists in state
 	pub fn has_state(&self, key: &EncodedKey) -> bool {
 		self.state_store.lock().unwrap().contains_key(key)
 	}
 
-	/// Get the number of state entries
 	pub fn state_count(&self) -> usize {
 		self.state_store.lock().unwrap().len()
 	}
 
-	/// Clear all state
 	pub fn clear_state(&self) {
 		self.state_store.lock().unwrap().clear();
 	}
 
-	/// Get all state keys
 	pub fn state_keys(&self) -> Vec<EncodedKey> {
 		self.state_store.lock().unwrap().keys().cloned().collect()
-	}
-
-	/// Create an OperatorContext from this test context
-	///
-	/// # Status: NOT IMPLEMENTED
-	///
-	/// This method is currently a placeholder and will panic if called.
-	/// To implement this, we would need to:
-	/// 1. Create FFI callbacks that bridge TestContext with OperatorContext
-	/// 2. Extend OperatorContext to support a testing/mock mode
-	///
-	/// **Note**: This functionality is not required for the current testing infrastructure.
-	/// Most testing can be done using the builders, assertions, and stateful helpers
-	/// without needing to create an OperatorContext.
-	///
-	/// # Panics
-	///
-	/// This method will always panic with "not implemented".
-	pub fn as_operator_context(&self) -> OperatorContext {
-		todo!("Implement test OperatorContext creation - requires FFI callback bridging")
 	}
 }
 

@@ -23,9 +23,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	operator::{
 		Operator, Operators,
-		stateful::{raw::RawStatefulOperator, single::SingleStateful},
+		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
 	},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -137,7 +137,30 @@ impl Operator for TakeOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let mut state = self.load_take_state(txn)?;
+		let node_id = self.node;
+		let shape_for_persist = self.shape.clone();
+
+		// Take the cached TakeState (or load it if absent) so we can hand
+		// `&mut state` and `&mut txn` to helpers like promote_candidates
+		// without borrow conflicts. Restored via put_operator_state below.
+		let (mut state, persist) = txn.take_operator_state::<TakeState, _>(node_id, |txn| {
+			let s = self.load_take_state(txn)?;
+			let shape = shape_for_persist.clone();
+			let persist: PersistFn = Box::new(move |txn, value| {
+				let state = value.downcast::<TakeState>().expect("TakeState slot type");
+				let serialized = to_stdvec(&*state).map_err(|e| {
+					Error(Box::new(internal!("Failed to serialize TakeState: {}", e)))
+				})?;
+				let blob = Blob::from(serialized);
+				let key = utils::empty_key();
+				let mut row = utils::load_or_create_row(node_id, txn, &key, &shape)?;
+				shape.set_blob(&mut row, 0, &blob);
+				utils::save_row(node_id, txn, &key, row)?;
+				Ok(())
+			});
+			Ok((s, persist))
+		})?;
+
 		let mut output_diffs = Vec::new();
 		let version = change.version;
 
@@ -259,7 +282,9 @@ impl Operator for TakeOperator {
 			}
 		}
 
-		self.save_take_state(txn, &state)?;
+		// Restore the cached state for the next batch in this txn; the put
+		// marks the slot dirty so flush_operator_states will persist it.
+		txn.put_operator_state(node_id, state, persist);
 
 		Ok(Change::from_flow(self.node, version, output_diffs, change.changed_at))
 	}

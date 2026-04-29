@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Wrapper that bridges Rust operators to FFI interface.
+//! Wrapper that bridges Rust operators to the zero-copy FFI interface.
 //!
 //! FFI function return codes:
 //! - `< 0`: Unrecoverable error - process will abort immediately
 //! - `0`: Success
-//! - `> 0`: Recoverable error (reserved for future use)
+//! - `> 0`: Recoverable - currently only `tick` returns `1` (no-op)
 
 use std::{
 	any::{self, Any},
@@ -17,26 +17,21 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 	slice,
-	slice::from_raw_parts,
 };
 
 use reifydb_abi::{
+	constants::FFI_ERROR_NULL_PTR,
 	context::context::ContextFFI,
-	data::column::ColumnsFFI,
 	flow::{
 		change::ChangeFFI,
 		diff::{DiffFFI, DiffType},
 	},
 	operator::vtable::OperatorVTableFFI,
 };
-use reifydb_core::interface::change::Change;
 use reifydb_type::value::{datetime::DateTime, row_number::RowNumber};
-use tracing::{Span, error, instrument, warn};
+use tracing::{error, instrument, warn};
 
-use crate::{
-	ffi::Arena,
-	operator::{FFIOperator, context::OperatorContext},
-};
+use crate::operator::{FFIOperator, change::BorrowedChange, context::OperatorContext};
 
 thread_local! {
 	/// Detail string stored by the innermost error-producing site and consumed
@@ -77,7 +72,7 @@ unsafe fn describe_change_input(input: *const ChangeFFI) -> String {
 	}
 	let ffi = unsafe { &*input };
 	let types = if !ffi.diffs.is_null() && ffi.diff_count > 0 {
-		let diffs: &[DiffFFI] = unsafe { from_raw_parts(ffi.diffs, ffi.diff_count) };
+		let diffs: &[DiffFFI] = unsafe { slice::from_raw_parts(ffi.diffs, ffi.diff_count) };
 		let names: Vec<&'static str> = diffs
 			.iter()
 			.map(|d| match d.diff_type {
@@ -154,10 +149,14 @@ fn print_ffi_fatal(
 	let _ = err.flush();
 }
 
-/// Wrapper that adapts a Rust operator to the FFI interface
+/// Wrapper that adapts a Rust operator to the zero-copy FFI interface.
+///
+/// No internal arena: input is a `BorrowedChange<'_>` whose pointers alias
+/// host-owned native column storage, and output is written directly into
+/// host-pool-owned buffers via `ctx.builder()`. The wrapper's only job is
+/// to hold the Rust operator instance and expose it as `*mut c_void`.
 pub struct OperatorWrapper<O: FFIOperator> {
-	operator: O,
-	arena: RefCell<Arena>,
+	pub(crate) operator: O,
 }
 
 impl<O: FFIOperator> OperatorWrapper<O> {
@@ -165,7 +164,6 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 	pub fn new(operator: O) -> Self {
 		Self {
 			operator,
-			arena: RefCell::new(Arena::new()),
 		}
 	}
 
@@ -180,91 +178,35 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 	}
 }
 
-/// Unmarshal FFI input to Change
-#[inline]
-#[instrument(name = "unmarshal", level = "trace", skip_all)]
-fn unmarshal_input(arena: &mut Arena, input: *const ChangeFFI) -> Result<Change, i32> {
-	unsafe {
-		match arena.unmarshal_change(&*input) {
-			Ok(change) => Ok(change),
-			Err(e) => {
-				warn!(?e, "Unmarshal failed");
-				set_fatal_detail(e);
-				Err(-3)
-			}
-		}
-	}
-}
-
-/// Apply the operator
-#[inline]
-#[instrument(name = "operator_apply", level = "trace", skip_all)]
-fn apply_operator<O: FFIOperator>(operator: &mut O, ctx: *mut ContextFFI, input_change: Change) -> Result<Change, i32> {
-	let mut op_ctx = OperatorContext::new(ctx);
-	match operator.apply(&mut op_ctx, input_change) {
-		Ok(change) => Ok(change),
-		Err(e) => {
-			warn!(?e, "Apply failed");
-			set_fatal_detail(format!("{:?}", e));
-			Err(-2)
-		}
-	}
-}
-
-/// Marshal Change to FFI output
-#[inline]
-#[instrument(name = "marshal", level = "trace", skip_all)]
-fn marshal_output(arena: &mut Arena, output_change: &Change, output: *mut ChangeFFI) {
-	unsafe {
-		*output = arena.marshal_change(output_change);
-	}
-}
-
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
 /// - `ctx` must be a valid pointer to a `ContextFFI`.
-/// - `input` must be a valid pointer to a `ChangeFFI` for reading.
-/// - `output` must be a valid pointer to a `ChangeFFI` for writing.
+/// - `input` must be a valid pointer to a `ChangeFFI` whose buffer pointers are valid for the duration of the call.
 #[instrument(name = "flow::operator::ffi::apply", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
-	input_diffs,
-	output_diffs
 ))]
 pub unsafe extern "C" fn ffi_apply<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
 	input: *const ChangeFFI,
-	output: *mut ChangeFFI,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
+		if input.is_null() {
+			set_fatal_detail("ffi_apply: input is null".to_string());
+			return -3;
+		}
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-
-		let mut arena = wrapper.arena.borrow_mut();
-		arena.clear();
-
-		// Unmarshal input
-		let input_change = match unmarshal_input(&mut arena, input) {
-			Ok(change) => {
-				Span::current().record("input_diffs", change.diffs.len());
-				change
+		let borrowed = unsafe { BorrowedChange::from_raw(input) };
+		let mut op_ctx = OperatorContext::new(ctx);
+		match wrapper.operator.apply(&mut op_ctx, borrowed) {
+			Ok(()) => 0,
+			Err(e) => {
+				warn!(?e, "Apply failed");
+				set_fatal_detail(format!("{:?}", e));
+				-2
 			}
-			Err(code) => return code,
-		};
-
-		// Apply operator
-		let output_change = match apply_operator::<O>(&mut wrapper.operator, ctx, input_change) {
-			Ok(change) => {
-				Span::current().record("output_diffs", change.diffs.len());
-				change
-			}
-			Err(code) => return code,
-		};
-
-		// Marshal output
-		marshal_output(&mut arena, &output_change, output);
-
-		0 // Success
+		}
 	}));
 
 	let (code, backtrace) = match result {
@@ -298,52 +240,39 @@ pub unsafe extern "C" fn ffi_apply<O: FFIOperator>(
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
 /// - `ctx` must be a valid pointer to a `ContextFFI`.
 /// - `row_numbers` must be valid for reading `count` elements, or null if `count` is 0.
-/// - `output` must be a valid pointer to a `ColumnsFFI` for writing.
 #[instrument(name = "flow::operator::ffi::pull", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 	row_count = count,
-	rows_returned
 ))]
 pub unsafe extern "C" fn ffi_pull<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
 	row_numbers: *const u64,
 	count: usize,
-	output: *mut ColumnsFFI,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
-		unsafe {
-			let wrapper = OperatorWrapper::<O>::from_ptr(instance);
+		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
 
-			let mut arena = wrapper.arena.borrow_mut();
-			arena.clear();
+		// Convert row numbers; the input slice borrows host memory for
+		// the duration of the call, but RowNumber is Copy so we
+		// collect owned values for the operator.
+		let numbers: Vec<RowNumber> = if !row_numbers.is_null() && count > 0 {
+			unsafe { slice::from_raw_parts(row_numbers, count) }
+				.iter()
+				.map(|&n| RowNumber::from(n))
+				.collect()
+		} else {
+			Vec::new()
+		};
 
-			// Convert row numbers
-			let numbers: Vec<RowNumber> = if !row_numbers.is_null() && count > 0 {
-				slice::from_raw_parts(row_numbers, count).iter().map(|&n| RowNumber::from(n)).collect()
-			} else {
-				Vec::new()
-			};
-
-			// Create context
-			let mut op_ctx = OperatorContext::new(ctx);
-
-			// Call the operator
-			let columns = match wrapper.operator.pull(&mut op_ctx, &numbers) {
-				Ok(cols) => {
-					Span::current().record("rows_returned", cols.row_count());
-					cols
-				}
-				Err(e) => {
-					warn!(?e, "pull failed");
-					set_fatal_detail(format!("{:?}", e));
-					return -2;
-				}
-			};
-
-			*output = arena.marshal_columns(&columns);
-
-			0 // Success
+		let mut op_ctx = OperatorContext::new(ctx);
+		match wrapper.operator.pull(&mut op_ctx, &numbers) {
+			Ok(()) => 0,
+			Err(e) => {
+				warn!(?e, "pull failed");
+				set_fatal_detail(format!("{:?}", e));
+				-2
+			}
 		}
 	}));
 
@@ -377,35 +306,23 @@ pub unsafe extern "C" fn ffi_pull<O: FFIOperator>(
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
 /// - `ctx` must be a valid pointer to a `ContextFFI`.
-/// - `output` must be a valid pointer to a `ChangeFFI` for writing.
 #[instrument(name = "flow::operator::ffi::tick", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
-	output_diffs
 ))]
 pub unsafe extern "C" fn ffi_tick<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
 	timestamp_nanos: u64,
-	output: *mut ChangeFFI,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-
-		let mut arena = wrapper.arena.borrow_mut();
-		arena.clear();
 
 		let timestamp = DateTime::from_nanos(timestamp_nanos);
 		let mut op_ctx = OperatorContext::new(ctx);
 
 		match wrapper.operator.tick(&mut op_ctx, timestamp) {
-			Ok(Some(change)) => {
-				Span::current().record("output_diffs", change.diffs.len());
-				marshal_output(&mut arena, &change, output);
-				0 // Success with output
-			}
-			Ok(None) => {
-				1 // Success without output (no-op)
-			}
+			Ok(true) => 0,
+			Ok(false) => 1,
 			Err(e) => {
 				warn!(?e, "Tick failed");
 				set_fatal_detail(format!("{:?}", e));
@@ -464,6 +381,39 @@ pub unsafe extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 	}
 }
 
+/// FFI entry point for `flush_state`. Called once per txn at commit time.
+///
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>`.
+/// - `ctx` must point to a valid `ContextFFI` for the duration of the call.
+pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(instance: *mut c_void, ctx: *mut ContextFFI) -> i32 {
+	if instance.is_null() || ctx.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	let result = catch_unwind(AssertUnwindSafe(|| {
+		let wrapper = unsafe { &mut *(instance as *mut OperatorWrapper<O>) };
+		let mut op_ctx = OperatorContext::new(ctx);
+		wrapper.operator.flush_state(&mut op_ctx)
+	}));
+
+	match result {
+		Ok(Ok(())) => 0,
+		Ok(Err(e)) => {
+			error!(target: "ffi_flush_state", "operator flush_state failed: {:?}", e);
+			-2
+		}
+		Err(payload) => {
+			let bt = Backtrace::force_capture();
+			let detail = describe_panic_payload(&payload);
+			error!("Panic in ffi_flush_state - aborting");
+			print_ffi_fatal("ffi_flush_state", any::type_name::<O>(), -99, &detail, None, Some(&bt));
+			abort();
+		}
+	}
+}
+
 /// Create the vtable for an operator type
 pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 	OperatorVTableFFI {
@@ -471,5 +421,6 @@ pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 		pull: ffi_pull::<O>,
 		tick: ffi_tick::<O>,
 		destroy: ffi_destroy::<O>,
+		flush_state: ffi_flush_state::<O>,
 	}
 }

@@ -464,8 +464,8 @@ use std::ptr;
 
 use reifydb_abi::{
 	callbacks::{
-		catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-		rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+		builder::BuilderCallbacks, catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks,
+		memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 	},
 	catalog::{namespace::NamespaceFFI, table::TableFFI},
 	constants::{FFI_END_OF_ITERATION, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
@@ -477,7 +477,13 @@ use reifydb_abi::{
 };
 use reifydb_core::encoded::key::EncodedKey;
 
-use crate::testing::context::TestContext;
+use crate::testing::{
+	context::TestContext,
+	registry::{
+		test_acquire, test_bitvec_ptr, test_commit, test_data_ptr, test_emit_diff, test_grow, test_offsets_ptr,
+		test_release,
+	},
+};
 
 /// Find namespace by ID - stub implementation
 extern "C" fn test_catalog_find_namespace(
@@ -582,6 +588,16 @@ pub fn create_test_callbacks() -> HostCallbacks {
 		},
 		rql: RqlCallbacks {
 			rql: test_rql,
+		},
+		builder: BuilderCallbacks {
+			acquire: test_acquire,
+			data_ptr: test_data_ptr,
+			offsets_ptr: test_offsets_ptr,
+			bitvec_ptr: test_bitvec_ptr,
+			grow: test_grow,
+			commit: test_commit,
+			release: test_release,
+			emit_diff: test_emit_diff,
 		},
 	}
 }

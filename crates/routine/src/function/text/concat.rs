@@ -83,7 +83,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 				} = data
 				{
 					if container.is_defined(i) {
-						concatenated.push_str(&container[i]);
+						concatenated.push_str(container.get(i).unwrap());
 					} else {
 						all_defined = false;
 						break;

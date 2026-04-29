@@ -54,12 +54,12 @@ impl<'a> Routine<FunctionContext<'a>> for BlobHex {
 				container,
 				..
 			} => {
-				let mut result_data = Vec::with_capacity(container.data().len());
+				let mut result_data = Vec::with_capacity(container.len());
 				let mut result_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let hex_str = &container[i];
+						let hex_str = container.get(i).unwrap();
 						let blob = Blob::from_hex(Fragment::internal(hex_str))?;
 						result_data.push(blob);
 						result_bitvec.push(true);

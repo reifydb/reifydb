@@ -98,7 +98,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationFormat {
 				for i in 0..row_count {
 					match (dur_container.get(i), fmt_container.is_defined(i)) {
 						(Some(d), true) => {
-							let fmt_str = &fmt_container[i];
+							let fmt_str = fmt_container.get(i).unwrap();
 							match format_duration(
 								d.get_months(),
 								d.get_days(),

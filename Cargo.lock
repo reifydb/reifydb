@@ -2701,6 +2701,7 @@ dependencies = [
  "reifydb-type",
  "serde",
  "serde_bytes",
+ "smallvec",
  "thiserror 2.0.18",
  "tracing",
  "uuid",
@@ -2737,6 +2738,7 @@ dependencies = [
  "reifydb-store-single",
  "reifydb-transaction",
  "reifydb-type",
+ "smallvec",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -3011,6 +3013,7 @@ dependencies = [
  "reifydb-type",
  "serde",
  "serde_bytes",
+ "smallvec",
  "tracing",
 ]
 
@@ -3306,6 +3309,7 @@ dependencies = [
  "postcard",
  "reifydb-runtime",
  "serde",
+ "serde_bytes",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",

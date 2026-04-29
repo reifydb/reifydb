@@ -37,13 +37,26 @@ pub enum ColumnTypeCode {
 	Undefined = 27,
 }
 
-/// FFI-safe column data representation
+/// FFI-safe column data representation.
 ///
 /// Contains typed column data in a format suitable for FFI transfer.
-/// - For fixed-size types: `data` contains the raw values
+/// - For fixed-size types: `data` contains the raw values, native endian.
 /// - For variable-length types (Utf8, Blob): `data` contains concatenated bytes, `offsets` contains u64 offsets (length
-///   = row_count + 1)
-/// - `defined_bitvec` tracks which values are defined (bit=1 means defined)
+///   = row_count + 1).
+/// - `defined_bitvec` tracks which values are defined (bit=1 means defined), LSB-first within each byte.
+///
+/// Per-type wire layouts (when `data` is a borrowed `cap == 0` slice):
+/// - Bool: packed bits, `data.len = row_count.div_ceil(8)`, LSB-first.
+/// - Float4/8: native `f32` / `f64` array, `data.len = row_count * 4|8`.
+/// - Int{1..16} / Uint{1..16}: native two's-complement / unsigned array.
+/// - Utf8: `data = concatenated bytes`, `offsets = [u64; row_count + 1]`.
+/// - Blob: same shape as Utf8.
+/// - Date: `[i32; row_count]` of days-since-Unix-epoch.
+/// - DateTime: `[u64; row_count]` of nanos-since-Unix-epoch.
+/// - Time: `[u64; row_count]` of nanos-since-midnight.
+/// - Duration: `[(i32 months, i32 days, i64 nanos); row_count]`, `#[repr(C)]` packed = 16 bytes per element.
+/// - IdentityId / Uuid4 / Uuid7: 16 bytes per element (raw UUID bytes).
+/// - DictionaryId: `[u128; row_count]`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ColumnDataFFI {

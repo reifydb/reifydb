@@ -2,7 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{error::TypeError, fragment::LazyFragment, value::r#type::Type};
+use reifydb_type::{
+	error::TypeError,
+	fragment::LazyFragment,
+	value::{blob::Blob, r#type::Type},
+};
 
 use super::cast_column_data;
 use crate::{Result, expression::context::EvalContext};
@@ -163,7 +167,7 @@ pub fn from_any(
 						..
 					} => {
 						if c.is_defined(0) {
-							result.push::<String>(c.get(0).unwrap().clone());
+							result.push::<String>(c.get(0).unwrap().to_string());
 						} else {
 							result.push_none();
 						}
@@ -173,7 +177,7 @@ pub fn from_any(
 						..
 					} => {
 						if c.is_defined(0) {
-							result.push(c.get(0).unwrap().clone());
+							result.push(Blob::new(c.get(0).unwrap().to_vec()));
 						} else {
 							result.push_none();
 						}

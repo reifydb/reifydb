@@ -11,7 +11,6 @@ use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{
 		Value,
-		blob::Blob,
 		container::{blob::BlobContainer, dictionary::DictionaryContainer, utf8::Utf8Container},
 		date::Date,
 		datetime::DateTime,
@@ -261,13 +260,11 @@ fn encode_varlen(count: usize, get_bytes: impl Fn(usize) -> Vec<u8>, ty: Type) -
 }
 
 fn encode_varlen_strings(c: &Utf8Container, ty: Type) -> PlainEncoded {
-	let slice: &[String] = c;
-	encode_varlen(slice.len(), |i| slice[i].as_bytes().to_vec(), ty)
+	encode_varlen(c.len(), |i| c.get(i).unwrap().as_bytes().to_vec(), ty)
 }
 
 fn encode_varlen_blobs(c: &BlobContainer, ty: Type) -> PlainEncoded {
-	let slice: &[Blob] = c;
-	encode_varlen(slice.len(), |i| slice[i].as_bytes().to_vec(), ty)
+	encode_varlen(c.len(), |i| c.get(i).unwrap_or(&[]).to_vec(), ty)
 }
 
 fn encode_dictionary_ids(c: &DictionaryContainer) -> PlainEncoded {

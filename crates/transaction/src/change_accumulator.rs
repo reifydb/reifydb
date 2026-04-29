@@ -67,7 +67,7 @@ impl ChangeAccumulator {
 		grouped.into_iter()
 			.map(|(id, diffs)| Change {
 				origin: ChangeOrigin::Shape(id),
-				diffs,
+				diffs: diffs.into(),
 				version,
 				changed_at,
 			})
@@ -97,7 +97,7 @@ impl ChangeAccumulator {
 		grouped.into_iter()
 			.map(|(id, diffs)| Change {
 				origin: ChangeOrigin::Shape(id),
-				diffs,
+				diffs: diffs.into(),
 				version,
 				changed_at,
 			})

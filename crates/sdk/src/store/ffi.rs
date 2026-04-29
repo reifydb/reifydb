@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Raw FFI functions for store access
-
 use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_abi::{
@@ -50,7 +48,6 @@ pub(super) fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 	}
 }
 
-/// Check if a key exists in store
 #[instrument(name = "flow::operator::store::raw::contains_key", level = "trace", skip(ctx), fields(
 	key_len = key.as_bytes().len()
 ))]
@@ -74,7 +71,6 @@ pub(super) fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) ->
 	}
 }
 
-/// Scan all keys with a given prefix
 #[instrument(name = "flow::operator::store::raw::prefix", level = "trace", skip(ctx), fields(
 	prefix_len = prefix.as_bytes().len()
 ))]
@@ -98,7 +94,6 @@ pub(super) fn raw_store_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Re
 	}
 }
 
-/// Bound type constants for FFI
 const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;

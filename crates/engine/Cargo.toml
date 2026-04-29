@@ -33,6 +33,7 @@ reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 thiserror = { workspace = true }
 bumpalo = { workspace = true }
+smallvec = { workspace = true }
 tracing = { workspace = true }
 postcard = { workspace = true }
 

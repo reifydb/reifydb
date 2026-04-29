@@ -161,7 +161,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
 					for i in 0..row_count {
 						match (dt_container.get(i), fmt_container.is_defined(i)) {
 							(Some(dt), true) => {
-								let fmt_str = &fmt_container[i];
+								let fmt_str = fmt_container.get(i).unwrap();
 								match format_datetime(
 									dt.year(),
 									dt.month(),

@@ -35,5 +35,6 @@ pub mod callbacks;
 pub mod context;
 pub mod harness;
 pub mod helpers;
+pub mod registry;
 pub mod state;
 pub mod stateful;

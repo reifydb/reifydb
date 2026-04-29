@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Keyed-state operators for FFI
-//!
-//! This module provides the `FFIKeyedStateful` trait for operators that maintain
-//! multiple state values indexed by keys, such as group-by aggregations.
-
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	util::encoding::keycode::serializer::KeySerializer,
@@ -23,29 +18,10 @@ use crate::{error::Result, operator::context::OperatorContext};
 ///
 /// Keys are encoded using order-preserving encoding to maintain sort order.
 pub trait FFIKeyedStateful: FFIRawStatefulOperator {
-	/// Get or create the shape for state rows
-	///
-	/// This defines the structure of each state value associated with a key.
 	fn shape(&self) -> RowShape;
 
-	/// RowShape for keys - defines the types of the key components
-	///
-	/// Keys can be composite (multiple values). For example, grouping by
-	/// (customer_id, product_id) would return `&[Type::Int32, Type::Int32]`.
 	fn key_types(&self) -> &[Type];
 
-	/// Create EncodedKey from Values
-	///
-	/// Encodes key values using order-preserving encoding, which maintains
-	/// sort order and allows efficient range queries.
-	///
-	/// # Arguments
-	///
-	/// * `key_values` - The values that form the key
-	///
-	/// # Returns
-	///
-	/// An encoded key that can be used for state operations
 	fn encode_key(&self, key_values: &[Value]) -> EncodedKey {
 		// Use keycode encoding for order-preserving keys
 		let mut serializer = KeySerializer::new();
@@ -57,58 +33,21 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Create a new state encoded with default values
-	///
-	/// Allocates a new state row based on the shape, initialized with default values.
 	fn create_state(&self) -> EncodedRow {
 		let shape = self.shape();
 		shape.allocate()
 	}
 
-	/// Load state for a specific key
-	///
-	/// If state for this key doesn't exist, it will be created with default values.
-	///
-	/// # Arguments
-	///
-	/// * `ctx` - The operator context
-	/// * `key_values` - The values that form the key
-	///
-	/// # Returns
-	///
-	/// The loaded or newly created state for this key
 	fn load_state(&self, ctx: &mut OperatorContext, key_values: &[Value]) -> Result<EncodedRow> {
 		let key = self.encode_key(key_values);
 		utils::load_or_create_row(ctx, &key, &self.shape())
 	}
 
-	/// Save state for a specific key
-	///
-	/// # Arguments
-	///
-	/// * `ctx` - The operator context
-	/// * `key_values` - The values that form the key
-	/// * `row` - The state to save
 	fn save_state(&self, ctx: &mut OperatorContext, key_values: &[Value], row: &EncodedRow) -> Result<()> {
 		let key = self.encode_key(key_values);
 		utils::save_row(ctx, &key, row)
 	}
 
-	/// Update state for a key with a function
-	///
-	/// This is a convenience method that loads the current state for a key,
-	/// applies a transformation function, saves the updated state, and returns
-	/// the new state value.
-	///
-	/// # Arguments
-	///
-	/// * `ctx` - The operator context
-	/// * `key_values` - The values that form the key
-	/// * `f` - Function that modifies the state. Receives the shape and mutable state row.
-	///
-	/// # Returns
-	///
-	/// The updated state after applying the function
 	fn update_state<F>(&self, ctx: &mut OperatorContext, key_values: &[Value], f: F) -> Result<EncodedRow>
 	where
 		F: FnOnce(&RowShape, &mut EncodedRow) -> Result<()>,
@@ -120,14 +59,6 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 		Ok(row)
 	}
 
-	/// Remove state for a key
-	///
-	/// Deletes the state associated with this key.
-	///
-	/// # Arguments
-	///
-	/// * `ctx` - The operator context
-	/// * `key_values` - The values that form the key
 	fn remove_state(&self, ctx: &mut OperatorContext, key_values: &[Value]) -> Result<()> {
 		let key = self.encode_key(key_values);
 		self.state_remove(ctx, &key)

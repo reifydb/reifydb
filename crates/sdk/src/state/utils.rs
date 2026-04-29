@@ -1,47 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Utility functions for stateful FFI operators
-//!
-//! This module provides helper functions for working with state in FFI operators,
-//! mirroring the functionality available to internal operators.
-
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
 
 use crate::{error::Result, operator::context::OperatorContext};
 
-/// Create an empty key for single-state operators
-///
-/// This is useful for operators that only need a single state value
-/// (like counters or accumulators).
-///
-/// # Example
-///
-/// ```ignore
-/// let key = empty_key();
-/// let value = ctx.state().get(&key)?;
-/// ```
 pub fn empty_key() -> EncodedKey {
 	EncodedKey::new(Vec::new())
 }
 
-/// Load state for a key, creating with default values if it doesn't exist
-///
-/// This is a common pattern where you want to ensure a state row exists,
-/// initializing it with defaults if it's the first access.
-///
-/// # Arguments
-///
-/// * `ctx` - The operator context
-/// * `key` - The key to load
-/// * `shape` - The shape defining the structure and default values
-///
-/// # Example
-///
-/// ```ignore
-/// let shape = RowShape::testing(&[Type::Int32, Type::Float8]);
-/// let row = load_or_create_row(ctx, &key, &shape)?;
-/// ```
 pub fn load_or_create_row(ctx: &mut OperatorContext, key: &EncodedKey, shape: &RowShape) -> Result<EncodedRow> {
 	match ctx.state().get(key)? {
 		Some(row) => Ok(row),
@@ -49,23 +16,6 @@ pub fn load_or_create_row(ctx: &mut OperatorContext, key: &EncodedKey, shape: &R
 	}
 }
 
-/// Save a state row
-///
-/// This is a convenience wrapper around `ctx.state().set()` for saving
-/// encoded values.
-///
-/// # Arguments
-///
-/// * `ctx` - The operator context
-/// * `key` - The key to save under
-/// * `row` - The encoded values to save
-///
-/// # Example
-///
-/// ```ignore
-/// let row = EncodedRow::new(data);
-/// save_row(ctx, &key, row)?;
-/// ```
 pub fn save_row(ctx: &mut OperatorContext, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 	ctx.state().set(key, row)
 }

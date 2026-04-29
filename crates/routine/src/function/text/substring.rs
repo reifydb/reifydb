@@ -64,13 +64,13 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 				ColumnBuffer::Int4(start_container),
 				ColumnBuffer::Int4(length_container),
 			) => {
-				let mut result_data = Vec::with_capacity(text_container.data().len());
+				let mut result_data = Vec::with_capacity(text_container.len());
 
 				for i in 0..row_count {
 					if text_container.is_defined(i)
 						&& start_container.is_defined(i) && length_container.is_defined(i)
 					{
-						let original_str = &text_container[i];
+						let original_str = text_container.get(i).unwrap();
 						let start_pos = start_container.get(i).copied().unwrap_or(0);
 						let length = length_container.get(i).copied().unwrap_or(0);
 
@@ -136,11 +136,11 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 				start_d,
 				length_d,
 			) => {
-				let mut result_data = Vec::with_capacity(text_container.data().len());
+				let mut result_data = Vec::with_capacity(text_container.len());
 
 				for i in 0..row_count {
 					if text_container.is_defined(i) {
-						let original_str = &text_container[i];
+						let original_str = text_container.get(i).unwrap();
 
 						// Extract start position from various integer types
 						let start_pos = match start_d {

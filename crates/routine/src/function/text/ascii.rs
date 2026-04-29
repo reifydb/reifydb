@@ -56,7 +56,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextAscii {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let s = &container[i];
+						let s = container.get(i).unwrap();
 						let code_point = s.chars().next().map(|c| c as i32).unwrap_or(0);
 						result_data.push(code_point);
 						result_bitvec.push(true);

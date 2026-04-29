@@ -55,7 +55,8 @@ impl<'a> Routine<FunctionContext<'a>> for TextReverse {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let reversed: String = container[i].chars().rev().collect();
+						let reversed: String =
+							container.get(i).unwrap().chars().rev().collect();
 						result_data.push(reversed);
 					} else {
 						result_data.push(String::new());

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Namespace FFI operations
-
 use std::{mem::MaybeUninit, slice::from_raw_parts, str};
 
 use reifydb_abi::{
@@ -16,7 +14,6 @@ use reifydb_core::{
 
 use crate::{error::FFIError, operator::context::OperatorContext};
 
-/// Find namespace by ID
 pub(super) fn raw_catalog_find_namespace(
 	ctx: &OperatorContext,
 	namespace_id: NamespaceId,
@@ -50,7 +47,6 @@ pub(super) fn raw_catalog_find_namespace(
 	}
 }
 
-/// Find namespace by name
 pub(super) fn raw_catalog_find_namespace_by_name(
 	ctx: &OperatorContext,
 	name: &str,
@@ -87,7 +83,6 @@ pub(super) fn raw_catalog_find_namespace_by_name(
 	}
 }
 
-/// Unmarshal NamespaceFFI to Namespace
 unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<Namespace, FFIError> {
 	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_ns.name.ptr.is_null() && ffi_ns.name.len > 0 {

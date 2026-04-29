@@ -75,10 +75,10 @@ impl<'a> Routine<FunctionContext<'a>> for TextReplace {
 					if str_container.is_defined(i)
 						&& from_container.is_defined(i) && to_container.is_defined(i)
 					{
-						let s = &str_container[i];
-						let from = &from_container[i];
-						let to = &to_container[i];
-						result_data.push(s.replace(from.as_str(), to.as_str()));
+						let s = str_container.get(i).unwrap();
+						let from = from_container.get(i).unwrap();
+						let to = to_container.get(i).unwrap();
+						result_data.push(s.replace(from, to));
 					} else {
 						result_data.push(String::new());
 					}

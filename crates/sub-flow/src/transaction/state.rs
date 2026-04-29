@@ -16,7 +16,6 @@ use tracing::{Span, field, instrument};
 use super::FlowTransaction;
 
 impl FlowTransaction {
-	/// Get state for a specific flow node and key
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
@@ -30,7 +29,6 @@ impl FlowTransaction {
 		Ok(result)
 	}
 
-	/// Set state for a specific flow node and key
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, value), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
@@ -42,7 +40,6 @@ impl FlowTransaction {
 		self.set(&encoded_key, value)
 	}
 
-	/// Remove state for a specific flow node and key
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len()
@@ -53,7 +50,6 @@ impl FlowTransaction {
 		self.remove(&encoded_key)
 	}
 
-	/// Scan all state for a specific flow node
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
 		node_id = id.0,
 		result_count = field::Empty
@@ -72,7 +68,6 @@ impl FlowTransaction {
 		})
 	}
 
-	/// Range query on state for a specific flow node
 	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
 		node_id = id.0
 	))]
@@ -89,7 +84,6 @@ impl FlowTransaction {
 		})
 	}
 
-	/// Clear all state for a specific flow node
 	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
 		node_id = id.0,
 		keys_removed = field::Empty
@@ -106,7 +100,6 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	/// Scan and collect all keys for a node (used by state_clear)
 	#[inline]
 	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(node_id = id.0))]
 	fn scan_keys_for_clear(&mut self, id: FlowNodeId) -> Result<Vec<EncodedKey>> {
@@ -120,7 +113,6 @@ impl FlowTransaction {
 		Ok(keys)
 	}
 
-	/// Remove a list of keys (used by state_clear)
 	#[inline]
 	#[instrument(name = "flow::state::clear::remove", level = "trace", skip(self, keys), fields(count = keys.len()))]
 	fn remove_keys(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
@@ -130,7 +122,6 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	/// Load state for a key, creating if not exists
 	#[instrument(name = "flow::state::load_or_create", level = "debug", skip(self, shape), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
@@ -149,7 +140,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Save state encoded
 	#[instrument(name = "flow::state::save", level = "trace", skip(self, row), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len()

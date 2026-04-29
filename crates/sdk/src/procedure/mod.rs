@@ -18,7 +18,6 @@ use reifydb_type::{
 
 use crate::error::{FFIError, Result};
 
-/// Static metadata about a procedure type
 pub trait FFIProcedureMetadata {
 	/// Procedure name (must be unique within a library)
 	const NAME: &'static str;
@@ -30,27 +29,22 @@ pub trait FFIProcedureMetadata {
 	const DESCRIPTION: &'static str;
 }
 
-/// Runtime procedure behavior
 pub trait FFIProcedure: 'static {
-	/// Create a new procedure instance with configuration
 	fn new(config: &HashMap<String, Value>) -> Result<Self>
 	where
 		Self: Sized;
 
-	/// Call the procedure with the given context and parameters
 	fn call(&mut self, ctx: &FFIProcedureContext, params: Params) -> Result<Columns>;
 }
 
 pub trait FFIProcedureWithMetadata: FFIProcedure + FFIProcedureMetadata {}
 impl<T> FFIProcedureWithMetadata for T where T: FFIProcedure + FFIProcedureMetadata {}
 
-/// Context available to FFI procedures for executing RQL within the current transaction
 pub struct FFIProcedureContext {
 	pub(crate) ctx: *mut ContextFFI,
 }
 
 impl FFIProcedureContext {
-	/// Create a new procedure context from an FFI context pointer
 	pub fn new(ctx: *mut ContextFFI) -> Self {
 		assert!(!ctx.is_null(), "ContextFFI pointer must not be null");
 		Self {
@@ -58,13 +52,11 @@ impl FFIProcedureContext {
 		}
 	}
 
-	/// Execute an RQL statement within the current transaction
 	pub fn rql(&self, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		raw_procedure_rql(self, rql, params)
 	}
 }
 
-/// Execute an RQL statement through the host's RQL callback (procedure variant).
 pub(crate) fn raw_procedure_rql(ctx: &FFIProcedureContext, rql: &str, params: Params) -> Result<Vec<Frame>> {
 	let params_bytes = to_stdvec(&params)
 		.map_err(|e| FFIError::Serialization(format!("failed to serialize params: {}", e)))?;
