@@ -5,6 +5,7 @@
 
 use std::{
 	any::Any,
+	cell::{Cell, UnsafeCell},
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
@@ -79,6 +80,17 @@ pub struct FFIOperator {
 	/// from this registry to assemble the output `Change`. See
 	/// `crates/sub-flow/src/ffi/callbacks/builder.rs`.
 	builder_registry: BuilderRegistry,
+	/// Version of the last `FlowTransaction` for which the flush slot and
+	/// FFI arena were registered. Compared on every `apply`/`pull`/`tick`
+	/// so the idempotent registration calls are skipped after the first
+	/// invocation per txn. `u64::MAX` as sentinel (no txn yet).
+	last_registered_txn: Cell<u64>,
+	/// Pre-built FFI context. `operator_id` and `callbacks` (all static
+	/// function pointers) are written once in `new` and never change.
+	/// `txn_ptr` and `executor_ptr` are updated once per txn in
+	/// `ensure_txn_setup` and reused for every `apply`/`pull`/`tick` call
+	/// in that txn, avoiding a full struct rebuild on each invocation.
+	cached_ctx: UnsafeCell<ContextFFI>,
 }
 
 impl FFIOperator {
@@ -99,12 +111,34 @@ impl FFIOperator {
 			executor,
 			arena: Arc::new(Mutex::new(Arena::new())),
 			builder_registry: BuilderRegistry::new(),
+			last_registered_txn: Cell::new(u64::MAX),
+			cached_ctx: UnsafeCell::new(ContextFFI {
+				txn_ptr: std::ptr::null_mut(),
+				executor_ptr: std::ptr::null(),
+				operator_id: operator_id.0,
+				callbacks: create_host_callbacks(),
+			}),
 		}
 	}
 
 	/// Get the operator descriptor
 	pub(crate) fn descriptor(&self) -> &OperatorDescriptorFFI {
 		&self.descriptor
+	}
+
+	fn ensure_txn_setup(&self, txn: &mut FlowTransaction) -> Result<()> {
+		let txn_version = txn.version().0;
+		if self.last_registered_txn.get() != txn_version {
+			ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance, self.executor.clone())?;
+			txn.register_ffi_arena(Arc::downgrade(&self.arena));
+			self.last_registered_txn.set(txn_version);
+			// SAFETY: single-threaded actor; no aliasing with guest (vtable not
+			// yet called this txn).
+			let ctx = unsafe { &mut *self.cached_ctx.get() };
+			ctx.txn_ptr = txn as *mut _ as *mut c_void;
+			ctx.executor_ptr = &self.executor as *const _ as *const c_void;
+		}
+		Ok(())
 	}
 }
 
@@ -218,13 +252,7 @@ impl Operator for FFIOperator {
 		output_diff_count = field::Empty
 	))]
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		// Register a flush_state slot for this op (idempotent per txn) so
-		// state mutations buffered in the guest's StateCache get drained
-		// to host storage at commit time.
-		ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance, self.executor.clone())?;
-		// Register this op's arena with the txn so it gets cleared once
-		// at commit/rollback rather than per-call. Idempotent.
-		txn.register_ffi_arena(Arc::downgrade(&self.arena));
+		self.ensure_txn_setup(txn)?;
 
 		// Borrow `change` for the duration of this call. The marshal path
 		// produces `cap == 0` borrows pointing at native column data; the
@@ -237,8 +265,7 @@ impl Operator for FFIOperator {
 		let version = change.version;
 		let changed_at = change.changed_at;
 
-		let ffi_ctx = new_ffi_context(txn, &self.executor, self.operator_id, create_host_callbacks());
-		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
+		let ffi_ctx_ptr = self.cached_ctx.get();
 
 		let result_code = with_registry(&self.builder_registry, || {
 			call_vtable(&self.vtable, self.instance, ffi_ctx_ptr, &ffi_input, self.operator_id)
@@ -263,14 +290,12 @@ impl Operator for FFIOperator {
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance, self.executor.clone())?;
-		txn.register_ffi_arena(Arc::downgrade(&self.arena));
+		self.ensure_txn_setup(txn)?;
 
 		let arena = self.arena.lock();
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
 
-		let ffi_ctx = new_ffi_context(txn, &self.executor, self.operator_id, create_host_callbacks());
-		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
+		let ffi_ctx_ptr = self.cached_ctx.get();
 
 		let result_code = with_registry(&self.builder_registry, || {
 			let result = catch_unwind(AssertUnwindSafe(|| unsafe {
@@ -321,14 +346,12 @@ impl Operator for FFIOperator {
 		output_diff_count = field::Empty
 	))]
 	fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
-		ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance, self.executor.clone())?;
-		txn.register_ffi_arena(Arc::downgrade(&self.arena));
+		self.ensure_txn_setup(txn)?;
 
 		let arena = self.arena.lock();
 		let timestamp_nanos = timestamp.to_nanos();
 
-		let ffi_ctx = new_ffi_context(txn, &self.executor, self.operator_id, create_host_callbacks());
-		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
+		let ffi_ctx_ptr = self.cached_ctx.get();
 
 		let result_code = with_registry(&self.builder_registry, || {
 			let result = catch_unwind(AssertUnwindSafe(|| unsafe {
