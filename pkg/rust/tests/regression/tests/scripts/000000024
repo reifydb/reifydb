@@ -1,0 +1,19 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Regression: re-registering a migration with the same name but a different body
+# must fail with `MigrationHashMismatch`. Applied migrations are immutable; if
+# we let the body silently change, environments would drift (one process saw
+# the old body, another sees the new one, both think they're up to date).
+
+(admin "CREATE MIGRATION 'm_change' { CREATE NAMESPACE app_change }")
+!admin "CREATE MIGRATION 'm_change' { CREATE NAMESPACE app_changed }"
+---
+> Error CA_049
+>   migration `m_change` content has changed since registration: was 0xe1945bbcd43b695a06cd129c8c9fe20f, now 0x152115678a52ebc5ac73cc06e49745cd
+>
+> HELP
+>   applied migrations are immutable; revert the change or register a new migration with a different name
+>
+> NOTES
+>   • the registered hash in the catalog does not match the hash of the supplied body+rollback

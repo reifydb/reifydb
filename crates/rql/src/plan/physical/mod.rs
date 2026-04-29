@@ -920,9 +920,8 @@ impl<'bump> Compiler<'bump> {
 								let full_path = seg_strs.join("::");
 								let parent_segs = &seg_strs[..seg_strs.len() - 1];
 								let parent_path = parent_segs.join("::");
-								let ns_fragment = self
-									.interner
-									.intern_fragment(&segments[0]);
+								let ns_fragment =
+									self.interner.intern_fragment(&segments[0]);
 								if self.catalog
 									.find_namespace_by_segments(rx, &seg_strs)?
 									.is_some()
@@ -930,23 +929,26 @@ impl<'bump> Compiler<'bump> {
 									// Full path is a namespace; namespace-wide on
 									// nested ns (e.g. ON app::sub).
 									(Some(ns_fragment.with_text(&full_path)), None)
-								} else if self.catalog
+								} else if self
+									.catalog
 									.find_namespace_by_segments(rx, parent_segs)?
 									.is_some()
 								{
 									// Parent path is a namespace, last segment is a
 									// shape inside it (e.g. ON app::items).
 									(
-										Some(ns_fragment.with_text(&parent_path)),
+										Some(ns_fragment
+											.with_text(&parent_path)),
 										Some(self.interner.intern_fragment(
 											&segments[segments.len() - 1],
 										)),
 									)
 								} else {
 									// Neither full path nor parent path resolves to
-									// an existing namespace. Reject loudly. Silently
-									// falling back to "specific shape" here used to
-									// mis-store the policy (target_namespace=parent,
+									// an existing namespace. Reject loudly.
+									// Silently falling back to "specific
+									// shape" here used to mis-store the
+									// policy (target_namespace=parent,
 									// target_shape=last), which then never matched
 									// any real shape, causing reads to inject
 									// Filter(false) and return empty.

@@ -12,6 +12,7 @@ pub(crate) mod migration {
 	pub(crate) const NAME: usize = 1;
 	pub(crate) const BODY: usize = 2;
 	pub(crate) const ROLLBACK_BODY: usize = 3;
+	pub(crate) const HASH: usize = 4;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -19,6 +20,7 @@ pub(crate) mod migration {
 			RowShapeField::unconstrained("name", Type::Utf8),
 			RowShapeField::unconstrained("body", Type::Utf8),
 			RowShapeField::unconstrained("rollback_body", Type::Utf8),
+			RowShapeField::unconstrained("hash", Type::Uint16),
 		])
 	});
 }

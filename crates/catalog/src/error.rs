@@ -10,6 +10,7 @@ use reifydb_core::{
 	interface::catalog::config::{AcceptError, ConfigKey},
 	key::kind::KeyKind,
 };
+use reifydb_runtime::hash::Hash128;
 use reifydb_type::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -92,6 +93,16 @@ pub enum CatalogError {
 	#[error("migration `{name}` has no rollback body")]
 	MigrationNoRollbackBody {
 		name: String,
+		fragment: Fragment,
+	},
+
+	#[error("migration `{name}` content has changed since registration: was {expected_hex}, now {actual_hex}")]
+	MigrationHashMismatch {
+		name: String,
+		expected: Hash128,
+		actual: Hash128,
+		expected_hex: String,
+		actual_hex: String,
 		fragment: Fragment,
 	},
 
@@ -556,6 +567,34 @@ impl IntoDiagnostic for CatalogError {
 				help: Some("define a ROLLBACK clause when creating the migration".to_string()),
 				column: None,
 				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::MigrationHashMismatch {
+				name,
+				expected: _,
+				actual: _,
+				expected_hex,
+				actual_hex,
+				fragment,
+			} => Diagnostic {
+				code: "CA_049".to_string(),
+				rql: None,
+				message: format!(
+					"migration `{}` content has changed since registration: was {}, now {}",
+					name, expected_hex, actual_hex
+				),
+				fragment,
+				label: Some("modified migration".to_string()),
+				help: Some(
+					"applied migrations are immutable; revert the change or register a new migration with a different name"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![
+					"the registered hash in the catalog does not match the hash of the supplied body+rollback".to_string(),
+				],
 				cause: None,
 				operator_chain: None,
 			},

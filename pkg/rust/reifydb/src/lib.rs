@@ -17,7 +17,10 @@ pub mod system;
 pub mod vendor;
 pub mod watermarks;
 
-pub use api::{migration::Migration, *};
+pub use api::{
+	migration::{Migration, MigrationSource, MigrationStatement},
+	*,
+};
 pub use builder::{
 	DatabaseBuilder, EmbeddedBuilder, InterceptBuilder, ServerBuilder, WithInterceptorBuilder, WithSubsystem,
 };

@@ -23,7 +23,7 @@ use reifydb_type::value::Value;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, traits::WithSubsystem};
 use crate::{
-	Database, Migration, Result,
+	Database, MigrationSource, Result,
 	api::{StorageFactory, transaction},
 };
 
@@ -47,7 +47,7 @@ pub struct EmbeddedBuilder {
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
-	migrations: Vec<Migration>,
+	migrations: Option<MigrationSource>,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 }
 
@@ -72,7 +72,7 @@ impl EmbeddedBuilder {
 			#[cfg(feature = "sub_replication")]
 			replication_factory: None,
 			auth_configurator: None,
-			migrations: Vec::new(),
+			migrations: None,
 			bootstrap_configs: Vec::new(),
 		}
 	}
@@ -141,8 +141,8 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
-		self.migrations = migrations;
+	pub fn with_migrations(mut self, source: impl Into<MigrationSource>) -> Self {
+		self.migrations = Some(source.into());
 		self
 	}
 
@@ -236,8 +236,11 @@ impl EmbeddedBuilder {
 			builder = builder.add_subsystem_factory(factory);
 		}
 
-		if !self.migrations.is_empty() {
-			builder = builder.with_migrations(self.migrations);
+		if let Some(source) = self.migrations {
+			let migrations = source.resolve()?;
+			if !migrations.is_empty() {
+				builder = builder.with_migrations(migrations);
+			}
 		}
 
 		if !self.bootstrap_configs.is_empty() {

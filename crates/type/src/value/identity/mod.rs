@@ -176,7 +176,9 @@ impl<'de> Deserialize<'de> for IdentityId {
 
 #[cfg(test)]
 pub mod tests {
+	use postcard::{from_bytes, to_allocvec};
 	use reifydb_runtime::context::clock::MockClock;
+	use serde_json::{from_str, to_string};
 
 	use super::*;
 
@@ -223,16 +225,16 @@ pub mod tests {
 	fn test_identity_id_postcard_roundtrip() {
 		let (_, clock, rng) = test_clock_and_rng();
 		let id = IdentityId::generate(&clock, &rng);
-		let bytes = postcard::to_allocvec(&id).expect("postcard serialize");
-		let decoded: IdentityId = postcard::from_bytes(&bytes).expect("postcard deserialize");
+		let bytes = to_allocvec(&id).expect("postcard serialize");
+		let decoded: IdentityId = from_bytes(&bytes).expect("postcard deserialize");
 		assert_eq!(id, decoded);
 	}
 
 	#[test]
 	fn test_identity_id_postcard_roundtrip_root() {
 		let id = IdentityId::root();
-		let bytes = postcard::to_allocvec(&id).expect("postcard serialize root");
-		let decoded: IdentityId = postcard::from_bytes(&bytes).expect("postcard deserialize root");
+		let bytes = to_allocvec(&id).expect("postcard serialize root");
+		let decoded: IdentityId = from_bytes(&bytes).expect("postcard deserialize root");
 		assert_eq!(id, decoded);
 	}
 
@@ -240,8 +242,8 @@ pub mod tests {
 	fn test_identity_id_json_roundtrip() {
 		let (_, clock, rng) = test_clock_and_rng();
 		let id = IdentityId::generate(&clock, &rng);
-		let s = serde_json::to_string(&id).expect("json serialize");
-		let decoded: IdentityId = serde_json::from_str(&s).expect("json deserialize");
+		let s = to_string(&id).expect("json serialize");
+		let decoded: IdentityId = from_str(&s).expect("json deserialize");
 		assert_eq!(id, decoded);
 	}
 }

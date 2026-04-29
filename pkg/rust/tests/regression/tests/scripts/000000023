@@ -1,0 +1,19 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Regression: re-registering a migration with the same body+rollback must be a
+# no-op (idempotent). The catalog stores a content hash on first sighting; a
+# subsequent `CREATE MIGRATION` with matching name and matching hash returns
+# the existing row without writing again, so the migration list still contains
+# exactly one row for that name.
+
+(admin "CREATE MIGRATION 'm_idem' { CREATE NAMESPACE app_idem }")
+(admin "CREATE MIGRATION 'm_idem' { CREATE NAMESPACE app_idem }")
+query 'from system::migrations filter { name == "m_idem" } map { name, action, body }'
+---
+> +----------+-----------+-----------------------------+
+> |   name   |  action   |            body             |
+> +----------+-----------+-----------------------------+
+> |  m_idem  |  Pending  |  CREATE NAMESPACE app_idem  |
+> +----------+-----------+-----------------------------+
+>

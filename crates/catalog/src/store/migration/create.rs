@@ -5,12 +5,11 @@ use reifydb_core::{
 	interface::catalog::migration::{Migration, MigrationAction, MigrationEvent},
 	key::{migration::MigrationKey, migration_event::MigrationEventKey},
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::fragment::Fragment;
+use reifydb_runtime::hash::Hash128;
+use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{
 	CatalogStore, Result,
-	error::{CatalogError, CatalogObjectKind},
 	store::{
 		migration::shape::{migration as migration_shape, migration_event as event_shape},
 		sequence::system::SystemSequence,
@@ -21,23 +20,11 @@ pub struct MigrationToCreate {
 	pub name: String,
 	pub body: String,
 	pub rollback_body: Option<String>,
+	pub hash: Hash128,
 }
 
 impl CatalogStore {
 	pub(crate) fn create_migration(txn: &mut AdminTransaction, to_create: MigrationToCreate) -> Result<Migration> {
-		// Check for duplicate name
-		if let Some(_existing) =
-			CatalogStore::find_migration_by_name(&mut Transaction::Admin(&mut *txn), &to_create.name)?
-		{
-			return Err(CatalogError::AlreadyExists {
-				kind: CatalogObjectKind::Migration,
-				namespace: String::new(),
-				name: to_create.name,
-				fragment: Fragment::None,
-			}
-			.into());
-		}
-
 		let migration_id = SystemSequence::next_migration_id(txn)?;
 
 		let mut row = migration_shape::SHAPE.allocate();
@@ -49,6 +36,7 @@ impl CatalogStore {
 			migration_shape::ROLLBACK_BODY,
 			to_create.rollback_body.as_deref().unwrap_or(""),
 		);
+		migration_shape::SHAPE.set_u128(&mut row, migration_shape::HASH, to_create.hash.0);
 
 		txn.set(&MigrationKey::encoded(migration_id), row)?;
 
@@ -57,6 +45,7 @@ impl CatalogStore {
 			name: to_create.name,
 			body: to_create.body,
 			rollback_body: to_create.rollback_body,
+			hash: to_create.hash,
 		})
 	}
 

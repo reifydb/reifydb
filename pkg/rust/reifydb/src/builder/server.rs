@@ -41,7 +41,7 @@ use reifydb_type::value::Value;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, traits::WithSubsystem};
 use crate::{
-	Database, Migration, Result,
+	Database, MigrationSource, Result,
 	api::{StorageFactory, transaction},
 };
 
@@ -54,7 +54,7 @@ type OtelTracingConfig = (
 pub struct ServerBuilder {
 	storage_factory: StorageFactory,
 	runtime_config: Option<SharedRuntimeConfig>,
-	migrations: Vec<Migration>,
+	migrations: Option<MigrationSource>,
 	interceptors: InterceptorBuilder,
 	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	request_interceptors: Vec<Arc<dyn RequestInterceptor>>,
@@ -82,7 +82,7 @@ impl ServerBuilder {
 		Self {
 			storage_factory,
 			runtime_config: None,
-			migrations: Vec::new(),
+			migrations: None,
 			interceptors: InterceptorBuilder::new(),
 			#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 			request_interceptors: Vec::new(),
@@ -126,8 +126,8 @@ impl ServerBuilder {
 		self
 	}
 
-	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
-		self.migrations = migrations;
+	pub fn with_migrations(mut self, source: impl Into<MigrationSource>) -> Self {
+		self.migrations = Some(source.into());
 		self
 	}
 
@@ -320,8 +320,11 @@ impl ServerBuilder {
 			database_builder = database_builder.with_auth(configurator);
 		}
 
-		if !self.migrations.is_empty() {
-			database_builder = database_builder.with_migrations(self.migrations);
+		if let Some(source) = self.migrations {
+			let migrations = source.resolve()?;
+			if !migrations.is_empty() {
+				database_builder = database_builder.with_migrations(migrations);
+			}
 		}
 
 		if !self.bootstrap_configs.is_empty() {

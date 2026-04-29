@@ -38,7 +38,7 @@ use reifydb_type::{
 use tracing::{debug, error, instrument, warn};
 
 use crate::{
-	Migration,
+	MigrationStatement,
 	boot::Bootloader,
 	health::{ComponentHealth, HealthMonitor},
 	session::Session,
@@ -55,7 +55,7 @@ pub struct Database {
 	shared_runtime: SharedRuntime,
 	actor_system: ActorSystem,
 	running: bool,
-	migrations: Vec<Migration>,
+	migrations: Vec<MigrationStatement>,
 }
 
 impl Database {
@@ -96,7 +96,7 @@ impl Database {
 		health_monitor: Arc<HealthMonitor>,
 		shared_runtime: SharedRuntime,
 		actor_system: ActorSystem,
-		migrations: Vec<Migration>,
+		migrations: Vec<MigrationStatement>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -233,41 +233,41 @@ impl Database {
 		self.health_monitor.update_component_health("system".to_string(), system_health, self.running);
 	}
 
-	/// Apply registered migrations: CREATE MIGRATION for any new ones, then MIGRATE to apply pending.
+	/// Register migrations via idempotent `CREATE MIGRATION` and then run `MIGRATE;`
+	/// to apply any pending ones.
+	///
+	/// Each `CREATE MIGRATION` is a no-op when a migration with the same name
+	/// and identical content hash is already registered, and returns
+	/// `MigrationHashMismatch` when the content has changed since registration.
 	fn apply_migrations(&self) -> Result<()> {
 		debug!("Applying {} registered migrations", self.migrations.len());
 
 		for migration in &self.migrations {
-			// Build CREATE MIGRATION statement
-			let mut rql = format!("CREATE MIGRATION '{}' {{", migration.name);
-			rql.push_str(&migration.body);
-			rql.push('}');
-
-			if let Some(ref rollback) = migration.rollback_body {
-				rql.push_str(" ROLLBACK {");
-				rql.push_str(rollback);
-				rql.push('}');
-			}
-
-			rql.push(';');
-
-			// Try to create - ignore "already exists" errors
-			match self.admin_as_root(&rql, Params::None) {
-				Ok(_) => {
-					debug!("Registered migration '{}'", migration.name);
-				}
-				Err(e) => {
-					let msg = format!("{}", e);
-					if msg.contains("already exists") {
-						debug!("Migration '{}' already registered, skipping", migration.name);
-					} else {
-						return Err(e);
+			match migration {
+				MigrationStatement::Wrapped {
+					name,
+					body,
+					rollback_body,
+				} => {
+					let mut rql = format!("CREATE MIGRATION '{}' {{", name);
+					rql.push_str(body);
+					rql.push('}');
+					if let Some(rollback) = rollback_body.as_deref() {
+						rql.push_str(" ROLLBACK {");
+						rql.push_str(rollback);
+						rql.push('}');
 					}
+					rql.push(';');
+					self.admin_as_root(&rql, Params::None)?;
+					debug!("Registered migration '{}'", name);
+				}
+				MigrationStatement::Raw(stmt) => {
+					self.admin_as_root(stmt, Params::None)?;
+					debug!("Registered raw migration statement ({} bytes)", stmt.len());
 				}
 			}
 		}
 
-		// Apply all pending migrations
 		debug!("Running MIGRATE to apply pending migrations");
 		let result = self.migrate_frames()?;
 		if let Some(frame) = result.first()
@@ -277,16 +277,6 @@ impl Database {
 		}
 
 		Ok(())
-	}
-
-	/// Apply pending migrations with retry on transaction conflicts (TXN_001).
-	///
-	/// Uses an exponential backoff with jitter so that multiple writers racing
-	/// against the migration transaction back off without thundering. Suitable
-	/// to call from any service that has registered migrations via raw
-	/// `CREATE MIGRATION ...` statements.
-	pub fn migrate(&self) -> Result<()> {
-		self.migrate_frames().map(|_| ())
 	}
 
 	fn migrate_frames(&self) -> Result<Vec<Frame>> {

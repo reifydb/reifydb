@@ -82,7 +82,7 @@ use reifydb_type::value::Value;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::system::tasks::create_system_tasks;
-use crate::{Migration, Result, database::Database, health::HealthMonitor, subsystem::Subsystems};
+use crate::{MigrationStatement, Result, database::Database, health::HealthMonitor, subsystem::Subsystems};
 
 /// Backend selection for the CDC store.
 ///
@@ -119,7 +119,7 @@ pub struct DatabaseBuilder {
 	#[cfg(not(reifydb_single_threaded))]
 	task_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
-	migrations: Vec<Migration>,
+	migrations: Vec<MigrationStatement>,
 	is_replica: bool,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	cdc_backend: CdcBackend,
@@ -287,7 +287,7 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
+	pub fn with_migrations(mut self, migrations: Vec<MigrationStatement>) -> Self {
 		self.migrations = migrations;
 		self
 	}
