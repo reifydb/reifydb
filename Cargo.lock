@@ -2693,6 +2693,7 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "paste",
+ "reifydb-abi",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-engine",

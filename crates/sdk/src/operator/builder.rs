@@ -12,8 +12,6 @@ use reifydb_type::value::row_number::RowNumber;
 
 use crate::{error::FFIError, operator::context::OperatorContext};
 
-/// A handle to an active (mutable, growable) column buffer being filled by
-/// the guest. Drop without `commit` releases the buffer back to the pool.
 pub struct ColumnBuilder<'a> {
 	ctx: *mut ContextFFI,
 	handle: *mut ColumnBufferHandle,
@@ -22,8 +20,6 @@ pub struct ColumnBuilder<'a> {
 	_phantom: core::marker::PhantomData<&'a ()>,
 }
 
-/// A handle to a finalised (committed) column buffer ready to be emitted via
-/// `emit_diff`.
 #[derive(Clone, Copy)]
 pub struct CommittedColumn {
 	handle: *mut ColumnBufferHandle,
@@ -31,8 +27,6 @@ pub struct CommittedColumn {
 }
 
 impl<'a> ColumnBuilder<'a> {
-	/// Get a writable byte pointer into the column's data region.
-	/// May be invalidated by a subsequent call to `grow`.
 	pub fn data_ptr(&self) -> *mut u8 {
 		unsafe {
 			let cb = (*self.ctx).callbacks.builder;
@@ -40,8 +34,6 @@ impl<'a> ColumnBuilder<'a> {
 		}
 	}
 
-	/// Get a writable u64 pointer into the offsets region (var-len only).
-	/// Returns null for fixed-size types.
 	pub fn offsets_ptr(&self) -> *mut u64 {
 		unsafe {
 			let cb = (*self.ctx).callbacks.builder;
@@ -49,7 +41,6 @@ impl<'a> ColumnBuilder<'a> {
 		}
 	}
 
-	/// Get a writable byte pointer into the lazily-allocated bitvec.
 	pub fn bitvec_ptr(&self) -> *mut u8 {
 		unsafe {
 			let cb = (*self.ctx).callbacks.builder;
@@ -57,9 +48,6 @@ impl<'a> ColumnBuilder<'a> {
 		}
 	}
 
-	/// Grow the column buffer by `additional` elements (or bytes for
-	/// var-len data). Pointers from `data_ptr`/`offsets_ptr`/`bitvec_ptr`
-	/// must be re-fetched after this call.
 	pub fn grow(&self, additional: usize) -> Result<(), FFIError> {
 		let code = unsafe {
 			let cb = (*self.ctx).callbacks.builder;
@@ -71,9 +59,6 @@ impl<'a> ColumnBuilder<'a> {
 		Ok(())
 	}
 
-	/// Commit the buffer with the given final element count. The host
-	/// adopts the buffer as a native ColumnBuffer; the returned
-	/// `CommittedColumn` is what gets passed to `emit_diff`.
 	pub fn commit(mut self, written_count: usize) -> Result<CommittedColumn, FFIError> {
 		let code = unsafe {
 			let cb = (*self.ctx).callbacks.builder;
@@ -179,6 +164,22 @@ impl<'a> ColumnBuilder<'a> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Blob, "write_blob requires a Blob ColumnBuilder");
 		write_var_len(self, values.iter().map(|b| b.as_ref()))
 	}
+
+	pub fn set_defined(&self, defined: &[bool]) {
+		let bytes = defined.len().div_ceil(8);
+		if bytes == 0 {
+			return;
+		}
+		let mut packed = vec![0u8; bytes];
+		for (i, &b) in defined.iter().enumerate() {
+			if b {
+				packed[i / 8] |= 1 << (i % 8);
+			}
+		}
+		unsafe {
+			core::ptr::copy_nonoverlapping(packed.as_ptr(), self.bitvec_ptr(), bytes);
+		}
+	}
 }
 
 unsafe fn write_scalar<T: Copy>(col: ColumnBuilder<'_>, values: &[T]) -> Result<CommittedColumn, FFIError> {
@@ -228,16 +229,12 @@ impl<'a> Drop for ColumnBuilder<'a> {
 	}
 }
 
-/// Top-level builder. Acquires column builders from the host pool and emits
-/// diffs via the host's accumulator.
 pub struct ColumnsBuilder<'a> {
 	ctx: *mut ContextFFI,
 	_phantom: core::marker::PhantomData<&'a mut ()>,
 }
 
 impl<'a> ColumnsBuilder<'a> {
-	/// Create a builder bound to the given operator context. Lives only
-	/// for the duration of the current vtable call.
 	pub fn new(ctx: &'a mut OperatorContext) -> Self {
 		Self {
 			ctx: ctx.ctx,
@@ -277,15 +274,6 @@ impl<'a> ColumnsBuilder<'a> {
 		})
 	}
 
-	/// Emit an Insert diff with the given committed columns, names, and row
-	/// numbers.
-	///
-	/// `row_numbers.len()` must equal the row count of the committed
-	/// columns. Operators that re-emit the same key on a later batch should
-	/// pass the same `RowNumber` so the materialiser upserts the existing
-	/// row in place. Stable per-key numbers come from
-	/// `OperatorContext::get_or_create_row_numbers`. Stateless operators
-	/// can pass any contiguous range; the host treats them as fresh inserts.
 	pub fn emit_insert(
 		&mut self,
 		post: &[CommittedColumn],
@@ -298,8 +286,6 @@ impl<'a> ColumnsBuilder<'a> {
 		self.emit_internal(EmitDiffKind::Insert, &[], &[], 0, &[], post, names, row_count, row_numbers)
 	}
 
-	/// Emit an Update diff. `pre_row_numbers` and `post_row_numbers` must
-	/// match `pre_row_count` and `post_row_count` respectively.
 	#[allow(clippy::too_many_arguments)]
 	pub fn emit_update(
 		&mut self,
@@ -329,8 +315,6 @@ impl<'a> ColumnsBuilder<'a> {
 		)
 	}
 
-	/// Emit a Remove diff. `row_numbers.len()` must equal the row count of
-	/// the committed `pre` columns.
 	pub fn emit_remove(
 		&mut self,
 		pre: &[CommittedColumn],

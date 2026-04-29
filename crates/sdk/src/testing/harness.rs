@@ -84,7 +84,12 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		let result: Result<()> = with_registry(&self.builder_registry, || {
 			let mut op_ctx = OperatorContext::new(ffi_ctx_ptr);
 			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
-			self.operator.apply(&mut op_ctx, borrowed)
+			self.operator.apply(&mut op_ctx, borrowed)?;
+			// Mirror the production txn-commit lifecycle: drain dirty StateCache
+			// entries before the call returns. Without this step, operators
+			// that buffer state through StateCache silently drop their in-flight
+			// state across snapshot/restore cycles.
+			self.operator.flush_state(&mut op_ctx)
 		});
 		// Drop the input arena's outstanding scaffolding before doing
 		// anything else (input pointers are now invalid).
@@ -150,7 +155,8 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
 		let result: Result<()> = with_registry(&self.builder_registry, || {
 			let mut op_ctx = OperatorContext::new(ffi_ctx_ptr);
-			self.operator.pull(&mut op_ctx, row_numbers)
+			self.operator.pull(&mut op_ctx, row_numbers)?;
+			self.operator.flush_state(&mut op_ctx)
 		});
 		result?;
 

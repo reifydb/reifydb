@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_abi::flow::diff::DiffType;
 use reifydb_type::value::datetime::DateTime;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -89,6 +90,53 @@ impl Diff {
 	pub fn remove_arc(pre: Arc<Columns>) -> Self {
 		Self::Remove {
 			pre,
+		}
+	}
+
+	/// Pre-image columns (None for `Insert`).
+	pub fn pre(&self) -> Option<&Columns> {
+		match self {
+			Diff::Insert {
+				..
+			} => None,
+			Diff::Update {
+				pre,
+				..
+			} => Some(pre),
+			Diff::Remove {
+				pre,
+			} => Some(pre),
+		}
+	}
+
+	/// Post-image columns (None for `Remove`).
+	pub fn post(&self) -> Option<&Columns> {
+		match self {
+			Diff::Insert {
+				post,
+			} => Some(post),
+			Diff::Update {
+				post,
+				..
+			} => Some(post),
+			Diff::Remove {
+				..
+			} => None,
+		}
+	}
+
+	/// Kind tag; parity with `BorrowedDiff::kind`.
+	pub fn kind(&self) -> DiffType {
+		match self {
+			Diff::Insert {
+				..
+			} => DiffType::Insert,
+			Diff::Update {
+				..
+			} => DiffType::Update,
+			Diff::Remove {
+				..
+			} => DiffType::Remove,
 		}
 	}
 }

@@ -26,6 +26,7 @@ pub mod mask;
 pub mod nones;
 pub mod push;
 pub mod row;
+pub mod row_ref;
 pub mod stats;
 pub mod transform;
 pub mod view;

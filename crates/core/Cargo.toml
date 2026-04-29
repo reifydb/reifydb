@@ -15,6 +15,7 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 dashmap = { workspace = true }
+reifydb-abi = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
 thiserror = { workspace = true }
