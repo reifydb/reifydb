@@ -25,7 +25,7 @@ use reifydb_type::{
 	error::{Error as ReifyError, ProcedureErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
-	value::{Value, constraint::TypeConstraint, frame::frame::Frame, r#type::Type},
+	value::{Value, constraint::TypeConstraint, frame::frame::Frame, row_number::RowNumber, r#type::Type},
 };
 
 use super::stack::strip_dollar_prefix;
@@ -92,6 +92,16 @@ impl<'a> Vm<'a> {
 		let ctx = self.eval_ctx();
 		let cast = cast_column_data(&ctx, &data, target.clone(), Fragment::internal("coerce_return"))?;
 		Ok(cast.get_value(0))
+	}
+}
+
+fn assign_row_numbers_if_absent(columns: Columns) -> Columns {
+	if columns.row_numbers.is_empty() && columns.has_rows() {
+		let n = columns.row_count();
+		let rns = (1..=n as u64).map(RowNumber).collect();
+		columns.with_row_numbers(rns)
+	} else {
+		columns
 	}
 }
 
@@ -505,6 +515,7 @@ impl<'a> Vm<'a> {
 					let columns = routine
 						.call(&mut proc_ctx, &empty)
 						.map_err(|e| e.with_context(name.clone(), true))?;
+					let columns = assign_row_numbers_if_absent(columns);
 					self.stack.push(Variable::columns(columns));
 					Ok(())
 				} else {
@@ -677,6 +688,7 @@ impl<'a> Vm<'a> {
 			let empty = Columns::empty();
 			let columns =
 				routine.call(&mut proc_ctx, &empty).map_err(|e| e.with_context(name.clone(), true))?;
+			let columns = assign_row_numbers_if_absent(columns);
 
 			// Special handling: identity::inject updates the transaction's identity
 			if func_name == "identity::inject"

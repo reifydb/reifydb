@@ -2,9 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 //! Wrapper that bridges Rust procedures to FFI interface.
+//!
+//! Zero-copy ABI: output is emitted via `ctx.builder()` directly into
+//! host-pool buffers. The only owned guest-side allocation is the postcard
+//! params decode (input is a `&[u8]`, not a `Columns`).
 
 use std::{
-	cell::UnsafeCell,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
@@ -16,17 +19,7 @@ use reifydb_abi::{context::context::ContextFFI, procedure::vtable::ProcedureVTab
 use reifydb_type::params::Params;
 use tracing::error;
 
-use crate::{
-	ffi::arena::Arena,
-	procedure::{FFIProcedure, FFIProcedureContext},
-};
-
-// One scratch arena per OS thread, shared across `ProcedureWrapper` instances
-// active on the same thread. Cleared at the top of each call so scaffolding
-// memory is bounded.
-thread_local! {
-	static GUEST_PROC_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
-}
+use crate::procedure::{FFIProcedure, FFIProcedureContext};
 
 pub struct ProcedureWrapper<T: FFIProcedure> {
 	procedure: T,
@@ -57,10 +50,6 @@ pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = ProcedureWrapper::<T>::from_ptr(instance);
 
-		// SAFETY: single-threaded; no live pointers from a prior call.
-		GUEST_PROC_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
-
-		// Deserialize params from postcard bytes
 		let params: Params = if params_ptr.is_null() || params_len == 0 {
 			Params::None
 		} else {
@@ -74,34 +63,15 @@ pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 			}
 		};
 
-		// Build context
-		let proc_ctx = FFIProcedureContext::new(ctx);
+		let mut pctx = FFIProcedureContext::new(ctx);
 
-		// Call procedure
-		let output_columns = match wrapper.procedure.call(&proc_ctx, params) {
-			Ok(cols) => cols,
+		match wrapper.procedure.call(&mut pctx, params) {
+			Ok(()) => 0,
 			Err(e) => {
 				error!(?e, "Procedure call failed");
-				return -2;
+				-2
 			}
-		};
-
-		// Marshal output as a zero-copy borrow over guest's Columns
-		// memory and hand it to the host's BuilderRegistry.
-		let ffi_output =
-			GUEST_PROC_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&output_columns) });
-		let emit_code = unsafe {
-			let cb = (*ctx).callbacks.builder;
-			(cb.emit_columns_marshaled)(ctx, &ffi_output)
-		};
-		// `output_columns` must outlive the callback because `ffi_output`
-		// borrows its storage. The host copies what it needs synchronously.
-		drop(output_columns);
-		if emit_code != 0 {
-			return emit_code;
 		}
-
-		0 // Success
 	}));
 
 	let code = result.unwrap_or_else(|e| {

@@ -3,15 +3,15 @@
 
 //! Transform traits and types for FFI transform libraries
 
+pub mod context;
 pub mod exports;
 pub mod wrapper;
 
 use std::collections::HashMap;
 
-use reifydb_core::value::column::columns::Columns;
 use reifydb_type::value::Value;
 
-use crate::error::Result;
+use crate::{error::Result, operator::change::BorrowedColumns, transform::context::FFITransformContext};
 
 pub trait FFITransformMetadata {
 	/// Transform name (must be unique within a library)
@@ -29,7 +29,12 @@ pub trait FFITransform: 'static {
 	where
 		Self: Sized;
 
-	fn transform(&mut self, input: Columns) -> Result<Columns>;
+	/// Apply the transform.
+	///
+	/// `input` borrows native column storage; do not retain pointers past
+	/// return. Emit output via `ctx.builder()` -- typically a single
+	/// `emit_insert`, mirroring `FFIOperator::pull`.
+	fn transform(&mut self, ctx: &mut FFITransformContext, input: BorrowedColumns<'_>) -> Result<()>;
 }
 
 pub trait FFITransformWithMetadata: FFITransform + FFITransformMetadata {}

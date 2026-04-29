@@ -114,6 +114,17 @@ pub struct BorrowedColumns<'a> {
 }
 
 impl<'a> BorrowedColumns<'a> {
+	/// Wrap a raw `*const ColumnsFFI` for the duration of the FFI call.
+	///
+	/// # Safety
+	/// - `ptr` must be non-null and point at a `ColumnsFFI` whose buffer pointers are valid for at least `'a`.
+	pub unsafe fn from_ffi(ptr: *const ColumnsFFI) -> Self {
+		debug_assert!(!ptr.is_null(), "BorrowedColumns::from_ffi: null pointer");
+		Self {
+			ffi: unsafe { &*ptr },
+		}
+	}
+
 	pub fn row_count(&self) -> usize {
 		self.ffi.row_count
 	}

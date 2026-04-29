@@ -22,10 +22,7 @@
 
 use core::ffi::c_void;
 
-use crate::{
-	context::context::ContextFFI,
-	data::column::{ColumnTypeCode, ColumnsFFI},
-};
+use crate::{context::context::ContextFFI, data::column::ColumnTypeCode};
 
 /// Opaque handle representing a host-pool-acquired column builder.
 /// The guest treats this as `*mut c_void`; only the host knows the layout.
@@ -132,20 +129,4 @@ pub struct BuilderCallbacks {
 		post_row_numbers_ptr: *const u64,
 		post_row_numbers_len: usize,
 	) -> i32,
-
-	/// Adopt a guest-marshaled `ColumnsFFI` as a single Insert-shaped diff
-	/// in the host's per-call accumulator.
-	///
-	/// Used by single-output FFI hot paths (transforms, procedures) where
-	/// the guest already has a fully-constructed `Columns` and wants to
-	/// hand it to the host without going through the granular
-	/// `acquire`/`commit`/`emit_diff` dance. The host unmarshals the FFI
-	/// representation into a native `Columns` and pushes it as an Insert
-	/// `EmittedDiff` keyed at the active operator id.
-	///
-	/// `columns` is borrowed for the duration of this call; the host copies
-	/// what it needs before returning.
-	///
-	/// Returns 0 on success, negative on failure.
-	pub emit_columns_marshaled: unsafe extern "C" fn(ctx: *mut ContextFFI, columns: *const ColumnsFFI) -> i32,
 }

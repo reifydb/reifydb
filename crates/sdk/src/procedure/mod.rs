@@ -10,13 +10,15 @@ use std::collections::HashMap;
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{constants::FFI_OK, context::context::ContextFFI, data::buffer::BufferFFI};
-use reifydb_core::value::column::columns::Columns;
 use reifydb_type::{
 	params::Params,
 	value::{Value, frame::frame::Frame},
 };
 
-use crate::error::{FFIError, Result};
+use crate::{
+	error::{FFIError, Result},
+	operator::builder::ColumnsBuilder,
+};
 
 pub trait FFIProcedureMetadata {
 	/// Procedure name (must be unique within a library)
@@ -34,7 +36,11 @@ pub trait FFIProcedure: 'static {
 	where
 		Self: Sized;
 
-	fn call(&mut self, ctx: &FFIProcedureContext, params: Params) -> Result<Columns>;
+	/// Run the procedure.
+	///
+	/// Emit the result via `ctx.builder()` -- typically a single
+	/// `emit_insert`, mirroring `FFIOperator::pull`.
+	fn call(&mut self, ctx: &mut FFIProcedureContext, params: Params) -> Result<()>;
 }
 
 pub trait FFIProcedureWithMetadata: FFIProcedure + FFIProcedureMetadata {}
@@ -54,6 +60,13 @@ impl FFIProcedureContext {
 
 	pub fn rql(&self, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		raw_procedure_rql(self, rql, params)
+	}
+
+	/// Acquire a `ColumnsBuilder` for emitting output columns directly into
+	/// host-pool-owned buffers. The builder borrows this context for the
+	/// duration of the FFI call.
+	pub fn builder(&mut self) -> ColumnsBuilder<'_> {
+		ColumnsBuilder::from_raw_ctx(self.ctx)
 	}
 }
 

@@ -84,7 +84,6 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			commit: builder::host_builder_commit,
 			release: builder::host_builder_release,
 			emit_diff: builder::host_builder_emit_diff,
-			emit_columns_marshaled: builder::host_builder_emit_columns_marshaled,
 		},
 	}
 }

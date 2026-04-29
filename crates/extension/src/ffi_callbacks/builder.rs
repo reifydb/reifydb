@@ -23,9 +23,8 @@ use reifydb_abi::{
 	callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
 	constants::{FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_OK},
 	context::context::ContextFFI,
-	data::column::{ColumnTypeCode, ColumnsFFI},
+	data::column::ColumnTypeCode,
 };
-use reifydb_sdk::ffi::arena::Arena;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	fragment::Fragment,
@@ -471,33 +470,6 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		kind,
 		pre: pre_columns,
 		post: post_columns,
-	});
-	FFI_OK
-}
-
-/// # Safety
-/// `ctx` must be a valid `ContextFFI` pointer. `columns_ptr` must point to a
-/// valid `ColumnsFFI` whose backing memory lives for the duration of the call.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn host_builder_emit_columns_marshaled(
-	ctx: *mut ContextFFI,
-	columns_ptr: *const ColumnsFFI,
-) -> i32 {
-	if ctx.is_null() || columns_ptr.is_null() {
-		return FFI_ERROR_NULL_PTR;
-	}
-	let Some(registry) = current_registry() else {
-		return FFI_ERROR_INTERNAL;
-	};
-
-	let arena = Arena::new();
-	let columns = unsafe { arena.unmarshal_columns(&*columns_ptr) };
-
-	let mut inner = registry.inner.lock().unwrap();
-	inner.accumulator.push(EmittedDiff {
-		kind: EmitDiffKind::Insert,
-		pre: None,
-		post: Some(columns),
 	});
 	FFI_OK
 }

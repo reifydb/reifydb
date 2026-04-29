@@ -6,9 +6,7 @@
 use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
 use reifydb_abi::{
-	callbacks::{
-		builder::BuilderCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-	},
+	callbacks::{builder::BuilderCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks},
 	context::context::ContextFFI,
 	transform::{descriptor::TransformDescriptorFFI, vtable::TransformVTableFFI},
 };
@@ -22,8 +20,8 @@ use crate::{
 	ffi_callbacks::{
 		builder::{
 			BuilderRegistry, host_builder_acquire, host_builder_bitvec_ptr, host_builder_commit,
-			host_builder_data_ptr, host_builder_emit_columns_marshaled, host_builder_emit_diff,
-			host_builder_grow, host_builder_offsets_ptr, host_builder_release, with_registry,
+			host_builder_data_ptr, host_builder_emit_diff, host_builder_grow, host_builder_offsets_ptr,
+			host_builder_release, with_registry,
 		},
 		panic::call_with_abort_on_panic,
 		single_columns_from_registry,
@@ -151,7 +149,6 @@ fn pure_host_callbacks() -> HostCallbacks {
 			commit: host_builder_commit,
 			release: host_builder_release,
 			emit_diff: host_builder_emit_diff,
-			emit_columns_marshaled: host_builder_emit_columns_marshaled,
 		},
 	}
 }

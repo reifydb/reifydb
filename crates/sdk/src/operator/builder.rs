@@ -1,32 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Guest-side wrapper for the host's `BuilderCallbacks`.
-//!
-//! Lets guest operators emit output columns by filling host-pool-owned
-//! buffers in place, instead of copying through bumpalo:
-//!
-//! ```ignore
-//! use reifydb_sdk::operator::builder::{ColumnsBuilder, ColumnHandle};
-//! use reifydb_abi::data::column::ColumnTypeCode;
-//! use reifydb_type::value::row_number::RowNumber;
-//!
-//! let mut builder = ColumnsBuilder::new(ctx);
-//! let mut col = builder.acquire(ColumnTypeCode::Int8, row_count)?;
-//! col.write_i64(&[1, 2, 3])?;
-//! let committed = col.commit(row_count)?;
-//! let row_numbers: Vec<RowNumber> = (1..=row_count as u64).map(RowNumber).collect();
-//! builder.emit_insert(&[committed], &["my_col"], &row_numbers)?;
-//! ```
-//!
-//! For stateful operators that need stable per-key identity (so re-emissions
-//! upsert the existing row), get the row numbers from
-//! `OperatorContext::get_or_create_row_numbers(&keys)` instead of generating
-//! a fresh range each batch.
-//!
-//! All allocations live on the host side; the guest only ever holds opaque
-//! handles plus raw byte pointers it writes through.
-
 use core::ptr;
 
 use reifydb_abi::{
@@ -258,7 +232,7 @@ impl<'a> Drop for ColumnBuilder<'a> {
 /// diffs via the host's accumulator.
 pub struct ColumnsBuilder<'a> {
 	ctx: *mut ContextFFI,
-	_phantom: core::marker::PhantomData<&'a mut OperatorContext>,
+	_phantom: core::marker::PhantomData<&'a mut ()>,
 }
 
 impl<'a> ColumnsBuilder<'a> {
@@ -267,6 +241,16 @@ impl<'a> ColumnsBuilder<'a> {
 	pub fn new(ctx: &'a mut OperatorContext) -> Self {
 		Self {
 			ctx: ctx.ctx,
+			_phantom: core::marker::PhantomData,
+		}
+	}
+
+	/// Create a builder from a raw `*mut ContextFFI`. Used by transform /
+	/// procedure contexts that aren't `OperatorContext`. The caller is
+	/// responsible for ensuring the pointer outlives `'a`.
+	pub fn from_raw_ctx(ctx: *mut ContextFFI) -> Self {
+		Self {
+			ctx,
 			_phantom: core::marker::PhantomData,
 		}
 	}
