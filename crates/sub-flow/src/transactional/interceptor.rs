@@ -175,10 +175,8 @@ pub(crate) fn execute_inline_flow_changes(
 
 					// Flush cached operator state so its writes go into
 					// `pending` and commit atomically with the rest of
-					// this transactional flow's outputs. Release per-FFI
-					// arenas at the same boundary.
+					// this transactional flow's outputs.
 					flow_txn.flush_operator_states()?;
-					flow_txn.release_ffi_scratch();
 
 					Ok(FlowResult {
 						view_entries: flow_txn.take_accumulator_entries(),

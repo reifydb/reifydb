@@ -129,7 +129,6 @@ impl SubscriptionCdcConsumer {
 			let flow_change = Change::from_flow(*node_id, version, change.diffs.clone(), change.changed_at);
 			if flow_engine.process(&mut txn, flow_change, *flow_id).is_ok() {
 				let _ = txn.flush_operator_states();
-				txn.release_ffi_scratch();
 				txn.merge_state();
 			}
 			self.flow_states.insert(*flow_id, txn.take_state());

@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	collections::HashMap,
-	mem,
-	sync::{Arc, Weak},
-};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
@@ -18,8 +14,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 };
-use reifydb_runtime::{context::clock::Clock, sync::mutex::Mutex as RuntimeMutex};
-use reifydb_sdk::ffi::arena::Arena;
+use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	change_accumulator::ChangeAccumulator,
 	interceptor::{
@@ -130,15 +125,6 @@ pub struct FlowTransactionInner {
 	/// `operator_state(node, ...)` call; flushed once at
 	/// `flush_operator_states` (typically right before `take_pending`).
 	pub operator_states: HashMap<FlowNodeId, OperatorStateSlot>,
-	/// FFI scratch arenas registered during the txn. Each FFIOperator
-	/// pushes its arena handle on first `apply`/`pull`/`tick`; the host
-	/// drops them all at txn end via `release_ffi_scratch` so the
-	/// bumpalo memory is reclaimed in one shot rather than per call.
-	/// `reifydb_runtime::sync::mutex::Mutex` is required because
-	/// `FlowTransaction` is sent across the rayon parallel iterator in
-	/// the transactional flow path.
-	/// See `crates/sub-flow/src/operator/ffi.rs` and Step 7 of plan-ffi.md.
-	pub ffi_arenas: Vec<Weak<RuntimeMutex<Arena>>>,
 }
 
 pub enum FlowTransaction {
@@ -236,7 +222,6 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock,
 				operator_states: HashMap::new(),
-				ffi_arenas: Vec::new(),
 			},
 		}
 	}
@@ -265,7 +250,6 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock,
 				operator_states: HashMap::new(),
-				ffi_arenas: Vec::new(),
 			},
 		}
 	}
@@ -288,7 +272,6 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
 				operator_states: HashMap::new(),
-				ffi_arenas: Vec::new(),
 			},
 			base_pending: params.base_pending,
 			view_overlay: params.view_overlay,
@@ -338,7 +321,6 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock,
 				operator_states: HashMap::new(),
-				ffi_arenas: Vec::new(),
 			},
 			state,
 		}
@@ -526,30 +508,6 @@ impl FlowTransaction {
 			}
 		}
 		Ok(())
-	}
-
-	/// Register an FFI scratch arena with the txn so it gets cleared once
-	/// at commit/rollback rather than per FFI call. Idempotent: callers
-	/// may register the same arena on every operator method invocation.
-	pub fn register_ffi_arena(&mut self, arena: Weak<RuntimeMutex<Arena>>) {
-		let inner = self.inner_mut();
-		let already_present = inner.ffi_arenas.iter().any(|existing| existing.ptr_eq(&arena));
-		if !already_present {
-			inner.ffi_arenas.push(arena);
-		}
-	}
-
-	/// Reset all registered FFI scratch arenas. Called from the txn
-	/// commit / rollback paths (alongside `flush_operator_states`) so the
-	/// bumpalo memory is reclaimed in one shot.
-	pub fn release_ffi_scratch(&mut self) {
-		let arenas = mem::take(&mut self.inner_mut().ffi_arenas);
-		for weak in arenas {
-			if let Some(arena_arc) = weak.upgrade() {
-				let mut arena = arena_arc.lock();
-				arena.clear();
-			}
-		}
 	}
 }
 

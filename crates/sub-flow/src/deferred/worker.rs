@@ -215,8 +215,6 @@ impl FlowWorkerActor {
 		// process_tick calls above; this flush is what actually writes it back
 		// to storage (via `pending`). See FlowTransaction::operator_state.
 		txn.flush_operator_states()?;
-		// Release per-FFI-op scratch arenas now that the txn is done.
-		txn.release_ffi_scratch();
 
 		Ok((txn.take_pending(), txn.take_pending_shapes()))
 	}
@@ -270,7 +268,6 @@ impl FlowWorkerActor {
 			// extracting pending writes - state writes need to land in
 			// `pending` so the worker commits them with the rest.
 			txn.flush_operator_states()?;
-			txn.release_ffi_scratch();
 
 			let view_entries = txn.take_accumulator_entries();
 			let changed_at = DateTime::from_nanos(self.engine.clock().now_nanos());

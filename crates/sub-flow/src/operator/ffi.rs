@@ -9,7 +9,7 @@ use std::{
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
-	sync::Arc,
+	ptr,
 };
 
 use reifydb_abi::{
@@ -27,7 +27,6 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::vm::executor::Executor;
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
 use reifydb_type::{
 	Result,
@@ -46,6 +45,15 @@ use crate::{
 	operator::Operator,
 	transaction::{FlowTransaction, slot::PersistFn},
 };
+
+// One scratch arena per OS thread. Rayon worker threads each have their own,
+// so there is no cross-thread sharing even on the transactional par_iter path.
+// The arena is reset at the start of each new txn (in `ensure_txn_setup`)
+// rather than at txn end, which is equivalent because `apply` always returns
+// before the next txn begins.
+thread_local! {
+	static FFI_MARSHAL_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
+}
 
 /// Send-safe wrapper around `*mut c_void` for the guest instance pointer.
 /// The pointer is opaque to Rust but the FFI ops it backs are guaranteed
@@ -68,12 +76,6 @@ pub struct FFIOperator {
 	operator_id: FlowNodeId,
 	/// Executor for RQL execution via FFI callbacks
 	executor: Executor,
-	/// Arena for type conversions. Wrapped in `Arc<Mutex<_>>` so the
-	/// `FlowTransaction` can hold a `Weak` reference and clear it at txn
-	/// boundaries without owning the arena. `reifydb_runtime`'s `Mutex`
-	/// keeps the type `Send + Sync` so the host can drive FFI ops from
-	/// rayon's parallel transactional flow path. See Step 7 of plan-ffi.md.
-	arena: Arc<Mutex<Arena>>,
 	/// Per-instance output builder registry. The guest builds output
 	/// columns via `BuilderCallbacks` (acquire/data_ptr/commit/emit_diff);
 	/// after the vtable call returns the host drains accumulated diffs
@@ -109,12 +111,11 @@ impl FFIOperator {
 			instance,
 			operator_id,
 			executor,
-			arena: Arc::new(Mutex::new(Arena::new())),
 			builder_registry: BuilderRegistry::new(),
 			last_registered_txn: Cell::new(u64::MAX),
 			cached_ctx: UnsafeCell::new(ContextFFI {
-				txn_ptr: std::ptr::null_mut(),
-				executor_ptr: std::ptr::null(),
+				txn_ptr: ptr::null_mut(),
+				executor_ptr: ptr::null(),
 				operator_id: operator_id.0,
 				callbacks: create_host_callbacks(),
 			}),
@@ -130,7 +131,6 @@ impl FFIOperator {
 		let txn_version = txn.version().0;
 		if self.last_registered_txn.get() != txn_version {
 			ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance, self.executor.clone())?;
-			txn.register_ffi_arena(Arc::downgrade(&self.arena));
 			self.last_registered_txn.set(txn_version);
 			// SAFETY: single-threaded actor; no aliasing with guest (vtable not
 			// yet called this txn).
@@ -254,13 +254,14 @@ impl Operator for FFIOperator {
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		self.ensure_txn_setup(txn)?;
 
-		// Borrow `change` for the duration of this call. The marshal path
-		// produces `cap == 0` borrows pointing at native column data; the
-		// guest reads them and emits output via `BuilderCallbacks`. After
-		// the vtable returns, we drain the `BuilderRegistry` to assemble
-		// the output `Change`.
-		let mut arena = self.arena.lock();
-		let ffi_input = marshal_input(&mut arena, &change);
+		// Reset the arena before each call so scaffolding memory is bounded
+		// to one call's worth regardless of how many changes flow through
+		// this txn. Bumpalo keeps the chunk after reset, so after the first
+		// call this is a single pointer write with no system allocation.
+		// SAFETY: single-threaded per operator; no live pointers from a prior
+		// call exist at this point (apply() returns before the next call).
+		FFI_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
+		let ffi_input = FFI_MARSHAL_ARENA.with(|cell| marshal_input(unsafe { &mut *cell.get() }, &change));
 
 		let version = change.version;
 		let changed_at = change.changed_at;
@@ -281,9 +282,6 @@ impl Operator for FFIOperator {
 
 		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, changed_at);
 
-		// Arena clear moved to txn boundary (FlowTransaction::release_ffi_scratch).
-		drop(arena);
-
 		Span::current().record("output_diff_count", output_change.diffs.len());
 
 		Ok(output_change)
@@ -292,7 +290,6 @@ impl Operator for FFIOperator {
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		self.ensure_txn_setup(txn)?;
 
-		let arena = self.arena.lock();
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
 
 		let ffi_ctx_ptr = self.cached_ctx.get();
@@ -337,7 +334,6 @@ impl Operator for FFIOperator {
 			Columns::empty()
 		};
 
-		drop(arena);
 		Ok(columns)
 	}
 
@@ -348,7 +344,6 @@ impl Operator for FFIOperator {
 	fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
 		self.ensure_txn_setup(txn)?;
 
-		let arena = self.arena.lock();
 		let timestamp_nanos = timestamp.to_nanos();
 
 		let ffi_ctx_ptr = self.cached_ctx.get();
@@ -386,7 +381,6 @@ impl Operator for FFIOperator {
 		if result_code == 1 {
 			// No output - drain in case the guest acquired without emitting.
 			let _ = self.builder_registry.drain();
-			drop(arena);
 			return Ok(None);
 		}
 
@@ -396,7 +390,6 @@ impl Operator for FFIOperator {
 		// about ordering rely on `changed_at`.
 		let version = CommitVersion(timestamp_nanos);
 		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, timestamp);
-		drop(arena);
 		Span::current().record("output_diff_count", output_change.diffs.len());
 		Ok(Some(output_change))
 	}
