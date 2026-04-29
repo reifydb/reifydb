@@ -9,6 +9,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod error;
+pub mod ffi_callbacks;
 pub mod function;
 pub mod loader;
 pub mod operator;

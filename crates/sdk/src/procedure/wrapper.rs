@@ -4,7 +4,7 @@
 //! Wrapper that bridges Rust procedures to FFI interface.
 
 use std::{
-	cell::RefCell,
+	cell::UnsafeCell,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
@@ -12,7 +12,7 @@ use std::{
 };
 
 use postcard::from_bytes;
-use reifydb_abi::{context::context::ContextFFI, data::column::ColumnsFFI, procedure::vtable::ProcedureVTableFFI};
+use reifydb_abi::{context::context::ContextFFI, procedure::vtable::ProcedureVTableFFI};
 use reifydb_type::params::Params;
 use tracing::error;
 
@@ -21,16 +21,21 @@ use crate::{
 	procedure::{FFIProcedure, FFIProcedureContext},
 };
 
+// One scratch arena per OS thread, shared across `ProcedureWrapper` instances
+// active on the same thread. Cleared at the top of each call so scaffolding
+// memory is bounded.
+thread_local! {
+	static GUEST_PROC_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
+}
+
 pub struct ProcedureWrapper<T: FFIProcedure> {
 	procedure: T,
-	arena: RefCell<Arena>,
 }
 
 impl<T: FFIProcedure> ProcedureWrapper<T> {
 	pub fn new(procedure: T) -> Self {
 		Self {
 			procedure,
-			arena: RefCell::new(Arena::new()),
 		}
 	}
 
@@ -43,19 +48,17 @@ impl<T: FFIProcedure> ProcedureWrapper<T> {
 ///
 /// - `instance` must be a valid pointer to a `ProcedureWrapper<T>`.
 /// - `ctx` must point to a valid `ContextFFI` for the duration of the call.
-/// - `output` must point to a valid `ColumnsFFI` that can be written to.
 pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
 	params_ptr: *const u8,
 	params_len: usize,
-	output: *mut ColumnsFFI,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = ProcedureWrapper::<T>::from_ptr(instance);
 
-		let mut arena = wrapper.arena.borrow_mut();
-		arena.clear();
+		// SAFETY: single-threaded; no live pointers from a prior call.
+		GUEST_PROC_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 
 		// Deserialize params from postcard bytes
 		let params: Params = if params_ptr.is_null() || params_len == 0 {
@@ -83,9 +86,19 @@ pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 			}
 		};
 
-		// Marshal output
-		unsafe {
-			*output = arena.marshal_columns(&output_columns);
+		// Marshal output as a zero-copy borrow over guest's Columns
+		// memory and hand it to the host's BuilderRegistry.
+		let ffi_output =
+			GUEST_PROC_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&output_columns) });
+		let emit_code = unsafe {
+			let cb = (*ctx).callbacks.builder;
+			(cb.emit_columns_marshaled)(ctx, &ffi_output)
+		};
+		// `output_columns` must outlive the callback because `ffi_output`
+		// borrows its storage. The host copies what it needs synchronously.
+		drop(output_columns);
+		if emit_code != 0 {
+			return emit_code;
 		}
 
 		0 // Success

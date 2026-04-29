@@ -480,8 +480,8 @@ use reifydb_core::encoded::key::EncodedKey;
 use crate::testing::{
 	context::TestContext,
 	registry::{
-		test_acquire, test_bitvec_ptr, test_commit, test_data_ptr, test_emit_diff, test_grow, test_offsets_ptr,
-		test_release,
+		test_acquire, test_bitvec_ptr, test_commit, test_data_ptr, test_emit_columns_marshaled, test_emit_diff,
+		test_grow, test_offsets_ptr, test_release,
 	},
 };
 
@@ -598,6 +598,7 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			commit: test_commit,
 			release: test_release,
 			emit_diff: test_emit_diff,
+			emit_columns_marshaled: test_emit_columns_marshaled,
 		},
 	}
 }

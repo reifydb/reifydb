@@ -20,9 +20,11 @@ use reifydb_abi::{
 	context::context::ContextFFI,
 	data::buffer::BufferFFI,
 };
-use reifydb_extension::procedure::ffi_callbacks::{logging, memory};
+use reifydb_extension::{
+	ffi_callbacks::builder,
+	procedure::ffi_callbacks::{logging, memory},
+};
 
-pub mod builder;
 pub mod catalog;
 pub mod state;
 pub mod state_iterator;
@@ -82,6 +84,7 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			commit: builder::host_builder_commit,
 			release: builder::host_builder_release,
 			emit_diff: builder::host_builder_emit_diff,
+			emit_columns_marshaled: builder::host_builder_emit_columns_marshaled,
 		},
 	}
 }

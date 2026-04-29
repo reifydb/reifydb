@@ -3,12 +3,13 @@
 
 use core::ffi::c_void;
 
-use crate::data::column::ColumnsFFI;
+use crate::{context::context::ContextFFI, data::column::ColumnsFFI};
 
 /// Virtual function table for FFI transforms
 ///
-/// Transforms are stateless Columns → Columns operations. Unlike operators,
-/// they do not receive Change/Diff or a ContextFFI - they are pure data transformations.
+/// Transforms are stateless Columns -> Columns operations. The host supplies
+/// a `ContextFFI` so the guest can emit output columns through the
+/// `BuilderCallbacks` (zero-copy: guest writes into host-pool-owned buffers).
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TransformVTableFFI {
@@ -16,13 +17,16 @@ pub struct TransformVTableFFI {
 	///
 	/// # Parameters
 	/// - `instance`: The transform instance pointer
-	/// - `input`: Input columns
-	/// - `output`: Output columns (to be filled by transform)
+	/// - `ctx`: FFI context (host callbacks, clock, txn ptr)
+	/// - `input`: Input columns (zero-copy borrow)
+	///
+	/// The guest emits its output via the `builder` callbacks on `ctx`; the
+	/// host drains the registry after this call returns.
 	///
 	/// # Returns
 	/// - 0 on success, negative error code on failure
 	pub transform:
-		unsafe extern "C" fn(instance: *mut c_void, input: *const ColumnsFFI, output: *mut ColumnsFFI) -> i32,
+		unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ContextFFI, input: *const ColumnsFFI) -> i32,
 
 	/// Destroy a transform instance and free its resources
 	///

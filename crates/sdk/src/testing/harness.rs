@@ -354,6 +354,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			executor_ptr: null(),
 			operator_id: self.node_id.0,
+			clock_now_nanos: 0,
 			callbacks: create_test_callbacks(),
 		});
 

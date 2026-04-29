@@ -7,7 +7,7 @@ use postcard::from_bytes as postcard_decode;
 use reifydb_abi::{
 	callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
 	context::context::ContextFFI,
-	data::column::ColumnTypeCode,
+	data::column::{ColumnTypeCode, ColumnsFFI},
 };
 use reifydb_core::{
 	interface::change::{Diff, Diffs},
@@ -39,6 +39,8 @@ use reifydb_type::{
 	},
 };
 use serde::de::DeserializeOwned;
+
+use crate::ffi::arena::Arena;
 
 pub struct TestBuilderRegistry {
 	inner: Mutex<RegistryInner>,
@@ -410,6 +412,29 @@ pub(crate) unsafe extern "C" fn test_emit_diff(
 		kind,
 		pre,
 		post,
+	});
+	0
+}
+
+pub(crate) unsafe extern "C" fn test_emit_columns_marshaled(
+	_ctx: *mut ContextFFI,
+	columns_ptr: *const ColumnsFFI,
+) -> i32 {
+	if columns_ptr.is_null() {
+		return -1;
+	}
+	let Some(registry) = current() else {
+		return -1;
+	};
+
+	let arena = Arena::new();
+	let columns = unsafe { arena.unmarshal_columns(&*columns_ptr) };
+
+	let mut inner = registry.inner.lock().unwrap();
+	inner.accumulator.push(EmittedDiff {
+		kind: EmitDiffKind::Insert,
+		pre: None,
+		post: Some(columns),
 	});
 	0
 }

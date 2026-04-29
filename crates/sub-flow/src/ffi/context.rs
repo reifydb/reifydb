@@ -18,10 +18,12 @@ pub(crate) fn new_ffi_context(
 	operator_id: FlowNodeId,
 	callbacks: HostCallbacks,
 ) -> ContextFFI {
+	let clock_now_nanos = txn.clock().now_nanos();
 	ContextFFI {
 		txn_ptr: txn as *mut _ as *mut c_void,
 		executor_ptr: executor as *const _ as *const c_void,
 		operator_id: operator_id.0,
+		clock_now_nanos,
 		callbacks,
 	}
 }

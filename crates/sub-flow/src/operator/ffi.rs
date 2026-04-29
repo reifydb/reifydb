@@ -27,6 +27,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::vm::executor::Executor;
+use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
 use reifydb_type::{
 	Result,
@@ -35,13 +36,7 @@ use reifydb_type::{
 use tracing::{Span, error, field, instrument};
 
 use crate::{
-	ffi::{
-		callbacks::{
-			builder::{BuilderRegistry, with_registry},
-			create_host_callbacks,
-		},
-		context::new_ffi_context,
-	},
+	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
 	operator::Operator,
 	transaction::{FlowTransaction, slot::PersistFn},
 };
@@ -117,6 +112,7 @@ impl FFIOperator {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
 				operator_id: operator_id.0,
+				clock_now_nanos: 0,
 				callbacks: create_host_callbacks(),
 			}),
 		}
@@ -137,6 +133,7 @@ impl FFIOperator {
 			let ctx = unsafe { &mut *self.cached_ctx.get() };
 			ctx.txn_ptr = txn as *mut _ as *mut c_void;
 			ctx.executor_ptr = &self.executor as *const _ as *const c_void;
+			ctx.clock_now_nanos = txn.clock().now_nanos();
 		}
 		Ok(())
 	}

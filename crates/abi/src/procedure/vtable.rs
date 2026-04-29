@@ -3,12 +3,15 @@
 
 use core::ffi::c_void;
 
-use crate::{context::context::ContextFFI, data::column::ColumnsFFI};
+use crate::context::context::ContextFFI;
 
 /// Virtual function table for FFI procedures
 ///
-/// Procedures receive params as postcard-serialized bytes and return Columns.
-/// They have access to a ContextFFI for executing RQL within the current transaction.
+/// Procedures receive params as postcard-serialized bytes. They have access to
+/// a ContextFFI for executing RQL within the current transaction. Output columns
+/// are emitted via the `builder` callbacks on `ctx` (zero-copy: the guest writes
+/// into host-pool-owned buffers and the host drains the registry after the call
+/// returns).
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ProcedureVTableFFI {
@@ -19,7 +22,6 @@ pub struct ProcedureVTableFFI {
 	/// - `ctx`: FFI context (carries txn_ptr, executor_ptr, callbacks)
 	/// - `params_ptr`: Postcard-serialized Params bytes
 	/// - `params_len`: Length of params bytes
-	/// - `output`: Output columns (to be filled by procedure)
 	///
 	/// # Returns
 	/// - 0 on success, negative error code on failure
@@ -28,7 +30,6 @@ pub struct ProcedureVTableFFI {
 		ctx: *mut ContextFFI,
 		params_ptr: *const u8,
 		params_len: usize,
-		output: *mut ColumnsFFI,
 	) -> i32,
 
 	/// Destroy a procedure instance and free its resources

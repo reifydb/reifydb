@@ -9,27 +9,32 @@
 //! - `> 0`: Recoverable error (reserved for future use)
 
 use std::{
-	cell::RefCell,
+	cell::UnsafeCell,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 };
 
-use reifydb_abi::{data::column::ColumnsFFI, transform::vtable::TransformVTableFFI};
+use reifydb_abi::{context::context::ContextFFI, data::column::ColumnsFFI, transform::vtable::TransformVTableFFI};
 use tracing::error;
 
 use crate::{ffi::arena::Arena, transform::FFITransform};
 
+// One scratch arena per OS thread, shared across `TransformWrapper` instances
+// active on the same thread. Cleared at the top of each call so scaffolding
+// memory is bounded.
+thread_local! {
+	static GUEST_TRANSFORM_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
+}
+
 pub struct TransformWrapper<T: FFITransform> {
 	transform: T,
-	arena: RefCell<Arena>,
 }
 
 impl<T: FFITransform> TransformWrapper<T> {
 	pub fn new(transform: T) -> Self {
 		Self {
 			transform,
-			arena: RefCell::new(Arena::new()),
 		}
 	}
 
@@ -41,21 +46,21 @@ impl<T: FFITransform> TransformWrapper<T> {
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to a `TransformWrapper<T>`.
+/// - `ctx` must point to a valid `ContextFFI`.
 /// - `input` must point to a valid `ColumnsFFI`.
-/// - `output` must point to a valid `ColumnsFFI` that can be written to.
 pub unsafe extern "C" fn ffi_transform<T: FFITransform>(
 	instance: *mut c_void,
+	ctx: *mut ContextFFI,
 	input: *const ColumnsFFI,
-	output: *mut ColumnsFFI,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = TransformWrapper::<T>::from_ptr(instance);
 
-		let mut arena = wrapper.arena.borrow_mut();
-		arena.clear();
-
-		// Unmarshal input
-		let input_columns = unsafe { arena.unmarshal_columns(&*input) };
+		// Reset the per-thread arena and unmarshal input within it.
+		// SAFETY: single-threaded; no live pointers from a prior call.
+		GUEST_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
+		let input_columns =
+			GUEST_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).unmarshal_columns(&*input) });
 
 		// Apply transform
 		let output_columns = match wrapper.transform.transform(input_columns) {
@@ -66,9 +71,22 @@ pub unsafe extern "C" fn ffi_transform<T: FFITransform>(
 			}
 		};
 
-		// Marshal output
-		unsafe {
-			*output = arena.marshal_columns(&output_columns);
+		// Marshal output as a zero-copy borrow over the guest's Columns
+		// memory and hand it to the host's BuilderRegistry. The host
+		// adopts it as a single Insert-shaped diff.
+		let ffi_output =
+			GUEST_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&output_columns) });
+
+		let emit_code = unsafe {
+			let cb = (*ctx).callbacks.builder;
+			(cb.emit_columns_marshaled)(ctx, &ffi_output)
+		};
+		// `output_columns` must outlive the callback because `ffi_output`
+		// borrows its storage. The host copies what it needs synchronously
+		// before returning; `output_columns` then drops at end of scope.
+		drop(output_columns);
+		if emit_code != 0 {
+			return emit_code;
 		}
 
 		0 // Success
