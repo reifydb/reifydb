@@ -240,8 +240,75 @@ impl Operator for TakeOperator {
 					let mut update_indices: Vec<usize> = Vec::new();
 					for row_idx in 0..row_count {
 						let row_number = post.row_numbers[row_idx];
+
+						// Row is currently being delivered: forward the
+						// Update so the subscriber sees the new column
+						// values.
 						if state.active.contains_key(&row_number) {
 							update_indices.push(row_idx);
+							continue;
+						}
+
+						// Row is suppressed by the take limit (kept as a
+						// candidate for promotion if an active row gets
+						// removed). The subscriber is intentionally not
+						// receiving it, so the Update is also suppressed.
+						if state.candidates.contains_key(&row_number) {
+							continue;
+						}
+
+						// Row is unknown to TakeState. This happens for
+						// every Update against rows that existed before
+						// the subscription was created (the subscription
+						// has no backfill mechanism, so its TakeState
+						// starts empty even when the upstream view is
+						// fully populated). From the subscriber's
+						// perspective they are seeing this row for the
+						// first time, so emit the post-image as an Insert
+						// and admit it to active using the same
+						// admission/eviction policy the Insert branch
+						// uses for genuinely new rows. Without this the
+						// subscriber would silently miss every Update
+						// against pre-existing rows for the lifetime of
+						// the subscription.
+						if state.active.len() < self.limit {
+							state.active.insert(row_number, 1);
+							output_diffs.push(Diff::insert(
+								post.extract_by_indices(&[row_idx]),
+							));
+						} else if let Some(smallest) = state.active.keys().next().copied() {
+							if row_number > smallest {
+								if let Some(count) = state.active.remove(&smallest) {
+									state.candidates.insert(smallest, count);
+									let cols =
+										self.parent.pull(txn, &[smallest])?;
+									if !cols.is_empty() {
+										output_diffs.push(Diff::remove(cols));
+									}
+								}
+								state.active.insert(row_number, 1);
+								output_diffs.push(Diff::insert(
+									post.extract_by_indices(&[row_idx]),
+								));
+								let candidate_limit = self.limit * 4;
+								while state.candidates.len() > candidate_limit {
+									if let Some((&r, _)) =
+										state.candidates.iter().next()
+									{
+										state.candidates.remove(&r);
+									}
+								}
+							} else {
+								state.candidates.insert(row_number, 1);
+								let candidate_limit = self.limit * 4;
+								while state.candidates.len() > candidate_limit {
+									if let Some((&r, _)) =
+										state.candidates.iter().next()
+									{
+										state.candidates.remove(&r);
+									}
+								}
+							}
 						}
 					}
 					if !update_indices.is_empty() {

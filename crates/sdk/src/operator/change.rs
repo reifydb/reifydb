@@ -20,6 +20,10 @@ pub struct BorrowedChange<'a> {
 }
 
 impl<'a> BorrowedChange<'a> {
+	/// # Safety
+	///
+	/// `ptr` must be non-null and point to a valid `ChangeFFI` whose backing
+	/// buffers remain live for the lifetime `'a`.
 	pub unsafe fn from_raw(ptr: *const ChangeFFI) -> Self {
 		debug_assert!(!ptr.is_null(), "BorrowedChange::from_raw: null pointer");
 		Self {
@@ -183,6 +187,10 @@ impl<'a> BorrowedColumn<'a> {
 		read_buffer(&self.ffi.data.defined_bitvec)
 	}
 
+	/// # Safety
+	///
+	/// The caller must ensure the column's underlying bytes are a valid,
+	/// properly aligned array of `T` for the column's row count.
 	pub unsafe fn as_slice<T: Copy>(&self) -> Option<&'a [T]> {
 		let bytes = self.data_bytes();
 		let count = self.row_count();

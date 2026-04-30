@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, thread};
 
 use postcard::to_allocvec;
 use reifydb_abi::data::column::ColumnTypeCode;
@@ -135,10 +135,10 @@ impl<'a> Drop for InsertDiff<'a> {
 		if self.disarmed {
 			return;
 		}
-		if let Err(e) = emit_insert(&mut self.inner, &self.schema, &self.rows) {
-			if !std::thread::panicking() {
-				panic!("InsertDiff drop failed: {:?}", e);
-			}
+		if let Err(e) = emit_insert(&mut self.inner, &self.schema, &self.rows)
+			&& !thread::panicking()
+		{
+			panic!("InsertDiff drop failed: {:?}", e);
 		}
 	}
 }
@@ -180,10 +180,10 @@ impl<'a> Drop for UpdateDiff<'a> {
 		if self.disarmed {
 			return;
 		}
-		if let Err(e) = emit_update(&mut self.inner, &self.schema, &self.rows) {
-			if !std::thread::panicking() {
-				panic!("UpdateDiff drop failed: {:?}", e);
-			}
+		if let Err(e) = emit_update(&mut self.inner, &self.schema, &self.rows)
+			&& !thread::panicking()
+		{
+			panic!("UpdateDiff drop failed: {:?}", e);
 		}
 	}
 }
@@ -221,10 +221,10 @@ impl<'a> Drop for RemoveDiff<'a> {
 		if self.disarmed {
 			return;
 		}
-		if let Err(e) = emit_remove(&mut self.inner, &self.schema, &self.rows) {
-			if !std::thread::panicking() {
-				panic!("RemoveDiff drop failed: {:?}", e);
-			}
+		if let Err(e) = emit_remove(&mut self.inner, &self.schema, &self.rows)
+			&& !thread::panicking()
+		{
+			panic!("RemoveDiff drop failed: {:?}", e);
 		}
 	}
 }

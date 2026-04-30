@@ -3206,6 +3206,7 @@ name = "reifydb-sub-subscription"
 version = "0.4.12"
 dependencies = [
  "dashmap",
+ "postcard",
  "reifydb-abi",
  "reifydb-build",
  "reifydb-catalog",
@@ -3219,6 +3220,7 @@ dependencies = [
  "reifydb-subscription",
  "reifydb-transaction",
  "reifydb-type",
+ "serde",
  "tokio",
 ]
 

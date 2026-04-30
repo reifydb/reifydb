@@ -999,7 +999,32 @@ impl WindowOperator {
 					pre,
 					post,
 				} => {
-					result.extend(self.process_event_updates(txn, pre, post)?);
+					let group_hashes = self.compute_group_keys(pre)?;
+					let mut update_indices: Vec<usize> = Vec::new();
+					let mut insert_indices: Vec<usize> = Vec::new();
+					for (row_idx, &group_hash) in group_hashes.iter().enumerate() {
+						let row_number = pre.row_numbers[row_idx];
+						let known =
+							!self.lookup_row_index(txn, group_hash, row_number)?.is_empty();
+						if known {
+							update_indices.push(row_idx);
+						} else {
+							insert_indices.push(row_idx);
+						}
+					}
+					if !update_indices.is_empty() {
+						let pre_subset = pre.extract_by_indices(&update_indices);
+						let post_subset = post.extract_by_indices(&update_indices);
+						result.extend(self.process_event_updates(
+							txn,
+							&pre_subset,
+							&post_subset,
+						)?);
+					}
+					if !insert_indices.is_empty() {
+						let post_subset = post.extract_by_indices(&insert_indices);
+						result.extend(process_fn(self, txn, &post_subset)?);
+					}
 				}
 				Diff::Remove {
 					pre,

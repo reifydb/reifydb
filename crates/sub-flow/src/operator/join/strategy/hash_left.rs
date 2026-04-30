@@ -295,7 +295,6 @@ impl LeftHashJoin {
 
 				match ctx.side {
 					JoinSide::Left => {
-						// Update the row number in state
 						if update_row_in_entry(
 							txn,
 							&mut ctx.state.left,
@@ -310,7 +309,6 @@ impl LeftHashJoin {
 								opposite_parent: &ctx.operator.right_parent,
 							};
 
-							// Emit updates for all joined rows
 							if let Some(diff) = emit_update_joined_columns(
 								txn,
 								pre,
@@ -321,7 +319,6 @@ impl LeftHashJoin {
 							)? {
 								result.push(diff);
 							} else {
-								// No matching right rows - update unmatched left row
 								let unmatched_pre = ctx
 									.operator
 									.unmatched_left_columns(txn, pre, row_idx)?;
@@ -333,10 +330,18 @@ impl LeftHashJoin {
 									unmatched_post,
 								));
 							}
+						} else {
+							let insert_diffs = self.handle_insert(
+								txn,
+								post,
+								&[row_idx],
+								keys.post,
+								ctx,
+							)?;
+							result.extend(insert_diffs);
 						}
 					}
 					JoinSide::Right => {
-						// Update the row number in state
 						if update_row_in_entry(
 							txn,
 							&mut ctx.state.right,
@@ -351,7 +356,6 @@ impl LeftHashJoin {
 								opposite_parent: &ctx.operator.left_parent,
 							};
 
-							// Emit updates for all joined rows
 							if let Some(diff) = emit_update_joined_columns(
 								txn,
 								pre,
@@ -362,6 +366,15 @@ impl LeftHashJoin {
 							)? {
 								result.push(diff);
 							}
+						} else {
+							let insert_diffs = self.handle_insert(
+								txn,
+								post,
+								&[row_idx],
+								keys.post,
+								ctx,
+							)?;
+							result.extend(insert_diffs);
 						}
 					}
 				}

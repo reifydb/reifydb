@@ -28,4 +28,6 @@ reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
 dashmap = { workspace = true }
+postcard = { workspace = true }
+serde = { workspace = true }
 tokio = { workspace = true }
