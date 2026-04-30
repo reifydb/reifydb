@@ -33,6 +33,7 @@ pub(crate) struct JoinContext<'a> {
 }
 
 /// Pre- and post-update join key hashes for a batched key update.
+#[derive(Clone, Copy)]
 pub(crate) struct UpdateKeys<'a> {
 	pub pre: &'a Hash128,
 	pub post: &'a Hash128,

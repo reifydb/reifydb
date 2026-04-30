@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM mailbox implementation using inline processing.
-//!
-//! In WASM, messages are processed synchronously inline when sent.
-//! Uses a message queue to handle reentrancy (when message handling triggers more messages).
-
 use std::{
 	cell::{Cell, RefCell},
 	fmt,

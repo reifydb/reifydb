@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Catalog change tracking traits.
-//!
-//! These traits are used by command transactions to track changes to catalog entities
-//! during a transaction, allowing for proper transactional semantics and rollback.
-
 use reifydb_type::Result;
 
 use crate::{

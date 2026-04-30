@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Execution mask infrastructure for columnar VM control flow.
-//!
-//! When the VM operates in columnar mode (batch_size > 1), conditional branches
-//! produce boolean Columns where different rows have different truth values.
-//! Rather than jumping, the VM uses execution masks to run both branches and
-//! merge results.
-
 use std::collections::HashMap;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};

@@ -2,31 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
-
-//! Derive macros for ReifyDB.
-//!
-//! This crate provides the `#[derive(FromFrame)]` macro for ergonomic
-//! deserialization of Frame data into Rust structs.
-//!
-//! # Example
-
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
-//! ```ignore
-//! use reifydb_type::FromFrame;
-//!
-//! #[derive(FromFrame)]
-//! struct User {
-//!     id: i64,
-//!     name: String,
-//!     #[frame(column = "created_at")]
-//!     timestamp: i64,
-//!     #[frame(optional)]
-//!     email: Option<String>,
-//! }
-//!
-//! let users: Vec<User> = frame.try_into()?;
-//! ```
 
 use proc_macro::TokenStream;
 use reifydb_macro_impl::derive_from_frame_with_crate;

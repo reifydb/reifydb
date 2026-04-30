@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Encoding selection heuristics.
-//!
-//! Chooses the optimal encoding for each column based on data characteristics.
-//! Single O(n) pass per column with early termination.
-
 use std::collections::HashSet;
 
 use reifydb_type::value::frame::data::FrameColumnData;

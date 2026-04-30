@@ -4,11 +4,6 @@
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-//! Derive macros for ReifyDB that generate code using `reifydb` crate paths.
-//!
-//! This crate is re-exported by the `reifydb` crate, so users typically don't
-//! need to depend on it directly.
-
 use proc_macro::TokenStream;
 use reifydb_macro_impl::derive_from_frame_with_crate;
 

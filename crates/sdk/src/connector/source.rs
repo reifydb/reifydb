@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Source connector traits for ingesting data from external systems
-
 use std::{collections::HashMap, sync::mpsc::SyncSender};
 
 use reifydb_core::value::column::columns::Columns;

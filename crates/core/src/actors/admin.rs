@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Actor messages for the admin server.
-
 use reifydb_runtime::actor::{reply::Reply, system::ActorHandle};
 
 /// Handle to the admin server actor.

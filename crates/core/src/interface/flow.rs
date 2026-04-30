@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Flow watermark interface for virtual table support.
-
 use std::sync::Arc;
 
 use crate::interface::catalog::{flow::FlowId, shape::ShapeId};

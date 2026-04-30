@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Wrapper that bridges Rust operators to the zero-copy FFI interface.
-//!
-//! FFI function return codes:
-//! - `< 0`: Unrecoverable error - process will abort immediately
-//! - `0`: Success
-//! - `> 0`: Recoverable - currently only `tick` returns `1` (no-op)
-
 use std::{
 	any::{self, Any},
 	backtrace::Backtrace,

@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Arithmetic Expressions Example
-//!
-//! Demonstrates arithmetic operations in ReifyDB's RQL:
-//! - Basic arithmetic operators (+, -, *, /)
-//! - Modulo operator (%)
-//! - Parentheses for operation precedence
-//! - Arithmetic in different contexts
-//!
-//! Run with: `make rql-arithmetic` or `cargo run --bin rql-arithmetic`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

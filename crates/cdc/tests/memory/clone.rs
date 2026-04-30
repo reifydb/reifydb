@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! `MemoryCdcStorage::clone()` shares the same backing map across handles.
-
 use reifydb_cdc::storage::{CdcStorage, memory::MemoryCdcStorage};
 use reifydb_core::{
 	common::CommitVersion,

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! State management utilities for operators
-
 pub mod cache;
 pub mod ffi;
 pub mod keyed;

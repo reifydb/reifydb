@@ -155,14 +155,44 @@ impl Operator for SinkSubscriptionOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let node_id = self.node;
-		let shape_for_persist = self.shape.clone();
+		let (mut state, persist) = self.acquire_delivered_state(txn)?;
+		let subscription_id = self.subscription.def().id;
 
-		let (mut state, persist) = txn.take_operator_state::<DeliveredState, _>(node_id, |txn| {
+		for diff in change.diffs.iter() {
+			match diff {
+				Diff::Insert {
+					post,
+				} => self.apply_subscription_insert(txn, &mut state, post, subscription_id)?,
+				Diff::Update {
+					pre,
+					post,
+				} => self.apply_subscription_update(txn, &mut state, pre, post, subscription_id)?,
+				Diff::Remove {
+					pre,
+				} => self.apply_subscription_remove(txn, &mut state, pre, subscription_id)?,
+			}
+		}
+
+		txn.put_operator_state(node_id, state, persist);
+
+		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+	}
+
+	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
+		unreachable!()
+	}
+}
+
+impl SinkSubscriptionOperator {
+	#[inline]
+	fn acquire_delivered_state(&self, txn: &mut FlowTransaction) -> Result<(DeliveredState, PersistFn)> {
+		let node_id = self.node;
+		let shape_for_persist = self.shape.clone();
+		txn.take_operator_state::<DeliveredState, _>(node_id, |txn| {
 			let s = self.load_delivered_state(txn)?;
 			let shape = shape_for_persist.clone();
 			let persist: PersistFn = Box::new(move |txn, value| {
-				let state =
-					value.downcast::<DeliveredState>().expect("DeliveredState slot type");
+				let state = value.downcast::<DeliveredState>().expect("DeliveredState slot type");
 				let serialized = to_stdvec(&*state).map_err(|e| {
 					Error(Box::new(internal!("Failed to serialize DeliveredState: {}", e)))
 				})?;
@@ -174,92 +204,82 @@ impl Operator for SinkSubscriptionOperator {
 				Ok(())
 			});
 			Ok((s, persist))
-		})?;
-
-		let subscription_id = self.subscription.def().id;
-
-		for diff in change.diffs.iter() {
-			match diff {
-				Diff::Insert {
-					post,
-				} => {
-					let row_count = post.row_count();
-					for row_idx in 0..row_count {
-						state.rows.insert(post.row_numbers[row_idx]);
-					}
-					self.write_subscription_rows(txn, post, DiffType::Insert, subscription_id)?;
-				}
-				Diff::Update {
-					pre,
-					post,
-				} => {
-					let row_count = post.row_count();
-					let mut update_indices: Vec<usize> = Vec::new();
-					let mut insert_indices: Vec<usize> = Vec::new();
-					for row_idx in 0..row_count {
-						let pre_rn = pre.row_numbers[row_idx];
-						let post_rn = post.row_numbers[row_idx];
-						if state.rows.contains(&pre_rn) {
-							if pre_rn != post_rn {
-								state.rows.remove(&pre_rn);
-								state.rows.insert(post_rn);
-							}
-							update_indices.push(row_idx);
-						} else {
-							state.rows.insert(post_rn);
-							insert_indices.push(row_idx);
-						}
-					}
-					if !update_indices.is_empty() {
-						let sub_post = post.extract_by_indices(&update_indices);
-						self.write_subscription_rows(
-							txn,
-							&sub_post,
-							DiffType::Update,
-							subscription_id,
-						)?;
-					}
-					if !insert_indices.is_empty() {
-						let sub_post = post.extract_by_indices(&insert_indices);
-						self.write_subscription_rows(
-							txn,
-							&sub_post,
-							DiffType::Insert,
-							subscription_id,
-						)?;
-					}
-				}
-				Diff::Remove {
-					pre,
-				} => {
-					let row_count = pre.row_count();
-					let mut remove_indices: Vec<usize> = Vec::new();
-					for row_idx in 0..row_count {
-						let pre_rn = pre.row_numbers[row_idx];
-						if state.rows.remove(&pre_rn) {
-							remove_indices.push(row_idx);
-						}
-					}
-					if !remove_indices.is_empty() {
-						let sub_pre = pre.extract_by_indices(&remove_indices);
-						self.write_subscription_rows(
-							txn,
-							&sub_pre,
-							DiffType::Remove,
-							subscription_id,
-						)?;
-					}
-				}
-			}
-		}
-
-		txn.put_operator_state(node_id, state, persist);
-
-		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+		})
 	}
 
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
-		unreachable!()
+	#[inline]
+	fn apply_subscription_insert(
+		&self,
+		txn: &mut FlowTransaction,
+		state: &mut DeliveredState,
+		post: &Arc<Columns>,
+		subscription_id: SubscriptionId,
+	) -> Result<()> {
+		let row_count = post.row_count();
+		for row_idx in 0..row_count {
+			state.rows.insert(post.row_numbers[row_idx]);
+		}
+		self.write_subscription_rows(txn, post, DiffType::Insert, subscription_id)
+	}
+
+	#[inline]
+	fn apply_subscription_update(
+		&self,
+		txn: &mut FlowTransaction,
+		state: &mut DeliveredState,
+		pre: &Arc<Columns>,
+		post: &Arc<Columns>,
+		subscription_id: SubscriptionId,
+	) -> Result<()> {
+		let row_count = post.row_count();
+		let mut update_indices: Vec<usize> = Vec::new();
+		let mut insert_indices: Vec<usize> = Vec::new();
+		for row_idx in 0..row_count {
+			let pre_rn = pre.row_numbers[row_idx];
+			let post_rn = post.row_numbers[row_idx];
+			if state.rows.contains(&pre_rn) {
+				if pre_rn != post_rn {
+					state.rows.remove(&pre_rn);
+					state.rows.insert(post_rn);
+				}
+				update_indices.push(row_idx);
+			} else {
+				state.rows.insert(post_rn);
+				insert_indices.push(row_idx);
+			}
+		}
+		if !update_indices.is_empty() {
+			let sub_post = post.extract_by_indices(&update_indices);
+			self.write_subscription_rows(txn, &sub_post, DiffType::Update, subscription_id)?;
+		}
+		if !insert_indices.is_empty() {
+			let sub_post = post.extract_by_indices(&insert_indices);
+			self.write_subscription_rows(txn, &sub_post, DiffType::Insert, subscription_id)?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn apply_subscription_remove(
+		&self,
+		txn: &mut FlowTransaction,
+		state: &mut DeliveredState,
+		pre: &Arc<Columns>,
+		subscription_id: SubscriptionId,
+	) -> Result<()> {
+		let row_count = pre.row_count();
+		let mut remove_indices: Vec<usize> = Vec::new();
+		for row_idx in 0..row_count {
+			let pre_rn = pre.row_numbers[row_idx];
+			if state.rows.remove(&pre_rn) {
+				remove_indices.push(row_idx);
+			}
+		}
+		if !remove_indices.is_empty() {
+			let sub_pre = pre.extract_by_indices(&remove_indices);
+			self.write_subscription_rows(txn, &sub_pre, DiffType::Remove, subscription_id)?;
+		}
+		Ok(())
 	}
 }
 

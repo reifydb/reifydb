@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Router Example - Query Forwarding
-//!
-//! A ReifyDB instance that creates a remote namespace pointing to the data server,
-//! then demonstrates transparent query forwarding over gRPC.
-//!
-//! Start the data server first: `cargo run --bin router-data`
-//! Then run this: `cargo run --bin router`
-
 use reifydb::{Params, WithSubsystem, server};
 use tracing::info;
 

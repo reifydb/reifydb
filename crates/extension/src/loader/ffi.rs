@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Shared FFI library loading utilities
-//!
-//! Provides a `LibraryCache` for managing loaded shared libraries and common helpers
-//! for magic number validation, API version checking, and `BufferFFI` string extraction.
-
 use std::{
 	collections::HashMap,
 	path::{Path, PathBuf},

@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Comparison Operators Example
-//!
-//! Demonstrates comparison operators in ReifyDB's RQL:
-//! - Equality (==) and inequality (!=)
-//! - Less than (<) and less than or equal (<=)
-//! - Greater than (>) and greater than or equal (>=)
-//! - BETWEEN operator for range checks
-//! - Comparisons with different data types
-//!
-//! Run with: `make rql-comparison` or `cargo run --bin rql-comparison`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

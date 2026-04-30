@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Resource limits and configuration for WASM execution sandboxing.
-
 /// Configuration for WASM execution resource limits.
 #[derive(Debug, Clone)]
 pub struct WasmConfig {

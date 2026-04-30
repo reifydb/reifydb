@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Shared dispatch layer for all network transports.
-//!
-//! Pure helpers (`build_server_message`) live in `reifydb_core::actors::server`
-//! so both native transports and DST clients can share them.
-//! The async `dispatch()` / `dispatch_subscribe()` functions are the single
-//! entry points for native transport handlers.
-
 #[cfg(not(reifydb_single_threaded))]
 pub use native::{dispatch, dispatch_subscribe};
 

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Common storage tier traits and types.
-//!
-//! This module defines the minimal interface that all storage tiers (hot, warm, cold)
-//! must implement for single-version storage.
-
 use std::ops::Bound;
 
 use reifydb_type::{Result, util::cowvec::CowVec};

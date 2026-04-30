@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Flow compilation - compiles RQL physical plans into Flows
-//!
-//! This module uses AdminTransaction directly instead of being generic
-//! over MultiVersionAdminTransaction to avoid lifetime issues with async recursion.
-
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::flow::{

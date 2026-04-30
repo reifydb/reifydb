@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP router configuration.
-//!
-//! This module sets up the Axum router with all endpoints and middleware layers.
-
 use axum::{
 	Router,
 	routing::{any, get, post},

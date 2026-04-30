@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Token parsing for derive macro input.
-
 use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 
 use crate::generate::compile_error;

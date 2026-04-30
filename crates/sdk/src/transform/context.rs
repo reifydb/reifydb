@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Guest-side transform context.
-//!
-//! Mirrors `OperatorContext` but for the simpler transform call path:
-//! holds a raw `*mut ContextFFI`, exposes a `builder()` accessor for
-//! zero-copy output emission via the host's `BuilderCallbacks`.
-
 use reifydb_abi::context::context::ContextFFI;
 
 use crate::operator::builder::ColumnsBuilder;

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WebSocket server subsystem implementing the ReifyDB Subsystem trait.
-//!
-//! This module provides `WsSubsystem` which manages the lifecycle of the
-//! WebSocket server, including startup, connection tracking, and graceful shutdown.
-
 use std::{
 	any::Any,
 	io,

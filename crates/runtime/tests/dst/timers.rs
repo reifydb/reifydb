@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Tests for deterministic timer scheduling.
-
 use std::{
 	sync::{Arc, Mutex},
 	time::Duration,

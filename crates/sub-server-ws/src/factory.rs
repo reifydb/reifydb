@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Factory for creating WebSocket subsystem instances.
-
 use std::{sync::Arc, time::Duration};
 
 use reifydb_auth::{

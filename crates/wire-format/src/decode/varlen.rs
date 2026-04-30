@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Decoding for variable-length column types: Utf8, Blob, Int, Uint, Decimal.
-
 use std::str;
 
 use bigdecimal::BigDecimal;

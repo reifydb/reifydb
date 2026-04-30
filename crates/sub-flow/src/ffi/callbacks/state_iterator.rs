@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! State iterator management for FFI operators
-//!
-//! Manages iterators across the FFI boundary using a handle-based approach.
-//! Each thread maintains its own registry to eliminate contention.
-
 use std::{cell::RefCell, collections::HashMap};
 
 use reifydb_core::{

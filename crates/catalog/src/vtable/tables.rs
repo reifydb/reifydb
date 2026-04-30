@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Enum-based dispatch for virtual tables
-//!
-//! This module provides `VTableImpl`, an enum that wraps all virtual table
-//! implementations for static dispatch without trait objects.
-
 use std::sync::Arc;
 
 use reifydb_core::{interface::catalog::vtable::VTable, value::column::columns::Columns};

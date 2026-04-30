@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Tracing subsystem implementation
-//!
-//! This is a lightweight wrapper that integrates tracing_subscriber with the
-//! ReifyDB subsystem architecture. The actual logging/tracing functionality
-//! is handled by tracing_subscriber.
-
 use std::{
 	any::Any,
 	io::{Write, stderr, stdout},

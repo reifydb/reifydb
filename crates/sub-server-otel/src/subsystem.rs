@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! OpenTelemetry server subsystem implementing the ReifyDB Subsystem trait.
-
 use std::{
 	any::Any,
 	error,

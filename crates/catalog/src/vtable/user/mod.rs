@@ -1,40 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! User-facing API for defining virtual tables.
-//!
-//! This module provides simplified traits for users to implement custom virtual tables.
-//! Users can choose between two levels of abstraction:
-//!
-//! - [`UserVTable`]: Simple API for tables that can return all rows at once
-//! - [`UserVTableIterator`]: Advanced API for streaming large datasets with optional pushdown
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumn};
-//! use reifydb_type::value::r#type::Type;
-//! use reifydb_core::value::column::columns::Columns;
-//!
-//! struct MyApiTable {
-//!     api_client: ApiClient,
-//! }
-//!
-//! impl UserVTable for MyApiTable {
-//!     fn definition(&self) -> Vec<UserVTableColumn> {
-//!         vec![
-//!             UserVTableColumn::new("id", Type::Uint8),
-//!             UserVTableColumn::new("name", Type::Utf8),
-//!         ]
-//!     }
-//!
-//!     fn get(&self) -> Columns {
-//!         // Return column-oriented data
-//!         self.api_client.fetch_columns()
-//!     }
-//! }
-//! ```
-
 pub mod builder;
 pub mod registry;
 

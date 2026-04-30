@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP router configuration for the admin server.
-
 use axum::{
 	Router,
 	routing::{get, post},

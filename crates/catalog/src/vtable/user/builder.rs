@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Builder for user-defined virtual tables
-
 use std::sync::Arc;
 
 use reifydb_core::{

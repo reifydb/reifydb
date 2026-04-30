@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Memory implementation of PrimitiveStorage with split current/historical maps.
-//!
-//! Uses DashMap for per-table sharding and RwLock<BTreeMap> for concurrent access.
-//! Optimizes for the common case of reading latest versions by maintaining:
-//! - CurrentMap: Most recent version per logical key
-//! - HistoricalMap: All older versions for point-in-time queries
-
 use std::{cmp::Reverse, collections::HashMap, ops::Bound, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};

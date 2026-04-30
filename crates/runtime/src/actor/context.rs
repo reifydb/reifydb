@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Actor execution context.
-//!
-//! The context provides actors with access to:
-//! - Self reference for receiving messages
-//! - Actor system for spawning child actors
-//! - Cancellation status for graceful shutdown
-//! - Timer scheduling (when enabled)
-
 use std::{
 	sync::{
 		Arc,

@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Actor mailbox and message sending types.
-//!
-//! This module provides:
-//! - [`ActorRef`]: A handle for sending messages to an actor
-//! - [`SendError`]: Error type for failed sends
-//!
-//! # Platform Differences
-//!
-//! - **Native**: Uses `crossbeam-channel` for lock-free message passing between threads
-//! - **WASM**: Uses `Rc<RefCell>` processor for inline (synchronous) message handling
-
 #[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 use std::cell::{Cell, RefCell};
 use std::fmt;

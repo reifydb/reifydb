@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! `system::bindings` namespace bootstrap. Idempotent.
-
 use reifydb_core::{event::EventBus, interface::catalog::id::NamespaceId};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{

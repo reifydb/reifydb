@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Test helper functions for building Frame and FrameColumn instances.
-
 use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{

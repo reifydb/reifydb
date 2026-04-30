@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM flat binary marshalling and unmarshalling for columnar data
-//!
-//! Provides `marshal_columns_to_bytes` and `unmarshal_columns_from_bytes` which
-//! convert between `Columns` and a flat `Vec<u8>` using u32 offsets (no pointers),
-//! suitable for passing through WASM linear memory.
-
 use std::{mem, mem::size_of, ptr, slice, str};
 
 use postcard::{from_bytes, to_allocvec};

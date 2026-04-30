@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Dispatch bridge for Binding-driven calls.
-//!
-//! Synthesizes a `CALL ns::proc()` statement from a `Binding` + caller-supplied `Params`
-//! and routes it through the shared `dispatch::dispatch` pipeline. All three transport
-//! crates (HTTP, gRPC, WS) call this helper and wrap the returned `(Vec<Frame>, ExecutionMetrics)`
-//! in their own response envelope.
-
 #[cfg(not(reifydb_single_threaded))]
 use std::fmt::Write;
 

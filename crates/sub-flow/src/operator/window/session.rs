@@ -132,7 +132,6 @@ impl WindowOperator {
 	}
 }
 
-/// Process inserts for a single group in session windows
 fn process_session_group_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -148,77 +147,110 @@ fn process_session_group_insert(
 
 	let gap_ms = operator.session_gap_ms();
 	let timestamps = operator.resolve_event_timestamps(columns, row_count)?;
-
 	let (mut session_id, mut last_event_time) = operator.load_session_tracker(txn, group_hash)?;
 
 	for (row_idx, &event_timestamp) in timestamps.iter().enumerate() {
-		// Check if the gap has been exceeded → close old session, open new
 		let gap_exceeded = last_event_time > 0 && (event_timestamp - last_event_time) > gap_ms;
-
 		if gap_exceeded {
-			// Emit Remove for the old session before starting a new one
-			let pre_window_key = operator.create_window_key(group_hash, session_id);
-			let pre_state = operator.load_window_state(txn, &pre_window_key)?;
-			if !pre_state.events.is_empty()
-				&& let Some(layout) = &pre_state.window_layout
-				&& let Some((pre_row, _)) = operator.apply_aggregations(
-					txn,
-					&pre_window_key,
-					layout,
-					&pre_state.events,
-					changed_at,
-				)? {
-				result.push(Diff::remove(Columns::from_row(&pre_row)));
+			if let Some(diff) = close_session(operator, txn, group_hash, session_id, changed_at)? {
+				result.push(diff);
 			}
 			session_id += 1;
 		}
 
-		let window_key = operator.create_window_key(group_hash, session_id);
-		let mut window_state = operator.load_window_state(txn, &window_key)?;
-
-		let single_row_columns = columns.extract_row(row_idx);
-		let projected = operator.project_columns(&single_row_columns);
-		let row = projected.to_single_row();
-
-		if window_state.window_layout.is_none() {
-			window_state.window_layout = Some(WindowLayout::from_row(&row));
+		if let Some(diff) = append_event_to_session(
+			operator,
+			txn,
+			columns,
+			row_idx,
+			group_hash,
+			session_id,
+			event_timestamp,
+			changed_at,
+		)? {
+			result.push(diff);
 		}
-		let layout = window_state.layout().clone();
-
-		let previous_aggregation = if !window_state.events.is_empty() {
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
-		} else {
-			None
-		};
-
-		let event = WindowEvent::from_row(&row, event_timestamp);
-		let event_row_number = event.row_number;
-		window_state.events.push(event);
-		window_state.event_count += 1;
-		window_state.last_event_time = event_timestamp;
-
-		if window_state.window_start == 0 {
-			window_state.window_start = event_timestamp;
-		}
-
-		if let Some((aggregated_row, is_new)) =
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
-		{
-			result.push(WindowOperator::emit_aggregation_diff(
-				&aggregated_row,
-				is_new,
-				previous_aggregation,
-			));
-		}
-
-		operator.save_window_state(txn, &window_key, &window_state)?;
-		operator.store_row_index(txn, group_hash, event_row_number, session_id)?;
 		last_event_time = event_timestamp;
 	}
 
 	operator.save_session_tracker(txn, group_hash, session_id, last_event_time)?;
-
 	Ok(result)
+}
+
+#[inline]
+fn close_session(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	group_hash: Hash128,
+	session_id: u64,
+	changed_at: DateTime,
+) -> Result<Option<Diff>> {
+	let pre_window_key = operator.create_window_key(group_hash, session_id);
+	let pre_state = operator.load_window_state(txn, &pre_window_key)?;
+	if pre_state.events.is_empty() {
+		return Ok(None);
+	}
+	let Some(layout) = &pre_state.window_layout else {
+		return Ok(None);
+	};
+	let Some((pre_row, _)) =
+		operator.apply_aggregations(txn, &pre_window_key, layout, &pre_state.events, changed_at)?
+	else {
+		return Ok(None);
+	};
+	Ok(Some(Diff::remove(Columns::from_row(&pre_row))))
+}
+
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn append_event_to_session(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	columns: &Columns,
+	row_idx: usize,
+	group_hash: Hash128,
+	session_id: u64,
+	event_timestamp: u64,
+	changed_at: DateTime,
+) -> Result<Option<Diff>> {
+	let window_key = operator.create_window_key(group_hash, session_id);
+	let mut window_state = operator.load_window_state(txn, &window_key)?;
+
+	let single_row_columns = columns.extract_row(row_idx);
+	let projected = operator.project_columns(&single_row_columns);
+	let row = projected.to_single_row();
+
+	if window_state.window_layout.is_none() {
+		window_state.window_layout = Some(WindowLayout::from_row(&row));
+	}
+	let layout = window_state.layout().clone();
+
+	let previous_aggregation = if !window_state.events.is_empty() {
+		operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
+	} else {
+		None
+	};
+
+	let event = WindowEvent::from_row(&row, event_timestamp);
+	let event_row_number = event.row_number;
+	window_state.events.push(event);
+	window_state.event_count += 1;
+	window_state.last_event_time = event_timestamp;
+	if window_state.window_start == 0 {
+		window_state.window_start = event_timestamp;
+	}
+
+	let diff = if let Some((aggregated_row, is_new)) =
+		operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
+	{
+		Some(WindowOperator::emit_aggregation_diff(&aggregated_row, is_new, previous_aggregation))
+	} else {
+		None
+	};
+
+	operator.save_window_state(txn, &window_key, &window_state)?;
+	operator.store_row_index(txn, group_hash, event_row_number, session_id)?;
+	Ok(diff)
 }
 
 /// Apply changes for session windows (no time-based expiration - sessions close lazily)

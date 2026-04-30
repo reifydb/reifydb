@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! C ABI definitions for ReifyDB source and sink connectors
-
 pub mod sink;
 pub mod source;
 

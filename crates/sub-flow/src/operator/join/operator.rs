@@ -556,80 +556,81 @@ impl Operator for JoinOperator {
 		let mut found_columns: Vec<Columns> = Vec::new();
 
 		for &row_number in rows {
-			// Get the composite key for this row number (reverse lookup)
-			let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number)? else {
-				continue;
-			};
-
-			// Parse the composite key to extract left and optional right row numbers
-			let Some((left_row_number, right_row_number)) = Self::parse_composite_key(key.as_ref()) else {
-				continue;
-			};
-
-			// Get left columns from parent (no Row conversion)
-			let left_cols = self.left_parent.pull(txn, &[left_row_number])?;
-			if left_cols.is_empty() {
-				continue;
-			}
-
-			if let Some(right_row_num) = right_row_number {
-				// Matched join - has right row number
-				let right_cols = self.right_parent.pull(txn, &[right_row_num])?;
-				if !right_cols.is_empty() {
-					// Use JoinedColumnsBuilder to create joined columns
-					let builder = JoinedColumnsBuilder::new(&left_cols, &right_cols, &self.alias);
-					let mut joined = builder.join_single(row_number, &left_cols, &right_cols);
-					// Override the row number to match what was requested
-					joined.row_numbers = CowVec::new(vec![row_number]);
-					found_columns.push(joined);
-				}
-			} else {
-				// Unmatched left row - use builder.unmatched_left
-				let right_shape = self.right_parent.pull(txn, &[])?;
-				let builder = JoinedColumnsBuilder::new(&left_cols, &right_shape, &self.alias);
-				let mut unmatched = builder.unmatched_left(row_number, &left_cols, 0, &right_shape);
-				// Override the row number to match what was requested
-				unmatched.row_numbers = CowVec::new(vec![row_number]);
-				found_columns.push(unmatched);
+			if let Some(joined) = self.pull_one_joined_row(txn, row_number)? {
+				found_columns.push(joined);
 			}
 		}
 
-		// Combine found rows
 		if found_columns.is_empty() {
-			// Get shape from both parents and combine them
-			let left_shape = self.left_parent.pull(txn, &[])?;
-			let right_shape = self.right_parent.pull(txn, &[])?;
-
-			// Use JoinedColumnsBuilder to get properly aliased names
-			let builder = JoinedColumnsBuilder::new(&left_shape, &right_shape, &self.alias);
-			let right_names = builder.right_column_names();
-
-			// Add left columns as-is
-			let mut all_columns: Vec<ColumnWithName> = left_shape
-				.names
-				.iter()
-				.zip(left_shape.columns.iter())
-				.map(|(name, data)| ColumnWithName::new(name.clone(), data.clone()))
-				.collect();
-
-			// Add right columns with pre-computed aliased names
-			for (col, aliased_name) in right_shape.columns.into_iter().zip(right_names.iter()) {
-				all_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col));
-			}
-
-			Ok(Columns::new(all_columns))
-		} else if found_columns.len() == 1 {
-			Ok(found_columns.remove(0))
-		} else {
-			let mut result = found_columns.remove(0);
-			for cols in found_columns {
-				result.row_numbers.make_mut().extend(cols.row_numbers.iter().copied());
-				for (i, col) in cols.columns.into_iter().enumerate() {
-					result.columns.make_mut()[i].extend(col).expect("shape mismatch in join pull");
-				}
-			}
-			Ok(result)
+			return self.empty_joined_shape(txn);
 		}
+		if found_columns.len() == 1 {
+			return Ok(found_columns.remove(0));
+		}
+
+		let mut result = found_columns.remove(0);
+		for cols in found_columns {
+			result.row_numbers.make_mut().extend(cols.row_numbers.iter().copied());
+			for (i, col) in cols.columns.into_iter().enumerate() {
+				result.columns.make_mut()[i].extend(col).expect("shape mismatch in join pull");
+			}
+		}
+		Ok(result)
+	}
+}
+
+impl JoinOperator {
+	#[inline]
+	fn pull_one_joined_row(&self, txn: &mut FlowTransaction, row_number: RowNumber) -> Result<Option<Columns>> {
+		let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number)? else {
+			return Ok(None);
+		};
+		let Some((left_row_number, right_row_number)) = Self::parse_composite_key(key.as_ref()) else {
+			return Ok(None);
+		};
+
+		let left_cols = self.left_parent.pull(txn, &[left_row_number])?;
+		if left_cols.is_empty() {
+			return Ok(None);
+		}
+
+		if let Some(right_row_num) = right_row_number {
+			let right_cols = self.right_parent.pull(txn, &[right_row_num])?;
+			if right_cols.is_empty() {
+				return Ok(None);
+			}
+			let builder = JoinedColumnsBuilder::new(&left_cols, &right_cols, &self.alias);
+			let mut joined = builder.join_single(row_number, &left_cols, &right_cols);
+			joined.row_numbers = CowVec::new(vec![row_number]);
+			Ok(Some(joined))
+		} else {
+			let right_shape = self.right_parent.pull(txn, &[])?;
+			let builder = JoinedColumnsBuilder::new(&left_cols, &right_shape, &self.alias);
+			let mut unmatched = builder.unmatched_left(row_number, &left_cols, 0, &right_shape);
+			unmatched.row_numbers = CowVec::new(vec![row_number]);
+			Ok(Some(unmatched))
+		}
+	}
+
+	#[inline]
+	fn empty_joined_shape(&self, txn: &mut FlowTransaction) -> Result<Columns> {
+		let left_shape = self.left_parent.pull(txn, &[])?;
+		let right_shape = self.right_parent.pull(txn, &[])?;
+		let builder = JoinedColumnsBuilder::new(&left_shape, &right_shape, &self.alias);
+		let right_names = builder.right_column_names();
+
+		let mut all_columns: Vec<ColumnWithName> = left_shape
+			.names
+			.iter()
+			.zip(left_shape.columns.iter())
+			.map(|(name, data)| ColumnWithName::new(name.clone(), data.clone()))
+			.collect();
+
+		for (col, aliased_name) in right_shape.columns.into_iter().zip(right_names.iter()) {
+			all_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col));
+		}
+
+		Ok(Columns::new(all_columns))
 	}
 }
 

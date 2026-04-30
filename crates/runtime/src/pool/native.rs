@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Native thread pool implementation using rayon and tokio.
-
 use std::{future::Future, mem::ManuallyDrop, sync::Arc, time::Duration};
 
 use rayon::{ThreadPool, ThreadPoolBuilder};

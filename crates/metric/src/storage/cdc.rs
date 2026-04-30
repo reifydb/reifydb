@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! CDC (Change Data Capture) statistics types, reader, and writer.
-//!
-//! This module contains everything related to CDC metrics:
-//! - `CdcStats` - statistics for CDC entries
-//! - `CdcStatsWriter` - single writer for CDC statistics
-//! - `CdcStatsReader` - read-only access to CDC statistics
-
 use std::ops::AddAssign;
 
 use reifydb_core::{

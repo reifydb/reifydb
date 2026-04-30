@@ -4,10 +4,6 @@
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-//! WASI bridge for ReifyDB test suite.
-//!
-//! Implements a JSON stdin/stdout protocol and runs under wasmtime.
-
 use std::{
 	collections::HashMap,
 	error::Error,

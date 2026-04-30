@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Constants and version information for the FFI operator API
-
 /// Current API version
 ///
 /// This version must be incremented when making breaking changes to the FFI interface.

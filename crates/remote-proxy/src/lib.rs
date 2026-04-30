@@ -4,11 +4,6 @@
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-//! Remote subscription proxy.
-//!
-//! Provides connection and proxy logic for remote subscriptions,
-//! used by both gRPC and WebSocket server subsystems.
-
 use std::fmt;
 
 use reifydb_client::{GrpcClient, GrpcSubscription, RawChangePayload, WireFormat};

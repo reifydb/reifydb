@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Actor implementation for the admin server.
-//!
-//! The actor handles auth and execute operations.
-//! The same `handle()` code runs in both native (rayon pool) and DST modes.
-
 use reifydb_core::actors::admin::{
 	AdminAuthStatusResponse, AdminExecuteResponse, AdminLoginResponse, AdminLogoutResponse, AdminMessage,
 };

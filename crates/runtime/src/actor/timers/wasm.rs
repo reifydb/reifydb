@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM timer implementation using setTimeout/setInterval.
-//!
-//! Uses direct global bindings so the timers work in both browser and Node.js
-//! environments (web_sys::window() only works in browsers).
-//!
-//! Timer handles are stored as `JsValue` because browsers return numeric IDs
-//! while Node.js returns `Timeout` objects.
-
 use std::{cell::RefCell, rc::Rc, sync::atomic::Ordering, time::Duration};
 
 use js_sys::Function;

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Builder for configuring console output settings
-
 /// Builder for configuring console output with fluent API
 ///
 /// This builder configures how tracing_subscriber outputs to the console.

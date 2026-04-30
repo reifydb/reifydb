@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Unified actor system for ReifyDB.
-//!
-//! This module provides a unified system for all concurrent work:
-//! - **Actor spawning** on a shared work-stealing pool
-//! - **CPU-bound compute** with admission control
-//!
-//! # Platform Differences
-//!
-//! - **Native**: Rayon thread pool for all actors
-//! - **WASM**: All operations execute inline (synchronously)
-
 #[cfg(reifydb_target = "dst")]
 pub mod dst;
 

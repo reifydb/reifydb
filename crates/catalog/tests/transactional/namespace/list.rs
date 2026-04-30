@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Combined create+drop within a single transaction exercises the most
-//! sensitive code path for list methods that merge transactional changes with
-//! materialized state: both the "add uncommitted create" and "subtract
-//! uncommitted delete" branches run in the same call.
-
 use reifydb_engine::test_prelude::*;
 use reifydb_transaction::transaction::Transaction;
 

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Storage and CDC statistics events.
-//!
-//! These events are emitted when storage operations occur that need stats tracking.
-//! The metrics worker listens to these events and updates storage statistics.
-
 use reifydb_type::value::{datetime::DateTime, duration::Duration};
 use serde::{Deserialize, Serialize};
 

@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Regression tests for the columnar VM batch-UDF path.
-//!
-//! Exercises UDF bodies containing each of the instructions that live in the
-//! `is_vectorizable` whitelist: logical operators (AND/OR/XOR), BETWEEN, IN,
-//! CAST, and conditional jumps via IF. A UDF invoked over a multi-row input
-//! table must take the batch path in `UdfEvalNode::next` and produce the same
-//! results the per-row scalar fallback would have produced.
-
 use reifydb_engine::test_prelude::*;
 
 fn setup() -> TestEngine {

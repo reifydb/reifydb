@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for WebSocket subscriptions
-//! Ported from TypeScript storage tests in pkg/typescript/client/tests/storage/ws/subscription.test::ts
-//!
-//! These tests focus on connection reliability by repeatedly connecting to the same server instance.
-
 use std::{
 	collections::HashSet,
 	error::Error,

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Shared test helpers and macros for wire-format encoding tests.
 #![allow(dead_code)]
 
 use reifydb_type::value::{

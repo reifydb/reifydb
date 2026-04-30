@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Native stateful op driven through the per-txn state cache: load once on
-//! first apply, hit cache on subsequent batches (Change 1 native flavor).
-//! Compared against a flush-every-batch baseline to confirm the cache
-//! pays off.
-
 #![allow(clippy::needless_range_loop)]
 
 #[path = "common.rs"]

@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Shared infrastructure for the per-type FFI round-trip tests.
-//!
-//! Each per-type test file constructs a single-column input `ColumnBuffer`
-//! and calls `round_trip_column`. That builds a `Change`, drives it through
-//! `OperatorTestHarness<PassthroughOperator>`, and returns the output
-//! `ColumnBuffer` from the operator's emit. `assert_column_eq` then compares
-//! the input vs the output element by element with NaN-aware float
-//! comparisons. Any mismatch indicates a defect somewhere on the host
-//! marshal -> SDK borrow -> SDK builder -> host commit -> finalize_buffer
-//! path.
-
 #![allow(dead_code)]
 
 use std::collections::HashMap;

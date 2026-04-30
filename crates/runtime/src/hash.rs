@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Hash types and functions for ReifyDB.
-//!
-//! Provides xxHash3 hashing using pure Rust implementation that works
-//! on both native and WASM targets.
-
 use core::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};

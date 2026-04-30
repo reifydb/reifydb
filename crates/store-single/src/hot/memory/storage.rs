@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Memory implementation of single-version storage.
-//!
-//! Uses a single BTreeMap wrapped in Arc<RwLock> for concurrent access.
-
 use std::{collections::BTreeMap, ops::Bound, sync::Arc};
 
 use reifydb_runtime::sync::rwlock::RwLock;

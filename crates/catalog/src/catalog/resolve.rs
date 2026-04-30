@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Catalog entity resolution methods.
-//!
-//! These methods resolve catalog entity IDs to their fully resolved
-//! counterparts, including namespace resolution and identifier creation.
-
 use reifydb_core::interface::{
 	catalog::id::{NamespaceId, RingBufferId, TableId, ViewId},
 	resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedView},

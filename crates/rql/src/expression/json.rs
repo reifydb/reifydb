@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! JSON serialization for Expression types.
-//!
-//! This module provides clean JSON serialization that:
-//! - Skips Fragment source location metadata (line/column positions)
-//! - Preserves semantic data only (values, types, names)
-//! - Supports round-trip serialization/deserialization
-//! - Is suitable for frontend query builders
-
 use std::sync::Arc;
 
 use reifydb_core::{

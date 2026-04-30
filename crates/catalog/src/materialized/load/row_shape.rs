@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RowShape loading from storage into MaterializedCatalog.
-
 use reifydb_transaction::transaction::Transaction;
 use tracing::{Span, field, instrument};
 

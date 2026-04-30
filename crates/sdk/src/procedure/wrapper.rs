@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Wrapper that bridges Rust procedures to FFI interface.
-//!
-//! Zero-copy ABI: output is emitted via `ctx.builder()` directly into
-//! host-pool buffers. The only owned guest-side allocation is the postcard
-//! params decode (input is a `&[u8]`, not a `Columns`).
-
 use std::{
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},

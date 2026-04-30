@@ -1,22 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Reuse pool of `Arc<T>` slabs.
-//!
-//! A `Slab<T>` lets a producer hand out `Arc<T>` instances, send them
-//! through downstream consumers (which clone the `Arc` to share state),
-//! and reclaim the original allocation once consumers drop their clones.
-//! On the next acquire, the producer pulls a slab whose `strong_count`
-//! has returned to 1 and overwrites it in place via `Arc::make_mut`,
-//! preserving the inner allocation's capacity instead of reallocating.
-//!
-//! Designed for hot paths that build many short-lived `Arc<T>` values of
-//! similar shape (for example the CDC producer's per-row column buffers).
-//!
-//! Slabs are bounded by a configurable cap so a transient burst does not
-//! retain unlimited capacity. Slabs that would push the pool past its cap
-//! are dropped and reclaimed by the allocator instead.
-
 use std::sync::Arc;
 
 use reifydb_runtime::sync::mutex::Mutex;

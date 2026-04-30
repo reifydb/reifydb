@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! SQLite implementation of single-version storage.
-//!
-//! Uses a single table for persistent key-value storage with thread-safe access.
-
 use std::{ops::Bound, sync::Arc};
 
 use reifydb_core::internal_error;

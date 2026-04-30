@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Unified server actor for HTTP, gRPC, and WebSocket transports.
-//!
-//! The same `handle()` code runs in both native (rayon pool) and DST modes.
-//! Protocol-specific concerns (serialization, HTTP status codes, etc.) live in
-//! the transport layer - this actor only does engine dispatch and auth.
-
 use reifydb_auth::service::{AuthResponse, AuthService};
 use reifydb_core::{
 	actors::server::{

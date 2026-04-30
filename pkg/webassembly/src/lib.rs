@@ -4,11 +4,6 @@
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-//! WebAssembly bindings for ReifyDB query engine
-//!
-//! This crate provides JavaScript-compatible bindings for running ReifyDB
-//! queries in a browser or Node.js environment with in-memory storage.
-
 use std::{
 	cell::{Cell, RefCell},
 	collections::HashMap,

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! GC (garbage collection) events.
-
 use std::collections::HashMap;
 
 use crate::interface::catalog::shape::ShapeId;

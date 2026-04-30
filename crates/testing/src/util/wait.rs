@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Wait utilities for testing
-//!
-//! Provides utilities for waiting on conditions in tests without using fixed
-//! sleeps, making tests both faster and more reliable.
-
 use std::time::{Duration, Instant};
 
 use tokio::time::sleep;

@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! DST (deterministic simulation testing) client for the server actor.
-//!
-//! Provides a synchronous client that sends `ServerMessage`s to the unified
-//! `ServerActor` and reads replies after `run_until_idle()`. There is no
-//! protocol distinction in DST - all operations go through the same actor.
-
 use std::collections::HashMap;
 
 use reifydb_core::actors::server::{

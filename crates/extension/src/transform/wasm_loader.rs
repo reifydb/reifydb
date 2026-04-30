@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM transform loader - scans a directory for `.wasm` files and builds a transform registry
-
 use std::{fs, path::Path};
 
 use reifydb_sdk::error::FFIError;

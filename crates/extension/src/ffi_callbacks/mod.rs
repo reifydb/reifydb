@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Shared FFI runtime infrastructure: builder registry / callbacks used by
-//! every native FFI extension point (operators, transforms, procedures).
-//!
-//! `BuilderRegistry` plus the host-side builder callbacks lets a guest emit
-//! output columns by writing directly into host-pool-owned buffers, instead
-//! of allocating its own `Columns` and round-tripping through a marshal/
-//! unmarshal copy.
-
 pub mod builder;
 pub mod panic;
 

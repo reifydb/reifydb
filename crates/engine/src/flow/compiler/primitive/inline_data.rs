@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Compilation of inline data operations
-
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{flow::node::FlowNodeType, nodes::InlineDataNode};
 use reifydb_transaction::transaction::Transaction;

@@ -1,20 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Per-type reuse pool for `ColumnBuffer`.
-//!
-//! Buckets buffers by their concrete `Type` discriminant. `acquire(target,
-//! min_capacity)` returns the smallest pooled buffer whose capacity is at
-//! least `min_capacity` (best-fit), falling back to `ColumnBuffer::with_capacity`
-//! when the bucket is empty or holds nothing big enough. `release(buf)` clears
-//! the buffer (preserving capacity) and indexes it by its `get_type()`.
-//!
-//! Polymorphic and variable-shape types (`Option(_)`, `Any`, `List(_)`,
-//! `Record(_)`, `Tuple(_)`) are not pooled - `acquire` for them always
-//! allocates fresh and `release` drops them. The wrapper allocations for
-//! these types are rare in CDC hot paths and would either bloat the pool
-//! with seldom-reused shapes or churn with cache misses.
-
 use std::collections::HashMap;
 
 use reifydb_runtime::sync::mutex::Mutex;

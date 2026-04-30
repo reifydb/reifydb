@@ -3,41 +3,6 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]
-
-//! Runtime management for ReifyDB.
-//!
-//! This crate provides a facade over platform-specific runtime implementations:
-//! - **Native**: tokio multi-threaded runtime + rayon-based actor system
-//! - **WASM**: Single-threaded execution with sequential processing
-//!
-//! The API is identical across platforms, with compile-time dispatch ensuring
-//! zero runtime overhead.
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
-//!
-//! // Create a runtime with default configuration
-//! let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default());
-//!
-//! // Or with custom configuration
-//! let config = SharedRuntimeConfig::default()
-//!     .async_threads(4)
-//!     .system_threads(4)
-//!     .query_threads(4);
-//! let runtime = SharedRuntime::from_config(config);
-//!
-//! // Spawn async work
-//! runtime.spawn(async {
-//!     // async work here
-//! });
-//!
-//! // Use the actor system for spawning actors
-//! let system = runtime.actor_system();
-//! let handle = system.spawn("my-actor", MyActor::new());
-//! ```
-
 #![allow(dead_code)]
 
 pub mod context;

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Common storage tier traits and types.
-//!
-//! This module defines the minimal interface that all storage tiers (hot, warm, cold)
-//! must implement. All MVCC, CDC, and routing logic belongs in the store layer above.
-
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};

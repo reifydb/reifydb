@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Random number generation abstraction.
-//!
-//! Provides an `Rng` enum that can use either OS entropy or a deterministic seed.
-
 use std::sync::{Arc, Mutex};
 
 use getrandom::fill as getrandom_fill;

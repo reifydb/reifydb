@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI context utilities for operators
-
 use core::ffi::c_void;
 
 use reifydb_abi::{callbacks::host::HostCallbacks, context::context::ContextFFI};

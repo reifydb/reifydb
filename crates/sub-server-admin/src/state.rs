@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Application state shared across admin request handler.
-
 use std::time::Duration;
 
 use reifydb_core::actors::admin::AdminMessage;

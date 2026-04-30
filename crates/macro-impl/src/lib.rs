@@ -2,13 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
-
-//! Implementation for ReifyDB derive macros.
-//!
-//! This crate provides the implementation logic used by proc-macro crates.
-//! It's not intended for direct use - use `reifydb-macro`, `reifydb-derive`,
-//! or `reifydb-client-derive` instead.
-
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 

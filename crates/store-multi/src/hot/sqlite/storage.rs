@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! SQLite implementation of PrimitiveStorage with MVCC versioning.
-//!
-//! Uses SQLite tables with (key, version) composite primary key for persistent
-//! multi-version storage. All operations use a single connection protected by
-//! Mutex for thread safety.
-
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, error::diagnostic::internal::internal, interface::store::EntryKind};

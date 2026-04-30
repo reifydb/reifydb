@@ -86,7 +86,6 @@ impl LeftHashJoin {
 		}
 	}
 
-	/// Handle insert for rows with defined join keys (batched by key)
 	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -98,81 +97,78 @@ impl LeftHashJoin {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
+		match ctx.side {
+			JoinSide::Left => self.handle_insert_left(txn, post, indices, key_hash, ctx),
+			JoinSide::Right => self.handle_insert_right(txn, post, indices, key_hash, ctx),
+		}
+	}
+
+	#[inline]
+	fn handle_insert_left(
+		&self,
+		txn: &mut FlowTransaction,
+		post: &Columns,
+		indices: &[usize],
+		key_hash: &Hash128,
+		ctx: &mut JoinContext,
+	) -> Result<Vec<Diff>> {
+		add_to_state_entry_batch(txn, &mut ctx.state.left, key_hash, post, indices)?;
+
+		let emit_ctx = JoinEmitContext {
+			opposite_store: &ctx.state.right,
+			key_hash,
+			operator: ctx.operator,
+			opposite_parent: &ctx.operator.right_parent,
+		};
+
+		if let Some(diff) = emit_joined_columns_batch(txn, post, indices, JoinSide::Left, &emit_ctx)? {
+			return Ok(vec![diff]);
+		}
+		let unmatched = ctx.operator.unmatched_left_columns_batch(txn, post, indices)?;
+		Ok(vec![Diff::insert(unmatched)])
+	}
+
+	#[inline]
+	fn handle_insert_right(
+		&self,
+		txn: &mut FlowTransaction,
+		post: &Columns,
+		indices: &[usize],
+		key_hash: &Hash128,
+		ctx: &mut JoinContext,
+	) -> Result<Vec<Diff>> {
+		let is_first = is_first_right_row(txn, &ctx.state.right, key_hash)?;
+		add_to_state_entry_batch(txn, &mut ctx.state.right, key_hash, post, indices)?;
 
 		let mut result = Vec::new();
-
-		match ctx.side {
-			JoinSide::Left => {
-				// Add all rows to state first
-				add_to_state_entry_batch(txn, &mut ctx.state.left, key_hash, post, indices)?;
-
-				let emit_ctx = JoinEmitContext {
-					opposite_store: &ctx.state.right,
-					key_hash,
-					operator: ctx.operator,
-					opposite_parent: &ctx.operator.right_parent,
-				};
-
-				// Check if there are matching right rows
-				if let Some(diff) =
-					emit_joined_columns_batch(txn, post, indices, JoinSide::Left, &emit_ctx)?
-				{
-					result.push(diff);
-				} else {
-					// No matches - emit unmatched left rows for all
-					let unmatched =
-						ctx.operator.unmatched_left_columns_batch(txn, post, indices)?;
-					result.push(Diff::insert(unmatched));
-				}
-			}
-			JoinSide::Right => {
-				let is_first = is_first_right_row(txn, &ctx.state.right, key_hash)?;
-
-				// Add all rows to state first
-				add_to_state_entry_batch(txn, &mut ctx.state.right, key_hash, post, indices)?;
-
-				// If first right row(s), remove previously emitted unmatched left rows.
-				// Pull via `pull_from_store` so we read the state's cached column
-				// snapshot - `parent.pull` fails for transactional cross-view joins
-				// because the parent view's rows aren't committed yet.
-				if is_first && ctx.state.left.get(txn, key_hash)?.is_some() {
-					let left_columns = pull_left_columns(
-						txn,
-						&ctx.state.left,
-						key_hash,
-						&ctx.operator.left_parent,
-					)?;
-					if left_columns.has_rows() {
-						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
-						let unmatched = ctx.operator.unmatched_left_columns_batch(
-							txn,
-							&left_columns,
-							&left_indices,
-						)?;
-						result.push(Diff::remove(unmatched));
-					}
-				}
-
-				let emit_ctx = JoinEmitContext {
-					opposite_store: &ctx.state.left,
-					key_hash,
-					operator: ctx.operator,
-					opposite_parent: &ctx.operator.left_parent,
-				};
-
-				// Emit all joined rows in one batch
-				if let Some(diff) =
-					emit_joined_columns_batch(txn, post, indices, JoinSide::Right, &emit_ctx)?
-				{
-					result.push(diff);
-				}
+		// First right row(s): remove previously emitted unmatched left rows.
+		// Pull via `pull_from_store` so we read the state's cached column snapshot;
+		// `parent.pull` fails for transactional cross-view joins because the parent
+		// view's rows aren't committed yet.
+		if is_first && ctx.state.left.get(txn, key_hash)?.is_some() {
+			let left_columns =
+				pull_left_columns(txn, &ctx.state.left, key_hash, &ctx.operator.left_parent)?;
+			if left_columns.has_rows() {
+				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
+				let unmatched =
+					ctx.operator.unmatched_left_columns_batch(txn, &left_columns, &left_indices)?;
+				result.push(Diff::remove(unmatched));
 			}
 		}
 
+		let emit_ctx = JoinEmitContext {
+			opposite_store: &ctx.state.left,
+			key_hash,
+			operator: ctx.operator,
+			opposite_parent: &ctx.operator.left_parent,
+		};
+
+		if let Some(diff) = emit_joined_columns_batch(txn, post, indices, JoinSide::Right, &emit_ctx)? {
+			result.push(diff);
+		}
 		Ok(result)
 	}
 
-	/// Handle remove for rows with defined join keys (batched by key)
 	pub(crate) fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
@@ -184,94 +180,93 @@ impl LeftHashJoin {
 		if indices.is_empty() {
 			return Ok(Vec::new());
 		}
-
-		let mut result = Vec::new();
-
 		match ctx.side {
-			JoinSide::Left => {
-				// Clean up row number mappings for all left rows
-				for &idx in indices {
-					let row_number = pre.row_numbers[idx];
-					ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
-				}
+			JoinSide::Left => self.handle_remove_left(txn, pre, indices, key_hash, ctx),
+			JoinSide::Right => self.handle_remove_right(txn, pre, indices, key_hash, ctx),
+		}
+	}
 
-				let emit_ctx = JoinEmitContext {
-					opposite_store: &ctx.state.right,
-					key_hash,
-					operator: ctx.operator,
-					opposite_parent: &ctx.operator.right_parent,
-				};
-
-				// First emit all remove diffs in one batch
-				if let Some(diff) =
-					emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Left, &emit_ctx)?
-				{
-					result.push(diff);
-				} else {
-					// No joined rows to remove - remove unmatched left rows
-					let unmatched = ctx.operator.unmatched_left_columns_batch(txn, pre, indices)?;
-					result.push(Diff::remove(unmatched));
-				}
-
-				// Then remove all rows from state
-				for &idx in indices {
-					let row_number = pre.row_numbers[idx];
-					remove_from_state_entry(txn, &mut ctx.state.left, key_hash, row_number)?;
-				}
-			}
-			JoinSide::Right => {
-				let emit_ctx = JoinEmitContext {
-					opposite_store: &ctx.state.left,
-					key_hash,
-					operator: ctx.operator,
-					opposite_parent: &ctx.operator.left_parent,
-				};
-
-				// First emit all remove diffs in one batch
-				if let Some(diff) =
-					emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Right, &emit_ctx)?
-				{
-					result.push(diff);
-				}
-
-				// Check if this will make right entries empty
-				let will_become_empty = if let Some(entry) = ctx.state.right.get(txn, key_hash)? {
-					entry.rows.len() <= indices.len()
-				} else {
-					false
-				};
-
-				// Remove all rows from state
-				for &idx in indices {
-					let row_number = pre.row_numbers[idx];
-					remove_from_state_entry(txn, &mut ctx.state.right, key_hash, row_number)?;
-				}
-
-				// If right side became empty, re-emit left rows as unmatched
-				if will_become_empty && !ctx.state.right.contains_key(txn, key_hash)? {
-					let left_columns = pull_left_columns(
-						txn,
-						&ctx.state.left,
-						key_hash,
-						&ctx.operator.left_parent,
-					)?;
-					if left_columns.has_rows() {
-						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
-						let unmatched = ctx.operator.unmatched_left_columns_batch(
-							txn,
-							&left_columns,
-							&left_indices,
-						)?;
-						result.push(Diff::insert(unmatched));
-					}
-				}
-			}
+	#[inline]
+	fn handle_remove_left(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		indices: &[usize],
+		key_hash: &Hash128,
+		ctx: &mut JoinContext,
+	) -> Result<Vec<Diff>> {
+		for &idx in indices {
+			let row_number = pre.row_numbers[idx];
+			ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
 		}
 
+		let emit_ctx = JoinEmitContext {
+			opposite_store: &ctx.state.right,
+			key_hash,
+			operator: ctx.operator,
+			opposite_parent: &ctx.operator.right_parent,
+		};
+
+		let mut result = Vec::new();
+		if let Some(diff) = emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Left, &emit_ctx)? {
+			result.push(diff);
+		} else {
+			let unmatched = ctx.operator.unmatched_left_columns_batch(txn, pre, indices)?;
+			result.push(Diff::remove(unmatched));
+		}
+
+		for &idx in indices {
+			let row_number = pre.row_numbers[idx];
+			remove_from_state_entry(txn, &mut ctx.state.left, key_hash, row_number)?;
+		}
 		Ok(result)
 	}
 
-	/// Handle update for rows with defined join keys (batched by key)
+	#[inline]
+	fn handle_remove_right(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		indices: &[usize],
+		key_hash: &Hash128,
+		ctx: &mut JoinContext,
+	) -> Result<Vec<Diff>> {
+		let emit_ctx = JoinEmitContext {
+			opposite_store: &ctx.state.left,
+			key_hash,
+			operator: ctx.operator,
+			opposite_parent: &ctx.operator.left_parent,
+		};
+
+		let mut result = Vec::new();
+		if let Some(diff) = emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Right, &emit_ctx)? {
+			result.push(diff);
+		}
+
+		let will_become_empty = if let Some(entry) = ctx.state.right.get(txn, key_hash)? {
+			entry.rows.len() <= indices.len()
+		} else {
+			false
+		};
+
+		for &idx in indices {
+			let row_number = pre.row_numbers[idx];
+			remove_from_state_entry(txn, &mut ctx.state.right, key_hash, row_number)?;
+		}
+
+		if will_become_empty && !ctx.state.right.contains_key(txn, key_hash)? {
+			let left_columns =
+				pull_left_columns(txn, &ctx.state.left, key_hash, &ctx.operator.left_parent)?;
+			if left_columns.has_rows() {
+				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
+				let unmatched =
+					ctx.operator.unmatched_left_columns_batch(txn, &left_columns, &left_indices)?;
+				result.push(Diff::insert(unmatched));
+			}
+		}
+		Ok(result)
+	}
+
 	pub(crate) fn handle_update(
 		&self,
 		txn: &mut FlowTransaction,
@@ -285,109 +280,83 @@ impl LeftHashJoin {
 			return Ok(Vec::new());
 		}
 
-		let mut result = Vec::new();
-
-		if keys.pre == keys.post {
-			// Key didn't change, update in place
-			for &row_idx in indices {
-				let pre_row_number = pre.row_numbers[row_idx];
-				let post_row_number = post.row_numbers[row_idx];
-
-				match ctx.side {
-					JoinSide::Left => {
-						if update_row_in_entry(
-							txn,
-							&mut ctx.state.left,
-							keys.pre,
-							pre_row_number,
-							post_row_number,
-						)? {
-							let emit_ctx = JoinEmitContext {
-								opposite_store: &ctx.state.right,
-								key_hash: keys.pre,
-								operator: ctx.operator,
-								opposite_parent: &ctx.operator.right_parent,
-							};
-
-							if let Some(diff) = emit_update_joined_columns(
-								txn,
-								pre,
-								post,
-								row_idx,
-								JoinSide::Left,
-								&emit_ctx,
-							)? {
-								result.push(diff);
-							} else {
-								let unmatched_pre = ctx
-									.operator
-									.unmatched_left_columns(txn, pre, row_idx)?;
-								let unmatched_post = ctx
-									.operator
-									.unmatched_left_columns(txn, post, row_idx)?;
-								result.push(Diff::update(
-									unmatched_pre,
-									unmatched_post,
-								));
-							}
-						} else {
-							let insert_diffs = self.handle_insert(
-								txn,
-								post,
-								&[row_idx],
-								keys.post,
-								ctx,
-							)?;
-							result.extend(insert_diffs);
-						}
-					}
-					JoinSide::Right => {
-						if update_row_in_entry(
-							txn,
-							&mut ctx.state.right,
-							keys.pre,
-							pre_row_number,
-							post_row_number,
-						)? {
-							let emit_ctx = JoinEmitContext {
-								opposite_store: &ctx.state.left,
-								key_hash: keys.pre,
-								operator: ctx.operator,
-								opposite_parent: &ctx.operator.left_parent,
-							};
-
-							if let Some(diff) = emit_update_joined_columns(
-								txn,
-								pre,
-								post,
-								row_idx,
-								JoinSide::Right,
-								&emit_ctx,
-							)? {
-								result.push(diff);
-							}
-						} else {
-							let insert_diffs = self.handle_insert(
-								txn,
-								post,
-								&[row_idx],
-								keys.post,
-								ctx,
-							)?;
-							result.extend(insert_diffs);
-						}
-					}
-				}
-			}
-		} else {
-			// Key changed - treat as remove + insert
-			let remove_diffs = self.handle_remove(txn, pre, indices, keys.pre, ctx)?;
-			result.extend(remove_diffs);
-
-			let insert_diffs = self.handle_insert(txn, post, indices, keys.post, ctx)?;
-			result.extend(insert_diffs);
+		// Key changed: treat as remove + insert.
+		if keys.pre != keys.post {
+			let mut result = self.handle_remove(txn, pre, indices, keys.pre, ctx)?;
+			result.extend(self.handle_insert(txn, post, indices, keys.post, ctx)?);
+			return Ok(result);
 		}
 
+		let mut result = Vec::new();
+		for &row_idx in indices {
+			let diffs = match ctx.side {
+				JoinSide::Left => self.update_in_place_left(txn, pre, post, row_idx, keys, ctx)?,
+				JoinSide::Right => self.update_in_place_right(txn, pre, post, row_idx, keys, ctx)?,
+			};
+			result.extend(diffs);
+		}
 		Ok(result)
+	}
+
+	#[inline]
+	fn update_in_place_left(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		post: &Columns,
+		row_idx: usize,
+		keys: UpdateKeys,
+		ctx: &mut JoinContext,
+	) -> Result<Vec<Diff>> {
+		let pre_row_number = pre.row_numbers[row_idx];
+		let post_row_number = post.row_numbers[row_idx];
+
+		if !update_row_in_entry(txn, &mut ctx.state.left, keys.pre, pre_row_number, post_row_number)? {
+			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
+		}
+
+		let emit_ctx = JoinEmitContext {
+			opposite_store: &ctx.state.right,
+			key_hash: keys.pre,
+			operator: ctx.operator,
+			opposite_parent: &ctx.operator.right_parent,
+		};
+
+		if let Some(diff) = emit_update_joined_columns(txn, pre, post, row_idx, JoinSide::Left, &emit_ctx)? {
+			return Ok(vec![diff]);
+		}
+		let unmatched_pre = ctx.operator.unmatched_left_columns(txn, pre, row_idx)?;
+		let unmatched_post = ctx.operator.unmatched_left_columns(txn, post, row_idx)?;
+		Ok(vec![Diff::update(unmatched_pre, unmatched_post)])
+	}
+
+	#[inline]
+	fn update_in_place_right(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		post: &Columns,
+		row_idx: usize,
+		keys: UpdateKeys,
+		ctx: &mut JoinContext,
+	) -> Result<Vec<Diff>> {
+		let pre_row_number = pre.row_numbers[row_idx];
+		let post_row_number = post.row_numbers[row_idx];
+
+		if !update_row_in_entry(txn, &mut ctx.state.right, keys.pre, pre_row_number, post_row_number)? {
+			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
+		}
+
+		let emit_ctx = JoinEmitContext {
+			opposite_store: &ctx.state.left,
+			key_hash: keys.pre,
+			operator: ctx.operator,
+			opposite_parent: &ctx.operator.left_parent,
+		};
+
+		match emit_update_joined_columns(txn, pre, post, row_idx, JoinSide::Right, &emit_ctx)? {
+			Some(diff) => Ok(vec![diff]),
+			None => Ok(Vec::new()),
+		}
 	}
 }

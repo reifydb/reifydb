@@ -1,49 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Request-level interceptors for pre/post query execution hooks.
-//!
-//! This module provides an async interceptor mechanism that allows consumers
-//! to hook into the request lifecycle - before and after query execution.
-//! Interceptors can reject requests (for auth, rate limiting, credit checks)
-//! or observe results (for logging, billing, usage tracking).
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reifydb::server;
-//!
-//! struct MyInterceptor;
-//!
-//! impl RequestInterceptor for MyInterceptor {
-//!     fn pre_execute(&self, ctx: &mut RequestContext)
-//!         -> Pin<Box<dyn Future<Output = Result<(), ExecuteError>> + Send + '_>>
-//!     {
-//!         Box::pin(async move {
-//!             if ctx.metadata.get("authorization").is_none() {
-//!                 return Err(ExecuteError::Rejected {
-//!                     code: "AUTH_REQUIRED".into(),
-//!                     message: "Missing API key".into(),
-//!                 });
-//!             }
-//!             Ok(())
-//!         })
-//!     }
-//!
-//!     fn post_execute(&self, ctx: &ResponseContext)
-//!         -> Pin<Box<dyn Future<Output = ()> + Send + '_>>
-//!     {
-//!         Box::pin(async move {
-//!             tracing::info!("query executed: {:?}", ctx.metrics.total);
-//!         })
-//!     }
-//! }
-//!
-//! let db = server::memory()
-//!     .with_request_interceptor(MyInterceptor)
-//!     .build()?;
-//! ```
-
 use std::{collections::HashMap, future::Future, panic::AssertUnwindSafe, pin::Pin, sync::Arc};
 
 use futures_util::FutureExt;

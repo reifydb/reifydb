@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Native mailbox implementation using crossbeam-channel.
-
 use std::{fmt, sync, sync::Arc, time::Duration};
 
 use crossbeam_channel::{

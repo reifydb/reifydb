@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Row-number optimized access nodes for O(1) and O(k) lookups.
-//!
-//! These nodes bypass full table scans when filtering by row number:
-//! - `RowPointLookupNode`: Single row O(1) lookup
-//! - `RowListLookupNode`: Multiple discrete rows O(k) lookup
-//! - `RowRangeScanNode`: Row number range scan
-
 use std::{iter, sync::Arc};
 
 use reifydb_core::{

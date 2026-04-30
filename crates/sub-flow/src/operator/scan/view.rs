@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	encoded::shape::RowShape,
+	encoded::shape::{RowShape, RowShapeField},
 	interface::{
 		catalog::{flow::FlowNodeId, shape::ShapeId, view::View},
 		change::{Change, ChangeOrigin, Diff},
@@ -134,61 +134,42 @@ impl Operator for PrimitiveViewOperator {
 		let shape: RowShape = self.view.columns().into();
 		let fields = shape.fields();
 
-		// Build the in-transaction overlay for this view (sibling views' outputs
-		// produced earlier in the same pre-commit). Empty for Deferred / Ephemeral
-		// transactions - those read everything from committed storage.
 		// Hold the Arc in a local so the overlay HashMap (which borrows from it)
-		// stays alive across the subsequent mutable borrow for `txn.get`.
+		// stays alive across the subsequent mutable borrow for `txn.get`. The
+		// overlay reflects sibling views' outputs produced earlier in the same
+		// pre-commit; it's empty for Deferred / Ephemeral transactions.
 		let overlay_arc = txn.view_overlay();
 		let overlay = overlay_arc
 			.as_deref()
 			.map(|o| build_view_overlay(o.as_slice(), self.view.id().0))
 			.unwrap_or_default();
 
-		// Pre-allocate columns with capacity
-		let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
-		for field in fields.iter() {
-			columns_vec.push(ColumnWithName {
-				name: Fragment::internal(&field.name),
-				data: ColumnBuffer::with_capacity(field.constraint.get_type(), rows.len()),
-			});
-		}
+		let mut columns_vec = self.allocate_pull_columns(fields, rows.len());
 		let mut row_numbers = Vec::with_capacity(rows.len());
 		let mut created_at = Vec::with_capacity(rows.len());
 		let mut updated_at = Vec::with_capacity(rows.len());
 
 		for row_num in rows {
-			// Overlay takes precedence over read_version storage: it reflects
-			// writes performed in this transaction by sibling views.
-			match overlay.get(row_num) {
-				Some(OverlayRow::Removed) => continue,
-				Some(OverlayRow::Present(src, idx)) => {
-					row_numbers.push(*row_num);
-					let src_created_at = src.created_at.get(*idx).copied().unwrap_or_default();
-					let src_updated_at = src.updated_at.get(*idx).copied().unwrap_or_default();
-					created_at.push(src_created_at);
-					updated_at.push(src_updated_at);
-					for (i, col) in src.iter().enumerate() {
-						if i < columns_vec.len() {
-							columns_vec[i].data.push_value(col.data().get_value(*idx));
-						}
-					}
-					continue;
-				}
-				None => {}
+			if self.try_push_overlay_row(
+				*row_num,
+				&overlay,
+				&mut columns_vec,
+				&mut row_numbers,
+				&mut created_at,
+				&mut updated_at,
+			) {
+				continue;
 			}
-
-			let key = RowKey::encoded(self.view.underlying_id(), *row_num);
-			if let Some(encoded) = txn.get(&key)? {
-				row_numbers.push(*row_num);
-				created_at.push(DateTime::from_nanos(encoded.created_at_nanos()));
-				updated_at.push(DateTime::from_nanos(encoded.updated_at_nanos()));
-				// Decode each column value directly
-				for (i, _field) in fields.iter().enumerate() {
-					let value = shape.get_value(&encoded, i);
-					columns_vec[i].data.push_value(value);
-				}
-			}
+			self.try_push_storage_row(
+				txn,
+				*row_num,
+				&shape,
+				fields,
+				&mut columns_vec,
+				&mut row_numbers,
+				&mut created_at,
+				&mut updated_at,
+			)?;
 		}
 
 		if row_numbers.is_empty() {
@@ -196,5 +177,74 @@ impl Operator for PrimitiveViewOperator {
 		} else {
 			Ok(Columns::with_system_columns(columns_vec, row_numbers, created_at, updated_at))
 		}
+	}
+}
+
+impl PrimitiveViewOperator {
+	#[inline]
+	fn allocate_pull_columns(&self, fields: &[RowShapeField], capacity: usize) -> Vec<ColumnWithName> {
+		let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
+		for field in fields.iter() {
+			columns_vec.push(ColumnWithName {
+				name: Fragment::internal(&field.name),
+				data: ColumnBuffer::with_capacity(field.constraint.get_type(), capacity),
+			});
+		}
+		columns_vec
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn try_push_overlay_row(
+		&self,
+		row_num: RowNumber,
+		overlay: &HashMap<RowNumber, OverlayRow<'_>>,
+		columns_vec: &mut [ColumnWithName],
+		row_numbers: &mut Vec<RowNumber>,
+		created_at: &mut Vec<DateTime>,
+		updated_at: &mut Vec<DateTime>,
+	) -> bool {
+		// True iff this row was resolved via overlay (Removed -> skip, Present -> appended).
+		match overlay.get(&row_num) {
+			Some(OverlayRow::Removed) => true,
+			Some(OverlayRow::Present(src, idx)) => {
+				row_numbers.push(row_num);
+				created_at.push(src.created_at.get(*idx).copied().unwrap_or_default());
+				updated_at.push(src.updated_at.get(*idx).copied().unwrap_or_default());
+				for (i, col) in src.iter().enumerate() {
+					if i < columns_vec.len() {
+						columns_vec[i].data.push_value(col.data().get_value(*idx));
+					}
+				}
+				true
+			}
+			None => false,
+		}
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn try_push_storage_row(
+		&self,
+		txn: &mut FlowTransaction,
+		row_num: RowNumber,
+		shape: &RowShape,
+		fields: &[RowShapeField],
+		columns_vec: &mut [ColumnWithName],
+		row_numbers: &mut Vec<RowNumber>,
+		created_at: &mut Vec<DateTime>,
+		updated_at: &mut Vec<DateTime>,
+	) -> Result<()> {
+		let key = RowKey::encoded(self.view.underlying_id(), row_num);
+		if let Some(encoded) = txn.get(&key)? {
+			row_numbers.push(row_num);
+			created_at.push(DateTime::from_nanos(encoded.created_at_nanos()));
+			updated_at.push(DateTime::from_nanos(encoded.updated_at_nanos()));
+			for (i, _field) in fields.iter().enumerate() {
+				let value = shape.get_value(&encoded, i);
+				columns_vec[i].data.push_value(value);
+			}
+		}
+		Ok(())
 	}
 }

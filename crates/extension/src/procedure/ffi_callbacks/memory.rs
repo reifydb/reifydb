@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Memory management callbacks for FFI operators
-//!
-//! Provides arena-based memory allocation for FFI operators with fallback to system allocator.
-
 use std::{
 	alloc::{Layout, alloc, dealloc, realloc as system_realloc},
 	cell::RefCell,

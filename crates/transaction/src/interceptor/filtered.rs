@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Filtered interceptor wrappers that only execute when the filter matches.
-//!
-//! These wrappers check the entity name against the filter before invoking the handler.
-//! Note: Namespace filtering requires namespace name resolution which is currently a TODO.
-
 use reifydb_type::Result;
 
 use super::{

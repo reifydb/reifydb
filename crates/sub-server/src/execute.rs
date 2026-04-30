@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Error types for query and command execution.
-//!
-//! The actual dispatch logic lives in [`crate::dispatch`]. This module
-//! only defines the shared error types used by all transport handlers.
-
 use std::{error, fmt, sync::Arc};
 
 use reifydb_type::error::Diagnostic;

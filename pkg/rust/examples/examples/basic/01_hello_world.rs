@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Hello World Example
-//!
-//! Demonstrates the fundamental ReifyDB operations:
-//! - Starting a synchronous in-memory database
-//! - Running commands (write operations)
-//! - Executing queries (read operations)
-//! - Creating and using sessions for isolated operations
-//!
-//! Run with: `make hello-world` or `cargo run --bin hello-world`
-
 use reifydb::{IdentityId, Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

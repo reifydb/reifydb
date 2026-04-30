@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASI timer implementation using a thread-local timer queue.
-//!
-//! Since WASI is single-threaded with no event loop, timers are stored in a
-//! queue and drained at strategic points (after each message processing cycle
-//! and before each bridge command). Expired timers fire their callbacks
-//! synchronously.
-
 use std::{
 	cell::{Cell, RefCell},
 	sync::{

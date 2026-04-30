@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Background worker for deferred drop operations.
-//!
-//! This module provides an actor-based drop processing system that executes
-//! version cleanup operations off the critical commit path.
-//!
-//! The actor model is platform-agnostic:
-//! - **Native**: Runs on its own OS thread, processes messages from a channel
-//! - **WASM**: Messages are processed inline (synchronously) when sent
-
 use std::{collections::HashMap, time::Duration};
 
 use reifydb_core::{

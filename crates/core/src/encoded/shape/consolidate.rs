@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RowShape consolidation utilities - STUB
-//!
-//! This module will eventually provide functionality to:
-//! - Consolidate multiple shapes into a single unified shape
-//! - Widen types when merging incompatible field types
-//!
-//! Currently stubbed with unimplemented!() as this is out of scope
-//! for the initial implementation.
-
 use reifydb_runtime::hash::Hash64;
 use reifydb_type::value::r#type::Type;
 

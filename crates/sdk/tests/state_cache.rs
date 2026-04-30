@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for StateCache using the operator test harness
-//!
-//! Note: StateCache is `!Send + !Sync` by design (single-threaded LRU cache),
-//! so we test it directly using `create_operator_context()` rather than
-//! embedding it in FFIOperator implementations.
-
 use std::collections::HashMap;
 
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;

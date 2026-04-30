@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Authentication service for ReifyDB.
-//!
-//! Provides a unified authentication API used by all transports (HTTP, WebSocket,
-//! gRPC) and embedded mode. Supports pluggable authentication methods including
-//! single-step (password, token) and multi-step challenge-response flows.
-
 mod authenticate;
 mod solana;
 mod token;

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Actor messages for the replication subsystem.
-
 use reifydb_runtime::actor::{reply::Reply, system::ActorHandle};
 use reifydb_type::error::Error;
 

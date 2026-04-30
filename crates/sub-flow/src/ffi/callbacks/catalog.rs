@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Catalog access callbacks for FFI operators
-//!
-//! Provides read-only access to the catalog system (namespaces, tables)
-//! with version-based queries for time-travel support.
-
 use std::{mem, ptr, slice::from_raw_parts, str::from_utf8};
 
 use reifydb_abi::{

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RowShape evolution and resolution utilities.
-//!
-//! ShapeResolver handles reading data written with one shape
-//! using a different (but compatible) target shape.
-
 use reifydb_type::value::constraint::TypeConstraint;
 
 use crate::encoded::shape::RowShape;

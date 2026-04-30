@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Volcano operator that evaluates user-defined function calls row-by-row via the VM.
-//!
-//! This node sits between the data source and the downstream expression-evaluating operators
-//! (Map, Filter, Extend, etc.). It pre-computes UDF results as synthetic columns so that
-//! the expression evaluator never needs to handle UDFs directly.
-
 use std::sync::Arc;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};

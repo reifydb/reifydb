@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Run-length encoding for fixed-size types with repeated values.
-//!
-//! Layout: repeated `(value, run_length: u32)` pairs.
-//! Each pair is `element_size + 4` bytes.
-
 use crate::error::DecodeError;
 
 /// Try to RLE-encode a slice of fixed-size values.

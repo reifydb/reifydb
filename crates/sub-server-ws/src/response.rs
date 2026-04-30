@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WebSocket response types matching the client protocol.
-//!
-//! These types mirror the structures in `reifydb-client` to ensure
-//! protocol compatibility. Changes to these types should be coordinated
-//! with the client implementation.
-
 use std::collections::HashMap;
 
 use reifydb_type::{error::Diagnostic, fragment::Fragment};

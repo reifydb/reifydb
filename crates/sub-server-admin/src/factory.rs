@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Factory for creating admin subsystem instances.
-
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;

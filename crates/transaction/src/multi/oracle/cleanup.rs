@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Cleanup functions for the oracle's time windows.
-//!
-//! This module provides cleanup functionality that removes old time windows
-//! to prevent unbounded growth.
-
 use std::collections::BTreeMap;
 
 use reifydb_core::common::CommitVersion;

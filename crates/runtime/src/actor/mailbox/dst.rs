@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! DST mailbox implementation using enqueue-only semantics.
-//!
-//! In DST, messages are enqueued without processing. The DST actor system's
-//! `step()` method is responsible for popping and processing messages.
-
 use std::{
 	cell::RefCell,
 	collections::VecDeque,

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Condvar synchronization primitive.
-
 use std::time::Duration;
 
 use cfg_if::cfg_if;

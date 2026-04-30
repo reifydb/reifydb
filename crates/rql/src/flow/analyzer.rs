@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Flow graph analysis for calculating dependencies and relationships between flows
-
 use std::{collections::BTreeMap, mem};
 
 use reifydb_core::interface::catalog::{

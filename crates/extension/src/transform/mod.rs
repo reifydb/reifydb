@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Transform extension points (native, FFI, WASM)
-
 pub mod context;
 #[cfg(reifydb_target = "native")]
 pub mod ffi;

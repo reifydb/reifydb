@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Pool actor that coordinates multiple flow worker actors.
-//!
-//! This module provides an actor-based implementation of the worker pool:
-//! - [`PoolActor`]: Supervises N FlowActors and routes work to them
-//! - [`FlowPoolMessage`]: Messages the pool can receive (RegisterFlow, Submit, SubmitToWorker, WorkerReply)
-//! - [`PoolResponse`]: Response sent back through callbacks
-
 use std::{collections::BTreeMap, mem::replace};
 
 use reifydb_core::{

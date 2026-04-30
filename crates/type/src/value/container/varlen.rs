@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Shared storage primitive for variable-length column types (Utf8, Blob).
-//!
-//! Layout: a contiguous byte payload `data` plus an `offsets` array of length
-//! `len + 1` such that the i-th element occupies `data[offsets[i]..offsets[i+1]]`.
-//! `offsets[0]` is always 0, `offsets[len]` is always `data.len()`.
-//!
-//! This layout matches the FFI wire format (`ColumnDataFFI`) byte-for-byte,
-//! so the marshal path can hand guests a `cap == 0` borrow of the host's
-//! native storage with no transformation.
-
 use std::{
 	fmt::{self, Debug},
 	result::Result as StdResult,

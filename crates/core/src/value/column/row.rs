@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Row accessor methods for Columns.
-//!
-//! Provides typed getters for extracting values from columns by name and row index.
-
 use reifydb_type::value::{
 	Value,
 	blob::Blob,

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! In-memory challenge store for multi-step authentication flows.
-//!
-//! Challenges are one-time-use and expire after a configurable TTL.
-
 use std::{collections::HashMap, sync::RwLock, time::Duration};
 
 use reifydb_runtime::context::{

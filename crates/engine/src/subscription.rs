@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Subscription service trait for IoC-based integration.
-//!
-//! The engine defines this trait so DDL code can manage subscriptions
-//! without a compile-time dependency on the subscription subsystem crate.
-//! The subsystem implements this trait and registers it in IoC.
-
 use std::sync::Arc;
 
 use reifydb_core::interface::catalog::id::SubscriptionId;

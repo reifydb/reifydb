@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Unified watermark / progress accessors for a `Database`.
-//!
-//! Each domain (transaction, CDC, flow, replica) is exposed under
-//! `db.watermarks().<domain>()`, returning a borrowed view that reads the
-//! underlying value lazily. `db.watermarks().snapshot()` reads all of them
-//! in one call for telemetry use.
-
 use std::marker::PhantomData;
 
 use reifydb_core::{

@@ -5,18 +5,6 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-//! Build utilities for ReifyDB target detection.
-//!
-//! This crate provides a single function to emit the `reifydb_target` cfg
-//! based on the compilation target. Add this crate as a build-dependency
-//! and call `emit_target_cfg()` from your build.rs.
-//!
-//! # Supported Targets
-//! - `native` - Default for non-WASM targets
-//! - `wasm` - For wasm32-unknown-unknown (JS-WASM) targets
-//! - `wasi` - For wasm32-wasip1 (WASI) targets
-//! - `dst` - (Future) Deterministic software testing
-
 use std::env;
 
 /// Emit the `reifydb_target` cfg based on the current compilation target.

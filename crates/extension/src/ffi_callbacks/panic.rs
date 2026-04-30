@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Panic-catch wrapper for FFI vtable calls.
-
 use std::{
 	any::Any,
 	panic::{AssertUnwindSafe, catch_unwind},

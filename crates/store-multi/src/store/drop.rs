@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Drop operation implementation for cleaning up versioned entries.
-//!
-//! The Drop operation completely erases versioned entries from storage without
-//! writing tombstones or generating CDC events. It's used for internal cleanup
-//! operations like maintaining single-version semantics for flow node state.
-
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_type::util::cowvec::CowVec;
 

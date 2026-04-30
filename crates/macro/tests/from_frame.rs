@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for the `#[derive(FromFrame)]` macro.
 #![allow(clippy::approx_constant)]
 
 mod common;

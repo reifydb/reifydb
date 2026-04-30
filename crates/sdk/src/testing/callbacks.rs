@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI callback implementations for testing operators
-//!
-//! This module provides test-specific implementations of FFI callbacks that bridge
-//! OperatorContext with TestContext, enabling operators to be tested in isolation.
-//!
-//! Unlike the production implementation:
-//! - Memory uses system allocator directly (no arena)
-//! - State operations work with TestContext's HashMap instead of FlowTransaction
-//! - Logs are captured to TestContext.logs instead of actual logging
-//! - Iterators are simplified in-memory implementations
-
 use std::{
 	alloc::{Layout, alloc, dealloc, realloc as system_realloc},
 	slice::from_raw_parts,

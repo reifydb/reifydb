@@ -1,21 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Unified routine abstraction.
-//!
-//! A `Routine` is a named, parameterised, server-side callable that returns
-//! `Columns`. Functions and procedures are both routines; they differ only in
-//! the execution context they accept:
-//!
-//! - **Functions** implement `Routine<FunctionContext>`. `FunctionContext` does not carry a transaction, so the type
-//!   system guarantees a function cannot mutate transactional state.
-//! - **Procedures** implement `Routine<ProcedureContext>`. `ProcedureContext` carries `&mut Transaction`, so procedures
-//!   can read and mutate state.
-//!
-//! There is one trait declaration. The function-vs-procedure distinction lives
-//! entirely in which context the implementor writes against  - and in catalog
-//! metadata exposed to the user.
-
 pub mod context;
 pub mod error;
 pub mod registry;

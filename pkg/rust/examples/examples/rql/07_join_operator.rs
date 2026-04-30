@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # JOIN Operator Example
-//!
-//! Demonstrates the JOIN operator in ReifyDB's RQL:
-//! - Inner joins
-//! - Left joins
-//! - Natural joins
-//! - Join conditions
-//!
-//! Run with: `make rql-join` or `cargo run --bin rql-join`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

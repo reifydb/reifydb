@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Pool-based scheduler for actors with Send-compatible state.
-//!
-//! Each actor is a self-scheduling state machine on the shared rayon pool.
-//! No dedicated OS thread per actor - idle actors consume zero pool resources.
-
 use std::sync::{
 	Arc, Mutex,
 	atomic::{AtomicU8, Ordering},

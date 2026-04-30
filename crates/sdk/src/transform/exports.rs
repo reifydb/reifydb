@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI exports for transform libraries
-
 use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
 use postcard::from_bytes;

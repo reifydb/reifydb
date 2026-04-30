@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Stub thread pool implementation for DST and WASM targets.
-//!
-//! Pools is a zero-size marker since these targets use single-threaded execution.
-
 use super::PoolConfig;
 
 /// Handle to the runtime's thread pools.

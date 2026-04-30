@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! SQL query builders for SQLite backend.
-
 use std::ops::Bound;
 
 /// Build a range query with the given bounds and limit.

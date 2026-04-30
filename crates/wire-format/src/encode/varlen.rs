@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Encoding for variable-length column types: Utf8, Blob, Int, Uint, Decimal.
-
 use reifydb_type::value::{decimal::Decimal, frame::data::FrameColumnData, int::Int, r#type::Type, uint::Uint};
 
 use super::EncodedColumn;

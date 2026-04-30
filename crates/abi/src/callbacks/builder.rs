@@ -1,25 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Output column-buffer builder callbacks.
-//!
-//! Guests use these to allocate output column buffers from the host's pool,
-//! write data directly into the buffers' raw storage, and commit ownership
-//! back to the host - all without copying.
-//!
-//! Lifecycle:
-//! 1. `acquire(ctx, type_code, capacity)` -> opaque `*mut ColumnBufferHandle`.
-//! 2. `data_ptr(handle)` returns a writable byte pointer; for var-len types, `offsets_ptr(handle)` returns a writable
-//!    u64 pointer.
-//! 3. `grow(handle, additional)` resizes underlying storage. Pointers may be invalidated; the guest must re-fetch them.
-//! 4. `bitvec_ptr(handle)` returns a writable byte pointer for the defined bitmap; lazily allocated on first access.
-//! 5. `commit(handle, written_count)` transfers ownership to the host. The handle is invalid after this call.
-//! 6. `release(handle)` discards an unused builder (e.g. on guest error).
-//!
-//! Generation counters live on the host side: every callback verifies the
-//! handle's generation matches before dereferencing. Use-after-commit aborts
-//! in debug builds.
-
 use core::ffi::c_void;
 
 use crate::{context::context::ContextFFI, data::column::ColumnTypeCode};

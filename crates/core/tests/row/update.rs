@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for updating EncodedRow fields in-place.
-//! Verifies that replace_dynamic_data properly splices bytes, adjusts references,
-//! and leaves no orphan data.
-
 use std::{f64::consts::E, str::FromStr};
 
 use num_bigint::BigInt;

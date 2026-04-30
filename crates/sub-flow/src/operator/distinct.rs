@@ -343,24 +343,21 @@ impl DistinctOperator {
 		Ok(result)
 	}
 
-	/// Process updates - operates directly on Columns without Row conversion
 	fn process_update(
 		&self,
 		state: &mut DistinctState,
 		pre_columns: &Columns,
 		post_columns: &Columns,
 	) -> Result<Vec<Diff>> {
-		let mut result = Vec::new();
 		let row_count = post_columns.row_count();
 		if row_count == 0 {
-			return Ok(result);
+			return Ok(Vec::new());
 		}
 
 		state.layout.update_from_columns(post_columns);
 		let pre_hashes = self.compute_hashes(pre_columns)?;
 		let post_hashes = self.compute_hashes(post_columns)?;
 
-		// Group updates by type for batch output
 		let mut same_key_update_indices: Vec<usize> = Vec::new();
 		let mut removed_indices: Vec<usize> = Vec::new();
 		let mut inserted_indices: Vec<usize> = Vec::new();
@@ -370,62 +367,35 @@ impl DistinctOperator {
 			let post_hash = post_hashes[row_idx];
 
 			if pre_hash == post_hash {
-				// Distinct key didn't change - update the stored row
-				if let Some(entry) = state.entries.get_mut(&pre_hash) {
-					if entry.first_row.number == post_columns.row_numbers[row_idx] {
-						entry.first_row =
-							SerializedRow::from_columns_at_index(post_columns, row_idx);
-					}
-					same_key_update_indices.push(row_idx);
-				}
+				update_same_distinct_key(
+					state,
+					pre_hash,
+					post_columns,
+					row_idx,
+					&mut same_key_update_indices,
+				);
 			} else {
-				// Key changed - remove from old, add to new
-				if let Some(entry) = state.entries.get_mut(&pre_hash) {
-					if entry.count > 1 {
-						entry.count -= 1;
-					} else {
-						state.entries.shift_remove(&pre_hash);
-						removed_indices.push(row_idx);
-					}
+				if drop_pre_distinct_key(state, pre_hash) {
+					removed_indices.push(row_idx);
 				}
-
-				match state.entries.get_mut(&post_hash) {
-					Some(entry) => {
-						entry.count += 1;
-					}
-					None => {
-						state.entries.insert(
-							post_hash,
-							DistinctEntry {
-								count: 1,
-								first_row: SerializedRow::from_columns_at_index(
-									post_columns,
-									row_idx,
-								),
-							},
-						);
-						inserted_indices.push(row_idx);
-					}
+				if add_post_distinct_key(state, post_hash, post_columns, row_idx) {
+					inserted_indices.push(row_idx);
 				}
 			}
 		}
 
+		let mut result = Vec::new();
 		if !same_key_update_indices.is_empty() {
 			let pre_output = pre_columns.extract_by_indices(&same_key_update_indices);
 			let post_output = post_columns.extract_by_indices(&same_key_update_indices);
 			result.push(Diff::update(pre_output, post_output));
 		}
-
 		if !removed_indices.is_empty() {
-			let output = pre_columns.extract_by_indices(&removed_indices);
-			result.push(Diff::remove(output));
+			result.push(Diff::remove(pre_columns.extract_by_indices(&removed_indices)));
 		}
-
 		if !inserted_indices.is_empty() {
-			let output = post_columns.extract_by_indices(&inserted_indices);
-			result.push(Diff::insert(output));
+			result.push(Diff::insert(post_columns.extract_by_indices(&inserted_indices)));
 		}
-
 		Ok(result)
 	}
 
@@ -459,6 +429,56 @@ impl DistinctOperator {
 		}
 
 		Ok(result)
+	}
+}
+
+#[inline]
+fn update_same_distinct_key(
+	state: &mut DistinctState,
+	hash: Hash128,
+	post_columns: &Columns,
+	row_idx: usize,
+	indices: &mut Vec<usize>,
+) {
+	if let Some(entry) = state.entries.get_mut(&hash) {
+		if entry.first_row.number == post_columns.row_numbers[row_idx] {
+			entry.first_row = SerializedRow::from_columns_at_index(post_columns, row_idx);
+		}
+		indices.push(row_idx);
+	}
+}
+
+#[inline]
+fn drop_pre_distinct_key(state: &mut DistinctState, hash: Hash128) -> bool {
+	let Some(entry) = state.entries.get_mut(&hash) else {
+		return false;
+	};
+	if entry.count > 1 {
+		entry.count -= 1;
+		false
+	} else {
+		state.entries.shift_remove(&hash);
+		true
+	}
+}
+
+#[inline]
+fn add_post_distinct_key(state: &mut DistinctState, hash: Hash128, post_columns: &Columns, row_idx: usize) -> bool {
+	match state.entries.get_mut(&hash) {
+		Some(entry) => {
+			entry.count += 1;
+			false
+		}
+		None => {
+			state.entries.insert(
+				hash,
+				DistinctEntry {
+					count: 1,
+					first_row: SerializedRow::from_columns_at_index(post_columns, row_idx),
+				},
+			);
+			true
+		}
 	}
 }
 

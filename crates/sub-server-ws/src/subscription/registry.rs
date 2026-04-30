@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Subscription registry for tracking active WebSocket subscriptions.
-//!
-//! The registry maintains mappings between subscription IDs, connections,
-//! and push channels to enable server-initiated message delivery.
-
 use std::{
 	collections::{HashMap, HashSet},
 	mem,

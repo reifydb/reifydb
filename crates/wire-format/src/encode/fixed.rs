@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Encoding for fixed-width column types:
-//! Boolean, Int1-Int16, Uint1-Uint16, Float4/8, Date, DateTime, Time,
-//! Duration, IdentityId, Uuid4, Uuid7, DictionaryId.
-
 use reifydb_type::value::{frame::data::FrameColumnData, r#type::Type};
 
 use super::EncodedColumn;

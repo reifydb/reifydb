@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Persistence key/value encoding for metrics.
-//!
-//! Key format: All keys start with `[VERSION:1][KeyKind::Metric = 0x25]`
-//! followed by a sub-type discriminator:
-//!
-//! - `[VERSION][0x25][0x01][tier:1][key_kind:1]` -> StorageStats for (tier, KeyKind)
-//! - `[VERSION][0x25][0x02][tier:1][id:variable]` -> StorageStats for (tier, Id)
-//! - `[VERSION][0x25][0x03][id:variable]` -> CdcStats for Id (no tier)
-
 use reifydb_core::{
 	interface::{
 		catalog::{

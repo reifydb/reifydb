@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Loader module for reconstructing Flows from catalog nodes and edges
-
 use std::time::Duration;
 
 use postcard::from_bytes;

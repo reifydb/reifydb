@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP server subsystem implementing the ReifyDB Subsystem trait.
-//!
-//! This module provides `HttpSubsystem` which manages the lifecycle of the
-//! HTTP server, including startup, health monitoring, and graceful shutdown.
-
 use std::{
 	any::Any,
 	io,

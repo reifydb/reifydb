@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Engine interface trait for CDC consumers.
-//!
-//! This trait abstracts the engine operations needed by CDC consumers,
-//! allowing the CDC crate to avoid a direct dependency on the engine crate.
-
 use std::time::Duration;
 
 use reifydb_catalog::materialized::MaterializedCatalog;

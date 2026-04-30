@@ -70,6 +70,16 @@ use reifydb_type::{
 
 use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
 
+#[inline]
+fn build_aggregation_shape(names: &[String], types: &[Type]) -> RowShape {
+	let fields: Vec<RowShapeField> = names
+		.iter()
+		.zip(types.iter())
+		.map(|(name, ty)| RowShapeField::unconstrained(name.clone(), ty.clone()))
+		.collect();
+	RowShape::new(fields)
+}
+
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 /// RowShape layout shared across all events in a window (stored once, not per event)
@@ -486,7 +496,6 @@ impl WindowOperator {
 		Ok(result)
 	}
 
-	/// Remove an event from all its windows (for DELETE handling).
 	fn remove_event_from_windows(
 		&self,
 		txn: &mut FlowTransaction,
@@ -499,63 +508,57 @@ impl WindowOperator {
 		}
 
 		let mut result = Vec::new();
-
 		for window_id in &window_ids {
 			let window_key = self.create_window_key(group_hash, *window_id);
-			let mut window_state = self.load_window_state(txn, &window_key)?;
-
-			let event_idx = window_state.events.iter().position(|e| e.row_number == row_number);
-			if let Some(idx) = event_idx {
-				let layout = match &window_state.window_layout {
-					Some(l) => l.clone(),
-					None => continue,
-				};
-
-				let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
-				let pre_aggregation = self.apply_aggregations(
-					txn,
-					&window_key,
-					&layout,
-					&window_state.events,
-					changed_at,
-				)?;
-
-				window_state.events.remove(idx);
-				window_state.event_count = window_state.event_count.saturating_sub(1);
-
-				if window_state.events.is_empty() {
-					self.save_window_state(txn, &window_key, &window_state)?;
-					if let Some((pre_row, _)) = pre_aggregation {
-						result.push(Diff::remove(Columns::from_row(&pre_row)));
-					}
-				} else {
-					let post_aggregation = self.apply_aggregations(
-						txn,
-						&window_key,
-						&layout,
-						&window_state.events,
-						changed_at,
-					)?;
-					self.save_window_state(txn, &window_key, &window_state)?;
-
-					if let (Some((pre_row, _)), Some((post_row, _))) =
-						(pre_aggregation, post_aggregation)
-					{
-						result.push(Diff::update(
-							Columns::from_row(&pre_row),
-							Columns::from_row(&post_row),
-						));
-					}
-				}
+			if let Some(diff) = self.remove_event_from_one_window(txn, &window_key, row_number)? {
+				result.push(diff);
 			}
 		}
 
-		// Clean up the index entry
 		let index_key = self.create_row_index_key(group_hash, row_number);
 		let empty = self.layout.allocate();
 		self.save_state(txn, &index_key, empty)?;
 
 		Ok(result)
+	}
+
+	#[inline]
+	fn remove_event_from_one_window(
+		&self,
+		txn: &mut FlowTransaction,
+		window_key: &EncodedKey,
+		row_number: RowNumber,
+	) -> Result<Option<Diff>> {
+		let mut window_state = self.load_window_state(txn, window_key)?;
+		let Some(idx) = window_state.events.iter().position(|e| e.row_number == row_number) else {
+			return Ok(None);
+		};
+		let Some(layout) = window_state.window_layout.clone() else {
+			return Ok(None);
+		};
+
+		let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
+		let pre_aggregation =
+			self.apply_aggregations(txn, window_key, &layout, &window_state.events, changed_at)?;
+
+		window_state.events.remove(idx);
+		window_state.event_count = window_state.event_count.saturating_sub(1);
+
+		if window_state.events.is_empty() {
+			self.save_window_state(txn, window_key, &window_state)?;
+			return Ok(pre_aggregation.map(|(pre_row, _)| Diff::remove(Columns::from_row(&pre_row))));
+		}
+
+		let post_aggregation =
+			self.apply_aggregations(txn, window_key, &layout, &window_state.events, changed_at)?;
+		self.save_window_state(txn, window_key, &window_state)?;
+
+		Ok(match (pre_aggregation, post_aggregation) {
+			(Some((pre_row, _)), Some((post_row, _))) => {
+				Some(Diff::update(Columns::from_row(&pre_row), Columns::from_row(&post_row)))
+			}
+			_ => None,
+		})
 	}
 
 	/// Process Remove diffs by removing events from their windows.
@@ -640,7 +643,6 @@ impl WindowOperator {
 		Ok(Columns::new(columns))
 	}
 
-	/// Apply aggregations to all events in a window
 	pub fn apply_aggregations(
 		&self,
 		txn: &mut FlowTransaction,
@@ -654,7 +656,6 @@ impl WindowOperator {
 		}
 
 		if self.aggregations.is_empty() {
-			// No aggregations configured, return first event as result
 			let (result_row_number, is_new) =
 				self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 			let mut result_row = events[0].to_row(window_layout);
@@ -662,38 +663,10 @@ impl WindowOperator {
 			return Ok(Some((result_row, is_new)));
 		}
 
-		let columns = self.events_to_columns(window_layout, events)?;
+		let (result_values, result_names, result_types) =
+			self.compute_aggregation_outputs(window_layout, events)?;
 
-		let agg_session = self.eval_session(true);
-		let exec_ctx = agg_session.with_eval(columns, events.len());
-
-		let (group_values, group_names) = self.extract_group_values(window_layout, events)?;
-
-		let mut result_values = Vec::new();
-		let mut result_names = Vec::new();
-		let mut result_types = Vec::new();
-
-		for (value, name) in group_values.into_iter().zip(group_names.into_iter()) {
-			result_values.push(value.clone());
-			result_names.push(name);
-			result_types.push(value.get_type());
-		}
-
-		for (i, compiled_aggregation) in self.compiled_aggregations.iter().enumerate() {
-			let agg_column = compiled_aggregation.execute(&exec_ctx)?;
-
-			let value = agg_column.data().get_value(0);
-			result_values.push(value.clone());
-			result_names.push(display_label(&self.aggregations[i]).text().to_string());
-			result_types.push(value.get_type());
-		}
-
-		let fields: Vec<RowShapeField> = result_names
-			.iter()
-			.zip(result_types.iter())
-			.map(|(name, ty)| RowShapeField::unconstrained(name.clone(), ty.clone()))
-			.collect();
-		let layout = RowShape::new(fields);
+		let layout = build_aggregation_shape(&result_names, &result_types);
 		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &result_values);
 
@@ -701,14 +674,46 @@ impl WindowOperator {
 		encoded.set_timestamps(ts_nanos, ts_nanos);
 
 		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
+		Ok(Some((
+			Row {
+				number: result_row_number,
+				encoded,
+				shape: layout,
+			},
+			is_new,
+		)))
+	}
 
-		let result_row = Row {
-			number: result_row_number,
-			encoded,
-			shape: layout,
-		};
+	#[inline]
+	fn compute_aggregation_outputs(
+		&self,
+		window_layout: &WindowLayout,
+		events: &[WindowEvent],
+	) -> Result<(Vec<Value>, Vec<String>, Vec<Type>)> {
+		let columns = self.events_to_columns(window_layout, events)?;
+		let agg_session = self.eval_session(true);
+		let exec_ctx = agg_session.with_eval(columns, events.len());
+		let (group_values, group_names) = self.extract_group_values(window_layout, events)?;
 
-		Ok(Some((result_row, is_new)))
+		let mut values = Vec::new();
+		let mut names = Vec::new();
+		let mut types = Vec::new();
+
+		for (value, name) in group_values.into_iter().zip(group_names.into_iter()) {
+			types.push(value.get_type());
+			values.push(value);
+			names.push(name);
+		}
+
+		for (i, compiled_aggregation) in self.compiled_aggregations.iter().enumerate() {
+			let agg_column = compiled_aggregation.execute(&exec_ctx)?;
+			let value = agg_column.data().get_value(0);
+			types.push(value.get_type());
+			values.push(value);
+			names.push(display_label(&self.aggregations[i]).text().to_string());
+		}
+
+		Ok((values, names, types))
 	}
 
 	/// Process expired windows: emit Remove diffs for each, then delete state.
@@ -885,8 +890,6 @@ impl WindowOperator {
 		Ok(())
 	}
 
-	/// Tick-based window expiration for tumbling/sliding windows.
-	/// Scans all operator state, finds expired "win:" windows, emits Remove and cleans up.
 	pub fn tick_expire_windows(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let window_size_ms = match self.size_duration() {
@@ -897,57 +900,71 @@ impl WindowOperator {
 			return Ok(result);
 		}
 
-		// Scan all state for this operator
-		let all_state = txn.state_scan(self.node)?;
-		let prefix = FlowNodeStateKey::new(self.node, vec![]).encode();
-		let win_marker = b"win:";
-
 		let mut keys_to_remove = Vec::new();
-
-		for item in &all_state.items {
-			// Strip operator prefix to get the inner key
-			let full_key = &item.key;
-			if full_key.len() <= prefix.len() {
-				continue;
-			}
-			let inner = &full_key[prefix.len()..];
-
-			// Only process "win:" keys
-			if !inner.starts_with(win_marker) {
-				continue;
-			}
-
-			let window_key = EncodedKey::new(inner);
-			let window_state = self.load_window_state(txn, &window_key)?;
-			if window_state.events.is_empty() {
-				continue;
-			}
-
-			// Check if window is expired: newest event older than window size
-			let newest_event_time = window_state.events.iter().map(|e| e.timestamp).max().unwrap_or(0);
-			if current_timestamp.saturating_sub(newest_event_time) > window_size_ms {
-				let changed_at = DateTime::from_nanos(current_timestamp);
-				if let Some(layout) = &window_state.window_layout
-					&& let Some((row, _)) = self.apply_aggregations(
-						txn,
-						&window_key,
-						layout,
-						&window_state.events,
-						changed_at,
-					)? {
-					result.push(Diff::remove(Columns::from_row(&row)));
-				}
+		for window_key in self.scan_window_keys(txn)? {
+			if let Some(diff) =
+				self.expire_window_if_due(txn, &window_key, current_timestamp, window_size_ms)?
+			{
+				result.push(diff);
 				keys_to_remove.push(window_key);
 			}
 		}
 
-		// Clean up expired windows
 		for key in &keys_to_remove {
 			let empty = self.create_state();
 			self.save_state(txn, key, empty)?;
 		}
 
 		Ok(result)
+	}
+
+	#[inline]
+	fn scan_window_keys(&self, txn: &mut FlowTransaction) -> Result<Vec<EncodedKey>> {
+		let all_state = txn.state_scan(self.node)?;
+		let prefix = FlowNodeStateKey::new(self.node, vec![]).encode();
+		let win_marker = b"win:";
+
+		let mut keys = Vec::new();
+		for item in &all_state.items {
+			let full_key = &item.key;
+			if full_key.len() <= prefix.len() {
+				continue;
+			}
+			let inner = &full_key[prefix.len()..];
+			if !inner.starts_with(win_marker) {
+				continue;
+			}
+			keys.push(EncodedKey::new(inner));
+		}
+		Ok(keys)
+	}
+
+	#[inline]
+	fn expire_window_if_due(
+		&self,
+		txn: &mut FlowTransaction,
+		window_key: &EncodedKey,
+		current_timestamp: u64,
+		window_size_ms: u64,
+	) -> Result<Option<Diff>> {
+		let window_state = self.load_window_state(txn, window_key)?;
+		if window_state.events.is_empty() {
+			return Ok(None);
+		}
+
+		let newest_event_time = window_state.events.iter().map(|e| e.timestamp).max().unwrap_or(0);
+		if current_timestamp.saturating_sub(newest_event_time) <= window_size_ms {
+			return Ok(None);
+		}
+
+		let changed_at = DateTime::from_nanos(current_timestamp);
+		if let Some(layout) = &window_state.window_layout
+			&& let Some((row, _)) =
+				self.apply_aggregations(txn, window_key, layout, &window_state.events, changed_at)?
+		{
+			return Ok(Some(Diff::remove(Columns::from_row(&row))));
+		}
+		Ok(None)
 	}
 
 	/// Shared: partition columns by group keys and call `group_fn` for each group.
@@ -992,46 +1009,48 @@ impl WindowOperator {
 			match diff {
 				Diff::Insert {
 					post,
-				} => {
-					result.extend(process_fn(self, txn, post)?);
-				}
+				} => result.extend(process_fn(self, txn, post)?),
 				Diff::Update {
 					pre,
 					post,
-				} => {
-					let group_hashes = self.compute_group_keys(pre)?;
-					let mut update_indices: Vec<usize> = Vec::new();
-					let mut insert_indices: Vec<usize> = Vec::new();
-					for (row_idx, &group_hash) in group_hashes.iter().enumerate() {
-						let row_number = pre.row_numbers[row_idx];
-						let known =
-							!self.lookup_row_index(txn, group_hash, row_number)?.is_empty();
-						if known {
-							update_indices.push(row_idx);
-						} else {
-							insert_indices.push(row_idx);
-						}
-					}
-					if !update_indices.is_empty() {
-						let pre_subset = pre.extract_by_indices(&update_indices);
-						let post_subset = post.extract_by_indices(&update_indices);
-						result.extend(self.process_event_updates(
-							txn,
-							&pre_subset,
-							&post_subset,
-						)?);
-					}
-					if !insert_indices.is_empty() {
-						let post_subset = post.extract_by_indices(&insert_indices);
-						result.extend(process_fn(self, txn, &post_subset)?);
-					}
-				}
+				} => result.extend(self.apply_window_update_diff(txn, pre, post, &process_fn)?),
 				Diff::Remove {
 					pre,
-				} => {
-					result.extend(self.process_event_removals(txn, pre)?);
-				}
+				} => result.extend(self.process_event_removals(txn, pre)?),
 			}
+		}
+		Ok(result)
+	}
+
+	#[inline]
+	fn apply_window_update_diff(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		post: &Columns,
+		process_fn: &impl Fn(&WindowOperator, &mut FlowTransaction, &Columns) -> Result<Vec<Diff>>,
+	) -> Result<Vec<Diff>> {
+		let group_hashes = self.compute_group_keys(pre)?;
+		let mut update_indices: Vec<usize> = Vec::new();
+		let mut insert_indices: Vec<usize> = Vec::new();
+		for (row_idx, &group_hash) in group_hashes.iter().enumerate() {
+			let row_number = pre.row_numbers[row_idx];
+			if self.lookup_row_index(txn, group_hash, row_number)?.is_empty() {
+				insert_indices.push(row_idx);
+			} else {
+				update_indices.push(row_idx);
+			}
+		}
+
+		let mut result = Vec::new();
+		if !update_indices.is_empty() {
+			let pre_subset = pre.extract_by_indices(&update_indices);
+			let post_subset = post.extract_by_indices(&update_indices);
+			result.extend(self.process_event_updates(txn, &pre_subset, &post_subset)?);
+		}
+		if !insert_indices.is_empty() {
+			let post_subset = post.extract_by_indices(&insert_indices);
+			result.extend(process_fn(self, txn, &post_subset)?);
 		}
 		Ok(result)
 	}

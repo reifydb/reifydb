@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Tests for actor lifecycle: start, stop, panic, shutdown.
-
 use std::sync::{Arc, Mutex};
 
 use reifydb_runtime::actor::system::dst::StepResult;

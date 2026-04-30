@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Flow actor that handles flow processing logic.
-//!
-//! This module provides an actor-based implementation of flow processing:
-//! - [`FlowWorkerActor`]: The actor definition with init/handle methods
-//! - [`FlowMessage`]: Messages the actor can receive (Process, Register)
-//! - [`FlowResponse`]: Response sent back through callbacks
-
 use std::sync::Mutex;
 
 use reifydb_catalog::catalog::Catalog;

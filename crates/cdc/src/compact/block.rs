@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! On-disk format for compacted CDC blocks: zstd(postcard(Vec<Cdc>)).
-//! Entries inside a block are sorted ascending by Cdc.version. The block's
-//! min/max version bounds are stored as separate columns in cdc_block so we
-//! never decompress to answer range queries.
-
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{common::CommitVersion, interface::cdc::Cdc};
 use zstd::{decode_all, encode_all};

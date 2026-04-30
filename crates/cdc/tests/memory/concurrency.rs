@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Concurrent writes across cloned `MemoryCdcStorage` handles all land in the
-//! same backing map.
-
 use std::thread;
 
 use reifydb_cdc::storage::{CdcStorage, memory::MemoryCdcStorage};

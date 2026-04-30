@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Server state wrapper combining shared AppState with per-request actor spawning.
-
 use std::ops::Deref;
 
 use reifydb_core::actors::server::ServerMessage;

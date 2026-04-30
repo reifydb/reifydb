@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Thread pool management for ReifyDB.
-//!
-//! Provides named, isolated thread pools for different workload classes:
-//! - **System pool**: lightweight system actors (flow, CDC, watermark, metrics)
-//! - **Query pool**: heavy query execution actors (WS, gRPC, HTTP)
-//!
-//! # Platform differences
-//!
-//! - **Native**: each pool is a separate `rayon::ThreadPool` with its own OS threads
-//! - **DST/WASM**: `Pools` is a zero-size marker (no real thread pools)
-
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
 mod native;
 

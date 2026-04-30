@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Multi-version (MVCC) storage statistics types, reader, and writer.
-//!
-//! This module contains everything related to multi-version storage metrics:
-//! - `Tier` - storage tier (Hot, Warm, Cold)
-//! - `MultiStorageStats` - MVCC statistics for a single object
-//! - `TieredStorageStats` - statistics broken down by tier
-//! - `StorageStatsWriter` - single writer for storage statistics
-//! - `StorageStatsReader` - read-only access to storage statistics
-
 /// Size of the MVCC version suffix in bytes.
 ///
 /// Each versioned key in storage has format: `[escaped_key][terminator][version]`

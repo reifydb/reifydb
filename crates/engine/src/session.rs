@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Unified session type for database access.
-//!
-//! A `Session` binds an identity to an engine and provides query, command, and
-//! admin methods. Sessions are created either from a validated auth token
-//! (server path) or directly from an `IdentityId` (embedded/trusted path).
-
 use std::{thread, time::Duration};
 
 use reifydb_core::{execution::ExecutionResult, interface::catalog::token::Token};

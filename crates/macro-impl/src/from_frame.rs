@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Code generation for the FromFrame derive macro.
-
 use proc_macro2::{TokenStream, TokenTree};
 
 use crate::{

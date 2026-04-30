@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Subscription request handler.
-//!
-//! Handles WebSocket subscription requests by creating database subscriptions
-//! and registering them with the registry and poller for real-time updates.
-
 use std::sync::Arc;
 
 use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};

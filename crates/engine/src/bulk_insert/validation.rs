@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Row validation and column mapping for bulk inserts with batch coercion.
-
 use std::iter;
 
 use reifydb_core::{

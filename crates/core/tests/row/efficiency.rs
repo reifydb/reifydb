@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Performance and scalability tests for the encoded encoding system
-
 use reifydb_core::encoded::shape::RowShape;
 use reifydb_type::value::{blob::Blob, date::Date, int::Int, r#type::Type, uuid::Uuid4};
 

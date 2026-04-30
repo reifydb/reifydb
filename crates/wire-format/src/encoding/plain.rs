@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! PLAIN encoding: raw little-endian values for fixed-size types,
-//! offset array + concatenated data for variable-length types,
-//! bit-packed for booleans.
-
 use std::iter;
 
 use reifydb_type::{

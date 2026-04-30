@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RowShape definitions for encoding row data with consistent field layouts.
-//!
-//! A `RowShape` describes the structure of encoded row data, including:
-//! - Field names, types, and order
-//! - Memory layout (offsets, sizes, alignment)
-//! - A content-addressable fingerprint for deduplication
-
 pub mod consolidate;
 pub mod evolution;
 pub mod fingerprint;

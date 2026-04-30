@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Variable type edge case tests for the encoded encoding system
-
 use num_bigint::BigInt;
 use reifydb_core::encoded::shape::RowShape;
 use reifydb_type::value::{int::Int, r#type::Type};

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Key parsing utilities for extracting Id from encoded keys.
-
 use reifydb_core::{
 	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 	key::{Key, kind::KeyKind},

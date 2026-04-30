@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! AST walk that serializes structural shape into a canonical byte buffer.
-//!
-//! Literal *values* are omitted (only the kind tag is written), so two
-//! queries differing only in constants produce identical byte sequences.
-
 use crate::ast::{
 	ast::*,
 	identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedFunctionIdentifier, UnresolvedShapeIdentifier},

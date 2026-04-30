@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Round-trips `Frame` through `frames_to_json` + `frames_from_json` and asserts
-//! the typed shape survives the textual representation.
-
 use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{

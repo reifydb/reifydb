@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM Condvar implementation (no-op).
-//!
-//! Since WASM is single-threaded, this is a no-op implementation.
-
 use std::time::Duration;
 
 use crate::sync::mutex::MutexGuard;

@@ -1,24 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Fluent builders for registering interceptors.
-//!
-//! Provides a chainable API for registering filtered interceptors:
-//!
-//! ```ignore
-//! builder
-//!     .intercept()
-//!         .table("myns.users")
-//!             .pre_insert(|ctx| { ... })
-//!             .post_update(|ctx| { ... })
-//!         .table("myns.orders")
-//!             .post_insert(|ctx| { ... })
-//!         .table("myns.users")
-//!             .post_create(|ctx| { ... })
-//!     .done()
-//!     .build()
-//! ```
-
 use std::{mem, sync::Arc};
 
 use reifydb_transaction::interceptor::{

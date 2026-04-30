@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI-safe ABI types for source connectors
-
 use core::ffi::c_void;
 
 use crate::{

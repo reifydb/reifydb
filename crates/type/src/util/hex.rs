@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Simple hex encoding/decoding implementation
-
 use std::{
 	error,
 	fmt::{self, Write},

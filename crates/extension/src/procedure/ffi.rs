@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI procedure implementation that bridges native shared-library procedures with ReifyDB
-
 use std::{cell::UnsafeCell, ffi::c_void, ptr, sync::Mutex};
 
 use postcard::to_stdvec;

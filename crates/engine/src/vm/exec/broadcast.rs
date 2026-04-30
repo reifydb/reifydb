@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Broadcasting helpers for columnar VM operations.
-//!
-//! When the VM operates on Columns of different lengths (e.g. a scalar constant
-//! and a multi-row column), the shorter one must be broadcast to match.
-
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 
 use crate::{Result, vm::vm::Vm};

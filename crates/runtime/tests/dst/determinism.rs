@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Tests for deterministic reproducibility.
-//!
-//! Same seed, same operations -> same execution trace.
-
 use std::time::Duration;
 
 use reifydb_runtime::actor::context::Context;

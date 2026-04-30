@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! CDC error types and diagnostics.
-
 use std::{error::Error as StdError, fmt, fmt::Display};
 
 use reifydb_core::common::CommitVersion;

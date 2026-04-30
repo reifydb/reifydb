@@ -9,64 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-//! # Unchecked commits - safety contract
-//!
-//! `MultiWriteTransaction::commit_unchecked` (and the public entry point
-//! `CommandTransaction::execute_bulk_unchecked`, exposed to engine callers
-//! as `Engine::bulk_insert_unchecked`) deliberately bypass SSI conflict
-//! detection. The path exists because ingesting pre-validated bulk data
-//! through full SSI is wasted work: the caller already knows the keys
-//! cannot collide.
-//!
-//! Bypassing conflict detection is sound only if the caller upholds the
-//! contract below. Violating any invariant produces silent corruption
-//! (lost updates, dirty writes, missing tombstones); nothing in the
-//! transaction system reports an error.
-//!
-//! ## Invariants the caller must uphold
-//!
-//! 1. **No concurrent writers to the same keys.** The unchecked path does not register the transaction in the oracle's
-//!    per-key conflict index. A concurrent SSI commit on an overlapping key will not see this transaction's writes, and
-//!    last-writer-wins applies. The caller is responsible for ensuring no other transaction (checked or unchecked)
-//!    writes the same keys concurrently.
-//!
-//! 2. **No read-your-writes correctness expectations across batches.** An unchecked transaction reads at its base
-//!    version; concurrent unchecked transactions do not see each other's pending writes.
-//!
-//! 3. **`mark_preexisting` for any key being updated.** The `optimize_deltas` pass at commit time uses
-//!    `preexisting_keys` to distinguish a true Insert+Delete (cancellable) from an Update+Delete (must keep tombstone).
-//!    The unchecked path runs the same optimisation; failing to mark a preexisting key whose row gets overwritten will
-//!    silently drop a tombstone.
-//!
-//! ## Invariants the unchecked path itself preserves
-//!
-//! The caller does NOT need to worry about these; the unchecked commit
-//! path enforces them.
-//!
-//! 4. **Staleness rejection.** `Oracle::advance_unchecked` still rejects with `TooOld` if the transaction's
-//!    read-version is below the oracle's `evicted_up_through`. A transaction that started reading too long ago is
-//!    rejected before any storage write.
-//!
-//! 5. **Durability and CDC ordering.** The unchecked path still:
-//!    - writes deltas to multi-version storage via `MultiVersionCommit::commit`
-//!    - emits `PostCommitEvent` BEFORE marking the watermark done (the same CDC ordering invariant as the checked
-//!      commit path)
-//!    - calls `oracle.done_commit(commit_version)` after storage write
-//!    - runs pre/post-commit interceptors (catalog mutations, transactional view processing)
-//!
-//! ## Public entry points
-//!
-//! - `Engine::bulk_insert_unchecked(...)` (engine crate) - the only externally-supported API. Wraps
-//!   `execute_bulk_unchecked` with row validation skipped.
-//! - `CommandTransaction::execute_bulk_unchecked(body)` (this crate) - composes `disable_conflict_tracking` + body +
-//!   `commit_unchecked`. On body failure the transaction is rolled back so a sticky disabled `ConflictManager` cannot
-//!   leak into a subsequent normal commit.
-//!
-//! `MultiWriteTransaction::commit_unchecked` and
-//! `MultiWriteTransaction::disable_conflict_tracking` are `pub(crate)`;
-//! callers outside the transaction crate must go through the public entry
-//! points above.
-
 use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::{

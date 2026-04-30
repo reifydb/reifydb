@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Simple unicode width calculation implementation
-
 /// Trait for calculating display width of strings
 pub trait UnicodeWidthStr {
 	/// Returns the display width of the string

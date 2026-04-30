@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Basic CDC Replication Example
-//!
-//! Demonstrates CDC-based replication between two ReifyDB instances:
-//! - Starts a primary instance that streams CDC over gRPC
-//! - Starts a replica instance that connects to the primary and applies changes
-//! - Schema (namespaces, tables) and row data replicate automatically
-//! - Inserts data on the primary, reads it back from the replica
-//!
-//! Run with: `make replication-basic` or `cargo run --bin replication-basic`
-
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{Params, WithSubsystem, server, sub_replication::subsystem::ReplicationSubsystem};

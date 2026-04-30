@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM procedure implementation that executes WebAssembly modules as stored procedures
-
 use postcard::to_stdvec;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};

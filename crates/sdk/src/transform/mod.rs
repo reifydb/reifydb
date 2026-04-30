@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Transform traits and types for FFI transform libraries
-
 pub mod context;
 pub mod exports;
 pub mod wrapper;

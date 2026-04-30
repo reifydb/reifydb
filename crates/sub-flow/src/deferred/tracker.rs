@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Tracks the latest CDC version where each primitive had changes.
-
 use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, interface::catalog::shape::ShapeId};

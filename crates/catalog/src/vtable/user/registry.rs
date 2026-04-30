@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Simplified registry for user-defined virtual tables.
-
 use std::{
 	collections::HashMap,
 	sync::{Arc, RwLock},

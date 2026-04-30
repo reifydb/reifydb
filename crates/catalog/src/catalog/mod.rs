@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Catalog wrapper that provides three-tier lookup methods.
-//!
-//! This struct wraps `MaterializedCatalog` and provides methods for looking up
-//! catalog entities (tables, namespaces, views, etc.) using the three-tier lookup pattern:
-//! 1. Check transactional changes first
-//! 2. Check if deleted in transaction
-//! 3. Check MaterializedCatalog at transaction version
-//! 4. Fall back to storage as defensive measure
-
 pub mod authentication;
 pub mod binding;
 pub mod column;

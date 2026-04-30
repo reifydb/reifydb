@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! DST timer implementation using a deterministic timer heap.
-//!
-//! Timer entries are keyed on mock-clock nanos (not `std::time::Instant`).
-//! Timers are fired explicitly by the DST actor system's `advance_time()`.
-
 use std::{
 	cell::RefCell,
 	cmp::Ordering as CmpOrdering,

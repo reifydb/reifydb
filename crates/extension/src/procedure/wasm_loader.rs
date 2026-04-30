@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM procedure loader - scans a directory for `.wasm` files and registers procedures
-
 use std::{fs, path::Path, sync::Arc};
 
 use reifydb_routine::routine::registry::RoutinesConfigurator;

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Tests for strict global FIFO ordering.
-//!
-//! Every `send()` assigns a global logical timestamp. Messages are processed
-//! in timestamp order regardless of which actor they target.
-
 use super::helpers::*;
 
 #[test]

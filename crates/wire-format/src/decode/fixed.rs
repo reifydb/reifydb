@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Decoding for fixed-width column types:
-//! Boolean, Int1-Int16, Uint1-Uint16, Float4/8, Date, DateTime, Time,
-//! Duration, IdentityId, Uuid4, Uuid7, DictionaryId.
-//!
-//! Also handles RLE, Delta, and DeltaRLE decoders (all fixed-width types).
-
 use reifydb_type::{
 	util::bitvec::BitVec,
 	value::{

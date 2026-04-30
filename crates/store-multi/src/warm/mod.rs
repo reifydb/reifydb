@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Warm storage tier.
-//!
-//! Placeholder for future warm tier storage implementation.
-
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Bootstrap the `system::metrics` namespace and its backing ring buffers
-//! (`request_history`, `statement_stats`). Idempotent.
-
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, RingBufferId},

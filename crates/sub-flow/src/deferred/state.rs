@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Flow state tracking for the coordinator.
-//!
-//! Tracks the status and checkpoint of each flow, enabling the coordinator
-//! to route changes appropriately and manage backfilling.
-
 use std::collections::BTreeMap;
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};

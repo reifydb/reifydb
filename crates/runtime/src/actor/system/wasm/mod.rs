@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM actor system implementation.
-//!
-//! All operations execute inline (synchronously) since WASM doesn't support threads.
-
 use std::{
 	cell::{Cell, RefCell},
 	error, fmt,

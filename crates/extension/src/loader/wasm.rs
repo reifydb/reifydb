@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Shared WASM execution protocol
-//!
-//! All ReifyDB WASM extensions follow the same alloc/call/read-output protocol.
-//! This module extracts the common pattern to eliminate duplication.
-
 use reifydb_wasm::{Engine, SpawnBinary, module::value::Value, source};
 
 use crate::error::ExtensionError;

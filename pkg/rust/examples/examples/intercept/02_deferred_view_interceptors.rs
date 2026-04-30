@@ -1,20 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Deferred View Interceptors
-//!
-//! Demonstrates the fluent interceptor API for deferred views:
-//! - Registering post_insert and post_delete hooks on view data
-//! - Filtering interceptors by namespace.view pattern
-//! - Inspecting view metadata (name, kind, columns) in interceptor callbacks
-//!
-//! View data interceptors allow you to:
-//! - Audit row-level changes in materialized views
-//! - React to inserts, updates, and deletes on view data
-//! - Trigger side effects when view rows change
-//!
-//! Run with: `make intercept-deferred-view` or `cargo run --bin intercept-deferred-view`
-
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{Params, WithInterceptorBuilder, WithSubsystem, embedded};

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Computes flow watermark rows for the system.flow_watermarks virtual table.
-
 use std::sync::Arc;
 
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;

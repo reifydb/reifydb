@@ -5,11 +5,6 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-//! WebAssembly runtime for sandboxed execution in ReifyDB.
-//!
-//! This crate provides a WASM runtime (backed by wasmtime on native targets)
-//! that can execute untrusted WebAssembly modules within the database engine.
-
 pub mod config;
 pub mod module;
 

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Configuration for the admin server subsystem.
-
 use std::{fmt, time::Duration};
 
 use reifydb_runtime::SharedRuntime;

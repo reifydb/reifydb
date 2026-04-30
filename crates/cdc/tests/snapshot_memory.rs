@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Runs the testscripts in `tests/scripts/cdc/*` against a `TestEngine` with
-//! the default in-memory CDC backend. Each script file becomes one Cargo
-//! test, asserting that the runner's output matches the script's `---`
-//! expected blocks.
-
 use std::path::Path;
 
 use reifydb_engine::test_harness::TestEngine;

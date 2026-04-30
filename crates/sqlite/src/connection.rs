@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! SQLite connection utilities shared by all ReifyDB storage subsystems.
-
 use std::fs;
 
 use rusqlite::{Connection, OpenFlags as SqliteOpenFlags};

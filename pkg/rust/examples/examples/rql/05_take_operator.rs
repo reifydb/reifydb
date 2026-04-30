@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # TAKE Operator Example
-//!
-//! Demonstrates the TAKE operator in ReifyDB's RQL:
-//! - Limiting the number of results
-//! - Using take with other operators
-//! - Pagination patterns
-//!
-//! Run with: `make rql-take` or `cargo run --bin rql-take`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

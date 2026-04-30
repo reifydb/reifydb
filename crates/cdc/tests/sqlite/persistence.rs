@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! File-backed `SqliteCdcStorage` persistence: write entries, drop, reopen
-//! at the same path, verify everything survives.
-
 use std::collections::Bound;
 
 use reifydb_cdc::storage::{CdcStorage, sqlite::storage::SqliteCdcStorage};

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Real host_rql callback implementation for FFI procedures
-//!
-//! Allows FFI procedures to execute RQL within the current transaction.
-
 use std::{panic, ptr, slice, str};
 
 use postcard::{from_bytes, to_stdvec};

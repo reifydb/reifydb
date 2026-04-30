@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Hot storage tier enum.
-//!
-//! This module provides the hot storage tier that dispatches to either
-//! Memory or SQLite primitive storage implementations.
-
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};

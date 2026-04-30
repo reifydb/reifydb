@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Decoding for the dynamic Any type with per-value type tags.
-
 use std::str;
 
 use bigdecimal::BigDecimal;

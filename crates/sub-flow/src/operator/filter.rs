@@ -141,68 +141,14 @@ impl Operator for FilterOperator {
 			match diff {
 				Diff::Insert {
 					post,
-				} => {
-					// Post matches filter  → forward Insert.
-					// Post fails filter    → drop (subscriber never saw it).
-					let mask = self.evaluate(&post)?;
-					let passing = self.filter_passing(&post, &mask);
-					if !passing.is_empty() {
-						result.push(Diff::insert(passing));
-					}
-				}
+				} => self.apply_filter_insert(&post, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
-				} => {
-					// Diff filter must look at both sides: the subscriber only ever
-					// saw rows whose pre matched the predicate. Partition row indices
-					// into 4 buckets; emit one diff per non-empty bucket.
-					//
-					//   pre=T, post=T  →  Update { pre, post }   (still visible)
-					//   pre=F, post=T  →  Insert { post }        (became visible)
-					//   pre=T, post=F  →  Remove { pre }         (became invisible)
-					//   pre=F, post=F  →  drop                   (never visible)
-					let pre_mask = self.evaluate(&pre)?;
-					let post_mask = self.evaluate(&post)?;
-
-					let mut updated_idx = Vec::new();
-					let mut inserted_idx = Vec::new();
-					let mut removed_idx = Vec::new();
-
-					let row_count = pre_mask.len().min(post_mask.len());
-					for i in 0..row_count {
-						match (pre_mask[i], post_mask[i]) {
-							(true, true) => updated_idx.push(i),
-							(false, true) => inserted_idx.push(i),
-							(true, false) => removed_idx.push(i),
-							(false, false) => {}
-						}
-					}
-
-					if !updated_idx.is_empty() {
-						result.push(Diff::update(
-							pre.extract_by_indices(&updated_idx),
-							post.extract_by_indices(&updated_idx),
-						));
-					}
-					if !inserted_idx.is_empty() {
-						result.push(Diff::insert(post.extract_by_indices(&inserted_idx)));
-					}
-					if !removed_idx.is_empty() {
-						result.push(Diff::remove(pre.extract_by_indices(&removed_idx)));
-					}
-				}
+				} => self.apply_filter_update(&pre, &post, &mut result)?,
 				Diff::Remove {
 					pre,
-				} => {
-					// Pre matches filter  → forward Remove (row was visible, now gone).
-					// Pre fails filter    → drop (subscriber never saw it).
-					let mask = self.evaluate(&pre)?;
-					let passing = self.filter_passing(&pre, &mask);
-					if !passing.is_empty() {
-						result.push(Diff::remove(passing));
-					}
-				}
+				} => self.apply_filter_remove(&pre, &mut result)?,
 			}
 		}
 
@@ -211,5 +157,67 @@ impl Operator for FilterOperator {
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		self.parent.pull(txn, rows)
+	}
+}
+
+impl FilterOperator {
+	#[inline]
+	fn apply_filter_insert(&self, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
+		let mask = self.evaluate(post)?;
+		let passing = self.filter_passing(post, &mask);
+		if !passing.is_empty() {
+			result.push(Diff::insert(passing));
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn apply_filter_remove(&self, pre: &Columns, result: &mut Vec<Diff>) -> Result<()> {
+		let mask = self.evaluate(pre)?;
+		let passing = self.filter_passing(pre, &mask);
+		if !passing.is_empty() {
+			result.push(Diff::remove(passing));
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn apply_filter_update(&self, pre: &Columns, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
+		// Updates partition into 4 buckets by (pre_mask, post_mask):
+		//   (T, T) -> Update      (still visible)
+		//   (F, T) -> Insert      (became visible)
+		//   (T, F) -> Remove      (became invisible)
+		//   (F, F) -> drop        (never visible)
+		// The subscriber only ever saw rows whose pre matched the predicate.
+		let pre_mask = self.evaluate(pre)?;
+		let post_mask = self.evaluate(post)?;
+
+		let mut updated_idx = Vec::new();
+		let mut inserted_idx = Vec::new();
+		let mut removed_idx = Vec::new();
+
+		let row_count = pre_mask.len().min(post_mask.len());
+		for i in 0..row_count {
+			match (pre_mask[i], post_mask[i]) {
+				(true, true) => updated_idx.push(i),
+				(false, true) => inserted_idx.push(i),
+				(true, false) => removed_idx.push(i),
+				(false, false) => {}
+			}
+		}
+
+		if !updated_idx.is_empty() {
+			result.push(Diff::update(
+				pre.extract_by_indices(&updated_idx),
+				post.extract_by_indices(&updated_idx),
+			));
+		}
+		if !inserted_idx.is_empty() {
+			result.push(Diff::insert(post.extract_by_indices(&inserted_idx)));
+		}
+		if !removed_idx.is_empty() {
+			result.push(Diff::remove(pre.extract_by_indices(&removed_idx)));
+		}
+		Ok(())
 	}
 }

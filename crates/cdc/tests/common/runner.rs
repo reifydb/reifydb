@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Testscript Runner for CDC tests.
-
 #![allow(dead_code, unused_imports)]
 
 use std::{

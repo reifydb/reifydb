@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Connector registry for source and sink connectors
-
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_sdk::{

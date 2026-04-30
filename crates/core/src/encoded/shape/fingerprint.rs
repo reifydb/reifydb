@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RowShape fingerprint computation for content-addressable storage.
-//!
-//! The fingerprint is a deterministic hash of the shape's canonical representation,
-//! ensuring that identical shapes always produce the same fingerprint regardless
-//! of when or where they are created.
-
 use std::ops::Deref;
 
 use reifydb_runtime::hash::{Hash64, xxh3_64};

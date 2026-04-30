@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Subscription management for WebSocket push notifications.
-//!
-//! This module provides the infrastructure for clients to subscribe to
-//! real-time data changes via WebSocket connections.
-
 pub mod handler;
 pub mod registry;
 

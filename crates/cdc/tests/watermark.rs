@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for CDC consumer watermark functionality
-
 use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, watermark::compute_watermark},
 	storage::{CdcStorage, memory::MemoryCdcStorage},

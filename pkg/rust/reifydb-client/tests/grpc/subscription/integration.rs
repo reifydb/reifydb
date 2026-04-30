@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for gRPC subscriptions
-//! Ported from WebSocket storage tests
-//!
-//! These tests focus on connection reliability by repeatedly connecting to the same server instance.
-
 use std::{
 	sync::Arc,
 	time::{Duration, SystemTime, UNIX_EPOCH},

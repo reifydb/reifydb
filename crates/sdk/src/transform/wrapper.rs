@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Wrapper that bridges Rust transforms to FFI interface.
-//!
-//! Zero-copy ABI: input arrives as `BorrowedColumns<'_>` over native column
-//! storage; output is emitted via `ctx.builder()` directly into host-pool
-//! buffers. Nothing crosses the FFI boundary as a guest-allocated `Columns`.
-//!
-//! FFI function return codes:
-//! - `< 0`: Unrecoverable error - process will abort immediately
-//! - `0`: Success
-//! - `> 0`: Recoverable error (reserved for future use)
-
 use std::{
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for the bulk_insert module.
-//!
-//! Tests cover all API paths, validation modes, error conditions, and edge cases
-//! for the fluent bulk insert API that bypasses RQL parsing for maximum performance.
-
 #[path = "bulk_insert/basic.rs"]
 mod basic;
 #[path = "bulk_insert/coerce.rs"]

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Tests for scoped actor system isolation.
-
 use std::time::Duration;
 
 use reifydb_runtime::actor::context::Context;

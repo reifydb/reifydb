@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP endpoint handler for query and command execution.
-//!
-//! This module provides the request handler for:
-//! - `/health` - Health check endpoint
-//! - `/v1/query` - Execute read-only queries
-//! - `/v1/command` - Execute write commands
-
 use std::{collections::HashMap, sync::Arc};
 
 use axum::{

@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Host callback implementations for FFI operators
-//!
-//! This module provides the host-side implementations of callbacks that FFI operators
-//! can invoke. The callbacks are organized into five categories:
-//! - `memory`: Arena-based memory allocation
-//! - `state`: Operator state management
-//! - `store`: Read-only store access
-//! - `logging`: Logging from FFI operators
-//! - `catalog`: Read-only catalog access (namespaces, tables)
-
 use reifydb_abi::{
 	callbacks::{
 		builder::BuilderCallbacks, catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks,

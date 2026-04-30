@@ -1,20 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Table Interceptors
-//!
-//! Demonstrates the fluent interceptor API for ReifyDB:
-//! - Registering pre/post insert hooks on tables
-//! - Filtering interceptors by namespace.table pattern
-//! - Using closures for lightweight interceptor logic
-//!
-//! Interceptors allow you to:
-//! - Audit data changes
-//! - Validate data before/after operations
-//! - Trigger side effects (notifications, logging, etc.)
-//!
-//! Run with: `make intercept-table-view` or `cargo run --bin intercept-table-view`
-
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{Params, WithInterceptorBuilder, WithSubsystem, embedded};

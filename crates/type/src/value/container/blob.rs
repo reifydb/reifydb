@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Blob column container backed by a contiguous bytes + offsets layout.
-//!
-//! Internal storage matches the FFI wire format byte-for-byte. Mirrors
-//! `Utf8Container` but without the UTF-8 invariant - reads return `&[u8]`.
-
 use std::{
 	fmt::{self, Debug},
 	result::Result as StdResult,

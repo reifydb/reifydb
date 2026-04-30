@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Native Condvar implementation using parking_lot.
-
 use std::time::Duration;
 
 use parking_lot::Condvar;

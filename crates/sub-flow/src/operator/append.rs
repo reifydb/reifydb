@@ -101,76 +101,24 @@ impl Operator for AppendOperator {
 				Diff::Insert {
 					post,
 				} => {
-					let row_count = post.row_count();
-					if row_count == 0 {
-						continue;
+					if let Some(d) = self.translate_append_insert(txn, parent_index, post)? {
+						result_diffs.push(d);
 					}
-
-					let mut output_row_numbers = Vec::with_capacity(row_count);
-					for row_idx in 0..row_count {
-						let source_row_number = post.row_numbers[row_idx];
-						let composite_key =
-							Self::make_composite_key(parent_index as u8, source_row_number);
-						let (output_row_number, _is_new) = self
-							.row_number_provider
-							.get_or_create_row_number(txn, &composite_key)?;
-
-						output_row_numbers.push(output_row_number);
-					}
-
-					let output = Arc::unwrap_or_clone(post).with_row_numbers(output_row_numbers);
-
-					result_diffs.push(Diff::insert(output));
 				}
 				Diff::Update {
 					pre,
 					post,
 				} => {
-					let row_count = post.row_count();
-					if row_count == 0 {
-						continue;
+					if let Some(d) = self.translate_append_update(txn, parent_index, pre, post)? {
+						result_diffs.push(d);
 					}
-
-					let mut output_row_numbers = Vec::with_capacity(row_count);
-					for row_idx in 0..row_count {
-						let source_row_number = pre.row_numbers[row_idx];
-						let composite_key =
-							Self::make_composite_key(parent_index as u8, source_row_number);
-						let (output_row_number, _) = self
-							.row_number_provider
-							.get_or_create_row_number(txn, &composite_key)?;
-						output_row_numbers.push(output_row_number);
-					}
-
-					let pre_output =
-						Arc::unwrap_or_clone(pre).with_row_numbers(output_row_numbers.clone());
-					let post_output =
-						Arc::unwrap_or_clone(post).with_row_numbers(output_row_numbers);
-
-					result_diffs.push(Diff::update(pre_output, post_output));
 				}
 				Diff::Remove {
 					pre,
 				} => {
-					let row_count = pre.row_count();
-					if row_count == 0 {
-						continue;
+					if let Some(d) = self.translate_append_remove(txn, parent_index, pre)? {
+						result_diffs.push(d);
 					}
-
-					let mut output_row_numbers = Vec::with_capacity(row_count);
-					for row_idx in 0..row_count {
-						let source_row_number = pre.row_numbers[row_idx];
-						let composite_key =
-							Self::make_composite_key(parent_index as u8, source_row_number);
-						let (output_row_number, _) = self
-							.row_number_provider
-							.get_or_create_row_number(txn, &composite_key)?;
-						output_row_numbers.push(output_row_number);
-					}
-
-					let output = Arc::unwrap_or_clone(pre).with_row_numbers(output_row_numbers);
-
-					result_diffs.push(Diff::remove(output));
 				}
 			}
 		}
@@ -221,5 +169,73 @@ impl Operator for AppendOperator {
 			}
 			Ok(result)
 		}
+	}
+}
+
+impl AppendOperator {
+	#[inline]
+	fn translate_row_numbers(
+		&self,
+		txn: &mut FlowTransaction,
+		parent_index: usize,
+		source: &Columns,
+	) -> Result<Vec<RowNumber>> {
+		let row_count = source.row_count();
+		let mut output_row_numbers = Vec::with_capacity(row_count);
+		for row_idx in 0..row_count {
+			let source_row_number = source.row_numbers[row_idx];
+			let composite_key = Self::make_composite_key(parent_index as u8, source_row_number);
+			let (output_row_number, _) =
+				self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
+			output_row_numbers.push(output_row_number);
+		}
+		Ok(output_row_numbers)
+	}
+
+	#[inline]
+	fn translate_append_insert(
+		&self,
+		txn: &mut FlowTransaction,
+		parent_index: usize,
+		post: Arc<Columns>,
+	) -> Result<Option<Diff>> {
+		if post.row_count() == 0 {
+			return Ok(None);
+		}
+		let output_row_numbers = self.translate_row_numbers(txn, parent_index, &post)?;
+		let output = Arc::unwrap_or_clone(post).with_row_numbers(output_row_numbers);
+		Ok(Some(Diff::insert(output)))
+	}
+
+	#[inline]
+	fn translate_append_update(
+		&self,
+		txn: &mut FlowTransaction,
+		parent_index: usize,
+		pre: Arc<Columns>,
+		post: Arc<Columns>,
+	) -> Result<Option<Diff>> {
+		if post.row_count() == 0 {
+			return Ok(None);
+		}
+		let output_row_numbers = self.translate_row_numbers(txn, parent_index, &pre)?;
+		let pre_output = Arc::unwrap_or_clone(pre).with_row_numbers(output_row_numbers.clone());
+		let post_output = Arc::unwrap_or_clone(post).with_row_numbers(output_row_numbers);
+		Ok(Some(Diff::update(pre_output, post_output)))
+	}
+
+	#[inline]
+	fn translate_append_remove(
+		&self,
+		txn: &mut FlowTransaction,
+		parent_index: usize,
+		pre: Arc<Columns>,
+	) -> Result<Option<Diff>> {
+		if pre.row_count() == 0 {
+			return Ok(None);
+		}
+		let output_row_numbers = self.translate_row_numbers(txn, parent_index, &pre)?;
+		let output = Arc::unwrap_or_clone(pre).with_row_numbers(output_row_numbers);
+		Ok(Some(Diff::remove(output)))
 	}
 }

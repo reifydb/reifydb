@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! SQLite-backed implementation of `CdcStorage`.
-//!
-//! Single table, one row per CommitVersion, payload is a postcard-encoded `Cdc`.
-//! Concurrency: single `Mutex<Connection>` (rusqlite::Connection is Send but !Sync).
-
 use std::{
 	collections::Bound,
 	iter::repeat_n,

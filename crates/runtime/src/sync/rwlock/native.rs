@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Native RwLock implementation using parking_lot.
-
 use std::ops::{Deref, DerefMut};
 
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};

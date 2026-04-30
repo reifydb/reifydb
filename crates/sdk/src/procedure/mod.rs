@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Procedure traits and types for FFI procedure libraries
-
 pub mod exports;
 pub mod wrapper;
 

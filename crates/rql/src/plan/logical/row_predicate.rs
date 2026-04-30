@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Row predicate extraction for optimized row-number-based access.
-//!
-//! This module detects patterns in filter expressions that can be optimized
-//! to O(1) or O(k) row lookups instead of full table scans:
-//! - `rownum == N` → Point lookup
-//! - `rownum in [a, b, c]` → List lookup
-//! - `rownum between X and Y` → Range scan
-
 use reifydb_type::value::row_number::ROW_NUMBER_COLUMN_NAME;
 
 use crate::expression::{

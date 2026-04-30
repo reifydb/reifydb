@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Utility functions for WASM bindings
-
 use js_sys::{Array, JSON, Object, Reflect};
 use reifydb_type::{params::Params, value::frame::frame::Frame};
 use reifydb_wire_format::json::to::convert_frames;

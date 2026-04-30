@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Logging callbacks for FFI operators
-//!
-//! Allows FFI operators to emit log messages at various severity levels.
-
 use std::slice;
 
 use tracing::{debug, error, info, trace, warn};

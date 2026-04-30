@@ -157,7 +157,6 @@ impl InnerHashJoin {
 		Ok(result)
 	}
 
-	/// Handle update for rows with defined join keys (batched by key)
 	pub(crate) fn handle_update(
 		&self,
 		txn: &mut FlowTransaction,
@@ -171,96 +170,70 @@ impl InnerHashJoin {
 			return Ok(Vec::new());
 		}
 
-		let mut result = Vec::new();
-
-		if keys.pre == keys.post {
-			// Key didn't change, update in place
-			for &row_idx in indices {
-				let pre_row_number = pre.row_numbers[row_idx];
-				let post_row_number = post.row_numbers[row_idx];
-
-				match ctx.side {
-					JoinSide::Left => {
-						if update_row_in_entry(
-							txn,
-							&mut ctx.state.left,
-							keys.pre,
-							pre_row_number,
-							post_row_number,
-						)? {
-							let emit_ctx = JoinEmitContext {
-								opposite_store: &ctx.state.right,
-								key_hash: keys.pre,
-								operator: ctx.operator,
-								opposite_parent: &ctx.operator.right_parent,
-							};
-							if let Some(diff) = emit_update_joined_columns(
-								txn,
-								pre,
-								post,
-								row_idx,
-								JoinSide::Left,
-								&emit_ctx,
-							)? {
-								result.push(diff);
-							}
-						} else {
-							let insert_diffs = self.handle_insert(
-								txn,
-								post,
-								&[row_idx],
-								keys.post,
-								ctx,
-							)?;
-							result.extend(insert_diffs);
-						}
-					}
-					JoinSide::Right => {
-						if update_row_in_entry(
-							txn,
-							&mut ctx.state.right,
-							keys.pre,
-							pre_row_number,
-							post_row_number,
-						)? {
-							let emit_ctx = JoinEmitContext {
-								opposite_store: &ctx.state.left,
-								key_hash: keys.pre,
-								operator: ctx.operator,
-								opposite_parent: &ctx.operator.left_parent,
-							};
-							if let Some(diff) = emit_update_joined_columns(
-								txn,
-								pre,
-								post,
-								row_idx,
-								JoinSide::Right,
-								&emit_ctx,
-							)? {
-								result.push(diff);
-							}
-						} else {
-							let insert_diffs = self.handle_insert(
-								txn,
-								post,
-								&[row_idx],
-								keys.post,
-								ctx,
-							)?;
-							result.extend(insert_diffs);
-						}
-					}
-				}
-			}
-		} else {
-			// Key changed - treat as remove + insert
-			let remove_diffs = self.handle_remove(txn, pre, indices, keys.pre, ctx)?;
-			result.extend(remove_diffs);
-
-			let insert_diffs = self.handle_insert(txn, post, indices, keys.post, ctx)?;
-			result.extend(insert_diffs);
+		// Key changed: treat as remove + insert.
+		if keys.pre != keys.post {
+			let mut result = self.handle_remove(txn, pre, indices, keys.pre, ctx)?;
+			result.extend(self.handle_insert(txn, post, indices, keys.post, ctx)?);
+			return Ok(result);
 		}
 
+		let mut result = Vec::new();
+		for &row_idx in indices {
+			result.extend(self.update_in_place_one_row(txn, pre, post, row_idx, keys, ctx)?);
+		}
 		Ok(result)
+	}
+
+	#[inline]
+	fn update_in_place_one_row(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		post: &Columns,
+		row_idx: usize,
+		keys: UpdateKeys,
+		ctx: &mut JoinContext,
+	) -> Result<Vec<Diff>> {
+		let pre_row_number = pre.row_numbers[row_idx];
+		let post_row_number = post.row_numbers[row_idx];
+
+		let updated = match ctx.side {
+			JoinSide::Left => update_row_in_entry(
+				txn,
+				&mut ctx.state.left,
+				keys.pre,
+				pre_row_number,
+				post_row_number,
+			)?,
+			JoinSide::Right => update_row_in_entry(
+				txn,
+				&mut ctx.state.right,
+				keys.pre,
+				pre_row_number,
+				post_row_number,
+			)?,
+		};
+
+		if !updated {
+			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
+		}
+
+		let emit_ctx = JoinEmitContext {
+			opposite_store: match ctx.side {
+				JoinSide::Left => &ctx.state.right,
+				JoinSide::Right => &ctx.state.left,
+			},
+			key_hash: keys.pre,
+			operator: ctx.operator,
+			opposite_parent: match ctx.side {
+				JoinSide::Left => &ctx.operator.right_parent,
+				JoinSide::Right => &ctx.operator.left_parent,
+			},
+		};
+
+		match emit_update_joined_columns(txn, pre, post, row_idx, ctx.side, &emit_ctx)? {
+			Some(diff) => Ok(vec![diff]),
+			None => Ok(Vec::new()),
+		}
 	}
 }

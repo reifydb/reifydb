@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Core actor trait and associated types.
-//!
-//! This module defines the fundamental abstractions for the actor model:
-//! - [`Actor`]: The trait that all actors must implement
-//! - [`Directive`]: Control flow for actor scheduling
-//! - [`ActorConfig`]: Configuration for actor behavior
-
 use crate::actor::{context::Context, system::ActorConfig};
 
 /// What the actor wants to do after handling a message.

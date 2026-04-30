@@ -1,18 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! SQL query builders for SQLite backend with MVCC versioning.
-//!
-//! The table shape uses (key, version) composite primary key:
-//! ```sql
-//! CREATE TABLE IF NOT EXISTS "{table_name}" (
-//!     key BLOB NOT NULL,
-//!     version BLOB NOT NULL,
-//!     value BLOB,
-//!     PRIMARY KEY (key, version)
-//! ) WITHOUT ROWID;
-//! ```
-
 use std::ops::Bound;
 
 use reifydb_core::common::CommitVersion;

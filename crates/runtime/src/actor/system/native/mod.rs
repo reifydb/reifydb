@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Native actor system implementation.
-//!
-//! Uses rayon for all actors on a shared work-stealing pool.
-
 mod pool;
 
 use std::{

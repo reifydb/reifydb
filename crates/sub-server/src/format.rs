@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Wire format for query/command/subscription responses.
-
 use serde::{Deserialize, Serialize};
 
 /// The three response formats the server can emit.

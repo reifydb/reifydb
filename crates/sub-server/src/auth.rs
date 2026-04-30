@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Authentication and identity extraction for HTTP and WebSocket connections.
-//!
-//! This module provides functions to extract user identity from request headers,
-//! auth tokens, and WebSocket authentication messages by delegating to the
-//! engine's AuthService for token validation.
-
 use std::{error::Error as StdError, fmt};
 
 use reifydb_auth::service::AuthService;

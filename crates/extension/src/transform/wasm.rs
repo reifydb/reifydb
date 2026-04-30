@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM transform implementation that executes WebAssembly modules as columnar transforms
-
 use reifydb_core::value::column::columns::Columns;
 use reifydb_sdk::marshal::wasm::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
 use reifydb_type::Result;

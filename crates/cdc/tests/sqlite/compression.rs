@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Roundtrip tests proving that CDC blocks compressed at any supported zstd
-//! level decode back to the exact same entries, and that mixed-level blocks
-//! coexist transparently in the same store.
-
 use std::collections::Bound;
 
 use reifydb_cdc::{

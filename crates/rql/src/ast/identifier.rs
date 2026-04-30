@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Maybe-qualified identifier types for AST
-//! These types allow optional qualification as they come directly from user
-//! input
-
 use crate::{
 	bump::BumpFragment,
 	token::token::{Token, TokenKind},

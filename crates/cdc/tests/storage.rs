@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Trait-level storage tests, parametrized across `MemoryCdcStorage` and
-//! `SqliteCdcStorage`. Every assertion is wired into both backends via the
-//! `storage_trait_tests!` macro. Backend-specific scenarios live in
-//! `tests/memory.rs` and `tests/sqlite.rs`.
-
 use std::collections::Bound;
 
 use reifydb_cdc::storage::{CdcStorage, DropBeforeResult, memory::MemoryCdcStorage, sqlite::storage::SqliteCdcStorage};

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Bootstrap the root identity. Creates a catalog identity named `root` with
-//! `IdentityId::root()` so that authentication (tokens, etc.) can be attached to it.
-
 use reifydb_core::event::EventBus;
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{

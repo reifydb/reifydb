@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Error types for RBCF encoding and decoding.
-
 use std::{error, fmt};
 
 /// Errors that can occur during encoding.

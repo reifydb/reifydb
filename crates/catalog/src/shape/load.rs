@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RowShape Registry loading from storage.
 
 use reifydb_transaction::transaction::Transaction;
 use tracing::{Span, field, instrument};

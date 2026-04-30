@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Decode row deltas into columnar `Diff` objects.
-//!
-//! Uses fingerprint-based shape lookup from `MaterializedCatalog` to convert
-//! `EncodedRow` into `Row`s and then into `Columns`.
-
 use std::sync::Arc;
 
 use reifydb_core::{

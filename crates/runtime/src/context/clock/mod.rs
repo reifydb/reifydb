@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Platform-agnostic clock abstraction.
-//!
-//! Provides a `Clock` enum that can be either real system time or mock time for testing.
-//! The clock is shared across all threads within a runtime instance.
-//!
-//! - **Native**: Uses system time via the time module
-//! - **WASM**: Uses JavaScript's Date.now() via the time module
-
 #[cfg(any(reifydb_target = "native", reifydb_target = "dst"))]
 mod native;
 #[cfg(reifydb_target = "wasi")]

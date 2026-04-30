@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Flow module for ReifyDB RQL
-//!
-//! This module provides the flow graph types and utilities for representing
-//! streaming dataflow computations. The actual compilation from physical plans
-//! to flows has been moved to reifydb-engine to avoid lifetime issues with
-//! async recursion and generic MultiVersionCommandTransaction types.
-
 pub mod analyzer;
 #[allow(clippy::module_inception)]
 pub mod flow;

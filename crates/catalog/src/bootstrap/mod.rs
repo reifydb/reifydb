@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Bootstrap the catalog: load materialized state from storage, then ensure
-//! system-owned objects (root identity, system procedures, metric ring buffers)
-//! exist. Skipped on replicas - they receive these via replication.
-
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{config::ConfigKey, id::NamespaceId},

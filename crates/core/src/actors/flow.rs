@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Actor messages and types for the flow processing subsystem.
-
 use std::collections::BTreeMap;
 
 use reifydb_runtime::actor::system::ActorHandle;

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Registrar for transactional view flows.
-//!
-//! Detects whether a newly-discovered [`FlowDag`] is a transactional view flow,
-//! and if so registers it in the transactional [`FlowEngine`].
-
 use std::sync::{Arc, RwLock};
 
 use reifydb_catalog::catalog::Catalog;
@@ -19,13 +14,13 @@ use crate::engine::FlowEngine;
 
 /// Detects whether a newly-discovered `FlowDag` is a transactional view flow,
 /// and if so registers it in the transactional `FlowEngine`.
-pub struct TransactionalFlowRegistrar {
+pub struct TransactionalFlowRegistry {
 	pub flow_engine: Arc<RwLock<FlowEngine>>,
 	pub engine: StandardEngine,
 	pub catalog: Catalog,
 }
 
-impl TransactionalFlowRegistrar {
+impl TransactionalFlowRegistry {
 	/// Try to register a flow as a transactional view flow.
 	///
 	/// Returns `true` if the flow was transactional and was registered,

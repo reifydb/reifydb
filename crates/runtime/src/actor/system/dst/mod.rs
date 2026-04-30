@@ -1,20 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Deterministic Software Testing (DST) actor system.
-//!
-//! Provides tick-by-tick, externally-driven, fully deterministic actor execution.
-//! All message processing is controlled via `step()` and timers via `advance_time()`.
-//!
-//! # Key properties
-//!
-//! - **Strict global FIFO**: Every `send()` assigns a global logical timestamp. Messages are processed in timestamp
-//!   order regardless of which actor they target.
-//! - **Deterministic timers**: Timer deadlines use mock-clock nanos, not OS time. `advance_time()` fires timers in
-//!   deadline order and enqueues their messages.
-//! - **Panic capture**: `step()` catches panics and returns `StepResult::Panicked` so the test runner can report the
-//!   seed and actor for reproducibility.
-
 use std::{
 	any::Any,
 	cell::{Cell, RefCell},

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Encoding configuration options.
-
 use crate::format::Encoding;
 
 /// Controls the tradeoff between encode speed and compression ratio.

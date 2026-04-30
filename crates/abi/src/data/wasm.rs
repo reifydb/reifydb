@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM-safe flat binary format types for columnar data
-//!
-//! These types mirror ColumnsFFI/ColumnFFI/ColumnDataFFI but use u32 offsets
-//! instead of host pointers, making them suitable for WASM's 32-bit linear memory.
-//! All values are little-endian.
-
 /// Size of the ColumnsWasm header in bytes.
 pub const COLUMNS_WASM_HEADER_SIZE: usize = 16;
 

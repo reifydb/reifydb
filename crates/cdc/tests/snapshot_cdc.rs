@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Runs the same testscripts in `tests/scripts/cdc/*` as `snapshot_memory.rs`,
-//! but against a `TestEngine` backed by `SqliteCdcStorage`. Identical script
-//! → identical expected output proves CDC behavior parity across backends.
-
 use std::path::Path;
 
 use reifydb_engine::test_harness::TestEngine;

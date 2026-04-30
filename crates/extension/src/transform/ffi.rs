@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI transform implementation that bridges native shared-library transforms with ReifyDB
-
 use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
 use reifydb_abi::{

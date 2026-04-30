@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Builder for inserting into a specific table.
-
 use reifydb_type::params::Params;
 
 use crate::bulk_insert::builder::{BulkInsertBuilder, ValidationMode};

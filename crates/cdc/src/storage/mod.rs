@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! CDC Storage abstraction.
-//!
-//! This module provides a trait for CDC storage backends and an in-memory implementation.
-//! CDC storage is independent of MVCC versioned storage - it uses simple BE u64 keys
-//! (CommitVersion) and stores fully resolved values.
-
 pub mod memory;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;

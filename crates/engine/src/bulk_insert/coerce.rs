@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Column coercion for bulk inserts.
-
 use reifydb_core::{
 	interface::catalog::column::Column,
 	value::column::{buffer::ColumnBuffer, columns::Columns},

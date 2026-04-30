@@ -1,21 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Host-side implementation of the output `BuilderCallbacks`.
-//!
-//! Lifecycle:
-//! - `acquire(type, capacity)` allocates a `BuilderState` and returns it as an opaque `*mut c_void` handle
-//!   (boxed-leaked so the guest can hold it across multiple callbacks).
-//! - `data_ptr` / `offsets_ptr` / `bitvec_ptr` / `grow` deref the handle (validating its generation) and return raw
-//!   pointers into the underlying byte buffers.
-//! - `commit(handle, written_count)` finalises the buffer into a native `ColumnBuffer` and stashes it in the active
-//!   `BuilderRegistry` keyed by the handle's id. The handle's generation bumps so any further use aborts in debug.
-//! - `emit_diff(...)` consumes a set of committed handles from the registry and builds a `Diff` plus its `Columns`,
-//!   pushing it into the per-call `accumulator`.
-//!
-//! The host's `FFIOperator::apply` reads `accumulator` after the vtable
-//! call returns to assemble the output `Change`.
-
 use std::{cell::Cell, collections::HashMap, fmt, mem, ptr, slice, str, sync::Mutex};
 
 use postcard::from_bytes as postcard_decode;

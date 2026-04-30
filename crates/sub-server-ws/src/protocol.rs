@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WebSocket request types for the protocol layer.
-//!
-//! These types define the JSON message format for WebSocket client-server communication.
-
 use std::collections::HashMap;
 
 use reifydb_sub_server::{format::WireFormat, wire::WireParams};

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Simple ANSI color formatting implementation
-
 use std::fmt;
 
 /// ANSI color codes

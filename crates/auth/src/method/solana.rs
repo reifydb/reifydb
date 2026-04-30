@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Solana wallet authentication provider.
-//!
-//! Implements a challenge-response flow compatible with Sign In With Solana (SIWS):
-//! 1. Client initiates auth → provider returns a challenge with a SIWS message to sign
-//! 2. Client signs the message with their wallet → provider verifies the ed25519 signature
-
 use std::collections::HashMap;
 
 use bs58::decode as bs58_decode;

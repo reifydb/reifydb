@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Router Example - Data Server
-//!
-//! A ReifyDB instance that serves real data over gRPC.
-//! Creates a `store` namespace with a `store::products` table and listens on port 50052.
-//!
-//! Run with: `cargo run --bin router-data`
-//! Then in another terminal: `cargo run --bin router`
-
 use reifydb::{Params, WithSubsystem, server};
 use tracing::info;
 

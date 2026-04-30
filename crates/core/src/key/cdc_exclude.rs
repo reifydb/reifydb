@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Key exclusion logic for CDC generation.
-//!
-//! Determines which key kinds should be excluded from CDC to avoid
-//! generating events for internal system state.
-
 use super::KeyKind;
 
 /// Returns true if the KeyKind should be excluded from CDC generation.

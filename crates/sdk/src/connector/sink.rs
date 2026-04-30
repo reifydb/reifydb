@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Sink connector traits for exporting data to external systems
-
 use std::collections::HashMap;
 
 use reifydb_core::value::column::columns::Columns;

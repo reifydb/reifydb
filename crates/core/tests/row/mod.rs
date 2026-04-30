@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for the encoded encoding system
-
 mod boolean_edge_cases;
 mod efficiency;
 mod float_edge_cases;

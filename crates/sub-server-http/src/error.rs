@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP error handling and response formatting.
-//!
-//! This module provides error types that implement Axum's `IntoResponse` trait
-//! for consistent error responses across all HTTP endpoints.
-
 use std::{error, fmt};
 
 use axum::{

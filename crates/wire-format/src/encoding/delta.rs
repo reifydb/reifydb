@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Delta encoding for sorted/sequential integer and temporal columns.
-
 use crate::error::DecodeError;
 
 /// Try delta-encoding an i32 column. Returns None if not beneficial.

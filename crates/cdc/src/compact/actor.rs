@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Periodic CDC compaction actor. Ticks at `CdcCompactInterval`, packs
-//! `CdcCompactMaxBlocksPerTick` blocks per tick into the `cdc_block` table.
-//! All knobs are read fresh from system config every tick so `SET CONFIG`
-//! takes effect within one window without restart.
-
 use std::{sync::Arc, time::Duration};
 
 use reifydb_core::{

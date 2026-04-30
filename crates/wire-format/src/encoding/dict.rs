@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Dictionary encoding for low-cardinality string/blob columns.
-//!
-//! Layout:
-//! - `data`: index array (u8/u16/u32 per value, width chosen by cardinality)
-//! - `extra`: dictionary table:
-//!   - `dict_count: u32` (number of distinct values)
-//!   - `(dict_count + 1) * 4` bytes of u32 offsets
-//!   - concatenated dictionary entry bytes
-
 use std::{collections::HashMap, str};
 
 use reifydb_type::value::{

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Concurrent map abstraction that provides a unified API across native and WASM targets.
-//!
-//! On native platforms, this wraps `DashMap` for high-performance concurrent access.
-//! On WASM platforms, this wraps `Arc<RwLock<HashMap>>` to provide similar semantics.
-
 use std::{borrow::Borrow, hash::Hash};
 
 use cfg_if::cfg_if;

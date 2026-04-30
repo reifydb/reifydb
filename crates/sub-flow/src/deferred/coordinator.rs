@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Coordinator actor that handles CDC consumption and flow orchestration.
-//!
-//! This module provides:
-//! - [`CoordinatorActor`]: Processes CDC events and coordinates flow workers
-//! - [`FlowCoordinatorMessage`] -- Messages (Consume, PoolReply)
-//! - [`FlowConsumeRef`]: Thin `CdcConsume` impl that forwards to the actor
-
 use std::{cmp::min, collections, collections::BTreeMap, fmt, mem, ops::Bound, sync::Arc, time::Duration};
 
 use reifydb_cdc::{

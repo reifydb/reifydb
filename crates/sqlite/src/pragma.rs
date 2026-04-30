@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! SQLite pragma helpers shared by all ReifyDB storage subsystems.
-
 use rusqlite::{Connection, ToSql};
 
 use crate::{

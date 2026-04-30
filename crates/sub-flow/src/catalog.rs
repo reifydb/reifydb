@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Catalog cache for the flow consumer.
-//!
-//! Caches source metadata (columns, types, dictionaries) to avoid redundant catalog lookups
-//! during CDC processing. The cache is invalidated when shape changes are observed via CDC.
-
 use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Store access callbacks for FFI operators
-//!
-//! Provides read-only access to the underlying store for operators,
-//! including get, contains_key, prefix, and range operations.
-
 use std::{ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_abi::{

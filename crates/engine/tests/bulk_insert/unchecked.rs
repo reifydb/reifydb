@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Unchecked mode tests for the bulk_insert module.
-//!
-//! Tests verify that unchecked mode skips validation/coercion and the OCC
-//! conflict-detection registration. See `bulk_insert_unchecked` for the
-//! safety contract these tests assume.
-
 use reifydb_engine::test_prelude::*;
 
 #[test]

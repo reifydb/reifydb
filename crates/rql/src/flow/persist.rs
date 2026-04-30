@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Persistence module for compiled flow plans.
-//!
-//! This module handles Phase 2 of the 2-phase flow compilation:
-//! - Allocates real catalog IDs for nodes and edges
-//! - Persists nodes and edges to the catalog
-//! - Builds the in-memory Flow representation
-
 use std::collections::HashMap;
 
 use postcard::to_stdvec;

@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Ephemeral procedure registrar and `system::procedures` / `system::config` bootstrap.
-//!
-//! Native/FFI/WASM procedures are never persisted to storage; they are repopulated
-//! on every boot from the runtime registry. This module owns that lifecycle.
-//!
-//! IDs assigned to ephemeral procedures come from a per-boot counter rooted at
-//! `ProcedureId::SYSTEM_RESERVED_START`. They are **not stable across boots, restarts,
-//! or even successive refreshes within the same process**. Anything outside the
-//! materialized catalog that needs to refer to a Native/Ffi/Wasm procedure must use
-//! its qualified name, never its id.
-
 use std::{
 	path::PathBuf,
 	sync::atomic::{AtomicU64, Ordering},

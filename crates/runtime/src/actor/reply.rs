@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Request-response primitive for actor messaging.
-//!
-//! Provides a cfg-gated `Reply<T>` / `ReplyReceiver<T>` pair:
-//! - **Native**: Wraps `tokio::sync::oneshot` - the handler `.await`s the receiver
-//! - **DST**: Wraps `Rc<RefCell<Option<T>>>` - the client reads after `run_until_idle()`
-
 #[cfg(reifydb_single_threaded)]
 use std::cell::RefCell;
 #[cfg(reifydb_single_threaded)]

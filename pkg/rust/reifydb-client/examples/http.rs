@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-//! Example demonstrating async HTTP client usage
 
 use std::{env, error::Error};
 

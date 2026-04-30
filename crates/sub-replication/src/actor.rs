@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Actor implementations for the replication subsystem.
-//!
-//! These actors wrap the core replication logic so DST tests can exercise
-//! CDC reading and applying without any network transport.
-
 use std::ops::Bound;
 
 use reifydb_cdc::storage::CdcStore;

@@ -1,21 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Timer utilities for actors.
-//!
-//! This module provides timer functionality for scheduling messages:
-//! - [`TimerHandle`]: A handle to cancel a scheduled timer
-//! - [`Context::schedule_once`]: Schedule a message to be sent after a delay
-//! - [`Context::schedule_repeat`]: Schedule a message to be sent repeatedly
-//!
-//! # Platform Differences
-//!
-//! - **Native**: Uses a centralized scheduler with a BinaryHeap min-heap
-//! - **WASM**: Uses `setTimeout` and `setInterval` via `web-sys`
-//!
-//! [`Context::schedule_once`]: crate::actor::context::Context::schedule_once
-//! [`Context::schedule_repeat`]: crate::actor::context::Context::schedule_repeat
-
 use std::{
 	fmt,
 	fmt::Debug,

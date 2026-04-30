@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! State management callbacks for FFI operators
-//!
-//! Provides key-value state storage for operators, including get/set/remove/clear operations
-//! and prefix-based iteration.
-
 use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_abi::{

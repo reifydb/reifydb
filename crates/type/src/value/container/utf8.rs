@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! UTF-8 string column container backed by a contiguous bytes + offsets layout.
-//!
-//! Internal storage matches the FFI wire format byte-for-byte so the marshal
-//! path can hand guests a `cap == 0` borrow with no transformation. The
-//! `Utf8Container` wrapper guards the UTF-8 invariant: `push(&str)` accepts
-//! only valid UTF-8; reads return `&str` via `from_utf8_unchecked` since
-//! pushed bytes are always valid by construction.
-
 use std::{
 	fmt::{self, Debug},
 	result::Result as StdResult,

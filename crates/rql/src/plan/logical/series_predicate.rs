@@ -1,19 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Series predicate extraction for key/tag pushdown.
-//!
-//! This module detects patterns in filter expressions that can be pushed down
-//! into the series key range scan instead of post-filtering:
-//! - `<key_column> >= X` / `<key_column> > X` → key_start bound
-//! - `<key_column> <= X` / `<key_column> < X` → key_end bound
-//! - `<key_column> BETWEEN A AND B` → both bounds
-//! - `tag == X` → variant_tag filter
-//!
-//! `key_end` is exclusive (matches `SeriesRowKeyRange::scan_range` half-open
-//! semantics), so `<= CONST` becomes `key_end = CONST + 1` and `BETWEEN`'s
-//! upper bound is similarly bumped by one.
-
 use crate::expression::{ColumnExpression, ConstantExpression, Expression};
 
 /// Extracted series predicates that can be pushed into the scan.

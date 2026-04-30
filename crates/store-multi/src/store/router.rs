@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Key routing logic for the store layer.
-//!
-//! Determines which table a key or range belongs to based on key type.
-
 use reifydb_core::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::EntryKind,

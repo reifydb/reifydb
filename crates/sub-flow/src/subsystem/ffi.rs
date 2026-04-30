@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI operator loading for the flow subsystem
-
 use std::{fs::read_dir, path::PathBuf};
 
 use reifydb_core::event::{

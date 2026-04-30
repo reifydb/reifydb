@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Subscription data consumption logic.
-//!
-//! Provides static methods for reading, converting, and deleting subscription rows.
 
 use std::collections::{HashMap, HashSet};
 

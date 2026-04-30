@@ -59,7 +59,7 @@ use crate::{
 	engine::FlowEngine,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
-		registrar::TransactionalFlowRegistrar,
+		registry::TransactionalFlowRegistry,
 	},
 };
 
@@ -67,7 +67,7 @@ use crate::{
 /// and registers transactional ones before forwarding to the coordinator.
 struct FlowConsumeDispatcher {
 	coordinator: FlowConsumeRef,
-	registrar: TransactionalFlowRegistrar,
+	registrar: TransactionalFlowRegistry,
 	flow_catalog: FlowCatalog,
 	engine: StandardEngine,
 }
@@ -181,7 +181,7 @@ impl FlowSubsystem {
 			custom_operators.clone(),
 		)));
 
-		let registrar = TransactionalFlowRegistrar {
+		let registrar = TransactionalFlowRegistry {
 			flow_engine: transactional_flow_engine.clone(),
 			engine: engine.clone(),
 			catalog: engine.catalog(),
@@ -299,7 +299,7 @@ impl FlowSubsystem {
 				catalog: catalog_for_pre.clone(),
 			}));
 			interceptors.post_commit.add(Arc::new(TransactionalFlowPostCommitInterceptor {
-				registrar: TransactionalFlowRegistrar {
+				registrar: TransactionalFlowRegistry {
 					flow_engine: flow_engine_for_post.clone(),
 					engine: engine_for_post.clone(),
 					catalog: catalog_for_post.clone(),

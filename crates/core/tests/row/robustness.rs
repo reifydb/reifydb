@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Robustness tests for the encoded encoding system
-//! Tests error handling, recovery, and stability under stress
-
 use std::str::FromStr;
 
 use reifydb_core::encoded::shape::RowShape;

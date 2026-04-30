@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Basic Enums Example
-//!
-//! Demonstrates enum (sum type / tagged union) support in ReifyDB:
-//! - Creating enums with structured variants
-//! - Using enums as column types in tables
-//! - Inserting rows with enum values
-//! - Querying tables containing enum data
-//! - Filtering rows by enum variant
-//!
-//! Run with: `make basic-enums` or `cargo run --bin basic-enums`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

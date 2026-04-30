@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Drive every method through the `CdcStore::Sqlite` variant so all match
-//! arms (write, read, read_range, count, min, max, delete_before,
-//! find_ttl_cutoff) route correctly.
-
 use std::collections::Bound;
 
 use reifydb_cdc::storage::CdcStore;

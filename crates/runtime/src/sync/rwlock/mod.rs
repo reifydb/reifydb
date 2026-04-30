@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RwLock synchronization primitive.
-
 use std::ops::{Deref, DerefMut};
 
 use cfg_if::cfg_if;

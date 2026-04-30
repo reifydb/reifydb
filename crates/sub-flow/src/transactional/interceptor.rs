@@ -1,18 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Interceptors for transactional (inline) view processing.
-//!
-//! **Pre-commit** (`TransactionalFlowPreCommitInterceptor`):
-//! When a `CommandTransaction` or `AdminTransaction` commits, runs any
-//! transactional flows that depend on the tables changed in the transaction.
-//! The view writes produced by those flows are fed back into the transaction
-//! as `ctx.pending_writes` and committed atomically with the original DML.
-//!
-//! **Post-commit** (`TransactionalFlowPostCommitInterceptor`):
-//! After a `CREATE VIEW` (transactional) commits, eagerly registers the
-//! flow so it is available for the very next transaction's pre-commit phase.
-
 use std::{
 	mem,
 	sync::{Arc, RwLock},
@@ -46,14 +34,9 @@ use tracing::warn;
 use crate::{
 	engine::FlowEngine,
 	transaction::{FlowTransaction, TransactionalParams},
-	transactional::registrar::TransactionalFlowRegistrar,
+	transactional::registry::TransactionalFlowRegistry,
 };
 
-/// Pre-commit interceptor that executes transactional (inline) flows.
-///
-/// This interceptor holds a separate `FlowEngine` containing ONLY transactional
-/// views - it is distinct from the coordinator's CDC `FlowEngine` which handles
-/// deferred views.
 pub struct TransactionalFlowPreCommitInterceptor {
 	/// The flow engine containing only transactional view flows.
 	pub flow_engine: Arc<RwLock<FlowEngine>>,
@@ -300,7 +283,7 @@ struct FlowResult {
 /// is available for the very next transaction's pre-commit phase - without
 /// waiting for CDC polling to discover it.
 pub struct TransactionalFlowPostCommitInterceptor {
-	pub registrar: TransactionalFlowRegistrar,
+	pub registrar: TransactionalFlowRegistry,
 }
 
 impl PostCommitInterceptor for TransactionalFlowPostCommitInterceptor {

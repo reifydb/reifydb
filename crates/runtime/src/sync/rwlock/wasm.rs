@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM RwLock implementation (no-op).
-//!
-//! Since WASM is single-threaded, this is a simple wrapper around RefCell.
-
 use std::{
 	cell,
 	cell::{Ref, RefMut},

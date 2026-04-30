@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP endpoint handler for the admin server.
-//!
-//! This module provides handler for:
-//! - `/health` - Health check
-//! - `/v1/auth/*` - Authentication endpoints
-//! - `/v1/config` - Configuration endpoints
-//! - `/v1/execute` - Query execution
-//! - `/v1/metrics` - System metrics
-//! - Static file serving for the admin UI
-
 use axum::{
 	Json,
 	body::Body,

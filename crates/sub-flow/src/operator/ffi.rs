@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI operator implementation that bridges FFI operators with ReifyDB
-
 use std::{
 	any::Any,
 	cell::{Cell, UnsafeCell},
@@ -288,30 +286,10 @@ impl Operator for FFIOperator {
 		self.ensure_txn_setup(txn)?;
 
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
-
 		let ffi_ctx_ptr = self.cached_ctx.get();
 
-		let result_code = with_registry(&self.builder_registry, || {
-			let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-				(self.vtable.pull)(self.instance, ffi_ctx_ptr, row_numbers.as_ptr(), row_numbers.len())
-			}));
-			match result {
-				Ok(code) => code,
-				Err(panic_info) => {
-					let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
-						s.to_string()
-					} else if let Some(s) = panic_info.downcast_ref::<String>() {
-						s.clone()
-					} else {
-						"Unknown panic".to_string()
-					};
-					error!(
-						operator_id = self.operator_id.0,
-						"FFI operator panicked during pull: {}", msg
-					);
-					abort();
-				}
-			}
+		let result_code = self.invoke_under_panic_guard("pull", || unsafe {
+			(self.vtable.pull)(self.instance, ffi_ctx_ptr, row_numbers.as_ptr(), row_numbers.len())
 		});
 
 		if result_code != 0 {
@@ -321,9 +299,9 @@ impl Operator for FFIOperator {
 			);
 		}
 
-		// `pull` emits a single Insert-shaped diff whose `post` columns
-		// are the rows the guest fetched. Treat the first emitted diff's
-		// `post` (or `pre` for Remove) as the result.
+		// `pull` emits a single Insert-shaped diff whose `post` columns are the
+		// rows the guest fetched. Use the first emitted diff's `post` (or `pre`
+		// for Remove) as the result.
 		let mut diffs = self.builder_registry.drain();
 		let columns = if let Some(first) = diffs.drain(..).next() {
 			first.post.or(first.pre).unwrap_or_else(Columns::empty)
@@ -342,13 +320,43 @@ impl Operator for FFIOperator {
 		self.ensure_txn_setup(txn)?;
 
 		let timestamp_nanos = timestamp.to_nanos();
-
 		let ffi_ctx_ptr = self.cached_ctx.get();
 
-		let result_code = with_registry(&self.builder_registry, || {
-			let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-				(self.vtable.tick)(self.instance, ffi_ctx_ptr, timestamp_nanos)
-			}));
+		let result_code = self.invoke_under_panic_guard("tick", || unsafe {
+			(self.vtable.tick)(self.instance, ffi_ctx_ptr, timestamp_nanos)
+		});
+
+		if result_code < 0 {
+			let _ = self.builder_registry.drain();
+			return Err(
+				FFIError::Other(format!("FFI operator tick failed with code: {}", result_code)).into()
+			);
+		}
+
+		if result_code == 1 {
+			// No output: drain in case the guest acquired without emitting.
+			let _ = self.builder_registry.drain();
+			return Ok(None);
+		}
+
+		// Tick has no carried txn version; use timestamp nanos as the version
+		// surrogate (consistent with other tick-driven flows in this codebase).
+		// Ordering-sensitive callers rely on `changed_at` instead.
+		let version = CommitVersion(timestamp_nanos);
+		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, timestamp);
+		Span::current().record("output_diff_count", output_change.diffs.len());
+		Ok(Some(output_change))
+	}
+}
+
+impl FFIOperator {
+	#[inline]
+	fn invoke_under_panic_guard<F>(&self, op: &'static str, call: F) -> i32
+	where
+		F: FnOnce() -> i32,
+	{
+		with_registry(&self.builder_registry, || {
+			let result = catch_unwind(AssertUnwindSafe(call));
 			match result {
 				Ok(code) => code,
 				Err(panic_info) => {
@@ -361,34 +369,12 @@ impl Operator for FFIOperator {
 					};
 					error!(
 						operator_id = self.operator_id.0,
-						"FFI operator panicked during tick: {}", msg
+						"FFI operator panicked during {}: {}", op, msg
 					);
 					abort();
 				}
 			}
-		});
-
-		if result_code < 0 {
-			let _ = self.builder_registry.drain();
-			return Err(
-				FFIError::Other(format!("FFI operator tick failed with code: {}", result_code)).into()
-			);
-		}
-
-		if result_code == 1 {
-			// No output - drain in case the guest acquired without emitting.
-			let _ = self.builder_registry.drain();
-			return Ok(None);
-		}
-
-		// Build a synthetic txn version (tick path doesn't carry one); use
-		// the timestamp's nanos as the version surrogate, like the rest
-		// of the codebase does for tick-driven flows. Callers that care
-		// about ordering rely on `changed_at`.
-		let version = CommitVersion(timestamp_nanos);
-		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, timestamp);
-		Span::current().record("output_diff_count", output_change.diffs.len());
-		Ok(Some(output_change))
+		})
 	}
 }
 

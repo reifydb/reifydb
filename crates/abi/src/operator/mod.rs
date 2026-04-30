@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Operator-specific types for registration, discovery, and vtables
-
 pub mod capabilities;
 pub mod column;
 pub mod descriptor;

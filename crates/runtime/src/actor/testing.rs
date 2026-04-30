@@ -1,49 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Testing utilities for actors.
-//!
-//! This module provides a [`TestHarness`] for synchronous actor testing
-//! without spawning actual tasks or threads.
-//!
-//! # Example
-//!
-//! ```
-//! use reifydb_runtime::actor::{
-//! 	context::Context,
-//! 	testing::TestHarness,
-//! 	traits::{Actor, Directive},
-//! };
-//!
-//! struct Counter;
-//!
-//! impl Actor for Counter {
-//! 	type State = i64;
-//! 	type Message = i64;
-//!
-//! 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
-//! 		0
-//! 	}
-//!
-//! 	fn handle(
-//! 		&self,
-//! 		state: &mut Self::State,
-//! 		msg: Self::Message,
-//! 		_ctx: &Context<Self::Message>,
-//! 	) -> Directive {
-//! 		*state += msg;
-//! 		Directive::Continue
-//! 	}
-//! }
-//!
-//! let mut harness = TestHarness::new(Counter);
-//! harness.send(5);
-//! harness.send(3);
-//! harness.process_all();
-//!
-//! assert_eq!(*harness.state(), 8);
-//! ```
-
 use std::{collections::VecDeque, marker::PhantomData};
 
 #[cfg(not(reifydb_single_threaded))]
