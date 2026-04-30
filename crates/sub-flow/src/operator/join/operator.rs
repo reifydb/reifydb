@@ -6,7 +6,7 @@ use std::sync::{Arc, LazyLock};
 use indexmap::IndexMap;
 use postcard::to_stdvec;
 use reifydb_core::{
-	common::JoinType,
+	common::{CommitVersion, JoinType},
 	encoded::{key::EncodedKey, shape::RowShape},
 	interface::{
 		catalog::flow::FlowNodeId,
@@ -484,20 +484,15 @@ impl Operator for JoinOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		// Check for self-referential calls (should never happen)
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.node
 		{
 			return Ok(Change::from_flow(self.node, change.version, Vec::new(), DateTime::default()));
 		}
 
-		// Create the state
 		let mut state = JoinState::new(self.node);
-		// Pre-allocate result vector with estimated capacity
-		let estimated_capacity = change.diffs.len() * 2;
-		let mut result = Vec::with_capacity(estimated_capacity);
+		let mut result = Vec::with_capacity(change.diffs.len() * 2);
 
-		// Determine which side this change is from
 		let side = self
 			.determine_side(&change)
 			.ok_or_else(|| Error(Box::new(internal!("Join operator received change from unknown node"))))?;
@@ -507,168 +502,48 @@ impl Operator for JoinOperator {
 			JoinSide::Right => &self.compiled_right_exprs,
 		};
 
-		// Process each diff inline, grouping by key within each diff
+		let version = change.version;
 		for diff in change.diffs {
 			match diff {
 				Diff::Insert {
 					post,
-				} => {
-					// Compute keys for all rows in this Columns batch
-					let keys = self.compute_join_keys(&post, compiled_exprs)?;
-
-					// Group indices by key hash
-					let mut inserts_by_key: IndexMap<Hash128, Vec<usize>> = IndexMap::new();
-					let mut inserts_undefined: Vec<usize> = Vec::new();
-
-					for (row_idx, key) in keys.iter().enumerate() {
-						if let Some(key_hash) = key {
-							inserts_by_key.entry(*key_hash).or_default().push(row_idx);
-						} else {
-							inserts_undefined.push(row_idx);
-						}
-					}
-
-					// Process inserts with defined keys (batched by key)
-					for (key_hash, indices) in inserts_by_key {
-						let mut ctx = JoinContext {
-							side,
-							state: &mut state,
-							operator: self,
-							version: change.version,
-						};
-						let diffs = self
-							.strategy
-							.handle_insert(txn, &post, &indices, &key_hash, &mut ctx)?;
-						result.extend(diffs);
-					}
-
-					// Process inserts with undefined keys individually
-					for idx in inserts_undefined {
-						let mut ctx = JoinContext {
-							side,
-							state: &mut state,
-							operator: self,
-							version: change.version,
-						};
-						let diffs = self
-							.strategy
-							.handle_insert_undefined(txn, &post, idx, &mut ctx)?;
-						result.extend(diffs);
-					}
-				}
+				} => self.apply_join_insert(
+					txn,
+					&post,
+					compiled_exprs,
+					side,
+					version,
+					&mut state,
+					&mut result,
+				)?,
 				Diff::Remove {
 					pre,
-				} => {
-					// Compute keys for all rows
-					let keys = self.compute_join_keys(&pre, compiled_exprs)?;
-
-					// Group indices by key hash
-					let mut removes_by_key: IndexMap<Hash128, Vec<usize>> = IndexMap::new();
-					let mut removes_undefined: Vec<usize> = Vec::new();
-
-					for (row_idx, key) in keys.iter().enumerate() {
-						if let Some(key_hash) = key {
-							removes_by_key.entry(*key_hash).or_default().push(row_idx);
-						} else {
-							removes_undefined.push(row_idx);
-						}
-					}
-
-					// Process removes with defined keys (batched by key)
-					for (key_hash, indices) in removes_by_key {
-						let mut ctx = JoinContext {
-							side,
-							state: &mut state,
-							operator: self,
-							version: change.version,
-						};
-						let diffs = self
-							.strategy
-							.handle_remove(txn, &pre, &indices, &key_hash, &mut ctx)?;
-						result.extend(diffs);
-					}
-
-					// Process removes with undefined keys individually
-					for idx in removes_undefined {
-						let mut ctx = JoinContext {
-							side,
-							state: &mut state,
-							operator: self,
-							version: change.version,
-						};
-						let diffs = self
-							.strategy
-							.handle_remove_undefined(txn, &pre, idx, &mut ctx)?;
-						result.extend(diffs);
-					}
-				}
+				} => self.apply_join_remove(
+					txn,
+					&pre,
+					compiled_exprs,
+					side,
+					version,
+					&mut state,
+					&mut result,
+				)?,
 				Diff::Update {
 					pre,
 					post,
-				} => {
-					// Compute keys for pre and post
-					let pre_keys = self.compute_join_keys(&pre, compiled_exprs)?;
-					let post_keys = self.compute_join_keys(&post, compiled_exprs)?;
-					let row_count = post.row_count();
-
-					// Group updates by (pre_key, post_key) pair
-					// Only updates with same key pair can be batched
-					let mut updates_by_key: IndexMap<(Hash128, Hash128), Vec<usize>> =
-						IndexMap::new();
-					let mut updates_undefined: Vec<usize> = Vec::new();
-
-					for row_idx in 0..row_count {
-						match (pre_keys[row_idx], post_keys[row_idx]) {
-							(Some(pre_key), Some(post_key)) => {
-								updates_by_key
-									.entry((pre_key, post_key))
-									.or_default()
-									.push(row_idx);
-							}
-							_ => {
-								// Any undefined key (pre or post) is processed
-								// individually
-								updates_undefined.push(row_idx);
-							}
-						}
-					}
-
-					// Process updates with defined keys (batched by key pair)
-					for ((pre_key, post_key), indices) in updates_by_key {
-						let mut ctx = JoinContext {
-							side,
-							state: &mut state,
-							operator: self,
-							version: change.version,
-						};
-						let keys = UpdateKeys {
-							pre: &pre_key,
-							post: &post_key,
-						};
-						let diffs = self
-							.strategy
-							.handle_update(txn, &pre, &post, &indices, keys, &mut ctx)?;
-						result.extend(diffs);
-					}
-
-					// Process updates with undefined keys individually
-					for row_idx in updates_undefined {
-						let mut ctx = JoinContext {
-							side,
-							state: &mut state,
-							operator: self,
-							version: change.version,
-						};
-						let diffs = self
-							.strategy
-							.handle_update_undefined(txn, &pre, &post, row_idx, &mut ctx)?;
-						result.extend(diffs);
-					}
-				}
+				} => self.apply_join_update(
+					txn,
+					&pre,
+					&post,
+					compiled_exprs,
+					side,
+					version,
+					&mut state,
+					&mut result,
+				)?,
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
+		Ok(Change::from_flow(self.node, version, result, change.changed_at))
 	}
 
 	// FIXME #244 The issue is that when we need to reconstruct an unmatched left row, we need the right side's
@@ -755,5 +630,165 @@ impl Operator for JoinOperator {
 			}
 			Ok(result)
 		}
+	}
+}
+
+impl JoinOperator {
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn apply_join_insert(
+		&self,
+		txn: &mut FlowTransaction,
+		post: &Columns,
+		compiled_exprs: &[CompiledExpr],
+		side: JoinSide,
+		version: CommitVersion,
+		state: &mut JoinState,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		let keys = self.compute_join_keys(post, compiled_exprs)?;
+		let mut inserts_by_key: IndexMap<Hash128, Vec<usize>> = IndexMap::new();
+		let mut inserts_undefined: Vec<usize> = Vec::new();
+
+		for (row_idx, key) in keys.iter().enumerate() {
+			if let Some(key_hash) = key {
+				inserts_by_key.entry(*key_hash).or_default().push(row_idx);
+			} else {
+				inserts_undefined.push(row_idx);
+			}
+		}
+
+		for (key_hash, indices) in inserts_by_key {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				version,
+			};
+			let diffs = self.strategy.handle_insert(txn, post, &indices, &key_hash, &mut ctx)?;
+			result.extend(diffs);
+		}
+
+		for idx in inserts_undefined {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				version,
+			};
+			let diffs = self.strategy.handle_insert_undefined(txn, post, idx, &mut ctx)?;
+			result.extend(diffs);
+		}
+
+		Ok(())
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn apply_join_remove(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		compiled_exprs: &[CompiledExpr],
+		side: JoinSide,
+		version: CommitVersion,
+		state: &mut JoinState,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		let keys = self.compute_join_keys(pre, compiled_exprs)?;
+		let mut removes_by_key: IndexMap<Hash128, Vec<usize>> = IndexMap::new();
+		let mut removes_undefined: Vec<usize> = Vec::new();
+
+		for (row_idx, key) in keys.iter().enumerate() {
+			if let Some(key_hash) = key {
+				removes_by_key.entry(*key_hash).or_default().push(row_idx);
+			} else {
+				removes_undefined.push(row_idx);
+			}
+		}
+
+		for (key_hash, indices) in removes_by_key {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				version,
+			};
+			let diffs = self.strategy.handle_remove(txn, pre, &indices, &key_hash, &mut ctx)?;
+			result.extend(diffs);
+		}
+
+		for idx in removes_undefined {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				version,
+			};
+			let diffs = self.strategy.handle_remove_undefined(txn, pre, idx, &mut ctx)?;
+			result.extend(diffs);
+		}
+
+		Ok(())
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn apply_join_update(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: &Columns,
+		post: &Columns,
+		compiled_exprs: &[CompiledExpr],
+		side: JoinSide,
+		version: CommitVersion,
+		state: &mut JoinState,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		let pre_keys = self.compute_join_keys(pre, compiled_exprs)?;
+		let post_keys = self.compute_join_keys(post, compiled_exprs)?;
+		let row_count = post.row_count();
+
+		let mut updates_by_key: IndexMap<(Hash128, Hash128), Vec<usize>> = IndexMap::new();
+		let mut updates_undefined: Vec<usize> = Vec::new();
+
+		for row_idx in 0..row_count {
+			match (pre_keys[row_idx], post_keys[row_idx]) {
+				(Some(pre_key), Some(post_key)) => {
+					updates_by_key.entry((pre_key, post_key)).or_default().push(row_idx);
+				}
+				_ => {
+					updates_undefined.push(row_idx);
+				}
+			}
+		}
+
+		for ((pre_key, post_key), indices) in updates_by_key {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				version,
+			};
+			let keys = UpdateKeys {
+				pre: &pre_key,
+				post: &post_key,
+			};
+			let diffs = self.strategy.handle_update(txn, pre, post, &indices, keys, &mut ctx)?;
+			result.extend(diffs);
+		}
+
+		for row_idx in updates_undefined {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				version,
+			};
+			let diffs = self.strategy.handle_update_undefined(txn, pre, post, row_idx, &mut ctx)?;
+			result.extend(diffs);
+		}
+
+		Ok(())
 	}
 }

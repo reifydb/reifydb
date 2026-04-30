@@ -8,7 +8,9 @@ use reifydb_catalog::store::ringbuffer::update::{decode_ringbuffer_metadata, enc
 use reifydb_core::{
 	encoded::shape::{RowShape, RowShapeField},
 	interface::{
-		catalog::{flow::FlowNodeId, id::RingBufferId, ringbuffer::RingBufferMetadata, shape::ShapeId},
+		catalog::{
+			flow::FlowNodeId, id::RingBufferId, ringbuffer::RingBufferMetadata, shape::ShapeId, view::View,
+		},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
@@ -139,154 +141,22 @@ impl Operator for SinkRingBufferViewOperator {
 			match diff {
 				Diff::Insert {
 					post,
-				} => {
-					let coerced = coerce_columns(post, view.columns())?;
-					let row_count = coerced.row_count();
-					for row_idx in 0..row_count {
-						// Evict oldest if full
-						if metadata.is_full() {
-							let oldest_rn = RowNumber(metadata.head);
-							let pre_key = RowKey::encoded(object_id, oldest_rn);
-							txn.remove(&pre_key)?;
-							metadata.head += 1;
-							metadata.count -= 1;
-
-							// Clean up alias for evicted row
-							if let Some(source_rn) = state.reverse.remove(&oldest_rn) {
-								state.forward.remove(&source_rn);
-							}
-
-							if self.propagate_evictions {
-								// We could read the old row and emit a Remove diff,
-								// but for now we skip (requires reading the old value
-								// from storage)
-							}
-						}
-
-						let source_rn = coerced.row_numbers[row_idx];
-						let assigned_rn = RowNumber(metadata.tail);
-						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &shape, assigned_rn)?;
-
-						// Track alias when source row number differs from assigned key
-						if source_rn != assigned_rn {
-							state.forward.insert(source_rn, assigned_rn);
-							state.reverse.insert(assigned_rn, source_rn);
-						}
-
-						let encoded = ViewRowInterceptor::pre_insert(
-							txn,
-							&view,
-							assigned_rn,
-							encoded,
-						)?;
-						let key = RowKey::encoded(object_id, assigned_rn);
-						txn.set(&key, encoded.clone())?;
-						ViewRowInterceptor::post_insert(txn, &view, assigned_rn, &encoded)?;
-
-						if metadata.is_empty() {
-							metadata.head = assigned_rn.0;
-						}
-						metadata.count += 1;
-						metadata.tail = assigned_rn.0 + 1;
-					}
-					let version = txn.version();
-					let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
-					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
-						version,
-						diffs: smallvec![Diff::insert(coerced)],
-						changed_at,
-					});
-				}
+				} => self.apply_ringbuffer_insert(
+					txn,
+					&view,
+					&shape,
+					object_id,
+					&mut metadata,
+					&mut state,
+					post,
+				)?,
 				Diff::Update {
 					pre,
 					post,
-				} => {
-					// Ringbuffer views support update (same as table view)
-					let coerced_pre = coerce_columns(pre, view.columns())?;
-					let coerced_post = coerce_columns(post, view.columns())?;
-					let row_count = coerced_post.row_count();
-					for row_idx in 0..row_count {
-						let pre_source_rn = coerced_pre.row_numbers[row_idx];
-						let post_source_rn = coerced_post.row_numbers[row_idx];
-						// Resolve state to storage keys
-						let pre_storage_rn = state
-							.forward
-							.get(&pre_source_rn)
-							.copied()
-							.unwrap_or(pre_source_rn);
-						let post_storage_rn = state
-							.forward
-							.get(&post_source_rn)
-							.copied()
-							.unwrap_or(post_source_rn);
-						let (_, pre_encoded) = encode_row_at_index(
-							&coerced_pre,
-							row_idx,
-							&shape,
-							pre_storage_rn,
-						)?;
-						let (_, post_encoded) = encode_row_at_index(
-							&coerced_post,
-							row_idx,
-							&shape,
-							post_storage_rn,
-						)?;
-
-						let post_encoded = ViewRowInterceptor::pre_update(
-							txn,
-							&view,
-							post_storage_rn,
-							post_encoded,
-						)?;
-						let pre_key = RowKey::encoded(object_id, pre_storage_rn);
-						let post_key = RowKey::encoded(object_id, post_storage_rn);
-						txn.remove(&pre_key)?;
-						txn.set(&post_key, post_encoded.clone())?;
-						ViewRowInterceptor::post_update(
-							txn,
-							&view,
-							post_storage_rn,
-							&post_encoded,
-							&pre_encoded,
-						)?;
-					}
-					let version = txn.version();
-					let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
-					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
-						version,
-						diffs: smallvec![Diff::update(coerced_pre, coerced_post)],
-						changed_at,
-					});
-				}
+				} => self.apply_ringbuffer_update(txn, &view, &shape, object_id, &state, pre, post)?,
 				Diff::Remove {
 					pre,
-				} => {
-					let coerced = coerce_columns(pre, view.columns())?;
-					let row_count = coerced.row_count();
-					for row_idx in 0..row_count {
-						let source_rn = coerced.row_numbers[row_idx];
-						// Resolve alias to storage key
-						let storage_rn = state.forward.remove(&source_rn).unwrap_or(source_rn);
-						state.reverse.remove(&storage_rn);
-						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &shape, storage_rn)?;
-						ViewRowInterceptor::pre_delete(txn, &view, storage_rn)?;
-						let key = RowKey::encoded(object_id, storage_rn);
-						txn.remove(&key)?;
-						ViewRowInterceptor::post_delete(txn, &view, storage_rn, &encoded)?;
-					}
-					let version = txn.version();
-					let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
-					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
-						version,
-						diffs: smallvec![Diff::remove(coerced)],
-						changed_at,
-					});
-				}
+				} => self.apply_ringbuffer_remove(txn, &view, &shape, object_id, &mut state, pre)?,
 			}
 		}
 
@@ -299,4 +169,135 @@ impl Operator for SinkRingBufferViewOperator {
 	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
 		unreachable!()
 	}
+}
+
+impl SinkRingBufferViewOperator {
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn apply_ringbuffer_insert(
+		&self,
+		txn: &mut FlowTransaction,
+		view: &View,
+		shape: &RowShape,
+		object_id: ShapeId,
+		metadata: &mut RingBufferMetadata,
+		state: &mut RingBufferState,
+		post: &Arc<Columns>,
+	) -> Result<()> {
+		let coerced = coerce_columns(post, view.columns())?;
+		let row_count = coerced.row_count();
+		for row_idx in 0..row_count {
+			if metadata.is_full() {
+				let oldest_rn = RowNumber(metadata.head);
+				let pre_key = RowKey::encoded(object_id, oldest_rn);
+				txn.remove(&pre_key)?;
+				metadata.head += 1;
+				metadata.count -= 1;
+
+				if let Some(source_rn) = state.reverse.remove(&oldest_rn) {
+					state.forward.remove(&source_rn);
+				}
+
+				if self.propagate_evictions {
+					// We could read the old row and emit a Remove diff,
+					// but for now we skip (requires reading the old value
+					// from storage).
+				}
+			}
+
+			let source_rn = coerced.row_numbers[row_idx];
+			let assigned_rn = RowNumber(metadata.tail);
+			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, assigned_rn)?;
+
+			if source_rn != assigned_rn {
+				state.forward.insert(source_rn, assigned_rn);
+				state.reverse.insert(assigned_rn, source_rn);
+			}
+
+			let encoded = ViewRowInterceptor::pre_insert(txn, view, assigned_rn, encoded)?;
+			let key = RowKey::encoded(object_id, assigned_rn);
+			txn.set(&key, encoded.clone())?;
+			ViewRowInterceptor::post_insert(txn, view, assigned_rn, &encoded)?;
+
+			if metadata.is_empty() {
+				metadata.head = assigned_rn.0;
+			}
+			metadata.count += 1;
+			metadata.tail = assigned_rn.0 + 1;
+		}
+		emit_view_change(txn, view, Diff::insert(coerced));
+		Ok(())
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn apply_ringbuffer_update(
+		&self,
+		txn: &mut FlowTransaction,
+		view: &View,
+		shape: &RowShape,
+		object_id: ShapeId,
+		state: &RingBufferState,
+		pre: &Arc<Columns>,
+		post: &Arc<Columns>,
+	) -> Result<()> {
+		let coerced_pre = coerce_columns(pre, view.columns())?;
+		let coerced_post = coerce_columns(post, view.columns())?;
+		let row_count = coerced_post.row_count();
+		for row_idx in 0..row_count {
+			let pre_source_rn = coerced_pre.row_numbers[row_idx];
+			let post_source_rn = coerced_post.row_numbers[row_idx];
+			let pre_storage_rn = state.forward.get(&pre_source_rn).copied().unwrap_or(pre_source_rn);
+			let post_storage_rn = state.forward.get(&post_source_rn).copied().unwrap_or(post_source_rn);
+			let (_, pre_encoded) = encode_row_at_index(&coerced_pre, row_idx, shape, pre_storage_rn)?;
+			let (_, post_encoded) = encode_row_at_index(&coerced_post, row_idx, shape, post_storage_rn)?;
+
+			let post_encoded = ViewRowInterceptor::pre_update(txn, view, post_storage_rn, post_encoded)?;
+			let pre_key = RowKey::encoded(object_id, pre_storage_rn);
+			let post_key = RowKey::encoded(object_id, post_storage_rn);
+			txn.remove(&pre_key)?;
+			txn.set(&post_key, post_encoded.clone())?;
+			ViewRowInterceptor::post_update(txn, view, post_storage_rn, &post_encoded, &pre_encoded)?;
+		}
+		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
+		Ok(())
+	}
+
+	#[inline]
+	fn apply_ringbuffer_remove(
+		&self,
+		txn: &mut FlowTransaction,
+		view: &View,
+		shape: &RowShape,
+		object_id: ShapeId,
+		state: &mut RingBufferState,
+		pre: &Arc<Columns>,
+	) -> Result<()> {
+		let coerced = coerce_columns(pre, view.columns())?;
+		let row_count = coerced.row_count();
+		for row_idx in 0..row_count {
+			let source_rn = coerced.row_numbers[row_idx];
+			let storage_rn = state.forward.remove(&source_rn).unwrap_or(source_rn);
+			state.reverse.remove(&storage_rn);
+			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, storage_rn)?;
+			ViewRowInterceptor::pre_delete(txn, view, storage_rn)?;
+			let key = RowKey::encoded(object_id, storage_rn);
+			txn.remove(&key)?;
+			ViewRowInterceptor::post_delete(txn, view, storage_rn, &encoded)?;
+		}
+		emit_view_change(txn, view, Diff::remove(coerced));
+		Ok(())
+	}
+}
+
+#[inline]
+fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
+	let version = txn.version();
+	let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
+	txn.track_flow_change(Change {
+		origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
+		version,
+		diffs: smallvec![diff],
+		changed_at,
+	});
 }

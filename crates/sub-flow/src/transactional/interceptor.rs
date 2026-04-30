@@ -22,7 +22,8 @@ use rayon::prelude::*;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
-	encoded::shape::RowShape,
+	common::CommitVersion,
+	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::{flow::FlowId, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
@@ -98,70 +99,24 @@ pub(crate) fn execute_inline_flow_changes(
 		q.version()
 	};
 
-	let mut available_changes: Vec<Change> = ctx
-		.flow_changes
-		.iter()
-		.map(|c| {
-			let mut c = c.clone();
-			c.version = read_version;
-			c
-		})
-		.collect();
-
-	let base_pending = {
-		let mut p = Pending::new();
-		for (key, value) in &ctx.transaction_writes {
-			match value {
-				Some(v) => p.insert(key.clone(), v.clone()),
-				None => p.remove(key.clone()),
-			}
-		}
-		p
-	};
+	let mut available_changes = prepare_available_changes(&ctx.flow_changes, read_version);
+	let base_pending = build_base_pending(&ctx.transaction_writes);
 
 	for level in execution_levels {
-		// Snapshot of all view-origin changes produced by previous levels (or the
-		// original `flow_changes` from the committing txn). Shared read-only with
-		// every flow txn in this level so pull paths on a view parent can overlay
-		// these on top of their `read_version` storage scan. See the regression at
-		// `testsuite/flow/tests/scripts/transactional/regression/004_left_join_between_views`.
-		let view_overlay: Arc<Vec<Change>> = Arc::new(
-			available_changes
-				.iter()
-				.filter(|c| matches!(c.origin, ChangeOrigin::Shape(ShapeId::View(_))))
-				.cloned()
-				.collect(),
-		);
+		let view_overlay = build_view_overlay(&available_changes);
+		let flow_txns = prepare_level_flow_txns(
+			&level,
+			&available_changes,
+			flow_engine,
+			engine,
+			catalog,
+			read_version,
+			&base_pending,
+			&view_overlay,
+		)?;
 
-		let mut flow_txns: Vec<(FlowId, Vec<Change>, FlowTransaction)> = Vec::new();
-		for &flow_id in &level {
-			let relevant: Vec<Change> = available_changes
-				.iter()
-				.filter(|c| flow_is_interested_in(c, flow_id, flow_engine))
-				.cloned()
-				.collect();
-
-			if relevant.is_empty() {
-				continue;
-			}
-
-			let query = engine.multi().begin_query()?;
-			let state_query = engine.multi().begin_query()?;
-			let interceptors = engine.create_interceptors();
-
-			let flow_txn = FlowTransaction::transactional(TransactionalParams {
-				version: read_version,
-				pending: Pending::new(),
-				base_pending: base_pending.clone(),
-				query,
-				state_query,
-				catalog: catalog.clone(),
-				interceptors,
-				clock: engine.clock().clone(),
-				view_overlay: Arc::clone(&view_overlay),
-			});
-
-			flow_txns.push((flow_id, relevant, flow_txn));
+		if flow_txns.is_empty() {
+			continue;
 		}
 
 		let pools = engine.actor_system().pools();
@@ -169,45 +124,151 @@ pub(crate) fn execute_inline_flow_changes(
 			flow_txns
 				.into_par_iter()
 				.map(|(flow_id, relevant, mut flow_txn)| {
-					for change in relevant {
-						flow_engine.process(&mut flow_txn, change, flow_id)?;
-					}
-
-					// Flush cached operator state so its writes go into
-					// `pending` and commit atomically with the rest of
-					// this transactional flow's outputs.
-					flow_txn.flush_operator_states()?;
-
-					Ok(FlowResult {
-						view_entries: flow_txn.take_accumulator_entries(),
-						pending: flow_txn.take_pending(),
-						pending_shapes: flow_txn.take_pending_shapes(),
-					})
+					run_flow_in_level(flow_engine, flow_id, relevant, &mut flow_txn)
 				})
 				.collect()
 		});
 
-		for result in results {
-			let result = result?;
-			for (id, diff) in &result.view_entries {
-				available_changes.push(Change {
-					origin: ChangeOrigin::Shape(*id),
-					version: read_version,
-					diffs: smallvec![diff.clone()],
-					changed_at: DateTime::from_nanos(engine.clock().now_nanos()),
-				});
-			}
-			ctx.view_entries.extend(result.view_entries);
-			ctx.pending_shapes.extend(result.pending_shapes);
-			for (key, pw) in result.pending.iter_sorted() {
-				match pw {
-					PendingWrite::Set(v) => ctx.pending_writes.push((key.clone(), Some(v.clone()))),
-					PendingWrite::Remove => ctx.pending_writes.push((key.clone(), None)),
-				}
+		merge_level_results(ctx, &mut available_changes, results, engine, read_version)?;
+	}
+
+	Ok(())
+}
+
+#[inline]
+fn prepare_available_changes(flow_changes: &[Change], read_version: CommitVersion) -> Vec<Change> {
+	flow_changes
+		.iter()
+		.map(|c| {
+			let mut c = c.clone();
+			c.version = read_version;
+			c
+		})
+		.collect()
+}
+
+#[inline]
+fn build_base_pending(transaction_writes: &[(EncodedKey, Option<EncodedRow>)]) -> Pending {
+	let mut p = Pending::new();
+	for (key, value) in transaction_writes {
+		match value {
+			Some(v) => p.insert(key.clone(), v.clone()),
+			None => p.remove(key.clone()),
+		}
+	}
+	p
+}
+
+#[inline]
+fn build_view_overlay(available_changes: &[Change]) -> Arc<Vec<Change>> {
+	// Snapshot of view-origin changes from previous levels (or the original
+	// `flow_changes`). Shared read-only with every flow txn in the next level so
+	// pull paths on a view parent can overlay these on top of their `read_version`
+	// storage scan. See the regression at
+	// `testsuite/flow/tests/scripts/transactional/regression/004_left_join_between_views`.
+	Arc::new(
+		available_changes
+			.iter()
+			.filter(|c| matches!(c.origin, ChangeOrigin::Shape(ShapeId::View(_))))
+			.cloned()
+			.collect(),
+	)
+}
+
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn prepare_level_flow_txns(
+	level: &[FlowId],
+	available_changes: &[Change],
+	flow_engine: &FlowEngine,
+	engine: &StandardEngine,
+	catalog: &Catalog,
+	read_version: CommitVersion,
+	base_pending: &Pending,
+	view_overlay: &Arc<Vec<Change>>,
+) -> Result<Vec<(FlowId, Vec<Change>, FlowTransaction)>> {
+	let mut flow_txns: Vec<(FlowId, Vec<Change>, FlowTransaction)> = Vec::new();
+	for &flow_id in level {
+		let relevant: Vec<Change> = available_changes
+			.iter()
+			.filter(|c| flow_is_interested_in(c, flow_id, flow_engine))
+			.cloned()
+			.collect();
+
+		if relevant.is_empty() {
+			continue;
+		}
+
+		let query = engine.multi().begin_query()?;
+		let state_query = engine.multi().begin_query()?;
+		let interceptors = engine.create_interceptors();
+
+		let flow_txn = FlowTransaction::transactional(TransactionalParams {
+			version: read_version,
+			pending: Pending::new(),
+			base_pending: base_pending.clone(),
+			query,
+			state_query,
+			catalog: catalog.clone(),
+			interceptors,
+			clock: engine.clock().clone(),
+			view_overlay: Arc::clone(view_overlay),
+		});
+
+		flow_txns.push((flow_id, relevant, flow_txn));
+	}
+	Ok(flow_txns)
+}
+
+#[inline]
+fn run_flow_in_level(
+	flow_engine: &FlowEngine,
+	flow_id: FlowId,
+	relevant: Vec<Change>,
+	flow_txn: &mut FlowTransaction,
+) -> Result<FlowResult> {
+	for change in relevant {
+		flow_engine.process(flow_txn, change, flow_id)?;
+	}
+
+	// Flush cached operator state so its writes go into `pending` and commit
+	// atomically with the rest of this transactional flow's outputs.
+	flow_txn.flush_operator_states()?;
+
+	Ok(FlowResult {
+		view_entries: flow_txn.take_accumulator_entries(),
+		pending: flow_txn.take_pending(),
+		pending_shapes: flow_txn.take_pending_shapes(),
+	})
+}
+
+#[inline]
+fn merge_level_results(
+	ctx: &mut PreCommitContext,
+	available_changes: &mut Vec<Change>,
+	results: Vec<Result<FlowResult>>,
+	engine: &StandardEngine,
+	read_version: CommitVersion,
+) -> Result<()> {
+	for result in results {
+		let result = result?;
+		for (id, diff) in &result.view_entries {
+			available_changes.push(Change {
+				origin: ChangeOrigin::Shape(*id),
+				version: read_version,
+				diffs: smallvec![diff.clone()],
+				changed_at: DateTime::from_nanos(engine.clock().now_nanos()),
+			});
+		}
+		ctx.view_entries.extend(result.view_entries);
+		ctx.pending_shapes.extend(result.pending_shapes);
+		for (key, pw) in result.pending.iter_sorted() {
+			match pw {
+				PendingWrite::Set(v) => ctx.pending_writes.push((key.clone(), Some(v.clone()))),
+				PendingWrite::Remove => ctx.pending_writes.push((key.clone(), None)),
 			}
 		}
 	}
-
 	Ok(())
 }
 

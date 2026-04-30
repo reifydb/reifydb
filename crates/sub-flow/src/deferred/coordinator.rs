@@ -22,7 +22,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::shape::RowShape,
 	interface::{
-		catalog::{flow::FlowId, shape::ShapeId},
+		catalog::{flow::FlowId, id::ViewId, shape::ShapeId},
 		cdc::{Cdc, CdcBatch, SystemChange},
 		change::{Change, ChangeOrigin},
 	},
@@ -30,7 +30,10 @@ use reifydb_core::{
 	key::{Key, kind::KeyKind},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag};
+use reifydb_rql::flow::{
+	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
+	flow::FlowDag,
+};
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -40,7 +43,7 @@ use reifydb_runtime::{
 	},
 	context::clock::{Clock, Instant},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{
 	Result,
 	error::Error,
@@ -156,6 +159,95 @@ struct TickSchedule {
 /// Helper to create an error result for coordinator replies.
 fn coordinator_error(msg: impl fmt::Display) -> Result<()> {
 	Err(Error(Box::new(internal!("{}", msg))))
+}
+
+#[inline]
+fn collect_chunk_changes(batch: &CdcBatch) -> Vec<Change> {
+	let mut chunk_changes = Vec::new();
+	for cdc in &batch.items {
+		chunk_changes.extend(cdc.changes.iter().cloned());
+	}
+	chunk_changes
+}
+
+#[inline]
+fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
+	for (key, pw) in combined.iter_sorted() {
+		match pw {
+			PendingWrite::Set(value) => transaction.set(key, value.clone())?,
+			PendingWrite::Remove => {
+				// Preserve deleted row values so CDC can emit Diff::Remove for
+				// downstream deferred flows that source from views.
+				if matches!(Key::kind(key), Some(KeyKind::Row)) {
+					match transaction.get(key)? {
+						Some(existing) => transaction.unset(key, existing.row)?,
+						None => transaction.remove(key)?,
+					}
+				} else {
+					transaction.remove(key)?;
+				}
+			}
+		}
+	}
+	Ok(())
+}
+
+#[inline]
+fn persist_flow_checkpoints(
+	transaction: &mut CommandTransaction,
+	checkpoints: &[(FlowId, CommitVersion)],
+) -> Result<()> {
+	for (flow_id, version) in checkpoints {
+		CdcCheckpoint::persist(transaction, flow_id, *version)?;
+	}
+	Ok(())
+}
+
+#[inline]
+fn collect_direct_flow_sources(
+	dependency_graph: &FlowDependencyGraph,
+	flow_id: FlowId,
+) -> (collections::HashSet<ShapeId>, Vec<ViewId>) {
+	let mut flow_sources: collections::HashSet<ShapeId> = collections::HashSet::new();
+	let mut view_sources = Vec::new();
+
+	for (table_id, flow_ids) in &dependency_graph.source_tables {
+		if flow_ids.contains(&flow_id) {
+			flow_sources.insert(ShapeId::Table(*table_id));
+		}
+	}
+	for (view_id, flow_ids) in &dependency_graph.source_views {
+		if flow_ids.contains(&flow_id) {
+			flow_sources.insert(ShapeId::View(*view_id));
+			view_sources.push(*view_id);
+		}
+	}
+	for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
+		if flow_ids.contains(&flow_id) {
+			flow_sources.insert(ShapeId::RingBuffer(*rb_id));
+		}
+	}
+	for (series_id, flow_ids) in &dependency_graph.source_series {
+		if flow_ids.contains(&flow_id) {
+			flow_sources.insert(ShapeId::Series(*series_id));
+		}
+	}
+
+	(flow_sources, view_sources)
+}
+
+#[inline]
+fn filter_changes_by_sources(changes: &[Change], flow_sources: &collections::HashSet<ShapeId>) -> Vec<Change> {
+	changes.iter()
+		.filter(|change| {
+			if let ChangeOrigin::Shape(source) = change.origin {
+				flow_sources.contains(&source)
+			} else {
+				true
+			}
+		})
+		.cloned()
+		.collect()
 }
 
 /// Coordinator actor - processes CDC and coordinates flow workers.
@@ -402,7 +494,6 @@ impl CoordinatorActor {
 		};
 	}
 
-	/// Handle a PoolReply based on the current phase.
 	fn handle_pool_reply(
 		&self,
 		state: &mut CoordinatorState,
@@ -410,166 +501,196 @@ impl CoordinatorActor {
 		response: PoolResponse,
 	) {
 		let phase = mem::replace(&mut state.phase, Phase::Idle);
-
 		match phase {
 			Phase::RegisteringFlows {
-				flows: mut remaining_flows,
-				ctx: mut consume_ctx,
-			} => {
-				// Check if registration succeeded
-				match response {
-					PoolResponse::RegisterSuccess => {}
-					PoolResponse::Success {
-						pending_shapes,
-						..
-					} => {
-						consume_ctx.pending_shapes.extend(pending_shapes);
-					}
-					PoolResponse::Error(e) => {
-						(consume_ctx.original_reply)(coordinator_error(e));
-						return;
-					}
-				}
-
-				if remaining_flows.is_empty() {
-					self.rebalance_flows(state, ctx, consume_ctx);
-				} else {
-					// Register next flow
-					let flow = remaining_flows.remove(0);
-					let flow_id = flow.id;
-
-					state.analyzer.add(flow.clone());
-					self.maybe_register_tick_schedule(state, &flow);
-					if flow.is_subscription() {
-						state.states.register_active(flow_id, consume_ctx.current_version);
-						debug!(
-							flow_id = flow_id.0,
-							"registered new subscription flow as active"
-						);
-					} else {
-						state.states.register_backfilling(flow_id);
-						debug!(
-							flow_id = flow_id.0,
-							"registered new flow in backfilling status"
-						);
-					}
-
-					let self_ref = ctx.self_ref().clone();
-					let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
-						let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
-					});
-
-					if self.pool
-						.send(FlowPoolMessage::RegisterFlow {
-							flow_id,
-							reply: callback,
-						})
-						.is_err()
-					{
-						(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
-						return;
-					}
-
-					state.phase = Phase::RegisteringFlows {
-						flows: remaining_flows,
-						ctx: consume_ctx,
-					};
-				}
-			}
+				flows,
+				ctx: cctx,
+			} => self.continue_registering(state, ctx, response, flows, cctx),
 			Phase::Rebalancing {
-				ctx: consume_ctx,
-			} => match response {
-				PoolResponse::Success {
-					..
-				}
-				| PoolResponse::RegisterSuccess => {
-					self.proceed_to_submit(state, ctx, consume_ctx);
-				}
-				PoolResponse::Error(e) => {
-					(consume_ctx.original_reply)(coordinator_error(e));
-				}
-			},
+				ctx: cctx,
+			} => self.continue_rebalancing(state, ctx, response, cctx),
 			Phase::SubmittingBatches {
-				ctx: mut consume_ctx,
-			} => {
-				match response {
-					PoolResponse::Success {
-						pending,
-						pending_shapes,
-						view_changes,
-					} => {
-						consume_ctx.combined = pending;
-						consume_ctx.pending_shapes.extend(pending_shapes);
-						consume_ctx.view_changes.extend(view_changes);
-					}
-					PoolResponse::RegisterSuccess => {
-						// unexpected but not an error
-					}
-					PoolResponse::Error(e) => {
-						(consume_ctx.original_reply)(coordinator_error(e));
-						return;
-					}
-				}
-
-				// Collect checkpoints for active flows
-				if let Some(to_version) = consume_ctx.latest_version {
-					for flow_id in state.states.active_flow_ids() {
-						consume_ctx.checkpoints.push((flow_id, to_version));
-					}
-				}
-
-				// Proceed to advance backfilling flows
-				self.proceed_to_backfill(state, ctx, consume_ctx);
-			}
+				ctx: cctx,
+			} => self.continue_submitting(state, ctx, response, cctx),
 			Phase::AdvancingBackfill {
-				flows: remaining_flow_ids,
-				ctx: mut consume_ctx,
+				flows,
+				ctx: cctx,
+			} => self.continue_advancing_backfill(state, ctx, response, flows, cctx),
+			Phase::Ticking => self.continue_ticking(response),
+			Phase::Idle => {}
+		}
+	}
+
+	#[inline]
+	fn continue_registering(
+		&self,
+		state: &mut CoordinatorState,
+		ctx: &Context<FlowCoordinatorMessage>,
+		response: PoolResponse,
+		mut remaining_flows: Vec<FlowDag>,
+		mut consume_ctx: ConsumeContext,
+	) {
+		match response {
+			PoolResponse::RegisterSuccess => {}
+			PoolResponse::Success {
+				pending_shapes,
+				..
 			} => {
-				// Collect result from previous backfill worker submission
-				match response {
-					PoolResponse::Success {
-						pending,
-						pending_shapes,
-						view_changes,
-					} => {
-						consume_ctx.pending_shapes.extend(pending_shapes);
-						consume_ctx.view_changes.extend(view_changes);
-						for (key, value) in pending.iter_sorted() {
-							match value {
-								PendingWrite::Set(v) => {
-									consume_ctx
-										.combined
-										.insert(key.clone(), v.clone());
-								}
-								PendingWrite::Remove => {
-									consume_ctx.combined.remove(key.clone());
-								}
-							}
+				consume_ctx.pending_shapes.extend(pending_shapes);
+			}
+			PoolResponse::Error(e) => {
+				(consume_ctx.original_reply)(coordinator_error(e));
+				return;
+			}
+		}
+
+		if remaining_flows.is_empty() {
+			self.rebalance_flows(state, ctx, consume_ctx);
+			return;
+		}
+
+		let flow = remaining_flows.remove(0);
+		let flow_id = flow.id;
+
+		state.analyzer.add(flow.clone());
+		self.maybe_register_tick_schedule(state, &flow);
+		if flow.is_subscription() {
+			state.states.register_active(flow_id, consume_ctx.current_version);
+			debug!(flow_id = flow_id.0, "registered new subscription flow as active");
+		} else {
+			state.states.register_backfilling(flow_id);
+			debug!(flow_id = flow_id.0, "registered new flow in backfilling status");
+		}
+
+		let self_ref = ctx.self_ref().clone();
+		let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
+			let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
+		});
+
+		if self.pool
+			.send(FlowPoolMessage::RegisterFlow {
+				flow_id,
+				reply: callback,
+			})
+			.is_err()
+		{
+			(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
+			return;
+		}
+
+		state.phase = Phase::RegisteringFlows {
+			flows: remaining_flows,
+			ctx: consume_ctx,
+		};
+	}
+
+	#[inline]
+	fn continue_rebalancing(
+		&self,
+		state: &mut CoordinatorState,
+		ctx: &Context<FlowCoordinatorMessage>,
+		response: PoolResponse,
+		consume_ctx: ConsumeContext,
+	) {
+		match response {
+			PoolResponse::Success {
+				..
+			}
+			| PoolResponse::RegisterSuccess => {
+				self.proceed_to_submit(state, ctx, consume_ctx);
+			}
+			PoolResponse::Error(e) => {
+				(consume_ctx.original_reply)(coordinator_error(e));
+			}
+		}
+	}
+
+	#[inline]
+	fn continue_submitting(
+		&self,
+		state: &mut CoordinatorState,
+		ctx: &Context<FlowCoordinatorMessage>,
+		response: PoolResponse,
+		mut consume_ctx: ConsumeContext,
+	) {
+		match response {
+			PoolResponse::Success {
+				pending,
+				pending_shapes,
+				view_changes,
+			} => {
+				consume_ctx.combined = pending;
+				consume_ctx.pending_shapes.extend(pending_shapes);
+				consume_ctx.view_changes.extend(view_changes);
+			}
+			PoolResponse::RegisterSuccess => {}
+			PoolResponse::Error(e) => {
+				(consume_ctx.original_reply)(coordinator_error(e));
+				return;
+			}
+		}
+
+		if let Some(to_version) = consume_ctx.latest_version {
+			for flow_id in state.states.active_flow_ids() {
+				consume_ctx.checkpoints.push((flow_id, to_version));
+			}
+		}
+
+		self.proceed_to_backfill(state, ctx, consume_ctx);
+	}
+
+	#[inline]
+	fn continue_advancing_backfill(
+		&self,
+		state: &mut CoordinatorState,
+		ctx: &Context<FlowCoordinatorMessage>,
+		response: PoolResponse,
+		remaining_flow_ids: Vec<FlowId>,
+		mut consume_ctx: ConsumeContext,
+	) {
+		match response {
+			PoolResponse::Success {
+				pending,
+				pending_shapes,
+				view_changes,
+			} => {
+				consume_ctx.pending_shapes.extend(pending_shapes);
+				consume_ctx.view_changes.extend(view_changes);
+				for (key, value) in pending.iter_sorted() {
+					match value {
+						PendingWrite::Set(v) => {
+							consume_ctx.combined.insert(key.clone(), v.clone());
+						}
+						PendingWrite::Remove => {
+							consume_ctx.combined.remove(key.clone());
 						}
 					}
-					PoolResponse::RegisterSuccess => {}
-					PoolResponse::Error(e) => {
-						(consume_ctx.original_reply)(coordinator_error(e));
-						return;
-					}
 				}
-
-				self.advance_next_backfill_flow(state, ctx, remaining_flow_ids, consume_ctx);
 			}
-			Phase::Ticking => match response {
-				PoolResponse::Success {
-					pending,
-					pending_shapes,
-					..
-				} => {
-					self.commit_tick_writes(pending, pending_shapes);
-				}
-				PoolResponse::Error(e) => {
-					warn!(error = %e, "tick processing failed");
-				}
-				_ => {}
-			},
-			Phase::Idle => {}
+			PoolResponse::RegisterSuccess => {}
+			PoolResponse::Error(e) => {
+				(consume_ctx.original_reply)(coordinator_error(e));
+				return;
+			}
+		}
+
+		self.advance_next_backfill_flow(state, ctx, remaining_flow_ids, consume_ctx);
+	}
+
+	#[inline]
+	fn continue_ticking(&self, response: PoolResponse) {
+		match response {
+			PoolResponse::Success {
+				pending,
+				pending_shapes,
+				..
+			} => {
+				self.commit_tick_writes(pending, pending_shapes);
+			}
+			PoolResponse::Error(e) => {
+				warn!(error = %e, "tick processing failed");
+			}
+			_ => {}
 		}
 	}
 
@@ -671,7 +792,6 @@ impl CoordinatorActor {
 		self.advance_next_backfill_flow(state, ctx, backfilling_flows, consume_ctx);
 	}
 
-	/// Advance the next backfilling flow, or finish if none remain.
 	fn advance_next_backfill_flow(
 		&self,
 		state: &mut CoordinatorState,
@@ -684,123 +804,56 @@ impl CoordinatorActor {
 		while let Some(flow_id) = flows.first().copied() {
 			flows.remove(0);
 
-			// Skip downstream flows - they'll backfill in the next cycle
-			// with committed upstream view data.
 			if consume_ctx.downstream_flows.contains(&flow_id) {
 				continue;
 			}
 
-			// Get current checkpoint for this flow
-			let from_version = match self.engine.begin_query(IdentityId::system()) {
-				Ok(mut query) => CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &flow_id)
-					.unwrap_or(CommitVersion(0)),
+			let from_version = match self.fetch_flow_checkpoint(flow_id) {
+				Ok(v) => v,
 				Err(e) => {
 					(consume_ctx.original_reply)(coordinator_error(e));
 					return;
 				}
 			};
-			// Check if already caught up
 			if from_version >= consume_ctx.current_version {
-				if let Some(flow_state) = state.states.get_mut(&flow_id) {
-					flow_state.activate();
-					flow_state.update_checkpoint(consume_ctx.current_version);
-				}
-				info!(flow_id = flow_id.0, "backfill complete, flow now active");
+				self.mark_already_caught_up(state, flow_id, consume_ctx.current_version);
 				continue;
 			}
 
-			// Calculate chunk range
 			let to_version =
 				CommitVersion(min(from_version.0 + BACKFILL_CHUNK_SIZE, consume_ctx.current_version.0));
-
-			// Fetch CDC for this chunk from storage
-			let batch = self
-				.cdc_store
-				.read_range(
-					Bound::Excluded(from_version),
-					Bound::Included(to_version),
-					BACKFILL_CHUNK_SIZE,
-				)
-				.unwrap_or_else(|e| {
-					warn!(error = %e, "Failed to read CDC range for backfill");
-					CdcBatch::empty()
-				});
+			let batch = self.read_backfill_chunk(from_version, to_version, BACKFILL_CHUNK_SIZE);
 
 			if batch.items.is_empty() {
-				// No CDC in this range, advance checkpoint
-				consume_ctx.checkpoints.push((flow_id, to_version));
-				if let Some(flow_state) = state.states.get_mut(&flow_id) {
-					flow_state.update_checkpoint(to_version);
-					if to_version >= consume_ctx.current_version {
-						flow_state.activate();
-					}
-				}
-				if to_version >= consume_ctx.current_version {
-					info!(
-						flow_id = flow_id.0,
-						"backfill complete after empty chunk, flow now active"
-					);
-				}
+				self.record_chunk_checkpoint(
+					state,
+					&mut consume_ctx,
+					flow_id,
+					to_version,
+					"backfill complete after empty chunk, flow now active",
+				);
 				continue;
 			}
 
-			// Collect changes directly from CDC
-			let mut chunk_changes = Vec::new();
-			for cdc in &batch.items {
-				chunk_changes.extend(cdc.changes.iter().cloned());
-			}
-
-			// Filter to only changes relevant to this flow
+			let chunk_changes = collect_chunk_changes(&batch);
 			let flow_changes = self.filter_cdc_for_flow(state, flow_id, &chunk_changes);
 
 			if flow_changes.is_empty() {
-				// CDC exists but no relevant changes for this flow
-				consume_ctx.checkpoints.push((flow_id, to_version));
-				if let Some(flow_state) = state.states.get_mut(&flow_id) {
-					flow_state.update_checkpoint(to_version);
-					if to_version >= consume_ctx.current_version {
-						flow_state.activate();
-					}
-				}
-				if to_version >= consume_ctx.current_version {
-					info!(
-						flow_id = flow_id.0,
-						"backfill complete after no-op chunk, flow now active"
-					);
-				}
+				self.record_chunk_checkpoint(
+					state,
+					&mut consume_ctx,
+					flow_id,
+					to_version,
+					"backfill complete after no-op chunk, flow now active",
+				);
 				continue;
 			}
 
-			// Backfill must target the worker the flow was rebalanced onto, which
-			// may differ from flow_id % num_workers when the flow inherited its
-			// upstream's worker.
-			let instruction = FlowInstruction::new(flow_id, to_version, flow_changes);
-			let worker_id = *state
-				.flow_assignments
-				.get(&flow_id)
-				.expect("flow must be in flow_assignments after registration");
-
-			let mut worker_batch = WorkerBatch::new(consume_ctx.state_version);
-			worker_batch.add_instruction(instruction);
-
-			let self_ref = ctx.self_ref().clone();
-			let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
-				let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
-			});
-
-			if self.pool
-				.send(FlowPoolMessage::SubmitToWorker {
-					worker_id,
-					batch: worker_batch,
-					reply: callback,
-				})
-				.is_err()
-			{
+			if !self.submit_backfill_chunk(state, ctx, flow_id, to_version, flow_changes, &consume_ctx) {
 				(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
 				return;
 			}
 
-			// Record checkpoint and state updates for this flow
 			consume_ctx.checkpoints.push((flow_id, to_version));
 			if let Some(flow_state) = state.states.get_mut(&flow_id) {
 				flow_state.update_checkpoint(to_version);
@@ -813,7 +866,6 @@ impl CoordinatorActor {
 				"advanced backfilling flow by one chunk"
 			);
 
-			// Check if now caught up
 			if to_version >= consume_ctx.current_version {
 				if let Some(flow_state) = state.states.get_mut(&flow_id) {
 					flow_state.activate();
@@ -821,7 +873,6 @@ impl CoordinatorActor {
 				info!(flow_id = flow_id.0, "backfill complete, flow now active");
 			}
 
-			// Save remaining and wait for pool reply
 			state.phase = Phase::AdvancingBackfill {
 				flows,
 				ctx: consume_ctx,
@@ -829,207 +880,221 @@ impl CoordinatorActor {
 			return;
 		}
 
-		// No more backfill flows to process - finish
 		self.finish_consume(state, consume_ctx);
 	}
 
-	/// Complete the consume operation: commit writes and checkpoints directly.
+	#[inline]
+	fn fetch_flow_checkpoint(&self, flow_id: FlowId) -> Result<CommitVersion> {
+		let mut query = self.engine.begin_query(IdentityId::system())?;
+		Ok(CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &flow_id).unwrap_or(CommitVersion(0)))
+	}
+
+	#[inline]
+	fn read_backfill_chunk(
+		&self,
+		from_version: CommitVersion,
+		to_version: CommitVersion,
+		chunk_size: u64,
+	) -> CdcBatch {
+		self.cdc_store
+			.read_range(Bound::Excluded(from_version), Bound::Included(to_version), chunk_size)
+			.unwrap_or_else(|e| {
+				warn!(error = %e, "Failed to read CDC range for backfill");
+				CdcBatch::empty()
+			})
+	}
+
+	#[inline]
+	fn mark_already_caught_up(
+		&self,
+		state: &mut CoordinatorState,
+		flow_id: FlowId,
+		current_version: CommitVersion,
+	) {
+		if let Some(flow_state) = state.states.get_mut(&flow_id) {
+			flow_state.activate();
+			flow_state.update_checkpoint(current_version);
+		}
+		info!(flow_id = flow_id.0, "backfill complete, flow now active");
+	}
+
+	#[inline]
+	fn record_chunk_checkpoint(
+		&self,
+		state: &mut CoordinatorState,
+		consume_ctx: &mut ConsumeContext,
+		flow_id: FlowId,
+		to_version: CommitVersion,
+		caught_up_message: &'static str,
+	) {
+		consume_ctx.checkpoints.push((flow_id, to_version));
+		if let Some(flow_state) = state.states.get_mut(&flow_id) {
+			flow_state.update_checkpoint(to_version);
+			if to_version >= consume_ctx.current_version {
+				flow_state.activate();
+			}
+		}
+		if to_version >= consume_ctx.current_version {
+			info!(flow_id = flow_id.0, "{}", caught_up_message);
+		}
+	}
+
+	#[inline]
+	fn submit_backfill_chunk(
+		&self,
+		state: &CoordinatorState,
+		ctx: &Context<FlowCoordinatorMessage>,
+		flow_id: FlowId,
+		to_version: CommitVersion,
+		flow_changes: Vec<Change>,
+		consume_ctx: &ConsumeContext,
+	) -> bool {
+		let instruction = FlowInstruction::new(flow_id, to_version, flow_changes);
+		let worker_id = *state
+			.flow_assignments
+			.get(&flow_id)
+			.expect("flow must be in flow_assignments after registration");
+
+		let mut worker_batch = WorkerBatch::new(consume_ctx.state_version);
+		worker_batch.add_instruction(instruction);
+
+		let self_ref = ctx.self_ref().clone();
+		let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
+			let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
+		});
+
+		self.pool
+			.send(FlowPoolMessage::SubmitToWorker {
+				worker_id,
+				batch: worker_batch,
+				reply: callback,
+			})
+			.is_ok()
+	}
+
 	fn finish_consume(&self, state: &mut CoordinatorState, consume_ctx: ConsumeContext) {
 		Span::current().record("elapsed_us", consume_ctx.consume_start.elapsed().as_micros() as u64);
-
 		state.phase = Phase::Idle;
 
-		// If this consume produced no work for the multi store, skip the
-		// transaction entirely. An empty transaction still bumps
-		// `current_version`, which is observable to version-sensitive tests
-		// even though the commit writes nothing. The consumer-level checkpoint
-		// that used to live here was moved to the upstream PollActor (see
-		// note below), so a consume with no flow-scoped output, no view
-		// changes, no per-flow checkpoints, and no pending shapes has no
-		// reason to open a transaction at all.
 		if consume_ctx.is_empty() {
 			(consume_ctx.original_reply)(Ok(()));
 			return;
 		}
 
-		// Begin a command transaction to apply all writes and checkpoints
+		let ConsumeContext {
+			combined,
+			pending_shapes,
+			checkpoints,
+			original_reply,
+			view_changes,
+			..
+		} = consume_ctx;
+
 		let mut transaction = match self.engine.begin_command(IdentityId::system()) {
 			Ok(t) => t,
 			Err(e) => {
-				(consume_ctx.original_reply)(coordinator_error(e));
+				(original_reply)(coordinator_error(e));
 				return;
 			}
 		};
 
-		// Apply pending writes directly to the transaction
-		for (key, pw) in consume_ctx.combined.iter_sorted() {
-			let result = match pw {
-				PendingWrite::Set(value) => transaction.set(key, value.clone()),
-				PendingWrite::Remove => {
-					// Preserve deleted row values so CDC can emit Diff::Remove for
-					// downstream deferred flows that source from views.
-					if matches!(Key::kind(key), Some(KeyKind::Row)) {
-						match transaction.get(key) {
-							Ok(Some(existing)) => transaction.unset(key, existing.row),
-							Ok(None) => transaction.remove(key),
-							Err(e) => {
-								let _ = transaction.rollback();
-								(consume_ctx.original_reply)(coordinator_error(e));
-								return;
-							}
-						}
-					} else {
-						transaction.remove(key)
-					}
-				}
-			};
-			if let Err(e) = result {
-				let _ = transaction.rollback();
-				(consume_ctx.original_reply)(coordinator_error(e));
-				return;
-			}
-		}
-
-		// Feed view changes to cascading transactional flows
-		for change in consume_ctx.view_changes {
-			transaction.track_flow_change(change);
-		}
-
-		// Persist per-flow checkpoints
-		for (flow_id, version) in &consume_ctx.checkpoints {
-			if let Err(e) = CdcCheckpoint::persist(&mut transaction, flow_id, *version) {
-				let _ = transaction.rollback();
-				(consume_ctx.original_reply)(coordinator_error(e));
-				return;
-			}
-		}
-
-		// Persist pending shapes
-		if let Err(e) = self
-			.catalog
-			.persist_pending_shapes(&mut Transaction::Command(&mut transaction), consume_ctx.pending_shapes)
-		{
+		if let Err(e) = apply_pending_writes(&mut transaction, &combined) {
 			let _ = transaction.rollback();
-			(consume_ctx.original_reply)(coordinator_error(e));
+			(original_reply)(coordinator_error(e));
 			return;
 		}
 
-		// Consumer-level checkpoint is persisted by the upstream PollActor
-		// after this consume reply succeeds (see crates/cdc/src/consume/actor.rs
+		for change in view_changes {
+			transaction.track_flow_change(change);
+		}
+
+		if let Err(e) = persist_flow_checkpoints(&mut transaction, &checkpoints) {
+			let _ = transaction.rollback();
+			(original_reply)(coordinator_error(e));
+			return;
+		}
+
+		if let Err(e) =
+			self.catalog.persist_pending_shapes(&mut Transaction::Command(&mut transaction), pending_shapes)
+		{
+			let _ = transaction.rollback();
+			(original_reply)(coordinator_error(e));
+			return;
+		}
+
+		// Consumer-level checkpoint is persisted by the upstream PollActor after
+		// this consume reply succeeds (see crates/cdc/src/consume/actor.rs
 		// `finish_consume`). Persisting it here too produced a redundant write
 		// to the same `CdcConsumer` key, which is filtered from CDC by
 		// `should_exclude_from_cdc` but still bumps `current_version` and broke
 		// version-sensitive cdc-snapshot tests. The view writes above are
 		// idempotent (set/unset/remove on user keys), so no atomicity is lost
 		// by leaving the consumer checkpoint to the upstream actor.
-		let _ = consume_ctx.latest_version;
 
-		// Commit the transaction
 		match transaction.commit() {
-			Ok(_) => {
-				(consume_ctx.original_reply)(Ok(()));
-			}
-			Err(e) => {
-				(consume_ctx.original_reply)(coordinator_error(e));
-			}
+			Ok(_) => (original_reply)(Ok(())),
+			Err(e) => (original_reply)(coordinator_error(e)),
 		}
 	}
 
-	/// Filter CDC changes to only those relevant to a specific flow.
 	#[instrument(name = "flow::coordinator::filter_cdc", level = "trace", skip(self, state, changes), fields(
 		input = changes.len(),
 		output = field::Empty
 	))]
 	fn filter_cdc_for_flow(&self, state: &CoordinatorState, flow_id: FlowId, changes: &[Change]) -> Vec<Change> {
 		let dependency_graph = state.analyzer.get_dependency_graph();
+		let (mut flow_sources, view_sources) = collect_direct_flow_sources(dependency_graph, flow_id);
+		self.add_transitive_view_sources(dependency_graph, state, &mut flow_sources, view_sources);
+		let result = filter_changes_by_sources(changes, &flow_sources);
+		Span::current().record("output", result.len());
+		result
+	}
 
-		// Get all sources this flow depends on
-		let mut flow_sources: collections::HashSet<ShapeId> = collections::HashSet::new();
-
-		// Add table sources
-		for (table_id, flow_ids) in &dependency_graph.source_tables {
-			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(ShapeId::Table(*table_id));
-			}
-		}
-
-		// Add view sources
-		let mut view_sources = Vec::new();
-		for (view_id, flow_ids) in &dependency_graph.source_views {
-			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(ShapeId::View(*view_id));
-				view_sources.push(*view_id);
-			}
-		}
-
-		// Add ringbuffer sources
-		for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
-			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(ShapeId::RingBuffer(*rb_id));
-			}
-		}
-
-		// Add series sources
-		for (series_id, flow_ids) in &dependency_graph.source_series {
-			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(ShapeId::Series(*series_id));
-			}
-		}
-
+	#[inline]
+	fn add_transitive_view_sources(
+		&self,
+		dependency_graph: &FlowDependencyGraph,
+		state: &CoordinatorState,
+		flow_sources: &mut collections::HashSet<ShapeId>,
+		view_sources: Vec<ViewId>,
+	) {
 		// Resolve transitive dependencies through views only for non-deferred
 		// producer flows. Deferred views publish their own CDC, so waking a
 		// downstream deferred flow from the producer's base-table CDC creates
 		// a race where the consumer runs before the upstream view commit lands.
-		//
-		// Transactional views are different: they never publish CDC for the
-		// derived view rows, so their downstream consumers must be triggered
-		// from the producer flow's primitive sources instead.
+		// Transactional views never publish CDC for derived view rows, so their
+		// downstream consumers must be triggered from the producer's primitive
+		// sources instead.
 		for view_id in view_sources {
-			if let Some(producer_flow_id) = dependency_graph.sink_views.get(&view_id) {
-				// Deferred flows are tracked in coordinator state. If the
-				// producer is tracked here, wait for its view CDC instead of
-				// routing its primitive-source CDC to this consumer.
-				if state.states.contains(producer_flow_id) {
-					// Deferred producer writes to the view's underlying primitive.
-					// Resolve it on demand and add to sources so CDC matches.
-					if let Some(view) = self.catalog.find_view(view_id) {
-						flow_sources.insert(view.underlying_id());
-					}
-					continue;
-				}
+			let Some(producer_flow_id) = dependency_graph.sink_views.get(&view_id) else {
+				continue;
+			};
 
-				for (table_id, flow_ids) in &dependency_graph.source_tables {
-					if flow_ids.contains(producer_flow_id) {
-						flow_sources.insert(ShapeId::Table(*table_id));
-					}
+			if state.states.contains(producer_flow_id) {
+				// Deferred producer: route via the view's underlying primitive
+				// shape (resolved on demand) so CDC keys match.
+				if let Some(view) = self.catalog.find_view(view_id) {
+					flow_sources.insert(view.underlying_id());
 				}
-				for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
-					if flow_ids.contains(producer_flow_id) {
-						flow_sources.insert(ShapeId::RingBuffer(*rb_id));
-					}
+				continue;
+			}
+
+			for (table_id, flow_ids) in &dependency_graph.source_tables {
+				if flow_ids.contains(producer_flow_id) {
+					flow_sources.insert(ShapeId::Table(*table_id));
 				}
-				for (series_id, flow_ids) in &dependency_graph.source_series {
-					if flow_ids.contains(producer_flow_id) {
-						flow_sources.insert(ShapeId::Series(*series_id));
-					}
+			}
+			for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
+				if flow_ids.contains(producer_flow_id) {
+					flow_sources.insert(ShapeId::RingBuffer(*rb_id));
+				}
+			}
+			for (series_id, flow_ids) in &dependency_graph.source_series {
+				if flow_ids.contains(producer_flow_id) {
+					flow_sources.insert(ShapeId::Series(*series_id));
 				}
 			}
 		}
-
-		// Filter changes to only those from this flow's sources
-		let result: Vec<Change> = changes
-			.iter()
-			.filter(|change| {
-				if let ChangeOrigin::Shape(source) = change.origin {
-					flow_sources.contains(&source)
-				} else {
-					true
-				}
-			})
-			.cloned()
-			.collect();
-		Span::current().record("output", result.len());
-		result
 	}
 
 	/// Route CDC changes to flows and group by worker.

@@ -7,6 +7,7 @@ use postcard::from_bytes;
 use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
+		id::ViewId,
 		shape::ShapeId,
 		view::ViewKind,
 	},
@@ -100,102 +101,7 @@ impl FlowEngine {
 			}
 			SourceView {
 				view,
-			} => {
-				let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
-				self.add_source(flow.id, node.id, ShapeId::view(view.id()));
-
-				// Both deferred and transactional view sinks write view-shape rows into
-				// the view's underlying backing shape, so CDC on that shape carries
-				// view-shape rows. Registering it as a source makes a SourceView in any
-				// consumer flow (subscription or downstream view) see view output
-				// identically regardless of the view kind.
-				self.add_source(flow.id, node.id, view.underlying_id());
-
-				// Legacy transactional-view propagation path: a downstream DEFERRED
-				// flow that reads from a transactional view must also be woken up by
-				// the transactional view's UPSTREAM primitive CDC, because the
-				// deferred coordinator handles cascading transactional-view changes
-				// through pre-commit interceptors that bypass CDC. This branch
-				// registers those upstream primitives.
-				//
-				// Skip this when:
-				//  - the current flow is itself transactional (its pre-commit path already propagates
-				//    changes through `available_changes`), or
-				//  - the current flow is an ephemeral subscription (a `SinkSubscription` is its
-				//    terminal node). Subscription consumers rely on the `view.underlying_id()` CDC
-				//    registration above, exactly like they do for deferred views - per the principle
-				//    that subscription behavior is identical across view kinds. Registering upstream
-				//    primitives here would leak raw base-table rows to the subscriber.
-				if view.kind() == ViewKind::Transactional {
-					let current_flow_is_transactional = flow.get_node_ids().any(|nid| {
-						if let Some(n) = flow.get_node(&nid) {
-							let sink_view = match &n.ty {
-								SinkTableView {
-									view,
-									..
-								}
-								| SinkRingBufferView {
-									view,
-									..
-								}
-								| SinkSeriesView {
-									view,
-									..
-								} => Some(view),
-								_ => None,
-							};
-							sink_view
-								.and_then(|v| {
-									self.catalog
-										.find_view(&mut txn.reborrow(), *v)
-										.ok()
-										.flatten()
-								})
-								.map(|v| v.kind() == ViewKind::Transactional)
-								.unwrap_or(false)
-						} else {
-							false
-						}
-					});
-
-					let current_flow_is_subscription = flow.get_node_ids().any(|nid| {
-						flow.get_node(&nid)
-							.map(|n| matches!(n.ty, SinkSubscription { .. }))
-							.unwrap_or(false)
-					});
-
-					if !current_flow_is_transactional && !current_flow_is_subscription {
-						let mut additional_sources = Vec::new();
-						if let Some(view_flow) = self.catalog.find_flow_by_name(
-							&mut txn.reborrow(),
-							view.namespace(),
-							view.name(),
-						)? {
-							let flow_nodes = self.catalog.list_flow_nodes_by_flow(
-								&mut txn.reborrow(),
-								view_flow.id,
-							)?;
-							for flow_node in &flow_nodes {
-								if let Ok(nt) =
-									from_bytes::<FlowNodeType>(&flow_node.data)
-									&& let Some(shape) =
-										nt.primitive_source_shape_id()
-								{
-									additional_sources.push(shape);
-								}
-							}
-						}
-						for source in additional_sources {
-							self.add_source(flow.id, node.id, source);
-						}
-					}
-				}
-
-				self.operators.insert(
-					node.id,
-					Arc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))),
-				);
-			}
+			} => self.register_source_view(txn, flow, &node, view)?,
 			SourceFlow {
 				flow: source_flow,
 			} => {
@@ -408,7 +314,6 @@ impl FlowEngine {
 				right,
 				alias,
 			} => {
-				// The join node should have exactly 2 inputs
 				if node.inputs.len() != 2 {
 					return Err(Error(Box::new(internal!("Join node must have exactly 2 inputs"))));
 				}
@@ -468,7 +373,6 @@ impl FlowEngine {
 				);
 			}
 			Append => {
-				// Append requires at least 2 inputs
 				if node.inputs.len() < 2 {
 					return Err(Error(Box::new(internal!(
 						"Append node must have at least 2 inputs"
@@ -578,6 +482,97 @@ impl FlowEngine {
 			}
 		}
 
+		Ok(())
+	}
+
+	#[inline]
+	fn register_source_view(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		node: &FlowNode,
+		view: ViewId,
+	) -> Result<()> {
+		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
+		self.add_source(flow.id, node.id, ShapeId::view(view.id()));
+
+		// Both deferred and transactional view sinks write view-shape rows into
+		// the view's underlying backing shape, so CDC on that shape carries
+		// view-shape rows. Registering it as a source makes a SourceView in any
+		// consumer flow see view output identically regardless of view kind.
+		self.add_source(flow.id, node.id, view.underlying_id());
+
+		// Legacy transactional-view propagation: a downstream DEFERRED flow
+		// reading from a transactional view must also be woken up by the
+		// view's UPSTREAM primitive CDC, because the deferred coordinator
+		// handles cascading transactional-view changes through pre-commit
+		// interceptors that bypass CDC.
+		//
+		// Skip when:
+		//  - the current flow is itself transactional (its pre-commit path already propagates changes through
+		//    `available_changes`), or
+		//  - the current flow is an ephemeral subscription (a `SinkSubscription` is its terminal node).
+		//    Subscription consumers rely on the `view.underlying_id()` CDC registration above, identical across
+		//    view kinds. Registering upstream primitives here would leak raw base-table rows to the subscriber.
+		if view.kind() == ViewKind::Transactional {
+			let current_flow_is_transactional = flow.get_node_ids().any(|nid| {
+				if let Some(n) = flow.get_node(&nid) {
+					let sink_view = match &n.ty {
+						SinkTableView {
+							view,
+							..
+						}
+						| SinkRingBufferView {
+							view,
+							..
+						}
+						| SinkSeriesView {
+							view,
+							..
+						} => Some(view),
+						_ => None,
+					};
+					sink_view
+						.and_then(|v| {
+							self.catalog.find_view(&mut txn.reborrow(), *v).ok().flatten()
+						})
+						.map(|v| v.kind() == ViewKind::Transactional)
+						.unwrap_or(false)
+				} else {
+					false
+				}
+			});
+
+			let current_flow_is_subscription = flow.get_node_ids().any(|nid| {
+				flow.get_node(&nid).map(|n| matches!(n.ty, SinkSubscription { .. })).unwrap_or(false)
+			});
+
+			if !current_flow_is_transactional && !current_flow_is_subscription {
+				let mut additional_sources = Vec::new();
+				if let Some(view_flow) = self.catalog.find_flow_by_name(
+					&mut txn.reborrow(),
+					view.namespace(),
+					view.name(),
+				)? {
+					let flow_nodes = self
+						.catalog
+						.list_flow_nodes_by_flow(&mut txn.reborrow(), view_flow.id)?;
+					for flow_node in &flow_nodes {
+						if let Ok(nt) = from_bytes::<FlowNodeType>(&flow_node.data)
+							&& let Some(shape) = nt.primitive_source_shape_id()
+						{
+							additional_sources.push(shape);
+						}
+					}
+				}
+				for source in additional_sources {
+					self.add_source(flow.id, node.id, source);
+				}
+			}
+		}
+
+		self.operators
+			.insert(node.id, Arc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))));
 		Ok(())
 	}
 

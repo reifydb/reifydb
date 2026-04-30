@@ -145,115 +145,14 @@ impl Operator for GateOperator {
 			match diff {
 				Diff::Insert {
 					post,
-				} => {
-					// No row_numbers? pass through as filter
-					if post.row_numbers.is_empty() {
-						let mask = self.evaluate(&post)?;
-						let passing_indices: Vec<usize> = mask
-							.iter()
-							.enumerate()
-							.filter(|&(_, pass)| *pass)
-							.map(|(idx, _)| idx)
-							.collect();
-						if !passing_indices.is_empty() {
-							result.push(Diff::insert(
-								post.extract_by_indices(&passing_indices),
-							));
-						}
-					} else {
-						// Evaluate condition per row
-						let mask = self.evaluate(&post)?;
-						let mut passing_indices = Vec::new();
-						for (i, &pass) in mask.iter().enumerate() {
-							let rn = post.row_numbers[i];
-							if pass {
-								self.mark_visible(txn, rn)?;
-								passing_indices.push(i);
-							}
-							// if not pass: drop (latch stays closed)
-						}
-						if !passing_indices.is_empty() {
-							result.push(Diff::insert(
-								post.extract_by_indices(&passing_indices),
-							));
-						}
-					}
-				}
-
+				} => self.apply_gate_insert(txn, &post, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
-				} => {
-					if post.row_numbers.is_empty() {
-						// No state info available - treat as visible (pass-through)
-						result.push(Diff::Update {
-							pre,
-							post,
-						});
-					} else {
-						let mask = self.evaluate(&post)?;
-						let mut update_indices = Vec::new();
-						let mut insert_indices = Vec::new();
-
-						for (i, (&rn, &mask_val)) in
-							post.row_numbers.iter().zip(mask.iter()).enumerate()
-						{
-							let visible = self.is_visible(txn, rn)?;
-
-							if visible {
-								// Already open - pass through as Update unconditionally
-								update_indices.push(i);
-							} else {
-								// Not yet open - check condition on post
-								if mask_val {
-									// Open the latch, emit as Insert
-									self.mark_visible(txn, rn)?;
-									insert_indices.push(i);
-								}
-								// else: still fails - drop
-							}
-						}
-
-						if !update_indices.is_empty() {
-							result.push(Diff::update(
-								pre.extract_by_indices(&update_indices),
-								post.extract_by_indices(&update_indices),
-							));
-						}
-						if !insert_indices.is_empty() {
-							result.push(Diff::insert(
-								post.extract_by_indices(&insert_indices),
-							));
-						}
-					}
-				}
-
+				} => self.apply_gate_update(txn, pre, post, &mut result)?,
 				Diff::Remove {
 					pre,
-				} => {
-					if pre.row_numbers.is_empty() {
-						// No state info available - treat as visible (pass-through)
-						result.push(Diff::Remove {
-							pre,
-						});
-					} else {
-						let mut remove_indices = Vec::new();
-						for i in 0..pre.row_numbers.len() {
-							let rn = pre.row_numbers[i];
-							if self.is_visible(txn, rn)? {
-								self.mark_invisible(txn, rn)?;
-								remove_indices.push(i);
-							}
-							// else: was never visible - drop
-						}
-
-						if !remove_indices.is_empty() {
-							result.push(Diff::remove(
-								pre.extract_by_indices(&remove_indices),
-							));
-						}
-					}
-				}
+				} => self.apply_gate_remove(txn, pre, &mut result)?,
 			}
 		}
 
@@ -262,5 +161,118 @@ impl Operator for GateOperator {
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		self.parent.pull(txn, rows)
+	}
+}
+
+impl GateOperator {
+	#[inline]
+	fn apply_gate_insert(
+		&self,
+		txn: &mut FlowTransaction,
+		post: &Arc<Columns>,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		// Without row_numbers there is no per-row state; behave as a pure filter.
+		if post.row_numbers.is_empty() {
+			let mask = self.evaluate(post)?;
+			let passing_indices: Vec<usize> =
+				mask.iter().enumerate().filter(|&(_, pass)| *pass).map(|(idx, _)| idx).collect();
+			if !passing_indices.is_empty() {
+				result.push(Diff::insert(post.extract_by_indices(&passing_indices)));
+			}
+			return Ok(());
+		}
+
+		let mask = self.evaluate(post)?;
+		let mut passing_indices = Vec::new();
+		for (i, &pass) in mask.iter().enumerate() {
+			let rn = post.row_numbers[i];
+			if pass {
+				self.mark_visible(txn, rn)?;
+				passing_indices.push(i);
+			}
+			// not pass: drop, latch stays closed
+		}
+		if !passing_indices.is_empty() {
+			result.push(Diff::insert(post.extract_by_indices(&passing_indices)));
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn apply_gate_update(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: Arc<Columns>,
+		post: Arc<Columns>,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		// Without row_numbers there is no per-row state to consult; treat the
+		// row as already-visible and pass the Update through unchanged.
+		if post.row_numbers.is_empty() {
+			result.push(Diff::Update {
+				pre,
+				post,
+			});
+			return Ok(());
+		}
+
+		let mask = self.evaluate(&post)?;
+		let mut update_indices = Vec::new();
+		let mut insert_indices = Vec::new();
+
+		for (i, (&rn, &mask_val)) in post.row_numbers.iter().zip(mask.iter()).enumerate() {
+			if self.is_visible(txn, rn)? {
+				// latch already open: forward Update unconditionally
+				update_indices.push(i);
+			} else if mask_val {
+				// latch closed but condition now passes: open and emit as Insert
+				self.mark_visible(txn, rn)?;
+				insert_indices.push(i);
+			}
+			// closed and still failing: drop
+		}
+
+		if !update_indices.is_empty() {
+			result.push(Diff::update(
+				pre.extract_by_indices(&update_indices),
+				post.extract_by_indices(&update_indices),
+			));
+		}
+		if !insert_indices.is_empty() {
+			result.push(Diff::insert(post.extract_by_indices(&insert_indices)));
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn apply_gate_remove(
+		&self,
+		txn: &mut FlowTransaction,
+		pre: Arc<Columns>,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		// Without row_numbers there is no per-row state; pass through.
+		if pre.row_numbers.is_empty() {
+			result.push(Diff::Remove {
+				pre,
+			});
+			return Ok(());
+		}
+
+		let mut remove_indices = Vec::new();
+		for i in 0..pre.row_numbers.len() {
+			let rn = pre.row_numbers[i];
+			if self.is_visible(txn, rn)? {
+				self.mark_invisible(txn, rn)?;
+				remove_indices.push(i);
+			}
+			// never visible: drop
+		}
+
+		if !remove_indices.is_empty() {
+			result.push(Diff::remove(pre.extract_by_indices(&remove_indices)));
+		}
+		Ok(())
 	}
 }
