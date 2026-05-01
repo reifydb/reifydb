@@ -4,42 +4,81 @@
 use std::ops::Bound;
 
 use reifydb_core::common::CommitVersion;
-use rusqlite::{Result as SqliteResult, ToSql, types};
 
 #[inline]
 pub(super) fn version_to_bytes(version: CommitVersion) -> [u8; 8] {
 	version.0.to_be_bytes()
 }
 
-/// Build a range query that returns the latest version <= requested version for each key.
-///
-/// Uses a subquery with window function to get the most recent version per key:
-/// ```sql
-/// SELECT key, version, value FROM (
-///     SELECT key, version, value,
-///            ROW_NUMBER() OVER (PARTITION BY key ORDER BY version DESC) as rn
-///     FROM "{table}" WHERE key >= ?1 AND key < ?2 AND version <= ?3
-/// ) WHERE rn = 1 ORDER BY key LIMIT ?4
-/// ```
-pub(super) fn build_versioned_range_query(
-	table_name: &str,
+#[inline]
+pub(super) fn version_from_bytes(bytes: &[u8]) -> CommitVersion {
+	CommitVersion(u64::from_be_bytes(bytes.try_into().expect("version must be 8 bytes")))
+}
+
+/// DDL: create the `__current` table for a logical table.
+/// One row per logical key; `key` is the sole primary key.
+pub(super) fn build_create_current_sql(table_name: &str) -> String {
+	format!(
+		"CREATE TABLE IF NOT EXISTS \"{}\" (\
+			key BLOB PRIMARY KEY,\
+			version BLOB NOT NULL,\
+			value BLOB\
+		) WITHOUT ROWID",
+		table_name
+	)
+}
+
+/// DDL: create the `__historical` table for a logical table.
+/// Many rows per logical key; PK is `(key, version)` so that
+/// `WHERE key = ? AND version <= ? ORDER BY version DESC LIMIT 1`
+/// is a single index seek + step.
+pub(super) fn build_create_historical_sql(table_name: &str) -> String {
+	format!(
+		"CREATE TABLE IF NOT EXISTS \"{}\" (\
+			key BLOB NOT NULL,\
+			version BLOB NOT NULL,\
+			value BLOB,\
+			PRIMARY KEY (key, version)\
+		) WITHOUT ROWID",
+		table_name
+	)
+}
+
+/// Point-get from `__current`. Returns the row whose `version` may or may
+/// not satisfy the snapshot constraint; the caller checks and falls back
+/// to `__historical` if not.
+pub(super) fn build_get_current_sql(current_name: &str) -> String {
+	format!("SELECT version, value FROM \"{}\" WHERE key = ?1", current_name)
+}
+
+/// Point-get from `__historical` for a key, latest visible <= snapshot.
+pub(super) fn build_get_historical_sql(historical_name: &str) -> String {
+	format!(
+		"SELECT version, value FROM \"{}\" WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
+		historical_name
+	)
+}
+
+/// Range scan over `__current`, optionally filtered by inclusive/exclusive
+/// key bounds. Streamable via the PK index; SQLite stops after `LIMIT N`.
+pub(super) fn build_range_current_query(
+	current_name: &str,
 	start: Bound<&[u8]>,
 	end: Bound<&[u8]>,
-	version: CommitVersion,
 	reverse: bool,
 	limit: usize,
-) -> (String, Vec<QueryParam>) {
-	let mut conditions = Vec::new();
-	let mut params: Vec<QueryParam> = Vec::new();
+) -> (String, Vec<Vec<u8>>) {
+	let mut conditions: Vec<String> = Vec::new();
+	let mut params: Vec<Vec<u8>> = Vec::new();
 
 	match start {
 		Bound::Included(v) => {
 			conditions.push(format!("key >= ?{}", params.len() + 1));
-			params.push(QueryParam::Blob(v.to_vec()));
+			params.push(v.to_vec());
 		}
 		Bound::Excluded(v) => {
 			conditions.push(format!("key > ?{}", params.len() + 1));
-			params.push(QueryParam::Blob(v.to_vec()));
+			params.push(v.to_vec());
 		}
 		Bound::Unbounded => {}
 	}
@@ -47,19 +86,20 @@ pub(super) fn build_versioned_range_query(
 	match end {
 		Bound::Included(v) => {
 			conditions.push(format!("key <= ?{}", params.len() + 1));
-			params.push(QueryParam::Blob(v.to_vec()));
+			params.push(v.to_vec());
 		}
 		Bound::Excluded(v) => {
 			conditions.push(format!("key < ?{}", params.len() + 1));
-			params.push(QueryParam::Blob(v.to_vec()));
+			params.push(v.to_vec());
 		}
 		Bound::Unbounded => {}
 	}
 
-	conditions.push(format!("version <= ?{}", params.len() + 1));
-	params.push(QueryParam::Version(version_to_bytes(version)));
-
-	let where_clause = format!(" WHERE {}", conditions.join(" AND "));
+	let where_clause = if conditions.is_empty() {
+		String::new()
+	} else {
+		format!(" WHERE {}", conditions.join(" AND "))
+	};
 
 	let order = if reverse {
 		"DESC"
@@ -67,31 +107,23 @@ pub(super) fn build_versioned_range_query(
 		"ASC"
 	};
 
-	// Use window function to get the most recent version per key
 	let query = format!(
-		"SELECT key, version, value FROM (\
-			SELECT key, version, value, \
-				ROW_NUMBER() OVER (PARTITION BY key ORDER BY version DESC) as rn \
-			FROM \"{}\"{}\
-		) WHERE rn = 1 ORDER BY key {} LIMIT {}",
-		table_name, where_clause, order, limit
+		"SELECT key, version, value FROM \"{}\"{} ORDER BY key {} LIMIT {}",
+		current_name, where_clause, order, limit
 	);
 
 	(query, params)
 }
 
-/// Query parameter type for SQLite queries.
-#[derive(Debug, Clone)]
-pub(super) enum QueryParam {
-	Blob(Vec<u8>),
-	Version([u8; 8]),
-}
-
-impl ToSql for QueryParam {
-	fn to_sql(&self) -> SqliteResult<types::ToSqlOutput<'_>> {
-		match self {
-			QueryParam::Blob(v) => v.to_sql(),
-			QueryParam::Version(v) => v.as_slice().to_sql(),
-		}
-	}
+/// Get all versions of a key by unioning the row from `__current` with all
+/// rows in `__historical`. Result is sorted descending by version.
+pub(super) fn build_get_all_versions_sql(current_name: &str, historical_name: &str) -> String {
+	format!(
+		"SELECT version, value FROM \"{current}\" WHERE key = ?1 \
+		 UNION ALL \
+		 SELECT version, value FROM \"{historical}\" WHERE key = ?1 \
+		 ORDER BY version DESC",
+		current = current_name,
+		historical = historical_name,
+	)
 }

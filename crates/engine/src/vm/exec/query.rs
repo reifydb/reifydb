@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
+use reifydb_core::{
+	interface::catalog::config::{ConfigKey, GetConfig},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{params::Params, value::r#type::Type};
@@ -51,7 +54,7 @@ pub(crate) fn run_query_plan(
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,
-		batch_size: 32,
+		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params,
 		symbols: symbols.clone(),
 		identity,

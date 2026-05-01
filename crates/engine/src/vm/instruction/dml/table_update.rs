@@ -11,6 +11,7 @@ use reifydb_core::{
 	},
 	interface::{
 		catalog::{
+			config::{ConfigKey, GetConfig},
 			id::IndexId,
 			key::PrimaryKey,
 			namespace::Namespace,
@@ -123,7 +124,7 @@ fn build_update_table_query_context(
 	QueryContext {
 		services: services.clone(),
 		source: Some(ResolvedShape::Table(resolved_table)),
-		batch_size: 32,
+		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),

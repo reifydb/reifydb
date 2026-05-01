@@ -85,6 +85,7 @@ impl ColumnBuffer {
 				},
 			) => l.extend(&r)?,
 			(ColumnBuffer::DictionaryId(l), ColumnBuffer::DictionaryId(r)) => l.extend(&r)?,
+			(ColumnBuffer::Any(l), ColumnBuffer::Any(r)) => l.extend(&r)?,
 
 			// Option + Option: extend inner + bitvec
 			(

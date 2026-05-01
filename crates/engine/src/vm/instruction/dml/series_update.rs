@@ -9,6 +9,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
 		catalog::{
+			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
 			series::Series,
@@ -178,7 +179,7 @@ fn build_update_series_query_context(
 	QueryContext {
 		services: services.clone(),
 		source: Some(ResolvedShape::Series(resolved_series)),
-		batch_size: 32,
+		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
@@ -336,7 +337,13 @@ fn accumulate_returning_columns(returning_columns: Option<Columns>, columns: Col
 					});
 				}
 			}
-			Columns::new(cols)
+			let mut row_numbers = existing.row_numbers.to_vec();
+			row_numbers.extend(columns.row_numbers.iter().copied());
+			let mut created_at = existing.created_at.to_vec();
+			created_at.extend(columns.created_at.iter().copied());
+			let mut updated_at = existing.updated_at.to_vec();
+			updated_at.extend(columns.updated_at.iter().copied());
+			Columns::with_system_columns(cols, row_numbers, created_at, updated_at)
 		}
 		None => columns,
 	}

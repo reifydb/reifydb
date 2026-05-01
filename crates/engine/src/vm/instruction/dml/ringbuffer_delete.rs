@@ -11,6 +11,7 @@ use reifydb_core::{
 	},
 	interface::{
 		catalog::{
+			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::RingBuffer,
@@ -149,13 +150,14 @@ fn collect_row_numbers_for_ringbuffer_delete(
 ) -> Result<HashSet<RowNumber>> {
 	let mut row_numbers_to_delete = HashSet::new();
 
+	let batch_size = exec.services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64;
 	let mut input_node = compile(
 		input_plan,
 		txn,
 		Arc::new(QueryContext {
 			services: exec.services.clone(),
 			source: resolved_source.clone(),
-			batch_size: 32,
+			batch_size,
 			params: params.clone(),
 			symbols: exec.symbols.clone(),
 			identity: IdentityId::root(),
@@ -165,7 +167,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 	let context = QueryContext {
 		services: exec.services.clone(),
 		source: None,
-		batch_size: 32,
+		batch_size,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
 		identity: IdentityId::root(),

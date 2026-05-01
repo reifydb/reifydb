@@ -19,6 +19,7 @@ pub fn apply(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
 	set(conn, "cache_size", -(config.cache_size as i32))?;
 	set(conn, "wal_autocheckpoint", config.wal_autocheckpoint)?;
 	set(conn, "mmap_size", config.mmap_size as i64)?;
+	conn.set_prepared_statement_cache_capacity(config.prepared_statement_cache_capacity as usize);
 	Ok(())
 }
 

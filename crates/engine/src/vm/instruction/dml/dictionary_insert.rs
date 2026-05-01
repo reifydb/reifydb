@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, namespace_not_found},
-	interface::catalog::policy::{DataOp, PolicyTargetType},
+	interface::catalog::{
+		config::{ConfigKey, GetConfig},
+		policy::{DataOp, PolicyTargetType},
+	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::nodes::InsertDictionaryNode;
@@ -54,7 +57,7 @@ pub(crate) fn insert_dictionary(
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,
-		batch_size: 32,
+		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: Params::None,
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),

@@ -6,7 +6,7 @@ mod fixed;
 mod varlen;
 
 use reifydb_type::value::frame::{data::FrameColumnData, frame::Frame};
-use tracing::instrument;
+use tracing::{Span, instrument};
 
 use crate::{
 	encoding::plain::{encode_bitvec, encode_plain},
@@ -49,7 +49,7 @@ pub fn encode_frames(frames: &[Frame], options: &EncodeOptions) -> Result<Vec<u8
 		encode_frame(frame, &mut buf, options)?;
 	}
 	write_message_header(&mut buf, frames.len() as u32);
-	tracing::Span::current().record("bytes", buf.len());
+	Span::current().record("bytes", buf.len());
 	Ok(buf)
 }
 

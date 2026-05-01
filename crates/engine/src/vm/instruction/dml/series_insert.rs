@@ -10,6 +10,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			column::Column,
+			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
 			series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision},
@@ -202,7 +203,7 @@ fn build_insert_series_query_context(
 	Arc::new(QueryContext {
 		services: services.clone(),
 		source: Some(ResolvedShape::Series(resolved_series)),
-		batch_size: 32,
+		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),

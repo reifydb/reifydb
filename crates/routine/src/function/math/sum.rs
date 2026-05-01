@@ -105,20 +105,50 @@ impl SumAccumulator {
 }
 
 macro_rules! sum_arm {
-	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $ctor:expr) => {
+	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident) => {
 		for (group, indices) in $groups.iter() {
-			let mut sum: $t = Default::default();
+			let mut delta: $t = Default::default();
 			let mut has_value = false;
 			for &i in indices {
 				if $column.is_defined(i) {
 					if let Some(&val) = $container.get(i) {
-						sum += val;
+						delta += val;
 						has_value = true;
 					}
 				}
 			}
 			if has_value {
-				$self.sums.insert(group.clone(), $ctor(sum));
+				let merged = match $self.sums.swap_remove(group) {
+					Some(Value::$variant(prev)) => prev + delta,
+					_ => delta,
+				};
+				$self.sums.insert(group.clone(), Value::$variant(merged));
+			} else {
+				$self.sums.entry(group.clone()).or_insert(Value::none());
+			}
+		}
+	};
+}
+
+macro_rules! sum_arm_float {
+	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident, $ctor:expr) => {
+		for (group, indices) in $groups.iter() {
+			let mut delta: $t = Default::default();
+			let mut has_value = false;
+			for &i in indices {
+				if $column.is_defined(i) {
+					if let Some(&val) = $container.get(i) {
+						delta += val;
+						has_value = true;
+					}
+				}
+			}
+			if has_value {
+				let merged = match $self.sums.swap_remove(group) {
+					Some(Value::$variant(prev)) => prev.value() + delta,
+					_ => delta,
+				};
+				$self.sums.insert(group.clone(), $ctor(merged));
 			} else {
 				$self.sums.entry(group.clone()).or_insert(Value::none());
 			}
@@ -137,51 +167,51 @@ impl Accumulator for SumAccumulator {
 
 		match data {
 			ColumnBuffer::Int1(container) => {
-				sum_arm!(self, column, groups, container, i8, Value::Int1);
+				sum_arm!(self, column, groups, container, i8, Int1);
 				Ok(())
 			}
 			ColumnBuffer::Int2(container) => {
-				sum_arm!(self, column, groups, container, i16, Value::Int2);
+				sum_arm!(self, column, groups, container, i16, Int2);
 				Ok(())
 			}
 			ColumnBuffer::Int4(container) => {
-				sum_arm!(self, column, groups, container, i32, Value::Int4);
+				sum_arm!(self, column, groups, container, i32, Int4);
 				Ok(())
 			}
 			ColumnBuffer::Int8(container) => {
-				sum_arm!(self, column, groups, container, i64, Value::Int8);
+				sum_arm!(self, column, groups, container, i64, Int8);
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
-				sum_arm!(self, column, groups, container, i128, Value::Int16);
+				sum_arm!(self, column, groups, container, i128, Int16);
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
-				sum_arm!(self, column, groups, container, u8, Value::Uint1);
+				sum_arm!(self, column, groups, container, u8, Uint1);
 				Ok(())
 			}
 			ColumnBuffer::Uint2(container) => {
-				sum_arm!(self, column, groups, container, u16, Value::Uint2);
+				sum_arm!(self, column, groups, container, u16, Uint2);
 				Ok(())
 			}
 			ColumnBuffer::Uint4(container) => {
-				sum_arm!(self, column, groups, container, u32, Value::Uint4);
+				sum_arm!(self, column, groups, container, u32, Uint4);
 				Ok(())
 			}
 			ColumnBuffer::Uint8(container) => {
-				sum_arm!(self, column, groups, container, u64, Value::Uint8);
+				sum_arm!(self, column, groups, container, u64, Uint8);
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
-				sum_arm!(self, column, groups, container, u128, Value::Uint16);
+				sum_arm!(self, column, groups, container, u128, Uint16);
 				Ok(())
 			}
 			ColumnBuffer::Float4(container) => {
-				sum_arm!(self, column, groups, container, f32, Value::float4);
+				sum_arm_float!(self, column, groups, container, f32, Float4, Value::float4);
 				Ok(())
 			}
 			ColumnBuffer::Float8(container) => {
-				sum_arm!(self, column, groups, container, f64, Value::float8);
+				sum_arm_float!(self, column, groups, container, f64, Float8, Value::float8);
 				Ok(())
 			}
 			ColumnBuffer::Int {
@@ -189,18 +219,22 @@ impl Accumulator for SumAccumulator {
 				..
 			} => {
 				for (group, indices) in groups.iter() {
-					let mut sum = Int::zero();
+					let mut delta = Int::zero();
 					let mut has_value = false;
 					for &i in indices {
 						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
-							sum = Int(sum.0 + &val.0);
+							delta = Int(delta.0 + &val.0);
 							has_value = true;
 						}
 					}
 					if has_value {
-						self.sums.insert(group.clone(), Value::Int(sum));
+						let merged = match self.sums.swap_remove(group) {
+							Some(Value::Int(prev)) => Int(prev.0 + &delta.0),
+							_ => delta,
+						};
+						self.sums.insert(group.clone(), Value::Int(merged));
 					} else {
 						self.sums.entry(group.clone()).or_insert(Value::none());
 					}
@@ -212,18 +246,22 @@ impl Accumulator for SumAccumulator {
 				..
 			} => {
 				for (group, indices) in groups.iter() {
-					let mut sum = Uint::zero();
+					let mut delta = Uint::zero();
 					let mut has_value = false;
 					for &i in indices {
 						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
-							sum = Uint(sum.0 + &val.0);
+							delta = Uint(delta.0 + &val.0);
 							has_value = true;
 						}
 					}
 					if has_value {
-						self.sums.insert(group.clone(), Value::Uint(sum));
+						let merged = match self.sums.swap_remove(group) {
+							Some(Value::Uint(prev)) => Uint(prev.0 + &delta.0),
+							_ => delta,
+						};
+						self.sums.insert(group.clone(), Value::Uint(merged));
 					} else {
 						self.sums.entry(group.clone()).or_insert(Value::none());
 					}
@@ -235,18 +273,22 @@ impl Accumulator for SumAccumulator {
 				..
 			} => {
 				for (group, indices) in groups.iter() {
-					let mut sum = Decimal::zero();
+					let mut delta = Decimal::zero();
 					let mut has_value = false;
 					for &i in indices {
 						if column.is_defined(i)
 							&& let Some(val) = container.get(i)
 						{
-							sum = Decimal(sum.0 + &val.0);
+							delta = Decimal(delta.0 + &val.0);
 							has_value = true;
 						}
 					}
 					if has_value {
-						self.sums.insert(group.clone(), Value::Decimal(sum));
+						let merged = match self.sums.swap_remove(group) {
+							Some(Value::Decimal(prev)) => Decimal(prev.0 + &delta.0),
+							_ => delta,
+						};
+						self.sums.insert(group.clone(), Value::Decimal(merged));
 					} else {
 						self.sums.entry(group.clone()).or_insert(Value::none());
 					}

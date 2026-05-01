@@ -31,7 +31,7 @@ use reifydb_type::{
 use reifydb_wire_format::json::{to::convert_frames, types::ResponseFrame};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
-use tracing::instrument;
+use tracing::{debug_span, instrument};
 
 use crate::{error::AppError, state::HttpServerState};
 
@@ -309,7 +309,7 @@ async fn execute_and_respond(
 
 	let mut response = {
 		let _encode_span =
-			tracing::debug_span!("http::encode", format = ?format_params.format, frame_count = frames.len())
+			debug_span!("http::encode", format = ?format_params.format, frame_count = frames.len())
 				.entered();
 		match format_params.format {
 			WireFormat::Rbcf => match encode_frames_rbcf(&frames) {

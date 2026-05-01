@@ -41,6 +41,7 @@ impl fmt::Display for AcceptError {
 pub enum ConfigKey {
 	OracleWindowSize,
 	OracleWaterMark,
+	QueryRowBatchSize,
 	RowTtlScanBatchSize,
 	RowTtlScanInterval,
 	CdcTtlDuration,
@@ -57,6 +58,7 @@ impl ConfigKey {
 		&[
 			Self::OracleWindowSize,
 			Self::OracleWaterMark,
+			Self::QueryRowBatchSize,
 			Self::RowTtlScanBatchSize,
 			Self::RowTtlScanInterval,
 			Self::CdcTtlDuration,
@@ -73,6 +75,7 @@ impl ConfigKey {
 		match self {
 			Self::OracleWindowSize => Value::Uint8(500),
 			Self::OracleWaterMark => Value::Uint8(20),
+			Self::QueryRowBatchSize => Value::Uint2(32),
 			Self::RowTtlScanBatchSize => Value::Uint8(10000),
 			Self::RowTtlScanInterval => Value::Duration(Duration::from_seconds(60).unwrap()),
 			Self::CdcTtlDuration => Value::None {
@@ -91,6 +94,9 @@ impl ConfigKey {
 		match self {
 			Self::OracleWindowSize => "Number of transactions per conflict-detection window.",
 			Self::OracleWaterMark => "Number of conflict windows retained before cleanup is triggered.",
+			Self::QueryRowBatchSize => {
+				"Number of rows produced per batch by query / DML pipeline operators."
+			}
 			Self::RowTtlScanBatchSize => "Max rows to examine per batch during a row TTL scan.",
 			Self::RowTtlScanInterval => "How often the row TTL actor should scan for expired rows.",
 			Self::CdcTtlDuration => {
@@ -118,6 +124,7 @@ impl ConfigKey {
 		match self {
 			Self::OracleWindowSize => false,
 			Self::OracleWaterMark => false,
+			Self::QueryRowBatchSize => false,
 			Self::RowTtlScanBatchSize => false,
 			Self::RowTtlScanInterval => false,
 			Self::CdcTtlDuration => false,
@@ -134,6 +141,7 @@ impl ConfigKey {
 		match self {
 			Self::OracleWindowSize => &[Type::Uint8],
 			Self::OracleWaterMark => &[Type::Uint8],
+			Self::QueryRowBatchSize => &[Type::Uint2],
 			Self::RowTtlScanBatchSize => &[Type::Uint8],
 			Self::RowTtlScanInterval => &[Type::Duration],
 			Self::CdcTtlDuration => &[Type::Duration],
@@ -154,6 +162,7 @@ impl ConfigKey {
 		match self {
 			Self::OracleWindowSize => false,
 			Self::OracleWaterMark => false,
+			Self::QueryRowBatchSize => false,
 			Self::RowTtlScanBatchSize => false,
 			Self::RowTtlScanInterval => false,
 			Self::CdcTtlDuration => true,
@@ -197,6 +206,10 @@ impl ConfigKey {
 			},
 			Self::CdcCompactBlockSize => match value {
 				Value::Uint8(0) => Err("CDC_COMPACT_BLOCK_SIZE must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::QueryRowBatchSize => match value {
+				Value::Uint2(0) => Err("QUERY_ROW_BATCH_SIZE must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::CdcCompactBlockCacheCapacity => match value {
@@ -298,6 +311,7 @@ impl fmt::Display for ConfigKey {
 		match self {
 			Self::OracleWindowSize => write!(f, "ORACLE_WINDOW_SIZE"),
 			Self::OracleWaterMark => write!(f, "ORACLE_WATER_MARK"),
+			Self::QueryRowBatchSize => write!(f, "QUERY_ROW_BATCH_SIZE"),
 			Self::RowTtlScanBatchSize => write!(f, "ROW_TTL_SCAN_BATCH_SIZE"),
 			Self::RowTtlScanInterval => write!(f, "ROW_TTL_SCAN_INTERVAL"),
 			Self::CdcTtlDuration => write!(f, "CDC_TTL_DURATION"),
@@ -318,6 +332,7 @@ impl FromStr for ConfigKey {
 		match s {
 			"ORACLE_WINDOW_SIZE" => Ok(Self::OracleWindowSize),
 			"ORACLE_WATER_MARK" => Ok(Self::OracleWaterMark),
+			"QUERY_ROW_BATCH_SIZE" => Ok(Self::QueryRowBatchSize),
 			"ROW_TTL_SCAN_BATCH_SIZE" => Ok(Self::RowTtlScanBatchSize),
 			"ROW_TTL_SCAN_INTERVAL" => Ok(Self::RowTtlScanInterval),
 			"CDC_TTL_DURATION" => Ok(Self::CdcTtlDuration),
@@ -373,6 +388,15 @@ pub trait GetConfig: Send + Sync {
 		match val {
 			Value::Uint1(v) => v,
 			v => panic!("config key '{}' expected Uint1, got {:?}", key, v),
+		}
+	}
+
+	/// Get the current value as a u16. Panics if the value is not Value::Uint2.
+	fn get_config_uint2(&self, key: ConfigKey) -> u16 {
+		let val = self.get_config(key);
+		match val {
+			Value::Uint2(v) => v,
+			v => panic!("config key '{}' expected Uint2, got {:?}", key, v),
 		}
 	}
 
@@ -481,13 +505,58 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 11);
+		assert_eq!(all.len(), 12);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
 		assert!(all.contains(&ConfigKey::CdcCompactMaxBlocksPerTick));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
 		assert!(all.contains(&ConfigKey::CdcCompactZstdLevel));
+		assert!(all.contains(&ConfigKey::QueryRowBatchSize));
+	}
+
+	#[test]
+	fn test_query_row_batch_size_default_is_uint2_32() {
+		assert_eq!(ConfigKey::QueryRowBatchSize.default_value(), Value::Uint2(32));
+	}
+
+	#[test]
+	fn test_query_row_batch_size_round_trips_through_display_and_from_str() {
+		let key: ConfigKey = "QUERY_ROW_BATCH_SIZE".parse().unwrap();
+		assert_eq!(key, ConfigKey::QueryRowBatchSize);
+		assert_eq!(format!("{}", ConfigKey::QueryRowBatchSize), "QUERY_ROW_BATCH_SIZE");
+	}
+
+	#[test]
+	fn test_query_row_batch_size_accept_rejects_zero() {
+		match ConfigKey::QueryRowBatchSize.accept(Value::Uint2(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_query_row_batch_size_accept_passes_positive() {
+		assert_eq!(ConfigKey::QueryRowBatchSize.accept(Value::Uint2(1)).unwrap(), Value::Uint2(1));
+		assert_eq!(ConfigKey::QueryRowBatchSize.accept(Value::Uint2(1024)).unwrap(), Value::Uint2(1024));
+	}
+
+	#[test]
+	fn test_query_row_batch_size_accept_rejects_zero_after_coercion() {
+		match ConfigKey::QueryRowBatchSize.accept(Value::Int4(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"));
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_query_row_batch_size_coerces_int4_to_uint2() {
+		let v = ConfigKey::QueryRowBatchSize.accept(Value::Int4(64)).unwrap();
+		assert_eq!(v, Value::Uint2(64));
 	}
 
 	#[test]

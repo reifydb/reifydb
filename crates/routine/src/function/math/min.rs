@@ -124,7 +124,7 @@ impl MinAccumulator {
 }
 
 macro_rules! min_arm {
-	($self:expr, $column:expr, $groups:expr, $container:expr, $ctor:expr) => {
+	($self:expr, $column:expr, $groups:expr, $container:expr, $variant:ident) => {
 		for (group, indices) in $groups.iter() {
 			let mut min = None;
 			for &i in indices {
@@ -139,7 +139,11 @@ macro_rules! min_arm {
 				}
 			}
 			if let Some(v) = min {
-				$self.mins.insert(group.clone(), $ctor(v));
+				let merged = match $self.mins.swap_remove(group) {
+					Some(Value::$variant(prev)) if prev < v => prev,
+					_ => v,
+				};
+				$self.mins.insert(group.clone(), Value::$variant(merged));
 			} else {
 				$self.mins.entry(group.clone()).or_insert(Value::none());
 			}
@@ -158,43 +162,43 @@ impl Accumulator for MinAccumulator {
 
 		match data {
 			ColumnBuffer::Int1(container) => {
-				min_arm!(self, column, groups, container, Value::Int1);
+				min_arm!(self, column, groups, container, Int1);
 				Ok(())
 			}
 			ColumnBuffer::Int2(container) => {
-				min_arm!(self, column, groups, container, Value::Int2);
+				min_arm!(self, column, groups, container, Int2);
 				Ok(())
 			}
 			ColumnBuffer::Int4(container) => {
-				min_arm!(self, column, groups, container, Value::Int4);
+				min_arm!(self, column, groups, container, Int4);
 				Ok(())
 			}
 			ColumnBuffer::Int8(container) => {
-				min_arm!(self, column, groups, container, Value::Int8);
+				min_arm!(self, column, groups, container, Int8);
 				Ok(())
 			}
 			ColumnBuffer::Int16(container) => {
-				min_arm!(self, column, groups, container, Value::Int16);
+				min_arm!(self, column, groups, container, Int16);
 				Ok(())
 			}
 			ColumnBuffer::Uint1(container) => {
-				min_arm!(self, column, groups, container, Value::Uint1);
+				min_arm!(self, column, groups, container, Uint1);
 				Ok(())
 			}
 			ColumnBuffer::Uint2(container) => {
-				min_arm!(self, column, groups, container, Value::Uint2);
+				min_arm!(self, column, groups, container, Uint2);
 				Ok(())
 			}
 			ColumnBuffer::Uint4(container) => {
-				min_arm!(self, column, groups, container, Value::Uint4);
+				min_arm!(self, column, groups, container, Uint4);
 				Ok(())
 			}
 			ColumnBuffer::Uint8(container) => {
-				min_arm!(self, column, groups, container, Value::Uint8);
+				min_arm!(self, column, groups, container, Uint8);
 				Ok(())
 			}
 			ColumnBuffer::Uint16(container) => {
-				min_arm!(self, column, groups, container, Value::Uint16);
+				min_arm!(self, column, groups, container, Uint16);
 				Ok(())
 			}
 			ColumnBuffer::Float4(container) => {
@@ -211,7 +215,11 @@ impl Accumulator for MinAccumulator {
 						}
 					}
 					if let Some(v) = min {
-						self.mins.insert(group.clone(), Value::float4(v));
+						let merged = match self.mins.swap_remove(group) {
+							Some(Value::Float4(prev)) => f32::min(prev.value(), v),
+							_ => v,
+						};
+						self.mins.insert(group.clone(), Value::float4(merged));
 					} else {
 						self.mins.entry(group.clone()).or_insert(Value::none());
 					}
@@ -232,7 +240,11 @@ impl Accumulator for MinAccumulator {
 						}
 					}
 					if let Some(v) = min {
-						self.mins.insert(group.clone(), Value::float8(v));
+						let merged = match self.mins.swap_remove(group) {
+							Some(Value::Float8(prev)) => f64::min(prev.value(), v),
+							_ => v,
+						};
+						self.mins.insert(group.clone(), Value::float8(merged));
 					} else {
 						self.mins.entry(group.clone()).or_insert(Value::none());
 					}
@@ -257,7 +269,11 @@ impl Accumulator for MinAccumulator {
 						}
 					}
 					if let Some(v) = min {
-						self.mins.insert(group.clone(), Value::Int(v));
+						let merged = match self.mins.swap_remove(group) {
+							Some(Value::Int(prev)) if prev < v => prev,
+							_ => v,
+						};
+						self.mins.insert(group.clone(), Value::Int(merged));
 					} else {
 						self.mins.entry(group.clone()).or_insert(Value::none());
 					}
@@ -282,7 +298,11 @@ impl Accumulator for MinAccumulator {
 						}
 					}
 					if let Some(v) = min {
-						self.mins.insert(group.clone(), Value::Uint(v));
+						let merged = match self.mins.swap_remove(group) {
+							Some(Value::Uint(prev)) if prev < v => prev,
+							_ => v,
+						};
+						self.mins.insert(group.clone(), Value::Uint(merged));
 					} else {
 						self.mins.entry(group.clone()).or_insert(Value::none());
 					}
@@ -307,7 +327,11 @@ impl Accumulator for MinAccumulator {
 						}
 					}
 					if let Some(v) = min {
-						self.mins.insert(group.clone(), Value::Decimal(v));
+						let merged = match self.mins.swap_remove(group) {
+							Some(Value::Decimal(prev)) if prev < v => prev,
+							_ => v,
+						};
+						self.mins.insert(group.clone(), Value::Decimal(merged));
 					} else {
 						self.mins.entry(group.clone()).or_insert(Value::none());
 					}

@@ -8,6 +8,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKeyRange, row::EncodedRow},
 	interface::{
 		catalog::{
+			config::{ConfigKey, GetConfig},
 			id::IndexId,
 			key::PrimaryKey,
 			namespace::Namespace,
@@ -149,7 +150,7 @@ fn run_table_delete_with_input(
 	let context = QueryContext {
 		services: exec.services.clone(),
 		source: resolved_source.clone(),
-		batch_size: 32,
+		batch_size: exec.services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
 		identity: IdentityId::root(),

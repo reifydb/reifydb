@@ -48,6 +48,10 @@ pub struct SqliteConfig {
 	pub wal_autocheckpoint: u32,
 	pub page_size: u32,
 	pub mmap_size: u64,
+	/// Per-connection prepared statement cache capacity. rusqlite's default is
+	/// 16; the hot tier uses on the order of a few dozen distinct SQL strings
+	/// per active table, so bump well above that.
+	pub prepared_statement_cache_capacity: u32,
 }
 
 impl SqliteConfig {
@@ -68,6 +72,7 @@ impl SqliteConfig {
 			wal_autocheckpoint: 1000,
 			page_size: 4096,
 			mmap_size: 64 * 1024 * 1024,
+			prepared_statement_cache_capacity: 128,
 		}
 	}
 
@@ -87,6 +92,7 @@ impl SqliteConfig {
 			wal_autocheckpoint: 1000,
 			page_size: 4096,
 			mmap_size: 0,
+			prepared_statement_cache_capacity: 128,
 		}
 	}
 
@@ -107,6 +113,7 @@ impl SqliteConfig {
 			wal_autocheckpoint: 10000,
 			page_size: 16384,
 			mmap_size: 256 * 1024 * 1024,
+			prepared_statement_cache_capacity: 256,
 		}
 	}
 
@@ -125,6 +132,7 @@ impl SqliteConfig {
 			wal_autocheckpoint: 10000,
 			page_size: 16384,
 			mmap_size: 0,
+			prepared_statement_cache_capacity: 128,
 		}
 	}
 
@@ -142,6 +150,7 @@ impl SqliteConfig {
 			wal_autocheckpoint: 10000,
 			page_size: 16384,
 			mmap_size: 0,
+			prepared_statement_cache_capacity: 128,
 		}
 	}
 
@@ -158,6 +167,7 @@ impl SqliteConfig {
 			wal_autocheckpoint: 10000,
 			page_size: 4096,
 			mmap_size: 0,
+			prepared_statement_cache_capacity: 32,
 		}
 	}
 

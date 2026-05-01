@@ -8,6 +8,7 @@ use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
 	interface::{
 		catalog::{
+			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::{RingBuffer, RingBufferMetadata},
@@ -172,7 +173,7 @@ fn build_insert_ringbuffer_query_context(
 	Arc::new(QueryContext {
 		services: services.clone(),
 		source: Some(ResolvedShape::RingBuffer(resolved_rb)),
-		batch_size: 32,
+		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),

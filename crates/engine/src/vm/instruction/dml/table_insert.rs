@@ -11,6 +11,7 @@ use reifydb_core::{
 	},
 	interface::{
 		catalog::{
+			config::{ConfigKey, GetConfig},
 			id::IndexId,
 			key::PrimaryKey,
 			namespace::Namespace,
@@ -161,7 +162,7 @@ fn build_insert_table_query_context(
 	Arc::new(QueryContext {
 		services: services.clone(),
 		source: Some(ResolvedShape::Table(resolved_table)),
-		batch_size: 32,
+		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: Params::None,
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),

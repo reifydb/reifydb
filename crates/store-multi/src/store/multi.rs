@@ -354,10 +354,12 @@ impl StandardMultiStore {
 			}
 		}
 
-		// Convert to MultiVersionRow in sorted key order, filtering out tombstones
+		// Convert to MultiVersionRow in sorted key order, filtering out tombstones.
+		// Note: the per-tier cursor already advanced past every key we collected, so
+		// every collected entry must be either returned or dropped here - we cannot
+		// "leave them for next call" without losing them entirely.
 		let items: Vec<MultiVersionRow> = collected
 			.into_iter()
-			.take(batch_size)
 			.filter_map(|(key_bytes, (v, value))| {
 				value.map(|val| MultiVersionRow {
 					key: EncodedKey(CowVec::new(key_bytes)),
@@ -367,7 +369,7 @@ impl StandardMultiStore {
 			})
 			.collect();
 
-		let has_more = items.len() >= batch_size || !cursor.exhausted;
+		let has_more = !cursor.exhausted;
 
 		Ok(MultiVersionBatch {
 			items,
@@ -668,7 +670,10 @@ impl Iterator for MultiVersionRangeIter {
 		{
 			Ok(batch) => {
 				if batch.items.is_empty() {
-					return None;
+					if self.cursor.exhausted {
+						return None;
+					}
+					return self.next();
 				}
 				self.current_batch = batch.items;
 				self.current_index = 0;
@@ -715,7 +720,10 @@ impl Iterator for MultiVersionRangeRevIter {
 		) {
 			Ok(batch) => {
 				if batch.items.is_empty() {
-					return None;
+					if self.cursor.exhausted {
+						return None;
+					}
+					return self.next();
 				}
 				self.current_batch = batch.items;
 				self.current_index = 0;
