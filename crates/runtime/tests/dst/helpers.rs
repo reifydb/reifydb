@@ -191,7 +191,7 @@ impl Actor for SpawnChildActor {
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
 			SpawnChildMessage::SpawnAndSend(text) => {
-				let child = ctx.system().spawn(
+				let child = ctx.system().spawn_system(
 					"child",
 					LogActor {
 						log: self.log.clone(),

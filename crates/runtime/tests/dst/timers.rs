@@ -14,7 +14,7 @@ use super::helpers::*;
 fn zero_delay_timer() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -35,7 +35,7 @@ fn zero_delay_timer() {
 fn timer_cancellation_before_fire() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -59,7 +59,7 @@ fn timer_cancellation_before_fire() {
 fn timer_cancellation_after_fire() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -86,7 +86,7 @@ fn timer_cancellation_after_fire() {
 fn multiple_timers_same_deadline() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -113,7 +113,7 @@ fn multiple_timers_same_deadline() {
 fn repeat_timer_cancellation() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -141,7 +141,7 @@ fn repeat_timer_cancellation() {
 fn timer_and_direct_message_interleaving() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -169,7 +169,7 @@ fn timer_and_direct_message_interleaving() {
 fn cascading_timers() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -194,7 +194,7 @@ fn cascading_timers() {
 fn large_time_advance() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -218,7 +218,7 @@ fn large_time_advance() {
 fn schedule_tick_uses_mock_clock() {
 	let system = test_system();
 	let timestamps = Arc::new(Mutex::new(Vec::<u64>::new()));
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"tick",
 		TickActor {
 			timestamps: timestamps.clone(),
@@ -244,7 +244,7 @@ fn schedule_tick_uses_mock_clock() {
 fn timer_not_fired_if_time_not_advanced() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -264,7 +264,7 @@ fn timer_not_fired_if_time_not_advanced() {
 fn repeat_timer_fires_correct_count() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -291,7 +291,7 @@ fn message_storm_stress() {
 
 	let mut actors = Vec::new();
 	for i in 0..n_actors {
-		actors.push(system.spawn(
+		actors.push(system.spawn_system(
 			&format!("actor{i}"),
 			LogActor {
 				log: log.clone(),
@@ -318,7 +318,7 @@ fn message_storm_stress() {
 fn timers_must_be_cancelled_when_actor_stops() {
 	let system = test_system();
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -338,7 +338,7 @@ fn timers_must_be_cancelled_when_actor_stops() {
 	// We need an actor that can stop. CounterActor can.
 	// But let's just use the handle and send a Directive::Stop somehow?
 	// Our LogActor doesn't stop. Let's use CounterActor.
-	let counter = system.spawn("counter", CounterActor);
+	let counter = system.spawn_system("counter", CounterActor);
 	let ctx_c = Context::new(counter.actor_ref.clone(), system.clone(), system.cancellation_token());
 	ctx_c.schedule_repeat(std::time::Duration::from_millis(100), CounterMessage::Inc);
 

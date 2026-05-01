@@ -24,8 +24,8 @@ fn scope_has_own_actors() {
 	let parent = test_system();
 	let child = parent.scope();
 
-	let _pa = parent.spawn("pa", CounterActor);
-	let _ca = child.spawn("ca", CounterActor);
+	let _pa = parent.spawn_system("pa", CounterActor);
+	let _ca = child.spawn_system("ca", CounterActor);
 
 	assert_eq!(parent.alive_count(), 1);
 	assert_eq!(child.alive_count(), 1);
@@ -36,8 +36,8 @@ fn scope_has_own_cancel() {
 	let parent = test_system();
 	let child = parent.scope();
 
-	let _pa = parent.spawn("pa", CounterActor);
-	let _ca = child.spawn("ca", CounterActor);
+	let _pa = parent.spawn_system("pa", CounterActor);
+	let _ca = child.spawn_system("ca", CounterActor);
 
 	// Shut down child scope only.
 	child.shutdown();
@@ -53,8 +53,8 @@ fn parent_shutdown_cancels_child_scope() {
 	let parent = test_system();
 	let child = parent.scope();
 
-	let _pa = parent.spawn("pa", CounterActor);
-	let ch = child.spawn("ca", CounterActor);
+	let _pa = parent.spawn_system("pa", CounterActor);
+	let ch = child.spawn_system("ca", CounterActor);
 
 	// Shut down parent - should propagate to child.
 	parent.shutdown();
@@ -74,7 +74,7 @@ fn scope_shares_timer_heap() {
 	let child = parent.scope();
 
 	let log = new_log();
-	let handle = child.spawn(
+	let handle = child.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -100,7 +100,7 @@ fn cross_scope_messaging() {
 	let child = parent.scope();
 
 	let log = new_log();
-	let child_actor = child.spawn(
+	let child_actor = child.spawn_system(
 		"child_log",
 		LogActor {
 			log: log.clone(),
@@ -121,9 +121,9 @@ fn nested_scope_must_shutdown_recursively() {
 	let level1 = root.scope();
 	let level2 = level1.scope();
 
-	let _r = root.spawn("root_actor", CounterActor);
-	let _l1 = level1.spawn("level1_actor", CounterActor);
-	let _l2 = level2.spawn("level2_actor", CounterActor);
+	let _r = root.spawn_system("root_actor", CounterActor);
+	let _l1 = level1.spawn_system("level1_actor", CounterActor);
+	let _l2 = level2.spawn_system("level2_actor", CounterActor);
 
 	assert_eq!(root.alive_count(), 1);
 	assert_eq!(level1.alive_count(), 1);

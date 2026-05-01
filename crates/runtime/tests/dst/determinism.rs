@@ -12,19 +12,19 @@ fn run_scenario(seed: u64) -> Vec<usize> {
 	let system = test_system_with_seed(seed);
 	let log = new_log();
 
-	let a = system.spawn(
+	let a = system.spawn_system(
 		"a",
 		LogActor {
 			log: log.clone(),
 		},
 	);
-	let b = system.spawn(
+	let b = system.spawn_system(
 		"b",
 		LogActor {
 			log: log.clone(),
 		},
 	);
-	let c = system.spawn(
+	let c = system.spawn_system(
 		"c",
 		LogActor {
 			log: log.clone(),
@@ -55,13 +55,13 @@ fn same_seed_same_log_contents() {
 		let system = test_system_with_seed(seed);
 		let log = new_log();
 
-		let a = system.spawn(
+		let a = system.spawn_system(
 			"a",
 			LogActor {
 				log: log.clone(),
 			},
 		);
-		let b = system.spawn(
+		let b = system.spawn_system(
 			"b",
 			LogActor {
 				log: log.clone(),
@@ -93,7 +93,7 @@ fn different_seed_different_clock() {
 fn run_timer_scenario(seed: u64) -> Vec<String> {
 	let system = test_system_with_seed(seed);
 	let log = new_log();
-	let handle = system.spawn(
+	let handle = system.spawn_system(
 		"log",
 		LogActor {
 			log: log.clone(),
@@ -130,13 +130,13 @@ fn complex_scenario_reproducible() {
 		let system = test_system_with_seed(seed);
 		let log = new_log();
 
-		let a = system.spawn(
+		let a = system.spawn_system(
 			"a",
 			LogActor {
 				log: log.clone(),
 			},
 		);
-		let b = system.spawn(
+		let b = system.spawn_system(
 			"b",
 			ForwardActor {
 				target: a.actor_ref.clone(),
