@@ -44,7 +44,6 @@ pub struct RingBufferScan {
 	rows_returned_in_partition: u64,
 	context: Option<Arc<QueryContext>>,
 	initialized: bool,
-	scan_limit: Option<usize>,
 }
 
 impl RingBufferScan {
@@ -99,7 +98,6 @@ impl RingBufferScan {
 			rows_returned_in_partition: 0,
 			context: Some(context),
 			initialized: false,
-			scan_limit: None,
 		})
 	}
 
@@ -186,10 +184,7 @@ impl QueryNode for RingBufferScan {
 			return Ok(None);
 		}
 
-		let batch_size = match self.scan_limit {
-			Some(limit) => limit.min(stored_ctx.batch_size as usize),
-			None => stored_ctx.batch_size as usize,
-		};
+		let batch_size = stored_ctx.batch_size as usize;
 
 		// Collect rows for this batch, spanning partitions if needed
 		let mut batch_rows = Vec::new();
@@ -301,10 +296,6 @@ impl QueryNode for RingBufferScan {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
-	}
-
-	fn set_scan_limit(&mut self, limit: usize) {
-		self.scan_limit = Some(limit);
 	}
 }
 

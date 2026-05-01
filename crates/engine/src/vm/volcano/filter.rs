@@ -129,10 +129,6 @@ impl QueryNode for FilterNode {
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.input.headers()
 	}
-
-	fn set_scan_limit(&mut self, limit: usize) {
-		self.input.set_scan_limit(limit);
-	}
 }
 
 impl Transform for FilterNode {

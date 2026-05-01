@@ -99,10 +99,6 @@ impl QueryNode for MapNode {
 	fn headers(&self) -> Option<ColumnHeaders> {
 		self.headers.clone().or(self.input.headers())
 	}
-
-	fn set_scan_limit(&mut self, limit: usize) {
-		self.input.set_scan_limit(limit);
-	}
 }
 
 impl Transform for MapNode {
