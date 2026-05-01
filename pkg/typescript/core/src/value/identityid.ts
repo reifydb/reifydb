@@ -117,6 +117,10 @@ export class IdentityIdValue implements Value {
         return this.value === otherIdentityId.value;
     }
 
+    toJSON(): string | null {
+        return this.value ?? null;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

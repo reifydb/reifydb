@@ -43,6 +43,10 @@ export class DecimalValue implements Value {
         return this.value === otherDecimal.value;
     }
 
+    toJSON(): string | null {
+        return this.value ?? null;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

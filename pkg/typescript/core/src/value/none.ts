@@ -46,6 +46,10 @@ export class NoneValue implements Value {
         return 0;
     }
 
+    toJSON(): null {
+        return null;
+    }
+
     encode(): TypeValuePair {
         return {
             type: "None",

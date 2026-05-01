@@ -57,6 +57,10 @@ export class Uint4Value implements Value {
         return this.value === otherUint.value;
     }
 
+    toJSON(): string | null {
+        return this.value === undefined ? null : this.value.toString();
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

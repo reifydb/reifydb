@@ -294,6 +294,13 @@ export class DateValue implements Value {
         return this.months === otherDate.months && this.days === otherDate.days;
     }
 
+    toJSON(): string | null {
+        if (this.months === undefined || this.days === undefined) {
+            return null;
+        }
+        return this.toString();
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

@@ -82,6 +82,10 @@ export class Float4Value implements Value {
         return Math.abs(this.value - otherFloat.value) <= epsilon;
     }
 
+    toJSON(): string | null {
+        return this.value === undefined ? null : this.value.toString();
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

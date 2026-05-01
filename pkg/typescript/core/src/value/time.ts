@@ -238,6 +238,10 @@ export class TimeValue implements Value {
         return this.value === otherTime.value;
     }
 
+    toJSON(): string | null {
+        return this.value === undefined ? null : this.toString();
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

@@ -56,6 +56,10 @@ export class BooleanValue implements Value {
         return this.value === otherBoolean.value;
     }
 
+    toJSON(): boolean | null {
+        return this.value ?? null;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

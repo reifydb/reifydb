@@ -464,6 +464,13 @@ export class DateTimeValue implements Value {
                this.nanos === otherDateTime.nanos;
     }
 
+    toJSON(): string | null {
+        if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
+            return null;
+        }
+        return this.toString();
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,
