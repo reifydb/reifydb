@@ -12,10 +12,10 @@ use crate::{
 /// Returns on the first failing pragma.
 pub fn apply(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
 	set(conn, "page_size", config.page_size)?;
+	set(conn, "auto_vacuum", "INCREMENTAL")?;
 	set(conn, "journal_mode", config.journal_mode.as_str())?;
 	set(conn, "synchronous", config.synchronous_mode.as_str())?;
 	set(conn, "temp_store", config.temp_store.as_str())?;
-	set(conn, "auto_vacuum", "INCREMENTAL")?;
 	set(conn, "cache_size", -(config.cache_size as i32))?;
 	set(conn, "wal_autocheckpoint", config.wal_autocheckpoint)?;
 	set(conn, "mmap_size", config.mmap_size as i64)?;
@@ -23,11 +23,22 @@ pub fn apply(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
 	Ok(())
 }
 
-/// Run `PRAGMA incremental_vacuum` to return freed pages to the OS.
+/// Run `PRAGMA incremental_vacuum` and a `wal_checkpoint(TRUNCATE)` to return
+/// freed pages to the OS. In WAL mode, `incremental_vacuum` alone marks pages
+/// for truncation in the WAL but the main database file is not actually shrunk
+/// until a TRUNCATE-mode checkpoint applies the WAL and truncates both files.
+///
+/// Both pragmas return result rows, so we drive them with `pragma_query` /
+/// `pragma` (which step the prepared statement to completion). `execute` /
+/// `execute_batch` either reject statements that return rows or only step
+/// once, leaving the truncation incomplete.
 pub fn incremental_vacuum(conn: &Connection) -> SqliteResult<()> {
-	let statement = "PRAGMA incremental_vacuum";
-	conn.execute(statement, []).map_err(|source| SqliteError::Execute {
-		statement: statement.into(),
+	conn.pragma_query(None, "incremental_vacuum", |_| Ok(())).map_err(|source| SqliteError::Execute {
+		statement: "PRAGMA incremental_vacuum".into(),
+		source,
+	})?;
+	conn.pragma(None, "wal_checkpoint", "TRUNCATE", |_| Ok(())).map_err(|source| SqliteError::Execute {
+		statement: "PRAGMA wal_checkpoint(TRUNCATE)".into(),
 		source,
 	})?;
 	Ok(())

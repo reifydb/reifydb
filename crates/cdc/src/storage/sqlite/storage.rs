@@ -1007,7 +1007,7 @@ impl CdcStorage for SqliteCdcStorage {
 		let live = scan_live_rows_below(&conn, &version_bytes)?;
 
 		apply_drop_before(&conn, &full_blocks.pks, &straddle.actions, &version_bytes, zstd_level)?;
-		let _ = conn.execute("PRAGMA incremental_vacuum", []);
+		let _ = pragma::incremental_vacuum(&conn);
 
 		let mut entries = full_blocks.entries;
 		entries.extend(straddle.entries);
