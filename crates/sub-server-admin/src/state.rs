@@ -63,7 +63,7 @@ impl AdminState {
 			self.auth_token.clone(),
 			self.clock.clone(),
 		);
-		let handle = self.actor_system.spawn("admin-req", actor);
+		let handle = self.actor_system.spawn_query("admin-req", actor);
 		let actor_ref = handle.actor_ref().clone();
 		(actor_ref, handle)
 	}

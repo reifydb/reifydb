@@ -108,7 +108,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollCons
 		}
 		let (host, consumer, store) = self.take_resources();
 		let actor = PollActor::new(self.build_actor_config(), host, consumer, store);
-		self.handle = Some(self.actor_system.spawn(&self.config.thread_name, actor));
+		self.handle = Some(self.actor_system.spawn_system(&self.config.thread_name, actor));
 		Ok(())
 	}
 

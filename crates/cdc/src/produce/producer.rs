@@ -629,7 +629,7 @@ where
 	H: CdcHost,
 {
 	let actor = CdcProducerActor::new(storage, transaction_store, host, event_bus, clock, watermark);
-	system.spawn("cdc-producer", actor)
+	system.spawn_system("cdc-producer", actor)
 }
 
 #[cfg(test)]

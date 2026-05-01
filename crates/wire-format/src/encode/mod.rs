@@ -6,6 +6,7 @@ mod fixed;
 mod varlen;
 
 use reifydb_type::value::frame::{data::FrameColumnData, frame::Frame};
+use tracing::instrument;
 
 use crate::{
 	encoding::plain::{encode_bitvec, encode_plain},
@@ -31,6 +32,16 @@ pub(crate) struct EncodedColumn {
 }
 
 /// Encode multiple frames into RBCF binary format.
+#[instrument(
+	name = "wire::encode_frames",
+	level = "debug",
+	skip_all,
+	fields(
+		frame_count = frames.len(),
+		total_rows = frames.iter().map(|f| f.columns.first().map_or(0, |c| c.data.len())).sum::<usize>(),
+		bytes,
+	),
+)]
 pub fn encode_frames(frames: &[Frame], options: &EncodeOptions) -> Result<Vec<u8>, EncodeError> {
 	let mut buf = Vec::with_capacity(4096);
 	reserve_message_header(&mut buf);
@@ -38,6 +49,7 @@ pub fn encode_frames(frames: &[Frame], options: &EncodeOptions) -> Result<Vec<u8
 		encode_frame(frame, &mut buf, options)?;
 	}
 	write_message_header(&mut buf, frames.len() as u32);
+	tracing::Span::current().record("bytes", buf.len());
 	Ok(buf)
 }
 

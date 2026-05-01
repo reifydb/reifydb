@@ -13,6 +13,7 @@ use reifydb_runtime::{
 	},
 	context::{clock::Clock, rng::Rng},
 };
+use tracing::instrument;
 
 use crate::{actor::ServerActor, interceptor::RequestInterceptorChain};
 
@@ -219,9 +220,10 @@ impl AppState {
 	///
 	/// The caller must keep the `ActorHandle` alive until the reply is received;
 	/// dropping it shuts down the actor.
+	#[instrument(name = "actor::spawn_server", level = "debug", skip_all)]
 	pub fn spawn_server_actor(&self) -> (ActorRef<ServerMessage>, ActorHandle<ServerMessage>) {
 		let actor = ServerActor::new(self.engine.clone(), self.auth_service.clone(), self.clock.clone());
-		let handle = self.actor_system.spawn("server-req", actor);
+		let handle = self.actor_system.spawn_query("server-req", actor);
 		let actor_ref = handle.actor_ref().clone();
 		(actor_ref, handle)
 	}

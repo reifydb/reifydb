@@ -13,6 +13,7 @@ bigdecimal = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tracing = { workspace = true }
 
 [[test]]
 name = "plain"

@@ -86,7 +86,7 @@ impl DropActor {
 		clock: Clock,
 	) -> ActorRef<DropMessage> {
 		let actor = Self::new(config, storage, event_bus, clock);
-		system.spawn("drop-worker", actor).actor_ref().clone()
+		system.spawn_system("drop-worker", actor).actor_ref().clone()
 	}
 
 	/// Maybe flush if batch is full.

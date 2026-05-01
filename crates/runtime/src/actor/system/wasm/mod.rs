@@ -105,8 +105,8 @@ impl ActorSystem {
 		Ok(())
 	}
 
-	/// Spawn an actor (processes messages inline in WASM).
-	pub fn spawn<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+	/// Spawn an actor on the system pool (processes messages inline in WASM).
+	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
 		let actor_ref = create_actor_ref::<A::Message>();
 
 		// Wrap actor and state in Rc for sharing between processor and eager init
@@ -204,9 +204,9 @@ impl ActorSystem {
 		}
 	}
 
-	/// Spawn an actor on the query pool. In WASM, same as [`spawn`].
+	/// Spawn an actor on the query pool. In WASM, same as [`spawn_system`].
 	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.spawn(name, actor)
+		self.spawn_system(name, actor)
 	}
 }
 

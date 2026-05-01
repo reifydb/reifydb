@@ -154,10 +154,10 @@ impl FlowSubsystem {
 		let (worker_refs, worker_handles) =
 			Self::spawn_flow_workers(num_workers, &engine, &flow_catalog, &clock, &custom_operators);
 
-		let pool_handle = actor_system.spawn("flow-pool", PoolActor::new(worker_refs, clock.clone()));
+		let pool_handle = actor_system.spawn_system("flow-pool", PoolActor::new(worker_refs, clock.clone()));
 		let pool_ref = pool_handle.actor_ref().clone();
 
-		let coordinator_handle = actor_system.spawn(
+		let coordinator_handle = actor_system.spawn_system(
 			"flow-coordinator",
 			CoordinatorActor::new(
 				engine.clone(),
@@ -262,7 +262,7 @@ impl FlowSubsystem {
 				engine.catalog(),
 				flow_catalog.clone(),
 			);
-			let handle = actor_system.spawn(&format!("flow-worker-{}", i), worker);
+			let handle = actor_system.spawn_system(&format!("flow-worker-{}", i), worker);
 			worker_refs.push(handle.actor_ref().clone());
 			worker_handles.push(handle);
 		}

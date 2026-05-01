@@ -59,7 +59,7 @@ impl WaterMark {
 		let actor = WatermarkActor {
 			shared: shared.clone(),
 		};
-		let actor_ref = system.spawn(&task_name, actor).actor_ref().clone();
+		let actor_ref = system.spawn_system(&task_name, actor).actor_ref().clone();
 
 		Self {
 			actor: actor_ref,

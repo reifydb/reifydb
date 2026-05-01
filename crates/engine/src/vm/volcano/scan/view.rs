@@ -91,6 +91,7 @@ impl QueryNode for ViewScanNode {
 			Some(limit) => (limit as u64).min(stored_ctx.batch_size),
 			None => stored_ctx.batch_size,
 		};
+		tracing::trace!(scan_limit = ?self.scan_limit, ctx_batch = stored_ctx.batch_size, batch_size, "view scan batch");
 		let range = RowKeyRange::scan_range(self.view.def().underlying_id(), self.last_key.as_ref());
 
 		let mut batch_rows = Vec::new();

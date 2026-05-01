@@ -282,14 +282,14 @@ impl ActorSystem {
 		Ok(())
 	}
 
-	/// Spawn an actor.
+	/// Spawn an actor on the system pool.
 	///
 	/// The actor is initialized synchronously. Messages sent during init
 	/// are enqueued and will be processed by subsequent `step()` calls.
 	///
 	/// If the system has already been shut down, returns a handle to a
 	/// pre-terminated actor (sends will fail with `SendError::Closed`).
-	pub fn spawn<A: Actor>(&self, _name: &str, actor: A) -> ActorHandle<A::Message> {
+	pub fn spawn_system<A: Actor>(&self, _name: &str, actor: A) -> ActorHandle<A::Message> {
 		let (actor_ref, queue) = create_dst_mailbox::<A::Message>();
 
 		// If the system is already shut down, return a dead actor handle.
@@ -350,9 +350,9 @@ impl ActorSystem {
 		}
 	}
 
-	/// Spawn an actor on the query pool. In DST, same as [`spawn`].
+	/// Spawn an actor on the query pool. In DST, same as [`spawn_system`].
 	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
-		self.spawn(name, actor)
+		self.spawn_system(name, actor)
 	}
 
 	/// Process one message from the actor with the smallest logical timestamp.
@@ -691,7 +691,7 @@ mod tests {
 	#[test]
 	fn test_basic_step() {
 		let system = test_system();
-		let handle = system.spawn("counter", CounterActor);
+		let handle = system.spawn_system("counter", CounterActor);
 
 		handle.actor_ref.send(CounterMessage::Inc).unwrap();
 		handle.actor_ref.send(CounterMessage::Inc).unwrap();
@@ -717,13 +717,13 @@ mod tests {
 
 		let log = Arc::new(Mutex::new(Vec::<String>::new()));
 
-		let a = system.spawn(
+		let a = system.spawn_system(
 			"a",
 			LogActor {
 				log: log.clone(),
 			},
 		);
-		let b = system.spawn(
+		let b = system.spawn_system(
 			"b",
 			LogActor {
 				log: log.clone(),
@@ -744,7 +744,7 @@ mod tests {
 	#[test]
 	fn test_timer_advance() {
 		let system = test_system();
-		let handle = system.spawn("order", OrderActor);
+		let handle = system.spawn_system("order", OrderActor);
 
 		// Schedule a timer for 100ms.
 		let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
@@ -770,7 +770,7 @@ mod tests {
 	fn test_timer_deadline_ordering() {
 		let system = test_system();
 		let log = Arc::new(Mutex::new(Vec::<String>::new()));
-		let handle = system.spawn(
+		let handle = system.spawn_system(
 			"log",
 			LogActor {
 				log: log.clone(),
@@ -796,7 +796,7 @@ mod tests {
 	fn test_timer_repeat() {
 		let system = test_system();
 		let log = Arc::new(Mutex::new(Vec::<String>::new()));
-		let handle = system.spawn(
+		let handle = system.spawn_system(
 			"log",
 			LogActor {
 				log: log.clone(),
@@ -817,13 +817,13 @@ mod tests {
 	fn test_run_until_idle_with_forwarding() {
 		let system = test_system();
 		let log = Arc::new(Mutex::new(Vec::<String>::new()));
-		let log_handle = system.spawn(
+		let log_handle = system.spawn_system(
 			"log",
 			LogActor {
 				log: log.clone(),
 			},
 		);
-		let fwd_handle = system.spawn(
+		let fwd_handle = system.spawn_system(
 			"fwd",
 			ForwardActor {
 				target: log_handle.actor_ref.clone(),
@@ -839,7 +839,7 @@ mod tests {
 	#[test]
 	fn test_panic_handling() {
 		let system = test_system();
-		let handle = system.spawn("panic", PanicActor);
+		let handle = system.spawn_system("panic", PanicActor);
 
 		handle.actor_ref.send(PanicMessage::Ok).unwrap();
 		handle.actor_ref.send(PanicMessage::Boom).unwrap();
@@ -869,7 +869,7 @@ mod tests {
 	#[test]
 	fn test_actor_lifecycle_stop() {
 		let system = test_system();
-		let handle = system.spawn("counter", CounterActor);
+		let handle = system.spawn_system("counter", CounterActor);
 
 		handle.actor_ref.send(CounterMessage::Inc).unwrap();
 		handle.actor_ref.send(CounterMessage::Stop).unwrap();
@@ -901,19 +901,19 @@ mod tests {
 		let system = test_system();
 		let log = Arc::new(Mutex::new(Vec::<String>::new()));
 
-		let a = system.spawn(
+		let a = system.spawn_system(
 			"a",
 			LogActor {
 				log: log.clone(),
 			},
 		);
-		let b = system.spawn(
+		let b = system.spawn_system(
 			"b",
 			LogActor {
 				log: log.clone(),
 			},
 		);
-		let c = system.spawn(
+		let c = system.spawn_system(
 			"c",
 			LogActor {
 				log: log.clone(),

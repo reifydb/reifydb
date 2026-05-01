@@ -62,7 +62,7 @@ impl SubsystemFactory for MetricSubsystemFactory {
 			single_store,
 			multi_store,
 		);
-		let handle = actor_system.spawn("metric-collector", actor);
+		let handle = actor_system.spawn_system("metric-collector", actor);
 		let actor_ref = handle.actor_ref().clone();
 
 		event_bus.register::<RequestExecutedEvent, _>(RequestMetricsEventListener::new(actor_ref.clone()));

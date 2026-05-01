@@ -52,7 +52,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			Compressor::new(CompressConfig::default()),
 			self.config.table_tick_interval,
 		);
-		let table_handle = actor_system.spawn("storage-materialize-table", table_actor);
+		let table_handle = actor_system.spawn_system("storage-materialize-table", table_actor);
 		let table_ref = table_handle.actor_ref().clone();
 
 		let series_actor = SeriesMaterializationActor::new(
@@ -63,7 +63,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			self.config.series_bucket_width,
 			self.config.series_grace,
 		);
-		let series_handle = actor_system.spawn("storage-materialize-series", series_actor);
+		let series_handle = actor_system.spawn_system("storage-materialize-series", series_actor);
 		let series_ref = series_handle.actor_ref().clone();
 
 		Ok(Box::new(StorageSubsystem::new(registry, table_ref, series_ref)))

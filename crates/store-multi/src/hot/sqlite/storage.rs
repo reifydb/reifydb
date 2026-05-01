@@ -201,41 +201,54 @@ impl TierStorage for SqlitePrimitiveStorage {
 		};
 		let end_owned = bound_to_owned(end);
 
-		let conn = self.inner.conn.lock();
+		let conn = {
+			let _lock_span = tracing::trace_span!("sqlite::range_next::lock").entered();
+			self.inner.conn.lock()
+		};
 
 		let start_ref = bound_as_ref(&effective_start);
 		let end_ref = bound_as_ref(&end_owned);
 		let (query, params) =
 			build_versioned_range_query(&table_name, start_ref, end_ref, version, false, batch_size + 1);
 
-		let mut stmt = match conn.prepare(&query) {
-			Ok(stmt) => stmt,
-			Err(e) if e.to_string().contains("no such table") => {
-				cursor.exhausted = true;
-				return Ok(RangeBatch::empty());
+		let mut stmt = {
+			let _prepare_span = tracing::trace_span!("sqlite::range_next::prepare").entered();
+			match conn.prepare(&query) {
+				Ok(stmt) => stmt,
+				Err(e) if e.to_string().contains("no such table") => {
+					cursor.exhausted = true;
+					return Ok(RangeBatch::empty());
+				}
+				Err(e) => return Err(error!(internal(format!("Failed to prepare query: {}", e)))),
 			}
-			Err(e) => return Err(error!(internal(format!("Failed to prepare query: {}", e)))),
 		};
 
 		let params_refs: Vec<&dyn ToSql> = params.iter().map(|p| p as &dyn ToSql).collect();
 
-		let entries: Vec<RawEntry> = stmt
-			.query_map(params_refs.as_slice(), |row| {
-				let key: Vec<u8> = row.get(0)?;
-				let version_bytes: Vec<u8> = row.get(1)?;
-				let value: Option<Vec<u8>> = row.get(2)?;
-				let version = u64::from_be_bytes(
-					version_bytes.as_slice().try_into().expect("version must be 8 bytes"),
-				);
-				Ok(RawEntry {
-					key: CowVec::new(key),
-					version: CommitVersion(version),
-					value: value.map(CowVec::new),
+		let entries: Vec<RawEntry> = {
+			let query_span =
+				tracing::trace_span!("sqlite::range_next::query_map", returned = tracing::field::Empty);
+			let _entered = query_span.enter();
+			let collected: Vec<RawEntry> = stmt
+				.query_map(params_refs.as_slice(), |row| {
+					let key: Vec<u8> = row.get(0)?;
+					let version_bytes: Vec<u8> = row.get(1)?;
+					let value: Option<Vec<u8>> = row.get(2)?;
+					let version = u64::from_be_bytes(
+						version_bytes.as_slice().try_into().expect("version must be 8 bytes"),
+					);
+					Ok(RawEntry {
+						key: CowVec::new(key),
+						version: CommitVersion(version),
+						value: value.map(CowVec::new),
+					})
 				})
-			})
-			.map_err(|e| error!(internal(format!("Failed to query range: {}", e))))?
-			.filter_map(|r| r.ok())
-			.collect();
+				.map_err(|e| error!(internal(format!("Failed to query range: {}", e))))?
+				.filter_map(|r| r.ok())
+				.collect();
+			query_span.record("returned", collected.len());
+			collected
+		};
 
 		let has_more = entries.len() > batch_size;
 		let entries = if has_more {

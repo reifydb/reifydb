@@ -288,7 +288,7 @@ fn spawn_connection_actor(
 	connection_id: Uuid7,
 ) -> (ActorHandle<ServerMessage>, ActorRef<ServerMessage>) {
 	let actor = ServerActor::new(state.engine_clone(), state.auth_service().clone(), state.clock().clone());
-	let actor_handle = state.actor_system().spawn(&format!("ws-{}", connection_id), actor);
+	let actor_handle = state.actor_system().spawn_query(&format!("ws-{}", connection_id), actor);
 	let actor_ref = actor_handle.actor_ref().clone();
 	(actor_handle, actor_ref)
 }

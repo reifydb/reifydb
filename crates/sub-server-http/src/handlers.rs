@@ -31,6 +31,7 @@ use reifydb_type::{
 use reifydb_wire_format::json::{to::convert_frames, types::ResponseFrame};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
+use tracing::instrument;
 
 use crate::{error::AppError, state::HttpServerState};
 
@@ -245,6 +246,7 @@ fn build_metadata(headers: &HeaderMap) -> RequestMetadata {
 }
 
 /// Execute a read-only query.
+#[instrument(name = "http::query", level = "debug", skip_all, fields(format = ?format_params.format))]
 pub async fn handle_query(
 	State(state): State<HttpServerState>,
 	Query(format_params): Query<FormatParams>,
@@ -255,6 +257,7 @@ pub async fn handle_query(
 }
 
 /// Execute an admin operation.
+#[instrument(name = "http::admin", level = "debug", skip_all, fields(format = ?format_params.format))]
 pub async fn handle_admin(
 	State(state): State<HttpServerState>,
 	Query(format_params): Query<FormatParams>,
@@ -265,6 +268,7 @@ pub async fn handle_admin(
 }
 
 /// Execute a write command.
+#[instrument(name = "http::command", level = "debug", skip_all, fields(format = ?format_params.format))]
 pub async fn handle_command(
 	State(state): State<HttpServerState>,
 	Query(format_params): Query<FormatParams>,
@@ -279,6 +283,7 @@ pub async fn handle_command(
 /// Dispatches to the ServerActor for engine execution via the shared
 /// `dispatch()` function which handles interceptors, timeout, and
 /// response conversion.
+#[instrument(name = "http::execute_and_respond", level = "debug", skip_all, fields(op = ?operation))]
 async fn execute_and_respond(
 	state: &HttpServerState,
 	operation: Operation,
@@ -302,24 +307,32 @@ async fn execute_and_respond(
 
 	let (frames, metrics) = dispatch(state, ctx).await?;
 
-	let mut response = match format_params.format {
-		WireFormat::Rbcf => match encode_frames_rbcf(&frames) {
-			Ok(bytes) => (StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_RBCF.to_string())], bytes)
-				.into_response(),
-			Err(e) => return Err(AppError::BadRequest(format!("RBCF encode error: {}", e))),
-		},
-		WireFormat::Json => {
-			let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
-				.map_err(AppError::BadRequest)?;
-			(StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response()
-		}
-		WireFormat::Frames => {
-			let body = to_string(&QueryResponse {
-				frames: convert_frames(&frames),
-			})
-			.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?;
-			(StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_FRAMES.to_string())], body)
-				.into_response()
+	let mut response = {
+		let _encode_span =
+			tracing::debug_span!("http::encode", format = ?format_params.format, frame_count = frames.len())
+				.entered();
+		match format_params.format {
+			WireFormat::Rbcf => match encode_frames_rbcf(&frames) {
+				Ok(bytes) => {
+					(StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_RBCF.to_string())], bytes)
+						.into_response()
+				}
+				Err(e) => return Err(AppError::BadRequest(format!("RBCF encode error: {}", e))),
+			},
+			WireFormat::Json => {
+				let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
+					.map_err(AppError::BadRequest)?;
+				(StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body)
+					.into_response()
+			}
+			WireFormat::Frames => {
+				let body = to_string(&QueryResponse {
+					frames: convert_frames(&frames),
+				})
+				.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?;
+				(StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_FRAMES.to_string())], body)
+					.into_response()
+			}
 		}
 	};
 	insert_meta_headers(response.headers_mut(), &metrics);
@@ -331,6 +344,7 @@ async fn execute_and_respond(
 /// Tries in order:
 /// 1. Authorization header (Bearer token)
 /// 2. Falls back to anonymous identity
+#[instrument(name = "http::extract_identity", level = "debug", skip_all)]
 fn extract_identity(state: &HttpServerState, headers: &HeaderMap) -> Result<IdentityId, AppError> {
 	// Try Authorization header
 	if let Some(auth_header) = headers.get("authorization") {

@@ -177,7 +177,7 @@ impl ActorSystem {
 	///
 	/// Use this for lightweight actors that must never stall
 	/// (flow, CDC, watermark, metrics, etc.).
-	pub fn spawn<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
 	{
@@ -280,7 +280,7 @@ mod tests {
 	#[test]
 	fn test_spawn_and_send() {
 		let system = test_system();
-		let handle = system.spawn("counter", CounterActor);
+		let handle = system.spawn_system("counter", CounterActor);
 
 		let actor_ref = handle.actor_ref().clone();
 		actor_ref.send(CounterMessage::Inc).unwrap();
@@ -303,7 +303,7 @@ mod tests {
 
 		// Spawn several actors
 		for i in 0..5 {
-			system.spawn(&format!("counter-{i}"), CounterActor);
+			system.spawn_system(&format!("counter-{i}"), CounterActor);
 		}
 
 		// Shutdown cancels all actors; join waits for them to finish

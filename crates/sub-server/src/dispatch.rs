@@ -15,6 +15,7 @@ mod native {
 	use reifydb_runtime::{actor::reply::reply_channel, context::clock::Instant};
 	use reifydb_type::value::{duration::Duration as ReifyDuration, frame::frame::Frame};
 	use tokio::time::timeout;
+	use tracing::instrument;
 
 	use crate::{
 		execute::ExecuteError,
@@ -30,6 +31,7 @@ mod native {
 	/// 2. Building `RequestMetadata` from transport-specific headers
 	/// 3. Parsing params from transport-specific wire format
 	/// 4. Converting the result into transport-specific response format
+	#[instrument(name = "dispatch", level = "debug", skip_all, fields(op = ?ctx.operation))]
 	pub async fn dispatch(
 		state: &AppState,
 		mut ctx: RequestContext,
@@ -46,6 +48,7 @@ mod native {
 	///
 	/// Separate from `dispatch()` because Subscribe uses `Reply<ServerSubscribeResponse>`
 	/// rather than `Reply<ServerResponse>`.
+	#[instrument(name = "dispatch_subscribe", level = "debug", skip_all, fields(op = ?ctx.operation))]
 	pub async fn dispatch_subscribe(
 		state: &AppState,
 		mut ctx: RequestContext,
@@ -88,7 +91,7 @@ mod native {
 		state.request_interceptors().post_execute(&response_ctx).await;
 	}
 
-	#[inline]
+	#[instrument(name = "dispatch::send_server_message", level = "debug", skip_all)]
 	async fn send_server_message(state: &AppState, ctx: &RequestContext) -> Result<ServerResponse, ExecuteError> {
 		let (reply, receiver) = reply_channel();
 		let msg = build_server_message(ctx.operation, ctx.identity, ctx.rql.clone(), ctx.params.clone(), reply);
@@ -100,7 +103,7 @@ mod native {
 			.map_err(|_| ExecuteError::Disconnected)
 	}
 
-	#[inline]
+	#[instrument(name = "dispatch::send_subscribe_message", level = "debug", skip_all)]
 	async fn send_subscribe_message(
 		state: &AppState,
 		ctx: &RequestContext,

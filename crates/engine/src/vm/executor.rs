@@ -177,7 +177,45 @@ fn build_metrics(statements: Vec<StatementMetric>) -> ExecutionMetrics {
 	}
 }
 
+struct RunUnitOutcome {
+	symbols: SymbolTable,
+	run_result: Result<()>,
+	execute_duration_us: u64,
+}
+
+/// Run a single compiled unit's VM instructions. Output frames are appended to `result`.
+#[instrument(
+	name = "vm::run",
+	level = "debug",
+	skip_all,
+	fields(fingerprint = ?compiled.fingerprint, instr_count = compiled.instructions.len()),
+)]
+fn run_compiled_unit(
+	services: &Arc<Services>,
+	tx: &mut Transaction<'_>,
+	compiled: &Compiled,
+	params: &Params,
+	symbols: SymbolTable,
+	result: &mut Vec<Frame>,
+) -> RunUnitOutcome {
+	let mut vm = Vm::from_services(symbols, services, params, tx.identity());
+	let start = services.runtime_context.clock.instant();
+	let run_result = vm.run(services, tx, &compiled.instructions, result);
+	let execute_duration = start.elapsed();
+	RunUnitOutcome {
+		symbols: vm.symbols,
+		run_result,
+		execute_duration_us: execute_duration.as_micros() as u64,
+	}
+}
+
 /// Returns (output_results, last_result, final_symbols, metrics).
+#[instrument(
+	name = "executor::execute_units",
+	level = "debug",
+	skip_all,
+	fields(unit_count = compiled_list.len()),
+)]
 fn execute_compiled_units(
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
@@ -193,25 +231,22 @@ fn execute_compiled_units(
 
 	for compiled in compiled_list.iter() {
 		result.clear();
-		let mut vm = Vm::from_services(symbols, services, params, tx.identity());
-		let start = services.runtime_context.clock.instant();
-		let run_result = vm.run(services, tx, &compiled.instructions, &mut result);
-		let execute_duration = start.elapsed();
-		symbols = vm.symbols;
+		let outcome = run_compiled_unit(services, tx, compiled, params, symbols, &mut result);
+		symbols = outcome.symbols;
 
 		metrics.push(StatementMetric {
 			fingerprint: compiled.fingerprint,
 			normalized_rql: compiled.normalized_rql.clone(),
 			compile_duration_us,
-			execute_duration_us: execute_duration.as_micros() as u64,
-			rows_affected: if run_result.is_ok() {
+			execute_duration_us: outcome.execute_duration_us,
+			rows_affected: if outcome.run_result.is_ok() {
 				extract_rows_affected(&result)
 			} else {
 				0
 			},
 		});
 
-		if let Err(error) = run_result {
+		if let Err(error) = outcome.run_result {
 			return Err(ExecutionFailure {
 				error,
 				partial_metrics: metrics,
@@ -268,11 +303,18 @@ fn extract_rows_affected(result: &[Frame]) -> u64 {
 
 impl Executor {
 	/// Shared setup: create symbols and populate with params + identity.
+	#[instrument(name = "executor::setup_symbols", level = "debug", skip_all)]
 	fn setup_symbols(&self, params: &Params, tx: &mut Transaction<'_>) -> Result<SymbolTable> {
 		let mut symbols = SymbolTable::new();
 		populate_symbols(&mut symbols, params)?;
 		populate_identity(&mut symbols, &self.catalog, tx)?;
 		Ok(symbols)
+	}
+
+	/// Shared compile step used by every RQL entry point (rql, query, command, admin).
+	#[instrument(name = "executor::compile", level = "debug", skip(self, tx), fields(rql = %rql))]
+	fn compile_query(&self, tx: &mut Transaction<'_>, rql: &str) -> Result<CompilationResult> {
+		self.compiler.compile_with_policy(tx, rql, inject_from_policies)
 	}
 
 	/// Execute RQL against an existing open transaction.
@@ -293,7 +335,7 @@ impl Executor {
 		};
 
 		let start_compile = self.0.runtime_context.clock.instant();
-		let compiled_list = match self.compiler.compile_with_policy(tx, rql, inject_from_policies) {
+		let compiled_list = match self.compile_query(tx, rql) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("incremental compilation not supported in rql()")
@@ -321,25 +363,22 @@ impl Executor {
 		let mut metrics = Vec::new();
 		for compiled in compiled_list.iter() {
 			result.clear();
-			let mut vm = Vm::from_services(symbols, &self.0, &params, tx.identity());
-			let start_execute = self.0.runtime_context.clock.instant();
-			let run_result = vm.run(&self.0, tx, &compiled.instructions, &mut result);
-			let execute_duration = start_execute.elapsed();
-			symbols = vm.symbols;
+			let outcome = run_compiled_unit(&self.0, tx, compiled, &params, symbols, &mut result);
+			symbols = outcome.symbols;
 
 			metrics.push(StatementMetric {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql.clone(),
 				compile_duration_us,
-				execute_duration_us: execute_duration.as_micros() as u64,
-				rows_affected: if run_result.is_ok() {
+				execute_duration_us: outcome.execute_duration_us,
+				rows_affected: if outcome.run_result.is_ok() {
 					extract_rows_affected(&result)
 				} else {
 					0
 				},
 			});
 
-			if let Err(e) = run_result {
+			if let Err(e) = outcome.run_result {
 				return ExecutionResult {
 					frames: vec![],
 					error: Some(e),
@@ -365,7 +404,7 @@ impl Executor {
 			return error_result(e, ExecutionMetrics::default());
 		}
 		let start_compile = self.0.runtime_context.clock.instant();
-		match self.compiler.compile_with_policy(&mut Transaction::Admin(txn), cmd.rql, inject_from_policies) {
+		match self.compile_query(&mut Transaction::Admin(txn), cmd.rql) {
 			Err(err) => self.handle_admin_compile_error(err, cmd.rql, cmd.params),
 			Ok(CompilationResult::Ready(compiled)) => {
 				self.execute_admin_ready(txn, compiled, &cmd.params, symbols, start_compile)
@@ -760,11 +799,7 @@ impl Executor {
 		}
 
 		let start_compile = self.0.runtime_context.clock.instant();
-		let compiled = match self.compiler.compile_with_policy(
-			&mut Transaction::Command(txn),
-			cmd.rql,
-			inject_from_policies,
-		) {
+		let compiled = match self.compile_query(&mut Transaction::Command(txn), cmd.rql) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("DDL statements require admin transactions, not command transactions")
@@ -913,11 +948,7 @@ impl Executor {
 		}
 
 		let start_compile = self.0.runtime_context.clock.instant();
-		let compiled = match self.compiler.compile_with_policy(
-			&mut Transaction::Query(txn),
-			qry.rql,
-			inject_from_policies,
-		) {
+		let compiled = match self.compile_query(&mut Transaction::Query(txn), qry.rql) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("DDL statements require admin transactions, not query transactions")
