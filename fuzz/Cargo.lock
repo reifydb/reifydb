@@ -725,11 +725,13 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "paste",
+ "reifydb-abi",
  "reifydb-build",
  "reifydb-runtime",
  "reifydb-type",
  "serde",
  "serde_bytes",
+ "smallvec",
  "thiserror",
  "tracing",
  "uuid",
@@ -871,6 +873,7 @@ dependencies = [
  "num-traits",
  "reifydb-runtime",
  "serde",
+ "serde_bytes",
  "serde_json",
  "thiserror",
  "uuid",
@@ -998,6 +1001,9 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "socket2"
