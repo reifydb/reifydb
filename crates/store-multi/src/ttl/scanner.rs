@@ -19,14 +19,14 @@ use crate::{
 };
 
 /// A row identified as expired during scanning.
-pub(crate) struct ExpiredRow {
+pub struct ExpiredRow {
 	pub shape_id: ShapeId,
 	pub key: CowVec<u8>,
 	pub scanned_bytes: u64,
 }
 
 #[derive(Debug)]
-pub(crate) enum ScanResult {
+pub enum ScanResult {
 	Yielded,
 	Exhausted,
 }
@@ -35,7 +35,7 @@ pub(crate) enum ScanResult {
 ///
 /// Iterates all rows in the shape, reads the anchor timestamp from each
 /// row's trailer, and returns those that have exceeded their TTL duration.
-pub(crate) fn scan_shape_by_created_at(
+pub fn scan_shape_by_created_at(
 	storage: &HotStorage,
 	shape_id: ShapeId,
 	ttl_config: &RowTtl,
@@ -59,7 +59,7 @@ pub(crate) fn scan_shape_by_created_at(
 			let anchor_nanos = row.created_at_nanos();
 			assert!(
 				anchor_nanos > 0,
-				"Row is missing created_at timestamp — this is an invariant violation"
+				"Row is missing created_at timestamp - this is an invariant violation"
 			);
 
 			if now_nanos.saturating_sub(anchor_nanos) >= ttl_config.duration_nanos {
@@ -80,7 +80,7 @@ pub(crate) fn scan_shape_by_created_at(
 	}
 }
 
-pub(crate) fn scan_shape_by_updated_at(
+pub fn scan_shape_by_updated_at(
 	storage: &HotStorage,
 	shape_id: ShapeId,
 	ttl_config: &RowTtl,
@@ -104,7 +104,7 @@ pub(crate) fn scan_shape_by_updated_at(
 			let anchor_nanos = row.updated_at_nanos();
 			assert!(
 				anchor_nanos > 0,
-				"Row is missing updated_at timestamp — this is an invariant violation"
+				"Row is missing updated_at timestamp - this is an invariant violation"
 			);
 
 			if now_nanos.saturating_sub(anchor_nanos) >= ttl_config.duration_nanos {
@@ -139,7 +139,7 @@ fn bound_as_ref(bound: &Bound<impl AsRef<[u8]>>) -> Bound<&[u8]> {
 /// removes them. Returns stats about the operation.
 // TODO: batch version lookups - currently O(N) individual get_all_versions
 // calls for N expired rows. Consider a bulk API when large TTL bursts occur.
-pub(crate) fn drop_expired_keys(storage: &HotStorage, expired: &[ExpiredRow], stats: &mut ScanStats) -> Result<()> {
+pub fn drop_expired_keys(storage: &HotStorage, expired: &[ExpiredRow], stats: &mut ScanStats) -> Result<()> {
 	if expired.is_empty() {
 		return Ok(());
 	}

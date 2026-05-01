@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, ops::Bound, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	ops::Bound,
+	sync::Arc,
+};
 
 use reifydb_core::{common::CommitVersion, error::diagnostic::internal::internal, interface::store::EntryKind};
 use reifydb_runtime::sync::mutex::Mutex;
@@ -81,6 +85,28 @@ impl SqlitePrimitiveStorage {
 
 	pub fn shutdown(&self) {
 		let _ = pragma::shutdown(&self.inner.conn.lock());
+	}
+
+	pub fn count_current(&self, table: EntryKind) -> Result<u64> {
+		let current_name = current_table_name(table);
+		let conn = self.inner.conn.lock();
+		let sql = format!("SELECT COUNT(*) FROM \"{}\"", current_name);
+		match conn.query_row(&sql, [], |row| row.get::<_, i64>(0)) {
+			Ok(c) => Ok(c as u64),
+			Err(e) if e.to_string().contains("no such table") => Ok(0),
+			Err(e) => Err(error!(internal(format!("Failed to count current: {}", e)))),
+		}
+	}
+
+	pub fn count_historical(&self, table: EntryKind) -> Result<u64> {
+		let historical_name = historical_table_name(table);
+		let conn = self.inner.conn.lock();
+		let sql = format!("SELECT COUNT(*) FROM \"{}\"", historical_name);
+		match conn.query_row(&sql, [], |row| row.get::<_, i64>(0)) {
+			Ok(c) => Ok(c as u64),
+			Err(e) if e.to_string().contains("no such table") => Ok(0),
+			Err(e) => Err(error!(internal(format!("Failed to count historical: {}", e)))),
+		}
 	}
 
 	/// Create both physical tables (current + historical) for a logical table.
@@ -520,9 +546,13 @@ fn apply_set_to_split_tables(
 }
 
 /// Apply a drop batch (physical removal of specific (key, version) pairs)
-/// to the split layout. If the dropped version is the current row, promote
-/// the next-newest historical row back into current; otherwise just delete
-/// from historical.
+/// to the split layout. When every stored version of a key is in the drop
+/// batch (the row TTL case) we take a fast path that deletes from both
+/// physical tables in a single round trip per key, skipping the cascading
+/// historical->current promotions the per-version path would otherwise do.
+/// Otherwise we fall back to the per-version logic: dropping the current
+/// promotes the next-newest historical row; dropping a historical version
+/// just deletes it.
 fn drop_versions_from_split(
 	tx: &SqliteTransaction,
 	current_name: &str,
@@ -530,6 +560,7 @@ fn drop_versions_from_split(
 	entries: &[(CowVec<u8>, CommitVersion)],
 ) -> SqliteResult<()> {
 	let select_current_sql = format!("SELECT version FROM \"{}\" WHERE key = ?1", current_name);
+	let select_all_historical_versions_sql = format!("SELECT version FROM \"{}\" WHERE key = ?1", historical_name);
 	let delete_current_sql = format!("DELETE FROM \"{}\" WHERE key = ?1", current_name);
 	let upsert_current_sql = format!(
 		"INSERT INTO \"{}\" (key, version, value) VALUES (?1, ?2, ?3) \
@@ -548,17 +579,22 @@ fn drop_versions_from_split(
 		Err(e) if e.to_string().contains("no such table") => return Ok(()),
 		Err(e) => return Err(e),
 	};
+	let mut select_all_historical_versions = tx.prepare_cached(&select_all_historical_versions_sql)?;
 	let mut delete_current = tx.prepare_cached(&delete_current_sql)?;
 	let mut upsert_current = tx.prepare_cached(&upsert_current_sql)?;
 	let mut pop_historical = tx.prepare_cached(&pop_historical_sql)?;
 	let mut delete_historical_one = tx.prepare_cached(&delete_historical_one_sql)?;
 	let mut delete_historical_all = tx.prepare_cached(&delete_historical_all_sql)?;
 
+	let mut by_key: HashMap<&[u8], Vec<CommitVersion>> = HashMap::new();
 	for (key, version) in entries {
-		let key_slice = key.as_slice();
-		let version_bytes = version_to_bytes(*version);
+		by_key.entry(key.as_slice()).or_default().push(*version);
+	}
 
-		let current_version: Option<CommitVersion> = match select_current.query_row(params![key_slice], |row| {
+	for (key_slice, dropped_versions) in by_key {
+		let dropped_set: HashSet<CommitVersion> = dropped_versions.iter().copied().collect();
+
+		let cur_version: Option<CommitVersion> = match select_current.query_row(params![key_slice], |row| {
 			let bytes: Vec<u8> = row.get(0)?;
 			Ok(version_from_bytes(&bytes))
 		}) {
@@ -568,43 +604,73 @@ fn drop_versions_from_split(
 			Err(e) => return Err(e),
 		};
 
-		if current_version == Some(*version) {
-			// Dropping the current. Promote next-newest historical row
-			// (if any) into current; otherwise remove the current row.
-			let promoted: Option<(CommitVersion, Option<Vec<u8>>)> =
-				match pop_historical.query_row(params![key_slice], decode_versioned_value_row) {
+		let stored_hist_versions: Vec<CommitVersion> =
+			match select_all_historical_versions.query_map(params![key_slice], |row| {
+				let bytes: Vec<u8> = row.get(0)?;
+				Ok(version_from_bytes(&bytes))
+			}) {
+				Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+				Err(e) if e.to_string().contains("no such table") => Vec::new(),
+				Err(e) => return Err(e),
+			};
+
+		let cur_covered = cur_version.is_none_or(|v| dropped_set.contains(&v));
+		let hist_covered = stored_hist_versions.iter().all(|v| dropped_set.contains(v));
+
+		if cur_covered && hist_covered {
+			delete_current.execute(params![key_slice])?;
+			let _ = delete_historical_all.execute(params![key_slice]);
+			continue;
+		}
+
+		for version in dropped_versions {
+			let cur_now: Option<CommitVersion> = match select_current.query_row(params![key_slice], |row| {
+				let bytes: Vec<u8> = row.get(0)?;
+				Ok(version_from_bytes(&bytes))
+			}) {
+				Ok(v) => Some(v),
+				Err(QueryReturnedNoRows) => None,
+				Err(e) if e.to_string().contains("no such table") => None,
+				Err(e) => return Err(e),
+			};
+
+			if cur_now == Some(version) {
+				let promoted: Option<(CommitVersion, Option<Vec<u8>>)> = match pop_historical
+					.query_row(params![key_slice], decode_versioned_value_row)
+				{
 					Ok(row) => Some(row),
 					Err(QueryReturnedNoRows) => None,
 					Err(e) if e.to_string().contains("no such table") => None,
 					Err(e) => return Err(e),
 				};
 
-			match promoted {
-				Some((promoted_version, promoted_value)) => {
-					let promoted_version_bytes = version_to_bytes(promoted_version);
-					upsert_current.execute(params![
-						key_slice,
-						promoted_version_bytes.as_slice(),
-						promoted_value.as_deref()
-					])?;
-					delete_historical_one
-						.execute(params![key_slice, promoted_version_bytes.as_slice()])?;
+				match promoted {
+					Some((promoted_version, promoted_value)) => {
+						let promoted_version_bytes = version_to_bytes(promoted_version);
+						upsert_current.execute(params![
+							key_slice,
+							promoted_version_bytes.as_slice(),
+							promoted_value.as_deref()
+						])?;
+						delete_historical_one.execute(params![
+							key_slice,
+							promoted_version_bytes.as_slice()
+						])?;
+					}
+					None => {
+						delete_current.execute(params![key_slice])?;
+						let _ = delete_historical_all.execute(params![key_slice]);
+					}
 				}
-				None => {
-					delete_current.execute(params![key_slice])?;
-					// Defensive: if any stale historical rows linger
-					// for this key (shouldn't normally happen), wipe
-					// them so the key is fully gone.
-					let _ = delete_historical_all.execute(params![key_slice]);
+			} else {
+				let version_bytes = version_to_bytes(version);
+				let result =
+					delete_historical_one.execute(params![key_slice, version_bytes.as_slice()]);
+				if let Err(e) = result
+					&& !e.to_string().contains("no such table")
+				{
+					return Err(e);
 				}
-			}
-		} else {
-			// Not the current; just delete from historical.
-			let result = delete_historical_one.execute(params![key_slice, version_bytes.as_slice()]);
-			if let Err(e) = result
-				&& !e.to_string().contains("no such table")
-			{
-				return Err(e);
 			}
 		}
 	}

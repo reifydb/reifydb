@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{cmp::Reverse, collections::HashMap, ops::Bound, sync::Arc};
+use std::{
+	cmp::Reverse,
+	collections::{HashMap, HashSet},
+	ops::Bound,
+	sync::Arc,
+};
 
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
@@ -38,6 +43,24 @@ impl MemoryPrimitiveStorage {
 				entries: Entries::default(),
 			}),
 		}
+	}
+
+	pub fn count_current(&self, table: EntryKind) -> Result<u64> {
+		let table_key = entry_id_to_key(table);
+		Ok(self.inner.entries.data.get(&table_key).map(|e| e.current.read().len() as u64).unwrap_or(0))
+	}
+
+	pub fn count_historical(&self, table: EntryKind) -> Result<u64> {
+		let table_key = entry_id_to_key(table);
+		Ok(self.inner
+			.entries
+			.data
+			.get(&table_key)
+			.map(|e| {
+				let hist = e.historical.read();
+				hist.values().map(|m| m.len() as u64).sum()
+			})
+			.unwrap_or(0))
 	}
 
 	/// Get or create a table entry
@@ -487,23 +510,56 @@ impl TierStorage for MemoryPrimitiveStorage {
 			let mut current = table_entry.current.write();
 			let mut historical = table_entry.historical.write();
 
+			let mut by_key: HashMap<CowVec<u8>, Vec<CommitVersion>> = HashMap::new();
 			for (key, version) in entries {
-				// Check if the version to drop is in current
-				if let Some((cur_version, _)) = current.get(&key)
-					&& *cur_version == version
-				{
-					// Dropping current version - remove from current and all historical
-					// versions
+				by_key.entry(key).or_default().push(version);
+			}
+
+			for (key, dropped_versions) in by_key {
+				let dropped_set: HashSet<CommitVersion> = dropped_versions.iter().copied().collect();
+
+				let cur_version = current.get(&key).map(|(v, _)| *v);
+				let stored_hist_covered = historical
+					.get(&key)
+					.map(|m| m.keys().all(|Reverse(v)| dropped_set.contains(v)))
+					.unwrap_or(true);
+				let stored_cur_covered = cur_version.is_none_or(|v| dropped_set.contains(&v));
+
+				if stored_cur_covered && stored_hist_covered {
 					current.remove(&key);
 					historical.remove(&key);
 					continue;
 				}
 
-				// Otherwise check historical - removing one version from historical
-				if let Some(versions) = historical.get_mut(&key) {
-					versions.remove(&Reverse(version));
-					if versions.is_empty() {
-						historical.remove(&key);
+				for version in dropped_versions {
+					let cur_matches = current.get(&key).map(|(v, _)| *v) == Some(version);
+					if cur_matches {
+						let popped = historical.get_mut(&key).and_then(|v| v.pop_first());
+						let now_empty = historical.get(&key).is_some_and(|v| v.is_empty());
+						if now_empty {
+							historical.remove(&key);
+						}
+						match popped {
+							Some((Reverse(promoted_v), promoted_value)) => {
+								current.insert(
+									key.clone(),
+									(promoted_v, promoted_value),
+								);
+							}
+							None => {
+								current.remove(&key);
+							}
+						}
+					} else {
+						let now_empty = if let Some(versions) = historical.get_mut(&key) {
+							versions.remove(&Reverse(version));
+							versions.is_empty()
+						} else {
+							false
+						};
+						if now_empty {
+							historical.remove(&key);
+						}
 					}
 				}
 			}

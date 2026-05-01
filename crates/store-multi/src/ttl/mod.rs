@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod actor;
-pub(crate) mod scanner;
+pub mod scanner;
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -19,7 +19,7 @@ pub trait ListRowTtls: Clone + Send + Sync + 'static {
 
 /// Statistics from a single row TTL scan cycle.
 #[derive(Debug, Default)]
-pub(crate) struct ScanStats {
+pub struct ScanStats {
 	/// Number of shapes scanned for expired rows.
 	pub shapes_scanned: u64,
 	/// Number of shapes skipped (e.g. CleanupMode::Delete not supported in V1).

@@ -1,0 +1,31 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Updated-anchor TTL only checks current's updated_at. If current is fresh,
+# the row does not expire even if older versions in __historical are stale.
+
+set 1=stale version=1 created=1000 updated=1000
+set 1=fresh version=2 created=1000 updated=9000
+---
+ok
+ok
+
+count_current
+count_historical
+---
+current: 1
+historical: 1
+
+scan_ttl mode=updated duration=5000 now=10000
+---
+expired=0 versions_dropped=0
+
+count_current
+count_historical
+---
+current: 1
+historical: 1
+
+visible 1
+---
+created=1000 updated=9000 value="fresh"

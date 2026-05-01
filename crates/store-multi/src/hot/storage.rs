@@ -58,6 +58,22 @@ impl HotStorage {
 			}
 		}
 	}
+
+	pub fn count_current(&self, table: EntryKind) -> Result<u64> {
+		match self {
+			Self::Memory(s) => s.count_current(table),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => s.count_current(table),
+		}
+	}
+
+	pub fn count_historical(&self, table: EntryKind) -> Result<u64> {
+		match self {
+			Self::Memory(s) => s.count_historical(table),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => s.count_historical(table),
+		}
+	}
 }
 
 impl TierStorage for HotStorage {
