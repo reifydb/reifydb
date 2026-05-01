@@ -48,9 +48,9 @@ dependencies = [
 
 [[package]]
 name = "bitflags"
-version = "2.11.0"
+version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
+checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 
 [[package]]
 name = "bumpalo"
@@ -66,9 +66,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "cc"
-version = "1.2.57"
+version = "1.2.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a0dd1ca384932ff3641c8718a02769f1698e7563dc6974ffd03346116310423"
+checksum = "43c5703da9466b66a946814e1adf53ea2c90f10063b86290cc9eb67ce3478a20"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -433,9 +433,9 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.183"
+version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d"
+checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "libfuzzer-sys"
@@ -578,9 +578,9 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pkg-config"
-version = "0.3.32"
+version = "0.3.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
+checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "postcard"
@@ -637,9 +637,9 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rand"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc266eb313df6c5c09c1c7b1fbe2510961e5bcd3add930c1e31f7ed9da0feff8"
+checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
 dependencies = [
  "chacha20",
  "getrandom 0.4.2",
@@ -648,9 +648,9 @@ dependencies = [
 
 [[package]]
 name = "rand_core"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c8d0fd677905edcbeedbf2edb6494d676f0e98d54d5cf9bda0b061cb8fb8aba"
+checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
 name = "rayon"
@@ -683,15 +683,15 @@ dependencies = [
 
 [[package]]
 name = "reifydb-abi"
-version = "0.4.12"
+version = "0.4.13"
 
 [[package]]
 name = "reifydb-build"
-version = "0.4.12"
+version = "0.4.13"
 
 [[package]]
 name = "reifydb-catalog"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "crossbeam-skiplist",
  "futures-util",
@@ -713,7 +713,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-core"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "bigdecimal",
  "crossbeam-skiplist",
@@ -755,7 +755,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-metric"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "dashmap",
  "reifydb-core",
@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-rql"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "bumpalo",
  "postcard",
@@ -783,7 +783,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-runtime"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "cfg-if",
  "crossbeam-channel",
@@ -806,11 +806,11 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sql"
-version = "0.4.12"
+version = "0.4.13"
 
 [[package]]
 name = "reifydb-sqlite"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "reifydb-build",
  "rusqlite",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-multi"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-single"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-transaction"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
@@ -866,7 +866,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-type"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "bigdecimal",
  "num-bigint",
@@ -927,9 +927,9 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "semver"
-version = "1.0.27"
+version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "serde"
@@ -1026,9 +1026,9 @@ dependencies = [
 
 [[package]]
 name = "sqlite-wasm-rs"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4206ed3a67690b9c29b77d728f6acc3ce78f16bf846d83c94f76400320181b"
+checksum = "1b2c760607300407ddeaee518acf28c795661b7108c75421303dbefb237d3a36"
 dependencies = [
  "cc",
  "js-sys",
@@ -1174,11 +1174,11 @@ checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 
 [[package]]
 name = "wasip2"
-version = "1.0.2+wasi-0.2.9"
+version = "1.0.3+wasi-0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9517f9239f02c069db75e65f174b3da828fe5f5b945c4dd26bd25d89c03ebcf5"
+checksum = "20064672db26d7cdc89c7798c48a0fdfac8213434a1186e5ef29fd560ae223d6"
 dependencies = [
- "wit-bindgen",
+ "wit-bindgen 0.57.1",
 ]
 
 [[package]]
@@ -1187,7 +1187,7 @@ version = "0.4.0+wasi-0.3.0-rc-2026-01-06"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5428f8bf88ea5ddc08faddef2ac4a67e390b88186c703ce6dbd955e1c145aca5"
 dependencies = [
- "wit-bindgen",
+ "wit-bindgen 0.51.0",
 ]
 
 [[package]]
@@ -1312,6 +1312,12 @@ checksum = "d7249219f66ced02969388cf2bb044a09756a083d0fab1e566056b04d9fbcaa5"
 dependencies = [
  "wit-bindgen-rust-macro",
 ]
+
+[[package]]
+name = "wit-bindgen"
+version = "0.57.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "wit-bindgen-core"
