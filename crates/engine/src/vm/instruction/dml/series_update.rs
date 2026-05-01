@@ -178,7 +178,7 @@ fn build_update_series_query_context(
 	QueryContext {
 		services: services.clone(),
 		source: Some(ResolvedShape::Series(resolved_series)),
-		batch_size: 1024,
+		batch_size: 32,
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),

@@ -134,7 +134,7 @@ fn run_series_delete_with_input(
 	let context = QueryContext {
 		services: exec.services.clone(),
 		source: Some(ResolvedShape::Series(resolved_series)),
-		batch_size: 1024,
+		batch_size: 32,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
 		identity: IdentityId::root(),
@@ -223,7 +223,7 @@ fn run_series_delete_all(
 	let range = SeriesRowKeyRange::full_scan(series.id, None);
 	let mut entries_to_delete: Vec<(EncodedKey, EncodedRow)> = Vec::new();
 
-	let mut stream = txn.range(range, 4096)?;
+	let mut stream = txn.range(range, 32)?;
 	for entry in stream.by_ref() {
 		let entry = entry?;
 		entries_to_delete.push((entry.key, entry.row));

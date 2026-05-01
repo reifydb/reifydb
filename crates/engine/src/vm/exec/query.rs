@@ -51,7 +51,7 @@ pub(crate) fn run_query_plan(
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,
-		batch_size: 1024,
+		batch_size: 32,
 		params,
 		symbols: symbols.clone(),
 		identity,

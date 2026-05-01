@@ -123,7 +123,7 @@ fn build_update_table_query_context(
 	QueryContext {
 		services: services.clone(),
 		source: Some(ResolvedShape::Table(resolved_table)),
-		batch_size: 1024,
+		batch_size: 32,
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),

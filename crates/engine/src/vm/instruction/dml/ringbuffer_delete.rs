@@ -155,7 +155,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 		Arc::new(QueryContext {
 			services: exec.services.clone(),
 			source: resolved_source.clone(),
-			batch_size: 1024,
+			batch_size: 32,
 			params: params.clone(),
 			symbols: exec.symbols.clone(),
 			identity: IdentityId::root(),
@@ -165,7 +165,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 	let context = QueryContext {
 		services: exec.services.clone(),
 		source: None,
-		batch_size: 1024,
+		batch_size: 32,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
 		identity: IdentityId::root(),

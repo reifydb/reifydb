@@ -175,7 +175,7 @@ fn build_update_ringbuffer_query_context(
 	QueryContext {
 		services: services.clone(),
 		source: Some(ResolvedShape::RingBuffer(resolved_rb)),
-		batch_size: 1024,
+		batch_size: 32,
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),

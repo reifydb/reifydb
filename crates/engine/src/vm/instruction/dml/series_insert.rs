@@ -202,7 +202,7 @@ fn build_insert_series_query_context(
 	Arc::new(QueryContext {
 		services: services.clone(),
 		source: Some(ResolvedShape::Series(resolved_series)),
-		batch_size: 1024,
+		batch_size: 32,
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),

@@ -35,7 +35,7 @@ use crate::{
 
 /// Fixed chunk size for internal tier scans.
 /// This is the number of versioned entries fetched per tier per iteration.
-const TIER_SCAN_CHUNK_SIZE: usize = 4096;
+const TIER_SCAN_CHUNK_SIZE: usize = 32;
 
 impl MultiVersionGet for StandardMultiStore {
 	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref()), version = version.0))]

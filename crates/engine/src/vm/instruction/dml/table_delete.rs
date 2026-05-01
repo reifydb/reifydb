@@ -149,7 +149,7 @@ fn run_table_delete_with_input(
 	let context = QueryContext {
 		services: exec.services.clone(),
 		source: resolved_source.clone(),
-		batch_size: 1024,
+		batch_size: 32,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
 		identity: IdentityId::root(),
@@ -223,7 +223,7 @@ fn run_table_delete_all(
 	};
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, table)?;
 	let rows: Vec<_> = txn
-		.range(EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap())), 1024)?
+		.range(EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap())), 32)?
 		.collect::<Result<Vec<_>>>()?;
 
 	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();

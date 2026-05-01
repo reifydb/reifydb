@@ -113,6 +113,9 @@ impl QueryNode for TopKNode {
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
 			if let Some(existing_columns) = &mut columns_opt {
+				existing_columns.row_numbers.make_mut().extend(columns.row_numbers.iter().copied());
+				existing_columns.created_at.make_mut().extend(columns.created_at.iter().copied());
+				existing_columns.updated_at.make_mut().extend(columns.updated_at.iter().copied());
 				for (i, col) in columns.columns.iter().enumerate() {
 					existing_columns[i].extend(col.clone())?;
 				}

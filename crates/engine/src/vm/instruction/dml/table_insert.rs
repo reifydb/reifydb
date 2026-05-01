@@ -161,7 +161,7 @@ fn build_insert_table_query_context(
 	Arc::new(QueryContext {
 		services: services.clone(),
 		source: Some(ResolvedShape::Table(resolved_table)),
-		batch_size: 1024,
+		batch_size: 32,
 		params: Params::None,
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),

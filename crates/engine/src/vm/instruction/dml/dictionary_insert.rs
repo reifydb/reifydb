@@ -54,7 +54,7 @@ pub(crate) fn insert_dictionary(
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,
-		batch_size: 1024,
+		batch_size: 32,
 		params: Params::None,
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
