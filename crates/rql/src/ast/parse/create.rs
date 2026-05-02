@@ -681,7 +681,7 @@ impl<'bump> Parser<'bump> {
 						_ => {
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'key', 'tag', 'precision', or 'row'"
+									expected: "'key', 'tag', 'precision', or 'ttl'"
 										.to_string(),
 								},
 								message: format!(
@@ -734,7 +734,7 @@ impl<'bump> Parser<'bump> {
 						});
 					}
 					"row" => {
-						ttl = Some(self.parse_ttl()?);
+						ttl = Some(self.parse_row_config()?);
 					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
@@ -1114,7 +1114,7 @@ impl<'bump> Parser<'bump> {
 
 				match key.fragment.text() {
 					"row" => {
-						ttl = Some(self.parse_ttl()?);
+						ttl = Some(self.parse_row_config()?);
 					}
 					_other => {
 						let fragment = key.fragment.to_owned();
@@ -1235,7 +1235,7 @@ impl<'bump> Parser<'bump> {
 					self.consume_operator(Operator::CloseCurly)?;
 				}
 				"row" => {
-					ttl = Some(self.parse_ttl()?);
+					ttl = Some(self.parse_row_config()?);
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
@@ -2177,7 +2177,7 @@ impl<'bump> Parser<'bump> {
 							tick = Some(self.parse_tick_duration()?);
 						}
 						"row" => {
-							ttl = Some(self.parse_ttl()?);
+							ttl = Some(self.parse_row_config()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2262,7 +2262,7 @@ impl<'bump> Parser<'bump> {
 							tick = Some(self.parse_tick_duration()?);
 						}
 						"row" => {
-							ttl = Some(self.parse_ttl()?);
+							ttl = Some(self.parse_row_config()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2321,7 +2321,7 @@ impl<'bump> Parser<'bump> {
 					tick = Some(self.parse_tick_duration()?);
 				}
 				"row" => {
-					ttl = Some(self.parse_ttl()?);
+					ttl = Some(self.parse_row_config()?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
@@ -2347,6 +2347,72 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume(TokenKind::Literal(Literal::Text))?;
 		let duration_str = token.fragment.text();
 		Compiler::parse_duration(duration_str)
+	}
+
+	/// Parse a `row` config block: `{ ttl: { duration, on, mode } }`.
+	///
+	/// Currently only accepts a `ttl` sub-key, but the wrapper exists so future
+	/// row-level options (e.g. `compression`, `partition_by`) can be added without
+	/// reshaping the DDL surface.
+	fn parse_row_config(&mut self) -> Result<AstTtl<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut ttl: Option<AstTtl<'bump>> = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"ttl" => {
+					ttl = Some(self.parse_ttl()?);
+				}
+				_other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'ttl'".to_string(),
+						},
+						message: format!(
+							"expected 'ttl' in row config, found `{}`",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		ttl.ok_or_else(|| {
+			let fragment = self
+				.current()
+				.ok()
+				.map(|t| t.fragment.to_owned())
+				.unwrap_or_else(|| Fragment::internal("end of input"));
+			Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "'ttl' is required in row config".to_string(),
+				},
+				message: "'ttl' is required in row config".to_string(),
+				fragment,
+			})
+		})
 	}
 
 	/// Parse a TTL config block: `{ duration: "5m", on: created, mode: drop }`
@@ -2506,14 +2572,14 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
-				"row" => {
+				"ttl" => {
 					ttl = Some(self.parse_ttl()?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'row'".to_string(),
+							expected: "'ttl'".to_string(),
 						},
 						message: format!("unexpected key '{}' in operator WITH clause", other),
 						fragment,
