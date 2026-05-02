@@ -83,18 +83,22 @@ impl<'bump> Compiler<'bump> {
 				with,
 				using_clause,
 				alias,
+				ttl,
 				rql,
 				..
 			} => {
 				let with = self.compile_join_subquery(&with, &alias, tx)?;
-
-				// Build equality expressions from using clause
 				let on = build_join_expressions(using_clause, &alias)?;
+				let ttl = match ttl {
+					Some(ast_ttl) => Some(Self::compile_operator_ttl(ast_ttl)?),
+					None => None,
+				};
 
 				Ok(LogicalPlan::JoinInner(JoinInnerNode {
 					with,
 					on,
 					alias: Some(alias),
+					ttl,
 					rql: rql.to_string(),
 				}))
 			}
@@ -102,18 +106,22 @@ impl<'bump> Compiler<'bump> {
 				with,
 				using_clause,
 				alias,
+				ttl,
 				rql,
 				..
 			} => {
 				let with = self.compile_join_subquery(&with, &alias, tx)?;
-
-				// Build equality expressions from using clause
 				let on = build_join_expressions(using_clause, &alias)?;
+				let ttl = match ttl {
+					Some(ast_ttl) => Some(Self::compile_operator_ttl(ast_ttl)?),
+					None => None,
+				};
 
 				Ok(LogicalPlan::JoinLeft(JoinLeftNode {
 					with,
 					on,
 					alias: Some(alias),
+					ttl,
 					rql: rql.to_string(),
 				}))
 			}
@@ -121,15 +129,21 @@ impl<'bump> Compiler<'bump> {
 				with,
 				join_type,
 				alias,
+				ttl,
 				rql,
 				..
 			} => {
 				let with = self.compile_natural_join_subquery(&with, &alias, tx)?;
+				let ttl = match ttl {
+					Some(ast_ttl) => Some(Self::compile_operator_ttl(ast_ttl)?),
+					None => None,
+				};
 
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
 					join_type: join_type.unwrap_or(JoinType::Inner),
 					alias: Some(alias),
+					ttl,
 					rql: rql.to_string(),
 				}))
 			}

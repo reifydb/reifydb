@@ -64,7 +64,7 @@ use reifydb_core::{
 		vtable::{VTable, VTableId},
 	},
 	retention::RetentionStrategy,
-	row::RowTtl,
+	row::Ttl,
 	util::multi::MultiVersionContainer,
 };
 use reifydb_type::{
@@ -104,7 +104,7 @@ pub type MultiVersionGrantedRole = MultiVersionContainer<GrantedRole>;
 pub type MultiVersionPolicy = MultiVersionContainer<Policy>;
 pub type MultiVersionSource = MultiVersionContainer<Source>;
 pub type MultiVersionSink = MultiVersionContainer<Sink>;
-pub type MultiVersionRowTtl = MultiVersionContainer<RowTtl>;
+pub type MultiVersionRowTtl = MultiVersionContainer<Ttl>;
 pub type MultiVersionConfig = MultiVersionContainer<Value>;
 pub type MultiVersionAuthentication = MultiVersionContainer<Authentication>;
 

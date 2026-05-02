@@ -30,7 +30,7 @@ use reifydb_core::{
 		test::Test,
 		view::View,
 	},
-	row::RowTtl,
+	row::Ttl,
 };
 use reifydb_type::value::{dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId};
 
@@ -73,7 +73,7 @@ pub trait TransactionalBindingChanges {
 }
 
 pub trait TransactionalRowTtlChanges {
-	fn find_row_ttl(&self, shape: ShapeId) -> Option<&RowTtl>;
+	fn find_row_ttl(&self, shape: ShapeId) -> Option<&Ttl>;
 
 	fn is_row_ttl_deleted(&self, shape: ShapeId) -> bool;
 }
@@ -322,7 +322,7 @@ pub struct TransactionalCatalogChanges {
 	/// All view definition changes in order (no coalescing)
 	pub view: Vec<Change<View>>,
 	/// All row TTL changes in order (no coalescing)
-	pub row_ttl: Vec<Change<(ShapeId, RowTtl)>>,
+	pub row_ttl: Vec<Change<(ShapeId, Ttl)>>,
 	/// Order of operations for replay/rollback
 	pub log: Vec<Operation>,
 }
@@ -748,7 +748,7 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_row_ttl_change(&mut self, change: Change<(ShapeId, RowTtl)>) {
+	pub fn add_row_ttl_change(&mut self, change: Change<(ShapeId, Ttl)>) {
 		let shape = change
 			.post
 			.as_ref()
@@ -757,7 +757,7 @@ impl TransactionalCatalogChanges {
 			.expect("Change must have either pre or post state");
 		let op = change.op;
 		self.row_ttl.push(change);
-		self.log.push(Operation::RowTtl {
+		self.log.push(Operation::Ttl {
 			shape,
 			op,
 		});
@@ -876,7 +876,7 @@ pub enum Operation {
 		id: ViewId,
 		op: OperationType,
 	},
-	RowTtl {
+	Ttl {
 		shape: ShapeId,
 		op: OperationType,
 	},
@@ -960,7 +960,7 @@ impl TransactionalCatalogChanges {
 	}
 
 	/// Get current state of a row TTL within this transaction
-	pub fn get_row_ttl(&self, shape: ShapeId) -> Option<&RowTtl> {
+	pub fn get_row_ttl(&self, shape: ShapeId) -> Option<&Ttl> {
 		// Find the last change for this shape ID
 		for change in self.row_ttl.iter().rev() {
 			if let Some((s, ttl)) = &change.post {

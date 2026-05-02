@@ -33,7 +33,7 @@ impl RowTtlKey {
 }
 
 impl EncodableKey for RowTtlKey {
-	const KIND: KeyKind = KeyKind::RowTtl;
+	const KIND: KeyKind = KeyKind::Ttl;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);

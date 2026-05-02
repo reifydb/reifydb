@@ -31,7 +31,7 @@ use reifydb_core::{
 		catalog::{property::ColumnPropertyKind, series::SeriesKey},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedShape},
 	},
-	row::RowTtl,
+	row::Ttl,
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
@@ -602,7 +602,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -613,7 +613,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -647,7 +647,7 @@ pub struct CreateTableNode<'bump> {
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -657,7 +657,7 @@ pub struct CreateRingBufferNode<'bump> {
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -783,6 +783,7 @@ pub struct AggregateNode {
 #[derive(Debug)]
 pub struct DistinctNode<'bump> {
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
+	pub ttl: Option<Ttl>,
 	pub rql: String,
 }
 
@@ -817,6 +818,7 @@ pub struct JoinInnerNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
+	pub ttl: Option<Ttl>,
 	pub rql: String,
 }
 
@@ -825,6 +827,7 @@ pub struct JoinLeftNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
+	pub ttl: Option<Ttl>,
 	pub rql: String,
 }
 
@@ -833,6 +836,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub join_type: JoinType,
 	pub alias: Option<BumpFragment<'bump>>,
+	pub ttl: Option<Ttl>,
 	pub rql: String,
 }
 
@@ -869,6 +873,7 @@ pub struct PatchNode {
 pub struct ApplyNode<'bump> {
 	pub operator: BumpFragment<'bump>,
 	pub arguments: Vec<Expression>,
+	pub ttl: Option<Ttl>,
 	pub rql: String,
 }
 
@@ -1117,7 +1122,7 @@ pub struct CreateSeriesNode<'bump> {
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	pub key: SeriesKey,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]

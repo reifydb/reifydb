@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{common::CommitVersion, interface::catalog::shape::ShapeId, row::RowTtl};
+use reifydb_core::{common::CommitVersion, interface::catalog::shape::ShapeId, row::Ttl};
 
 use crate::materialized::{MaterializedCatalog, MultiVersionRowTtl};
 
 impl MaterializedCatalog {
 	/// Find a TTL config for a shape at a specific version
-	pub fn find_row_ttl_at(&self, shape: ShapeId, version: CommitVersion) -> Option<RowTtl> {
+	pub fn find_row_ttl_at(&self, shape: ShapeId, version: CommitVersion) -> Option<Ttl> {
 		self.row_ttls.get(&shape).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -15,7 +15,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a TTL config for a shape (returns latest version)
-	pub fn find_row_ttl(&self, shape: ShapeId) -> Option<RowTtl> {
+	pub fn find_row_ttl(&self, shape: ShapeId) -> Option<Ttl> {
 		self.row_ttls.get(&shape).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
@@ -23,7 +23,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Set a TTL config for a shape at a specific version
-	pub fn set_row_ttl(&self, shape: ShapeId, version: CommitVersion, config: Option<RowTtl>) {
+	pub fn set_row_ttl(&self, shape: ShapeId, version: CommitVersion, config: Option<Ttl>) {
 		let multi = self.row_ttls.get_or_insert_with(shape, MultiVersionRowTtl::new);
 
 		if let Some(new_config) = config {
@@ -38,7 +38,7 @@ impl MaterializedCatalog {
 pub mod tests {
 	use reifydb_core::{
 		interface::catalog::id::TableId,
-		row::{RowTtlAnchor, RowTtlCleanupMode},
+		row::{TtlAnchor, TtlCleanupMode},
 	};
 
 	use super::*;
@@ -47,10 +47,10 @@ pub mod tests {
 	fn test_set_and_find_row_ttl() {
 		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(1));
-		let config = RowTtl {
+		let config = Ttl {
 			duration_nanos: 300_000_000_000,
-			anchor: RowTtlAnchor::Created,
-			cleanup_mode: RowTtlCleanupMode::Drop,
+			anchor: TtlAnchor::Created,
+			cleanup_mode: TtlCleanupMode::Drop,
 		};
 
 		catalog.set_row_ttl(shape, CommitVersion(1), Some(config.clone()));
@@ -65,15 +65,15 @@ pub mod tests {
 		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(42));
 
-		let config_v1 = RowTtl {
+		let config_v1 = Ttl {
 			duration_nanos: 300_000_000_000,
-			anchor: RowTtlAnchor::Created,
-			cleanup_mode: RowTtlCleanupMode::Drop,
+			anchor: TtlAnchor::Created,
+			cleanup_mode: TtlCleanupMode::Drop,
 		};
-		let config_v2 = RowTtl {
+		let config_v2 = Ttl {
 			duration_nanos: 600_000_000_000,
-			anchor: RowTtlAnchor::Updated,
-			cleanup_mode: RowTtlCleanupMode::Delete,
+			anchor: TtlAnchor::Updated,
+			cleanup_mode: TtlCleanupMode::Delete,
 		};
 
 		catalog.set_row_ttl(shape, CommitVersion(1), Some(config_v1.clone()));
@@ -88,10 +88,10 @@ pub mod tests {
 	fn test_row_ttl_deletion() {
 		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(99));
-		let config = RowTtl {
+		let config = Ttl {
 			duration_nanos: 300_000_000_000,
-			anchor: RowTtlAnchor::Created,
-			cleanup_mode: RowTtlCleanupMode::Drop,
+			anchor: TtlAnchor::Created,
+			cleanup_mode: TtlCleanupMode::Drop,
 		};
 
 		catalog.set_row_ttl(shape, CommitVersion(1), Some(config.clone()));
@@ -107,20 +107,20 @@ pub mod tests {
 		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(100));
 
-		let config_v1 = RowTtl {
+		let config_v1 = Ttl {
 			duration_nanos: 60_000_000_000,
-			anchor: RowTtlAnchor::Created,
-			cleanup_mode: RowTtlCleanupMode::Drop,
+			anchor: TtlAnchor::Created,
+			cleanup_mode: TtlCleanupMode::Drop,
 		};
-		let config_v2 = RowTtl {
+		let config_v2 = Ttl {
 			duration_nanos: 300_000_000_000,
-			anchor: RowTtlAnchor::Updated,
-			cleanup_mode: RowTtlCleanupMode::Delete,
+			anchor: TtlAnchor::Updated,
+			cleanup_mode: TtlCleanupMode::Delete,
 		};
-		let config_v3 = RowTtl {
+		let config_v3 = Ttl {
 			duration_nanos: 86_400_000_000_000,
-			anchor: RowTtlAnchor::Created,
-			cleanup_mode: RowTtlCleanupMode::Drop,
+			anchor: TtlAnchor::Created,
+			cleanup_mode: TtlCleanupMode::Drop,
 		};
 
 		catalog.set_row_ttl(shape, CommitVersion(10), Some(config_v1.clone()));

@@ -366,6 +366,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		PhysicalPlan::Distinct(node) => QueryPlan::Distinct(nodes::DistinctNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 			columns: node.columns,
+			ttl: node.ttl,
 		}),
 		PhysicalPlan::Assert(node) => QueryPlan::Assert(nodes::AssertNode {
 			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
@@ -385,18 +386,21 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))),
 			on: node.on,
 			alias: node.alias,
+			ttl: node.ttl,
 		}),
 		PhysicalPlan::JoinLeft(node) => QueryPlan::JoinLeft(nodes::JoinLeftNode {
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))),
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))),
 			on: node.on,
 			alias: node.alias,
+			ttl: node.ttl,
 		}),
 		PhysicalPlan::JoinNatural(node) => QueryPlan::JoinNatural(nodes::JoinNaturalNode {
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))),
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))),
 			join_type: node.join_type,
 			alias: node.alias,
+			ttl: node.ttl,
 		}),
 		PhysicalPlan::Take(node) => QueryPlan::Take(nodes::TakeNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
@@ -422,6 +426,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 			operator: node.operator,
 			expressions: node.expressions,
+			ttl: node.ttl,
 		}),
 		PhysicalPlan::Window(node) => QueryPlan::Window(nodes::WindowNode {
 			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),

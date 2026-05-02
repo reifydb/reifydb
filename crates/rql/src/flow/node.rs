@@ -9,6 +9,7 @@ use reifydb_core::{
 		series::SeriesKey,
 		shape::ShapeId,
 	},
+	row::Ttl,
 	sort::SortKey,
 };
 use serde::{Deserialize, Serialize};
@@ -50,6 +51,8 @@ pub enum FlowNodeType {
 		left: Vec<Expression>,
 		right: Vec<Expression>,
 		alias: Option<String>,
+		#[serde(default)]
+		ttl: Option<Ttl>,
 	},
 	Aggregate {
 		by: Vec<Expression>,
@@ -64,10 +67,14 @@ pub enum FlowNodeType {
 	},
 	Distinct {
 		expressions: Vec<Expression>,
+		#[serde(default)]
+		ttl: Option<Ttl>,
 	},
 	Apply {
 		operator: String,
 		expressions: Vec<Expression>,
+		#[serde(default)]
+		ttl: Option<Ttl>,
 	},
 	SinkTableView {
 		view: ViewId,

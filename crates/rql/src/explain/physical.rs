@@ -411,6 +411,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			right,
 			on,
 			alias: _,
+			ttl: _,
 		}) => {
 			let label = format!(
 				"Join(Inner) on: [{}]",
@@ -428,6 +429,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			right,
 			on,
 			alias: _,
+			ttl: _,
 		}) => {
 			let label = format!(
 				"Join(Left) on: [{}]",
@@ -445,6 +447,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			right,
 			join_type,
 			alias: _,
+			ttl: _,
 		}) => {
 			let join_type_str = match join_type {
 				JoinType::Inner => "Inner",
@@ -498,6 +501,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			operator,
 			expressions: arguments,
 			input,
+			ttl: _,
 		}) => {
 			let label = format!(
 				"Apply {} [{}]",
@@ -531,6 +535,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::Distinct(DistinctNode {
 			input,
 			columns,
+			ttl: _,
 		}) => {
 			let label = if columns.is_empty() {
 				"Distinct (primary key)".to_string()

@@ -36,7 +36,7 @@ use reifydb_core::{
 		},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	row::RowTtl,
+	row::Ttl,
 };
 use reifydb_type::{
 	Result,
@@ -546,7 +546,7 @@ impl TransactionalConfigChanges for QueryTransaction {
 }
 
 impl TransactionalRowTtlChanges for QueryTransaction {
-	fn find_row_ttl(&self, _shape: ShapeId) -> Option<&RowTtl> {
+	fn find_row_ttl(&self, _shape: ShapeId) -> Option<&Ttl> {
 		None
 	}
 

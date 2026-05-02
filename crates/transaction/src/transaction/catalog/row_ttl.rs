@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackRowTtlChangeOperations, shape::ShapeId},
-	row::RowTtl,
+	row::Ttl,
 };
 use reifydb_type::Result;
 
@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackRowTtlChangeOperations for AdminTransaction {
-	fn track_row_ttl_created(&mut self, shape: ShapeId, ttl: RowTtl) -> Result<()> {
+	fn track_row_ttl_created(&mut self, shape: ShapeId, ttl: Ttl) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some((shape, ttl)),
@@ -27,7 +27,7 @@ impl CatalogTrackRowTtlChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_row_ttl_updated(&mut self, shape: ShapeId, pre: RowTtl, post: RowTtl) -> Result<()> {
+	fn track_row_ttl_updated(&mut self, shape: ShapeId, pre: Ttl, post: Ttl) -> Result<()> {
 		let change = Change {
 			pre: Some((shape, pre)),
 			post: Some((shape, post)),
@@ -37,7 +37,7 @@ impl CatalogTrackRowTtlChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_row_ttl_deleted(&mut self, shape: ShapeId, ttl: RowTtl) -> Result<()> {
+	fn track_row_ttl_deleted(&mut self, shape: ShapeId, ttl: Ttl) -> Result<()> {
 		let change = Change {
 			pre: Some((shape, ttl)),
 			post: None,
@@ -49,7 +49,7 @@ impl CatalogTrackRowTtlChangeOperations for AdminTransaction {
 }
 
 impl TransactionalRowTtlChanges for AdminTransaction {
-	fn find_row_ttl(&self, shape: ShapeId) -> Option<&RowTtl> {
+	fn find_row_ttl(&self, shape: ShapeId) -> Option<&Ttl> {
 		for change in self.changes.row_ttl.iter().rev() {
 			if let Some((s, ttl)) = &change.post {
 				if *s == shape {

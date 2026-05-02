@@ -5,14 +5,14 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{config::GetConfig, shape::ShapeId},
-	row::RowTtl,
+	row::Ttl,
 };
 use reifydb_store_multi::gc::ttl::ListRowTtls;
 
 use crate::catalog::Catalog;
 
 impl ListRowTtls for Catalog {
-	fn list_row_ttls(&self) -> Vec<(ShapeId, RowTtl)> {
+	fn list_row_ttls(&self) -> Vec<(ShapeId, Ttl)> {
 		// Ideally this should fall back to reading from storage if not loaded in materialized,
 		// but ListRowTtls does not provide a Transaction context required by CatalogStore.
 		// For now we read directly from materialized which is populated on startup.

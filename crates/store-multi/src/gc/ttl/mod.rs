@@ -8,12 +8,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	interface::catalog::{config::GetConfig, shape::ShapeId},
-	row::RowTtl,
+	row::Ttl,
 };
 
 /// Trait for providing TTL configurations to the actor.
 pub trait ListRowTtls: Clone + Send + Sync + 'static {
-	fn list_row_ttls(&self) -> Vec<(ShapeId, RowTtl)>;
+	fn list_row_ttls(&self) -> Vec<(ShapeId, Ttl)>;
 	fn config(&self) -> Arc<dyn GetConfig>;
 }
 

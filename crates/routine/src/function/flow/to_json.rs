@@ -140,6 +140,7 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				left,
 				right,
 				alias,
+				ttl: _,
 			} => JsonFlowNodeType::Join {
 				join_type: *join_type,
 				left: left.iter().map(|e| e.into()).collect(),
@@ -166,12 +167,14 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 			},
 			FlowNodeType::Distinct {
 				expressions,
+				ttl: _,
 			} => JsonFlowNodeType::Distinct {
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
 			FlowNodeType::Apply {
 				operator,
 				expressions,
+				ttl: _,
 			} => JsonFlowNodeType::Apply {
 				operator: operator.clone(),
 				expressions: expressions.iter().map(|e| e.into()).collect(),

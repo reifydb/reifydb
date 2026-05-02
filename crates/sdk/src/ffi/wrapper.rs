@@ -24,7 +24,7 @@ use reifydb_abi::{
 use reifydb_type::value::{datetime::DateTime, row_number::RowNumber};
 use tracing::{error, instrument, warn};
 
-use crate::operator::{FFIOperator, change::BorrowedChange, context::OperatorContext};
+use crate::operator::{FFIOperator, Tick, change::BorrowedChange, context::OperatorContext};
 
 thread_local! {
 	/// Detail string stored by the innermost error-producing site and consumed
@@ -310,10 +310,12 @@ pub unsafe extern "C" fn ffi_tick<O: FFIOperator>(
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
 
-		let timestamp = DateTime::from_nanos(timestamp_nanos);
+		let tick = Tick {
+			now: DateTime::from_nanos(timestamp_nanos),
+		};
 		let mut op_ctx = OperatorContext::new(ctx);
 
-		match wrapper.operator.tick(&mut op_ctx, timestamp) {
+		match wrapper.operator.tick(&mut op_ctx, tick) {
 			Ok(true) => 0,
 			Ok(false) => 1,
 			Err(e) => {

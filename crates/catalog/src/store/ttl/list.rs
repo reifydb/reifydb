@@ -7,7 +7,7 @@ use reifydb_core::{
 		EncodableKey,
 		ttl::{RowTtlKey, RowTtlKeyRange},
 	},
-	row::RowTtl,
+	row::Ttl,
 };
 use reifydb_transaction::transaction::Transaction;
 
@@ -18,7 +18,7 @@ use crate::{CatalogStore, Result};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowTtlEntry {
 	pub shape: ShapeId,
-	pub config: RowTtl,
+	pub config: Ttl,
 }
 
 impl CatalogStore {
@@ -49,7 +49,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::{
 		interface::catalog::id::{RingBufferId, SeriesId, TableId},
-		row::{RowTtl, RowTtlAnchor, RowTtlCleanupMode},
+		row::{Ttl, TtlAnchor, TtlCleanupMode},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -73,20 +73,20 @@ pub mod tests {
 		let rb_shape = ShapeId::RingBuffer(RingBufferId(2));
 		let series_shape = ShapeId::Series(SeriesId(3));
 
-		let config_table = RowTtl {
+		let config_table = Ttl {
 			duration_nanos: 300_000_000_000,
-			anchor: RowTtlAnchor::Created,
-			cleanup_mode: RowTtlCleanupMode::Drop,
+			anchor: TtlAnchor::Created,
+			cleanup_mode: TtlCleanupMode::Drop,
 		};
-		let config_rb = RowTtl {
+		let config_rb = Ttl {
 			duration_nanos: 600_000_000_000,
-			anchor: RowTtlAnchor::Updated,
-			cleanup_mode: RowTtlCleanupMode::Delete,
+			anchor: TtlAnchor::Updated,
+			cleanup_mode: TtlCleanupMode::Delete,
 		};
-		let config_series = RowTtl {
+		let config_series = Ttl {
 			duration_nanos: 86_400_000_000_000,
-			anchor: RowTtlAnchor::Created,
-			cleanup_mode: RowTtlCleanupMode::Drop,
+			anchor: TtlAnchor::Created,
+			cleanup_mode: TtlCleanupMode::Drop,
 		};
 
 		create_row_ttl(&mut txn, table_shape, &config_table).unwrap();

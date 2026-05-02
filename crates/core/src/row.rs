@@ -13,31 +13,36 @@ pub struct Row {
 	pub shape: RowShape,
 }
 
-/// TTL (Time-To-Live) configuration for automatic row expiration.
+/// TTL (Time-To-Live) configuration for automatic expiration.
+///
+/// Used both for row-level TTL on data shapes (tables, views, series) and for
+/// operator-state retention on streaming operators (Distinct, Join). The shape
+/// of the config (`duration` + `anchor` + `cleanup_mode`) is identical;
+/// consumers interpret the fields per their own semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RowTtl {
-	/// Duration in nanoseconds after which rows expire
+pub struct Ttl {
+	/// Duration in nanoseconds after which entries expire
 	pub duration_nanos: u64,
-	/// Which row timestamp to measure from
-	pub anchor: RowTtlAnchor,
-	/// How expired rows are cleaned up
-	pub cleanup_mode: RowTtlCleanupMode,
+	/// Which timestamp the duration is measured from
+	pub anchor: TtlAnchor,
+	/// How expired entries are cleaned up
+	pub cleanup_mode: TtlCleanupMode,
 }
 
-/// Which row timestamp the TTL duration is measured from
+/// Which timestamp the TTL duration is measured from
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum RowTtlAnchor {
+pub enum TtlAnchor {
 	/// Measure from `created_at` (default)
 	#[default]
 	Created,
 
-	/// Measure from `updated_at` - updates extend the row's lifetime
+	/// Measure from `updated_at` - updates extend the entry's lifetime
 	Updated,
 }
 
-/// How expired rows are cleaned up
+/// How expired entries are cleaned up
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RowTtlCleanupMode {
+pub enum TtlCleanupMode {
 	/// Create tombstones and CDC entries - maintains audit trail
 	Delete,
 

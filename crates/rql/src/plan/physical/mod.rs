@@ -26,7 +26,7 @@ use reifydb_core::{
 			ResolvedShape, ResolvedTable, ResolvedView,
 		},
 	},
-	row::RowTtl,
+	row::Ttl,
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -198,7 +198,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -210,7 +210,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -442,6 +442,7 @@ pub struct AggregateNode<'bump> {
 pub struct DistinctNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub columns: Vec<ResolvedColumn>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -476,6 +477,7 @@ pub struct JoinInnerNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -484,6 +486,7 @@ pub struct JoinLeftNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -492,6 +495,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -529,6 +533,7 @@ pub struct ApplyNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub operator: Fragment,
 	pub expressions: Vec<Expression>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug)]
@@ -1736,6 +1741,7 @@ impl<'bump> Compiler<'bump> {
 						right: self.bump_box(right),
 						on: join.on,
 						alias,
+						ttl: join.ttl,
 					}));
 				}
 
@@ -1760,6 +1766,7 @@ impl<'bump> Compiler<'bump> {
 						right: self.bump_box(right),
 						on: join.on,
 						alias,
+						ttl: join.ttl,
 					}));
 				}
 
@@ -1784,6 +1791,7 @@ impl<'bump> Compiler<'bump> {
 						right: self.bump_box(right),
 						join_type: join.join_type,
 						alias,
+						ttl: join.ttl,
 					}));
 				}
 
@@ -1862,6 +1870,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::Distinct(DistinctNode {
 						columns: resolved_columns,
 						input: self.bump_box(input),
+						ttl: distinct.ttl,
 					}));
 				}
 
@@ -1963,6 +1972,7 @@ impl<'bump> Compiler<'bump> {
 						operator: self.interner.intern_fragment(&apply.operator),
 						expressions: apply.arguments,
 						input,
+						ttl: apply.ttl,
 					}));
 				}
 

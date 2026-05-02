@@ -47,10 +47,13 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
+		let ttl = self.parse_with_clause_for_operator()?;
+
 		Ok(AstApply {
 			token,
 			operator,
 			expressions,
+			ttl,
 			rql: self.source_since(start),
 		})
 	}

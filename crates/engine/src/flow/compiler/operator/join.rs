@@ -4,6 +4,7 @@
 use reifydb_core::{
 	common::JoinType::{self, Inner, Left},
 	interface::catalog::flow::FlowNodeId,
+	row::Ttl,
 };
 use reifydb_rql::{
 	expression::Expression,
@@ -22,6 +23,7 @@ pub(crate) struct JoinCompiler {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<String>,
+	pub ttl: Option<Ttl>,
 }
 
 impl From<JoinInnerNode> for JoinCompiler {
@@ -32,6 +34,7 @@ impl From<JoinInnerNode> for JoinCompiler {
 			right: node.right,
 			on: node.on,
 			alias: node.alias.map(|f| f.text().to_string()),
+			ttl: node.ttl,
 		}
 	}
 }
@@ -44,6 +47,7 @@ impl From<JoinLeftNode> for JoinCompiler {
 			right: node.right,
 			on: node.on,
 			alias: node.alias.map(|f| f.text().to_string()),
+			ttl: node.ttl,
 		}
 	}
 }
@@ -123,6 +127,7 @@ impl CompileOperator for JoinCompiler {
 				left: left_keys,
 				right: right_keys,
 				alias: effective_alias,
+				ttl: self.ttl,
 			},
 		)?;
 

@@ -10,7 +10,10 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 
 use common::with_counting;
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
-use reifydb_core::interface::{catalog::flow::FlowNodeId, change::Change};
+use reifydb_core::{
+	interface::{catalog::flow::FlowNodeId, change::Change},
+	row::Ttl,
+};
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	operator::{
@@ -44,7 +47,7 @@ impl FFIOperatorMetadata for SumAgg {
 }
 
 impl FFIOperator for SumAgg {
-	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>) -> SdkResult<Self> {
+	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>, _ttl: Option<Ttl>) -> SdkResult<Self> {
 		Ok(Self {
 			cache: Rc::new(RefCell::new(StateCache::new(16_384))),
 		})

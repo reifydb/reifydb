@@ -13,10 +13,12 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Keyword::Distinct)?;
 
 		let (columns, _has_braces) = self.parse_identifiers()?;
+		let ttl = self.parse_with_clause_for_operator()?;
 
 		Ok(AstDistinct {
 			token,
 			columns,
+			ttl,
 			rql: self.source_since(start),
 		})
 	}
@@ -146,5 +148,66 @@ pub mod tests {
 		} else {
 			panic!("Expected Distinct operator");
 		}
+	}
+
+	#[test]
+	fn test_distinct_no_ttl_when_with_clause_absent() {
+		let bump = Bump::new();
+		let source = "DISTINCT { x }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let Ast::Distinct(distinct) = result.first_unchecked() else {
+			panic!("Expected Distinct operator");
+		};
+		assert!(distinct.ttl.is_none());
+	}
+
+	#[test]
+	fn test_distinct_with_ttl_duration_only() {
+		let bump = Bump::new();
+		let source = "DISTINCT { x } WITH { ttl: { duration: '1h' } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let Ast::Distinct(distinct) = result.first_unchecked() else {
+			panic!("Expected Distinct operator");
+		};
+		let ttl = distinct.ttl.as_ref().expect("expected ttl");
+		assert_eq!(ttl.duration.fragment.text(), "1h");
+		assert!(ttl.anchor.is_none());
+		assert!(ttl.mode.is_none());
+	}
+
+	#[test]
+	fn test_distinct_with_ttl_full_config() {
+		let bump = Bump::new();
+		let source = "DISTINCT { x } WITH { ttl: { duration: '5m', on: updated, mode: drop } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let Ast::Distinct(distinct) = result.first_unchecked() else {
+			panic!("Expected Distinct operator");
+		};
+		let ttl = distinct.ttl.as_ref().expect("expected ttl");
+		assert_eq!(ttl.duration.fragment.text(), "5m");
+		assert_eq!(ttl.anchor.as_ref().unwrap().fragment.text(), "updated");
+		assert_eq!(ttl.mode.as_ref().unwrap().fragment.text(), "drop");
+	}
+
+	#[test]
+	fn test_distinct_with_unknown_key_errors() {
+		let bump = Bump::new();
+		let source = "DISTINCT { x } WITH { unknown: 'foo' }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let result = parser.parse();
+		assert!(result.is_err(), "expected error for unknown WITH key");
 	}
 }

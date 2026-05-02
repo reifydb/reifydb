@@ -40,7 +40,7 @@ use crate::{
 		extend::ExtendOperator,
 		filter::FilterOperator,
 		gate::GateOperator,
-		join::operator::{JoinOperator, JoinSideConfig},
+		join::operator::{JoinOperator, JoinSideConfig, JoinStateTtl},
 		map::MapOperator,
 		scan::{
 			flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
@@ -313,6 +313,7 @@ impl FlowEngine {
 				left,
 				right,
 				alias,
+				ttl,
 			} => {
 				if node.inputs.len() != 2 {
 					return Err(Error(Box::new(internal!("Join node must have exactly 2 inputs"))));
@@ -333,6 +334,14 @@ impl FlowEngine {
 					.ok_or_else(|| Error(Box::new(internal!("Right parent operator not found"))))?
 					.clone();
 
+				let ttl = match ttl {
+					Some(t) => JoinStateTtl {
+						left_nanos: Some(t.duration_nanos),
+						right_nanos: Some(t.duration_nanos),
+					},
+					None => JoinStateTtl::default(),
+				};
+
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::Join(JoinOperator::new(
@@ -350,11 +359,13 @@ impl FlowEngine {
 						join_type,
 						alias,
 						self.executor.clone(),
+						ttl,
 					))),
 				);
 			}
 			Distinct {
 				expressions,
+				ttl,
 			} => {
 				let parent = self
 					.operators
@@ -369,6 +380,7 @@ impl FlowEngine {
 						expressions,
 						self.executor.routines.clone(),
 						self.runtime_context.clone(),
+						ttl.map(|t| t.duration_nanos),
 					))),
 				);
 			}
@@ -407,6 +419,7 @@ impl FlowEngine {
 			Apply {
 				operator,
 				expressions,
+				ttl,
 			} => {
 				let config = evaluate_operator_config(
 					expressions.as_slice(),
@@ -435,8 +448,12 @@ impl FlowEngine {
 							))));
 						}
 
-						let ffi_op =
-							self.create_ffi_operator(operator.as_str(), node.id, &config)?;
+						let ffi_op = self.create_ffi_operator(
+							operator.as_str(),
+							node.id,
+							&config,
+							ttl,
+						)?;
 
 						self.operators.insert(
 							node.id,
@@ -448,6 +465,7 @@ impl FlowEngine {
 					#[cfg(not(reifydb_target = "native"))]
 					{
 						let _ = operator;
+						let _ = ttl;
 						return Err(Error(Box::new(internal!(
 							"FFI operators are not supported in WASM"
 						))));

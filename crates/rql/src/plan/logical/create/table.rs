@@ -160,7 +160,7 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		let table = ast.table;
-		let ttl = ast.ttl.map(Self::compile_row_ttl).transpose()?;
+		let ttl = ast.ttl.map(Self::compile_ttl).transpose()?;
 
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
 			table,

@@ -26,7 +26,7 @@ use reifydb_core::{
 };
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
-use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
+use reifydb_sdk::{error::FFIError, ffi::arena::Arena, operator::Tick};
 use reifydb_type::{
 	Result,
 	value::{datetime::DateTime, row_number::RowNumber},
@@ -316,10 +316,10 @@ impl Operator for FFIOperator {
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
-	fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
+	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		self.ensure_txn_setup(txn)?;
 
-		let timestamp_nanos = timestamp.to_nanos();
+		let timestamp_nanos = tick.now.to_nanos();
 		let ffi_ctx_ptr = self.cached_ctx.get();
 
 		let result_code = self.invoke_under_panic_guard("tick", || unsafe {
@@ -343,7 +343,7 @@ impl Operator for FFIOperator {
 		// surrogate (consistent with other tick-driven flows in this codebase).
 		// Ordering-sensitive callers rely on `changed_at` instead.
 		let version = CommitVersion(timestamp_nanos);
-		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, timestamp);
+		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, tick.now);
 		Span::current().record("output_diff_count", output_change.diffs.len());
 		Ok(Some(output_change))
 	}

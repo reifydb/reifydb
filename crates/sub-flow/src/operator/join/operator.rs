@@ -29,6 +29,7 @@ use reifydb_runtime::{
 	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
+use reifydb_sdk::operator::Tick;
 use reifydb_type::{
 	Result,
 	error::Error,
@@ -46,10 +47,19 @@ use super::{
 use crate::{
 	operator::{
 		Operator, Operators,
+		join::store::Store,
 		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful},
 	},
 	transaction::FlowTransaction,
 };
+
+/// Per-side retention configuration for a join. `None` on either side means
+/// "no eviction" for that side (the row-TTL absent-clause default: unbounded growth).
+#[derive(Default, Clone, Copy)]
+pub struct JoinStateTtl {
+	pub left_nanos: Option<u64>,
+	pub right_nanos: Option<u64>,
+}
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
@@ -78,6 +88,7 @@ pub struct JoinOperator {
 	executor: Executor,
 	routines: Routines,
 	runtime_context: RuntimeContext,
+	ttl: JoinStateTtl,
 }
 
 impl JoinOperator {
@@ -88,6 +99,7 @@ impl JoinOperator {
 		join_type: JoinType,
 		alias: Option<String>,
 		executor: Executor,
+		ttl: JoinStateTtl,
 	) -> Self {
 		let left_parent = left.parent;
 		let right_parent = right.parent;
@@ -99,12 +111,10 @@ impl JoinOperator {
 		let shape = Self::state_shape();
 		let row_number_provider = RowNumberProvider::new(node);
 
-		// Create compile context with empty symbol table
 		let compile_ctx = CompileContext {
 			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 
-		// Compile expressions at construction time
 		let compiled_left_exprs: Vec<CompiledExpr> = left_exprs
 			.iter()
 			.map(|e| compile_expression(&compile_ctx, e))
@@ -117,7 +127,6 @@ impl JoinOperator {
 			.collect::<Result<Vec<_>>>()
 			.expect("Failed to compile right expressions");
 
-		// Extract Functions and RuntimeContext from executor
 		let routines = executor.routines.clone();
 		let runtime_context = executor.runtime_context.clone();
 
@@ -138,6 +147,7 @@ impl JoinOperator {
 			executor,
 			routines,
 			runtime_context,
+			ttl,
 		}
 	}
 
@@ -544,6 +554,23 @@ impl Operator for JoinOperator {
 		}
 
 		Ok(Change::from_flow(self.node, version, result, change.changed_at))
+	}
+
+	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
+		let now_nanos = tick.now.to_nanos();
+
+		if let Some(ttl_nanos) = self.ttl.left_nanos {
+			let cutoff = now_nanos.saturating_sub(ttl_nanos);
+			let store = Store::new(self.node, JoinSide::Left);
+			store.tick_evict(txn, cutoff)?;
+		}
+		if let Some(ttl_nanos) = self.ttl.right_nanos {
+			let cutoff = now_nanos.saturating_sub(ttl_nanos);
+			let store = Store::new(self.node, JoinSide::Right);
+			store.tick_evict(txn, cutoff)?;
+		}
+
+		Ok(None)
 	}
 
 	// FIXME #244 The issue is that when we need to reconstruct an unmatched left row, we need the right side's

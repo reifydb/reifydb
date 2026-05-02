@@ -11,7 +11,7 @@ use reifydb_core::{
 		store::EntryKind,
 	},
 	key::row::RowKey,
-	row::{RowTtl, RowTtlAnchor, RowTtlCleanupMode},
+	row::{Ttl, TtlAnchor, TtlCleanupMode},
 	util::encoding::format::raw::Raw,
 };
 use reifydb_store_multi::{
@@ -155,14 +155,14 @@ impl testscript::runner::Runner for Runner {
 				let batch_size = parse_u64(&mut args, "batch")?.unwrap_or(1024) as usize;
 				args.reject_rest()?;
 
-				let ttl = RowTtl {
+				let ttl = Ttl {
 					duration_nanos,
 					anchor: match mode.as_str() {
-						"created" => RowTtlAnchor::Created,
-						"updated" => RowTtlAnchor::Updated,
+						"created" => TtlAnchor::Created,
+						"updated" => TtlAnchor::Updated,
 						other => return Err(format!("unknown mode: {}", other).into()),
 					},
-					cleanup_mode: RowTtlCleanupMode::Drop,
+					cleanup_mode: TtlCleanupMode::Drop,
 				};
 
 				let mut cursor = RangeCursor::new();
@@ -171,7 +171,7 @@ impl testscript::runner::Runner for Runner {
 
 				loop {
 					let (expired, result) = match ttl.anchor {
-						RowTtlAnchor::Created => scan_shape_by_created_at(
+						TtlAnchor::Created => scan_shape_by_created_at(
 							&self.storage,
 							self.shape,
 							&ttl,
@@ -179,7 +179,7 @@ impl testscript::runner::Runner for Runner {
 							batch_size,
 							&mut cursor,
 						)?,
-						RowTtlAnchor::Updated => scan_shape_by_updated_at(
+						TtlAnchor::Updated => scan_shape_by_updated_at(
 							&self.storage,
 							self.shape,
 							&ttl,

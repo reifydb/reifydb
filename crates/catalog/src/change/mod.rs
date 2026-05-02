@@ -107,7 +107,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::OperatorRetentionStrategy => {
 			dispatch::<OperatorRetentionStrategyApplier>(catalog, txn, change)
 		}
-		KeyKind::RowTtl => dispatch::<RowTtlApplier>(catalog, txn, change),
+		KeyKind::Ttl => dispatch::<RowTtlApplier>(catalog, txn, change),
 
 		KeyKind::Shape => dispatch::<RowShapeHeaderApplier>(catalog, txn, change),
 		KeyKind::RowShapeField => dispatch::<RowShapeFieldApplier>(catalog, txn, change),

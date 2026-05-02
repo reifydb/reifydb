@@ -19,7 +19,7 @@ use crate::{
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer,
 			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
 			AstCreateTest, AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKey,
-			AstProcedureParam, AstRowTtl, AstStatement, AstTimestampPrecision, AstType, AstVariant,
+			AstProcedureParam, AstStatement, AstTimestampPrecision, AstTtl, AstType, AstVariant,
 			AstViewStorageKind,
 		},
 		identifier::{
@@ -734,7 +734,7 @@ impl<'bump> Parser<'bump> {
 						});
 					}
 					"ttl" => {
-						ttl = Some(self.parse_row_ttl()?);
+						ttl = Some(self.parse_ttl()?);
 					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
@@ -1114,7 +1114,7 @@ impl<'bump> Parser<'bump> {
 
 				match key.fragment.text() {
 					"ttl" => {
-						ttl = Some(self.parse_row_ttl()?);
+						ttl = Some(self.parse_ttl()?);
 					}
 					_other => {
 						let fragment = key.fragment.to_owned();
@@ -1235,7 +1235,7 @@ impl<'bump> Parser<'bump> {
 					self.consume_operator(Operator::CloseCurly)?;
 				}
 				"ttl" => {
-					ttl = Some(self.parse_row_ttl()?);
+					ttl = Some(self.parse_ttl()?);
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
@@ -2096,12 +2096,12 @@ impl<'bump> Parser<'bump> {
 	fn parse_view_storage_with_clause(
 		&mut self,
 		hint: ViewStorageKindHint,
-	) -> Result<(AstViewStorageKind, Option<Duration>, Option<AstRowTtl<'bump>>)> {
+	) -> Result<(AstViewStorageKind, Option<Duration>, Option<AstTtl<'bump>>)> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut tick: Option<Duration> = None;
-		let mut ttl: Option<AstRowTtl<'bump>> = None;
+		let mut ttl: Option<AstTtl<'bump>> = None;
 
 		match hint {
 			ViewStorageKindHint::RingBuffer => {
@@ -2177,7 +2177,7 @@ impl<'bump> Parser<'bump> {
 							tick = Some(self.parse_tick_duration()?);
 						}
 						"ttl" => {
-							ttl = Some(self.parse_row_ttl()?);
+							ttl = Some(self.parse_ttl()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2262,7 +2262,7 @@ impl<'bump> Parser<'bump> {
 							tick = Some(self.parse_tick_duration()?);
 						}
 						"ttl" => {
-							ttl = Some(self.parse_row_ttl()?);
+							ttl = Some(self.parse_ttl()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2301,11 +2301,11 @@ impl<'bump> Parser<'bump> {
 
 	/// Parse a WITH clause containing `tick` and/or `ttl` for table-backed views.
 	/// Expects the WITH keyword to already be consumed. Parses `{ tick: "5m", ttl: { duration: "1m" } }`.
-	fn parse_view_tick_with_clause(&mut self) -> Result<(Option<Duration>, Option<AstRowTtl<'bump>>)> {
+	fn parse_view_tick_with_clause(&mut self) -> Result<(Option<Duration>, Option<AstTtl<'bump>>)> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut tick: Option<Duration> = None;
-		let mut ttl: Option<AstRowTtl<'bump>> = None;
+		let mut ttl: Option<AstTtl<'bump>> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -2321,7 +2321,7 @@ impl<'bump> Parser<'bump> {
 					tick = Some(self.parse_tick_duration()?);
 				}
 				"ttl" => {
-					ttl = Some(self.parse_row_ttl()?);
+					ttl = Some(self.parse_ttl()?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
@@ -2350,7 +2350,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	/// Parse a TTL config block: `{ duration: "5m", on: created, mode: drop }`
-	fn parse_row_ttl(&mut self) -> Result<AstRowTtl<'bump>> {
+	fn parse_ttl(&mut self) -> Result<AstTtl<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut duration = None;
@@ -2473,11 +2473,59 @@ impl<'bump> Parser<'bump> {
 			})
 		})?;
 
-		Ok(AstRowTtl {
+		Ok(AstTtl {
 			duration,
 			anchor,
 			mode,
 		})
+	}
+
+	/// Parse an optional `WITH { ttl: { ... } }` clause on a streaming operator
+	/// (e.g. DISTINCT, JOIN). Returns `None` if no `WITH` keyword follows.
+	///
+	/// The body uses the same `ttl: { duration, on, mode }` shape as row TTL on
+	/// tables/views. Operator-side compile rejects `mode: delete` since operator
+	/// state cleanup is silent (`drop` only); this is enforced in the compile
+	/// stage, not the parser.
+	pub(crate) fn parse_with_clause_for_operator(&mut self) -> Result<Option<AstTtl<'bump>>> {
+		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
+			return Ok(None);
+		}
+		self.advance()?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut ttl: Option<AstTtl<'bump>> = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"ttl" => {
+					ttl = Some(self.parse_ttl()?);
+				}
+				other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'ttl'".to_string(),
+						},
+						message: format!("unexpected key '{}' in operator WITH clause", other),
+						fragment,
+					}));
+				}
+			}
+
+			self.consume_if(TokenKind::Separator(Comma))?;
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok(ttl)
 	}
 }
 

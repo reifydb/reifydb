@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{
-	catalog::flow::FlowNodeId,
-	identifier::{ColumnIdentifier, ColumnShape},
-	resolved::{ResolvedColumn, ResolvedShape},
+use reifydb_core::{
+	interface::{
+		catalog::flow::FlowNodeId,
+		identifier::{ColumnIdentifier, ColumnShape},
+		resolved::{ResolvedColumn, ResolvedShape},
+	},
+	row::Ttl,
 };
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
@@ -20,6 +23,7 @@ use crate::flow::compiler::{CompileOperator, FlowCompiler};
 pub(crate) struct DistinctCompiler {
 	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
+	pub ttl: Option<Ttl>,
 }
 
 impl From<DistinctNode> for DistinctCompiler {
@@ -27,6 +31,7 @@ impl From<DistinctNode> for DistinctCompiler {
 		Self {
 			input: node.input,
 			columns: node.columns.into_iter().collect(),
+			ttl: node.ttl,
 		}
 	}
 }
@@ -70,6 +75,7 @@ impl CompileOperator for DistinctCompiler {
 			txn,
 			Distinct {
 				expressions,
+				ttl: self.ttl,
 			},
 		)?;
 

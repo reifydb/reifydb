@@ -8,7 +8,7 @@ use reifydb_core::{
 	encoded::row::EncodedRow,
 	interface::{catalog::shape::ShapeId, store::EntryKind},
 	key::row::RowKey,
-	row::RowTtl,
+	row::Ttl,
 };
 use reifydb_type::{Result, util::cowvec::CowVec};
 
@@ -38,7 +38,7 @@ pub enum ScanResult {
 pub fn scan_shape_by_created_at(
 	storage: &HotStorage,
 	shape_id: ShapeId,
-	ttl_config: &RowTtl,
+	ttl_config: &Ttl,
 	now_nanos: u64,
 	batch_size: usize,
 	cursor: &mut RangeCursor,
@@ -83,7 +83,7 @@ pub fn scan_shape_by_created_at(
 pub fn scan_shape_by_updated_at(
 	storage: &HotStorage,
 	shape_id: ShapeId,
-	ttl_config: &RowTtl,
+	ttl_config: &Ttl,
 	now_nanos: u64,
 	batch_size: usize,
 	cursor: &mut RangeCursor,

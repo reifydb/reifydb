@@ -23,7 +23,7 @@ use reifydb_core::{
 			ResolvedSeries, ResolvedShape, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
-	row::RowTtl,
+	row::Ttl,
 	sort::{SortDirection, SortKey},
 };
 use reifydb_type::{
@@ -177,7 +177,7 @@ pub struct CreateDeferredViewNode {
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
 	pub tick: Option<Duration>,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug, Clone)]
@@ -189,7 +189,7 @@ pub struct CreateTransactionalViewNode {
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
 	pub tick: Option<Duration>,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug, Clone)]
@@ -218,7 +218,7 @@ pub struct CreateTableNode {
 	pub table: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug, Clone)]
@@ -229,7 +229,7 @@ pub struct CreateRingBufferNode {
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug, Clone)]
@@ -329,7 +329,7 @@ pub struct CreateSeriesNode {
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
-	pub ttl: Option<RowTtl>,
+	pub ttl: Option<Ttl>,
 }
 
 /// Physical node for CREATE EVENT
@@ -587,6 +587,7 @@ pub struct AggregateNode {
 pub struct DistinctNode {
 	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug, Clone)]
@@ -670,6 +671,7 @@ pub struct JoinInnerNode {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug, Clone)]
@@ -678,6 +680,7 @@ pub struct JoinLeftNode {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug, Clone)]
@@ -686,6 +689,7 @@ pub struct JoinNaturalNode {
 	pub right: Box<QueryPlan>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug, Clone)]
@@ -723,6 +727,7 @@ pub struct ApplyNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub operator: Fragment, // FIXME becomes OperatorIdentifier
 	pub expressions: Vec<Expression>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug, Clone)]

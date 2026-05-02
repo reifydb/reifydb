@@ -12,7 +12,7 @@ use common::with_counting;
 use reifydb_abi::{
 	data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD,
 };
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, row::Ttl};
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	operator::{
@@ -36,7 +36,7 @@ impl FFIOperatorMetadata for EvenFilter {
 }
 
 impl FFIOperator for EvenFilter {
-	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>) -> SdkResult<Self> {
+	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>, _ttl: Option<Ttl>) -> SdkResult<Self> {
 		Ok(Self)
 	}
 

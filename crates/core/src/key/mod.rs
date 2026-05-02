@@ -376,8 +376,8 @@ impl Key {
 				// Source/Sink keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
-			KeyKind::RowTtl => {
-				// RowTtl keys are used directly via EncodableKey trait, not through Key enum
+			KeyKind::Ttl => {
+				// Ttl keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
 			KeyKind::Procedure => ProcedureKey::decode(key).map(Self::Procedure),

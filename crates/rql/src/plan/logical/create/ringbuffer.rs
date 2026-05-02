@@ -134,7 +134,7 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		let ringbuffer = ast.ringbuffer;
-		let ttl = ast.ttl.map(Self::compile_row_ttl).transpose()?;
+		let ttl = ast.ttl.map(Self::compile_ttl).transpose()?;
 
 		Ok(LogicalPlan::CreateRingBuffer(CreateRingBufferNode {
 			ringbuffer,

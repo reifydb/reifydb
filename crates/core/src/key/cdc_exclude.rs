@@ -128,7 +128,7 @@ pub mod tests {
 			KeyKind::Sink => {}
 			KeyKind::NamespaceSink => {}
 			KeyKind::SourceCheckpoint => {}
-			KeyKind::RowTtl => {}
+			KeyKind::Ttl => {}
 			KeyKind::Procedure => {}
 			KeyKind::NamespaceProcedure => {}
 			KeyKind::ProcedureParam => {}

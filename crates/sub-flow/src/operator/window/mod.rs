@@ -10,6 +10,7 @@ use reifydb_core::{
 	internal,
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
+use reifydb_sdk::operator::Tick;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -1102,8 +1103,8 @@ impl Operator for WindowOperator {
 		}
 	}
 
-	fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
-		let current_timestamp = timestamp.to_nanos() / 1_000_000;
+	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
+		let current_timestamp = tick.now.to_nanos() / 1_000_000;
 		let diffs = match &self.kind {
 			WindowKind::Tumbling {
 				..

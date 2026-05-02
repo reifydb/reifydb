@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, row::Ttl};
 use reifydb_sdk::{
 	error::Result,
 	operator::{
@@ -42,7 +42,7 @@ impl FFIOperatorMetadata for PassthroughOperator {
 }
 
 impl FFIOperator for PassthroughOperator {
-	fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>, _ttl: Option<Ttl>) -> Result<Self> {
 		Ok(Self)
 	}
 

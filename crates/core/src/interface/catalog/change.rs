@@ -26,7 +26,7 @@ use crate::{
 		test::Test,
 		view::View,
 	},
-	row::RowTtl,
+	row::Ttl,
 };
 
 /// Trait for tracking configuration changes during a transaction.
@@ -205,11 +205,11 @@ pub trait CatalogTrackSinkChangeOperations {
 
 /// Trait for tracking row TTL changes during a transaction.
 pub trait CatalogTrackRowTtlChangeOperations {
-	fn track_row_ttl_created(&mut self, shape: ShapeId, ttl: RowTtl) -> Result<()>;
+	fn track_row_ttl_created(&mut self, shape: ShapeId, ttl: Ttl) -> Result<()>;
 
-	fn track_row_ttl_updated(&mut self, shape: ShapeId, pre: RowTtl, post: RowTtl) -> Result<()>;
+	fn track_row_ttl_updated(&mut self, shape: ShapeId, pre: Ttl, post: Ttl) -> Result<()>;
 
-	fn track_row_ttl_deleted(&mut self, shape: ShapeId, ttl: RowTtl) -> Result<()>;
+	fn track_row_ttl_deleted(&mut self, shape: ShapeId, ttl: Ttl) -> Result<()>;
 }
 
 /// Umbrella trait for all catalog change tracking operations.

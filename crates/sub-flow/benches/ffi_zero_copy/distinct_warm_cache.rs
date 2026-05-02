@@ -53,7 +53,7 @@ fn make_distinct_op(node_id: u64) -> (DistinctOperator, TestEngine) {
 	let routines = engine.executor().routines.clone();
 	let rc = RuntimeContext::with_clock(engine.clock().clone());
 	let parent: StdArc<Operators> = StdArc::new(Operators::Custom(Box::new(NoOpParent)));
-	let op = DistinctOperator::new(parent, FlowNodeId(node_id), Vec::new(), routines, rc);
+	let op = DistinctOperator::new(parent, FlowNodeId(node_id), Vec::new(), routines, rc, None);
 	(op, engine)
 }
 

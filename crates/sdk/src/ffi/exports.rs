@@ -10,10 +10,14 @@ use reifydb_abi::{
 	operator::{
 		column::{OperatorColumnFFI, OperatorColumnsFFI},
 		descriptor::OperatorDescriptorFFI,
+		ttl::{TTL_ANCHOR_UPDATED, TtlFFI},
 		types::OPERATOR_MAGIC,
 	},
 };
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{
+	interface::catalog::flow::FlowNodeId,
+	row::{Ttl, TtlAnchor, TtlCleanupMode},
+};
 use reifydb_type::value::Value;
 
 use crate::{
@@ -75,15 +79,16 @@ pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> OperatorDescriptorFFI 
 ///
 /// # Safety
 /// - config_ptr must be valid for config_len bytes or null
+/// - ttl_ptr must be a valid `*const TtlFFI` for the duration of the call, or null
 /// - The returned pointer must be freed by calling the destroy function
 pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,
 	operator_id: u64,
+	ttl_ptr: *const TtlFFI,
 ) -> *mut c_void {
 	// Deserialize configuration from postcard if provided
 	let config = if config_ptr.is_null() || config_len == 0 {
-		// No configuration provided, use empty HashMap
 		HashMap::new()
 	} else {
 		// SAFETY: caller guarantees config_ptr is valid for config_len bytes
@@ -100,8 +105,26 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 		}
 	};
 
-	// Create operator with ID and config
-	let operator = match O::new(FlowNodeId(operator_id), &config) {
+	// Unmarshal TTL from FFI representation. Null pointer = no TTL.
+	let ttl: Option<Ttl> = if ttl_ptr.is_null() {
+		None
+	} else {
+		// SAFETY: caller guarantees ttl_ptr is valid for the duration of this call
+		let raw = unsafe { &*ttl_ptr };
+		Some(Ttl {
+			duration_nanos: raw.duration_nanos,
+			anchor: if raw.anchor == TTL_ANCHOR_UPDATED {
+				TtlAnchor::Updated
+			} else {
+				TtlAnchor::Created
+			},
+			// Operator-state TTL is always silent drop. Mode delete is rejected
+			// at compile time and never crosses the FFI boundary.
+			cleanup_mode: TtlCleanupMode::Drop,
+		})
+	};
+
+	let operator = match O::new(FlowNodeId(operator_id), &config, ttl) {
 		Ok(op) => op,
 		Err(e) => {
 			eprintln!("Failed to create operator: {}", e);
@@ -109,7 +132,6 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 		}
 	};
 
-	// Wrap in FFI wrapper
 	let wrapper = Box::new(OperatorWrapper::new(operator));
 	Box::into_raw(wrapper) as *mut c_void
 }

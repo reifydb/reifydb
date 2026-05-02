@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{interface::catalog::flow::FlowNodeId, row::Ttl};
 use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Apply, nodes::ApplyNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, fragment::Fragment};
@@ -12,6 +12,7 @@ pub(crate) struct ApplyCompiler {
 	pub input: Option<Box<QueryPlan>>,
 	pub operator: Fragment,
 	pub arguments: Vec<Expression>,
+	pub ttl: Option<Ttl>,
 }
 
 impl From<ApplyNode> for ApplyCompiler {
@@ -20,6 +21,7 @@ impl From<ApplyNode> for ApplyCompiler {
 			input: node.input,
 			operator: node.operator,
 			arguments: node.expressions,
+			ttl: node.ttl,
 		}
 	}
 }
@@ -37,6 +39,7 @@ impl CompileOperator for ApplyCompiler {
 			Apply {
 				operator: self.operator.text().to_string(),
 				expressions: self.arguments,
+				ttl: self.ttl,
 			},
 		)?;
 

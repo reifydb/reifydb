@@ -380,6 +380,7 @@ pub struct AstApply<'bump> {
 	pub token: Token<'bump>,
 	pub operator: UnqualifiedIdentifier<'bump>,
 	pub expressions: Vec<Ast<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 	pub rql: &'bump str,
 }
 
@@ -726,7 +727,7 @@ pub struct AstCreateDeferredView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
-	pub ttl: Option<AstRowTtl<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 }
 
 #[derive(Debug)]
@@ -737,7 +738,7 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
-	pub ttl: Option<AstRowTtl<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -763,8 +764,8 @@ pub struct AstAlterRemoteNamespace<'bump> {
 	pub grpc: BumpFragment<'bump>,
 }
 
-#[derive(Debug)]
-pub struct AstRowTtl<'bump> {
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstTtl<'bump> {
 	pub duration: Token<'bump>,
 	pub anchor: Option<Token<'bump>>,
 	pub mode: Option<Token<'bump>>,
@@ -778,7 +779,7 @@ pub struct AstCreateSeries<'bump> {
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	pub key: Option<BumpFragment<'bump>>,
 	pub precision: Option<AstTimestampPrecision>,
-	pub ttl: Option<AstRowTtl<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 }
 
 #[derive(Debug)]
@@ -794,7 +795,7 @@ pub struct AstCreateTable<'bump> {
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
-	pub ttl: Option<AstRowTtl<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 }
 
 #[derive(Debug)]
@@ -862,7 +863,7 @@ pub struct AstCreateRingBuffer<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
-	pub ttl: Option<AstRowTtl<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1285,6 +1286,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
+		ttl: Option<AstTtl<'bump>>,
 		rql: &'bump str,
 	},
 	LeftJoin {
@@ -1292,6 +1294,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
+		ttl: Option<AstTtl<'bump>>,
 		rql: &'bump str,
 	},
 	NaturalJoin {
@@ -1299,6 +1302,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		join_type: Option<JoinType>,
 		alias: BumpFragment<'bump>, // Required alias (no 'as' keyword)
+		ttl: Option<AstTtl<'bump>>,
 		rql: &'bump str,
 	},
 }
@@ -1352,6 +1356,7 @@ impl<'bump> AstLiteralNone<'bump> {
 pub struct AstDistinct<'bump> {
 	pub token: Token<'bump>,
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 	pub rql: &'bump str,
 }
 

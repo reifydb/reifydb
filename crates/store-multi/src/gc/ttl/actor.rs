@@ -7,7 +7,7 @@ use reifydb_core::{
 	actors::ttl::RowTtlMessage as Message,
 	event::row::RowsExpiredEvent,
 	interface::catalog::{config::ConfigKey, shape::ShapeId},
-	row::{RowTtlAnchor, RowTtlCleanupMode},
+	row::{TtlAnchor, TtlCleanupMode},
 };
 use reifydb_runtime::actor::{
 	context::Context,
@@ -79,11 +79,8 @@ impl<P: ListRowTtls> Actor<P> {
 
 		for (shape_id, ttl_config) in &ttls {
 			trace!(?shape_id, ?ttl_config, "Evaluating TTL config for shape");
-			if ttl_config.cleanup_mode == RowTtlCleanupMode::Delete {
-				debug!(
-					?shape_id,
-					"Skipping shape with RowTtlCleanupMode::Delete (not supported in V1)"
-				);
+			if ttl_config.cleanup_mode == TtlCleanupMode::Delete {
+				debug!(?shape_id, "Skipping shape with TtlCleanupMode::Delete (not supported in V1)");
 				stats.shapes_skipped += 1;
 				continue;
 			}
@@ -91,7 +88,7 @@ impl<P: ListRowTtls> Actor<P> {
 			let mut cursor = state.scanner.cursors.remove(shape_id).unwrap_or_default();
 
 			let scan_result = match ttl_config.anchor {
-				RowTtlAnchor::Created => scanner::scan_shape_by_created_at(
+				TtlAnchor::Created => scanner::scan_shape_by_created_at(
 					hot,
 					*shape_id,
 					ttl_config,
@@ -99,7 +96,7 @@ impl<P: ListRowTtls> Actor<P> {
 					batch_size,
 					&mut cursor,
 				),
-				RowTtlAnchor::Updated => scanner::scan_shape_by_updated_at(
+				TtlAnchor::Updated => scanner::scan_shape_by_updated_at(
 					hot,
 					*shape_id,
 					ttl_config,

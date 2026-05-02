@@ -11,6 +11,7 @@ use reifydb_rql::flow::{
 	flow::FlowDag,
 	node::{FlowNode, FlowNodeType::SourceInlineData},
 };
+use reifydb_sdk::operator::Tick;
 use reifydb_type::{Result, value::datetime::DateTime};
 use tracing::{Span, field, instrument};
 
@@ -167,7 +168,12 @@ impl FlowEngine {
 				None => continue,
 			};
 
-			if let Some(change) = operator.tick(txn, timestamp)? {
+			if let Some(change) = operator.tick(
+				txn,
+				Tick {
+					now: timestamp,
+				},
+			)? {
 				let node = flow.get_node(&node_id).unwrap();
 				let outputs = &node.outputs;
 				if outputs.is_empty() {
