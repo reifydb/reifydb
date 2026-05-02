@@ -474,6 +474,11 @@ impl StandardMultiStore {
 			});
 		}
 
+		// An unconfigured tier has nothing to contribute; treat it as exhausted so
+		// the horizon helpers below don't see a phantom "non-exhausted, no
+		// last_key" cursor and refuse to filter.
+		mark_unconfigured_exhausted(self, cursor);
+
 		let table = classify_key_range(&range);
 		let (start, end) = make_range_bounds(&range);
 		let batch_size = batch_size as usize;
@@ -504,10 +509,33 @@ impl StandardMultiStore {
 			}
 		}
 
-		// Note: the per-tier cursor already advanced past every key we collected, so
-		// every collected entry must be either returned or dropped here - we cannot
-		// "leave them for next call" without losing them entirely.
-		Ok(collected_to_batch(collected, !cursor.exhausted))
+		// Per-tier cursors can be at different positions after this iteration:
+		// tiers with smaller chunks advanced their last_key less far than tiers with
+		// larger chunks. Emitting everything would let the lagging tier re-emit
+		// keys above its own last_key on the next call. Compute horizon = smallest
+		// last_key among non-exhausted tiers, drop entries beyond it from
+		// `collected`, and rewind any over-advanced tier so the next call resumes
+		// from the same horizon for every tier.
+		apply_forward_horizon(cursor, &mut collected);
+
+		// Convert to MultiVersionRow in sorted key order, filtering out tombstones.
+		let items: Vec<MultiVersionRow> = collected
+			.into_iter()
+			.filter_map(|(key_bytes, (v, value))| {
+				value.map(|val| MultiVersionRow {
+					key: EncodedKey(CowVec::new(key_bytes)),
+					row: EncodedRow(val),
+					version: v,
+				})
+			})
+			.collect();
+
+		let has_more = !cursor.exhausted;
+
+		Ok(MultiVersionBatch {
+			items,
+			has_more,
+		})
 	}
 
 	/// Create an iterator for forward range queries.
@@ -572,6 +600,8 @@ impl StandardMultiStore {
 			});
 		}
 
+		mark_unconfigured_exhausted(self, cursor);
+
 		let table = classify_key_range(&range);
 		let (start, end) = make_range_bounds(&range);
 		let batch_size = batch_size as usize;
@@ -612,7 +642,17 @@ impl StandardMultiStore {
 			}
 		}
 
-		// All collected entries must be returned or dropped; cursor already advanced past them.
+		// Per-tier cursors can be at different positions after this iteration. In
+		// reverse iteration `last_key` is the smallest key emitted; the tier whose
+		// chunk reached the smallest key has consumed more than its peers. Emitting
+		// everything would let the trailing tier re-emit keys below its own
+		// last_key on the next call. Compute horizon = largest last_key among
+		// non-exhausted tiers, drop entries < horizon from `collected`, and rewind
+		// any over-advanced tier so the next call resumes from the same horizon for
+		// every tier.
+		apply_reverse_horizon(cursor, &mut collected);
+
+		// Convert to MultiVersionRow in REVERSE sorted key order, filtering out tombstones.
 		let items: Vec<MultiVersionRow> = collected
 			.into_iter()
 			.rev()
@@ -631,6 +671,126 @@ impl StandardMultiStore {
 			items,
 			has_more,
 		})
+	}
+}
+
+/// Mark per-tier cursors as exhausted for any tier the store does not have
+/// configured. The cursor type carries a slot for every tier regardless of
+/// whether the storage is wired up; without this, the horizon helpers see a
+/// phantom non-exhausted cursor with `last_key=None` and refuse to filter.
+fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor) {
+	if store.hot.is_none() {
+		cursor.hot.exhausted = true;
+	}
+	if store.warm.is_none() {
+		cursor.warm.exhausted = true;
+	}
+	if store.cold.is_none() {
+		cursor.cold.exhausted = true;
+	}
+}
+
+/// Drop collected entries past the slowest non-exhausted tier's last_key, and
+/// rewind any over-advanced tier cursor to that horizon. After this returns,
+/// every non-exhausted tier's `last_key` is identical, so the next call resumes
+/// from a consistent position across tiers and the BTreeMap dedupe in
+/// `scan_tier_chunk` covers any re-emission.
+fn apply_forward_horizon(
+	cursor: &mut MultiVersionRangeCursor,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) {
+	let horizon = forward_horizon(cursor);
+	if let Some(h) = horizon {
+		collected.retain(|k, _| k.as_slice() <= h.as_slice());
+		rewind_over_advanced_forward(cursor, &h);
+	}
+}
+
+fn apply_reverse_horizon(
+	cursor: &mut MultiVersionRangeCursor,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) {
+	let horizon = reverse_horizon(cursor);
+	if let Some(h) = horizon {
+		collected.retain(|k, _| k.as_slice() >= h.as_slice());
+		rewind_over_advanced_reverse(cursor, &h);
+	}
+}
+
+fn forward_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
+	let mut horizon: Option<CowVec<u8>> = None;
+	for tier in [&cursor.hot, &cursor.warm, &cursor.cold] {
+		if tier.exhausted {
+			continue;
+		}
+		let last = match &tier.last_key {
+			Some(k) => k.clone(),
+			// A non-exhausted tier with no last_key emitted nothing this iteration
+			// but may still have keys to return; horizon must be the start of the
+			// range, which we represent as "no horizon" so nothing is dropped.
+			None => return None,
+		};
+		horizon = Some(match horizon {
+			None => last,
+			Some(prev) => {
+				if last.as_slice() < prev.as_slice() {
+					last
+				} else {
+					prev
+				}
+			}
+		});
+	}
+	horizon
+}
+
+fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
+	let mut horizon: Option<CowVec<u8>> = None;
+	for tier in [&cursor.hot, &cursor.warm, &cursor.cold] {
+		if tier.exhausted {
+			continue;
+		}
+		let last = match &tier.last_key {
+			Some(k) => k.clone(),
+			None => return None,
+		};
+		horizon = Some(match horizon {
+			None => last,
+			Some(prev) => {
+				if last.as_slice() > prev.as_slice() {
+					last
+				} else {
+					prev
+				}
+			}
+		});
+	}
+	horizon
+}
+
+fn rewind_over_advanced_forward(cursor: &mut MultiVersionRangeCursor, horizon: &CowVec<u8>) {
+	for tier in [&mut cursor.hot, &mut cursor.warm, &mut cursor.cold] {
+		if tier.exhausted {
+			continue;
+		}
+		if let Some(last) = &tier.last_key
+			&& last.as_slice() > horizon.as_slice()
+		{
+			tier.last_key = Some(horizon.clone());
+		}
+	}
+}
+
+fn rewind_over_advanced_reverse(cursor: &mut MultiVersionRangeCursor, horizon: &CowVec<u8>) {
+	for tier in [&mut cursor.hot, &mut cursor.warm, &mut cursor.cold] {
+		if tier.exhausted {
+			continue;
+		}
+		if let Some(last) = &tier.last_key
+			&& last.as_slice() < horizon.as_slice()
+		{
+			tier.last_key = Some(horizon.clone());
+		}
 	}
 }
 

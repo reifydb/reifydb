@@ -11,17 +11,17 @@ use reifydb_sqlite::{
 	pragma,
 };
 use reifydb_type::{Result, error, util::cowvec::CowVec};
-use rusqlite::{Connection, Error::QueryReturnedNoRows, Result as SqliteResult, params};
+use rusqlite::{Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, params, params_from_iter};
 use tracing::instrument;
 
 use super::{
 	entry::warm_current_table_name,
 	query::{
-		build_create_warm_current_sql, build_get_warm_current_sql, build_upsert_warm_current_sql,
-		version_from_bytes, version_to_bytes,
+		build_create_warm_current_sql, build_get_warm_current_sql, build_range_warm_current_sql,
+		build_upsert_warm_current_sql, version_from_bytes, version_to_bytes,
 	},
 };
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage};
+use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
 /// SQLite-backed warm tier storage.
 ///
@@ -84,6 +84,99 @@ impl SqliteWarmStorage {
 		conn.execute(&build_create_warm_current_sql(table_name), [])?;
 		Ok(())
 	}
+
+	fn range_chunk(&self, cursor: &mut RangeCursor, req: RangeChunkRequest<'_>) -> Result<RangeBatch> {
+		if cursor.exhausted {
+			return Ok(RangeBatch::empty());
+		}
+
+		let table_name = warm_current_table_name(req.table);
+		let conn = self.inner.conn.lock();
+
+		let sql = build_range_warm_current_sql(
+			&table_name,
+			bound_shape(req.start),
+			bound_shape(req.end),
+			cursor.last_key.is_some(),
+			req.descending,
+		);
+
+		let mut stmt = match conn.prepare_cached(&sql) {
+			Ok(s) => s,
+			Err(e) if e.to_string().contains("no such table") => {
+				cursor.exhausted = true;
+				return Ok(RangeBatch::empty());
+			}
+			Err(e) => return Err(error!(internal(format!("Failed to prepare warm range: {}", e)))),
+		};
+
+		let version_bytes = version_to_bytes(req.version).to_vec();
+		let limit_i64 = req.batch_size as i64;
+		let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+		match req.start {
+			Bound::Included(s) | Bound::Excluded(s) => params.push(Box::new(s.to_vec())),
+			Bound::Unbounded => {}
+		}
+		match req.end {
+			Bound::Included(e) | Bound::Excluded(e) => params.push(Box::new(e.to_vec())),
+			Bound::Unbounded => {}
+		}
+		if let Some(k) = cursor.last_key.as_deref() {
+			params.push(Box::new(k.to_vec()));
+		}
+		params.push(Box::new(version_bytes));
+		params.push(Box::new(limit_i64));
+
+		let entries = match stmt.query_map(params_from_iter(params), |row| {
+			let key: Vec<u8> = row.get(0)?;
+			let version_blob: Vec<u8> = row.get(1)?;
+			let value: Option<Vec<u8>> = row.get(2)?;
+			Ok(RawEntry {
+				key: CowVec::new(key),
+				version: version_from_bytes(&version_blob),
+				value: value.map(CowVec::new),
+			})
+		}) {
+			Ok(rows) => rows
+				.collect::<SqliteResult<Vec<_>>>()
+				.map_err(|e| error!(internal(format!("Failed to read warm row: {}", e))))?,
+			Err(e) if e.to_string().contains("no such table") => {
+				cursor.exhausted = true;
+				return Ok(RangeBatch::empty());
+			}
+			Err(e) => return Err(error!(internal(format!("Failed to scan warm range: {}", e)))),
+		};
+
+		if entries.len() < req.batch_size {
+			cursor.exhausted = true;
+		}
+		if let Some(last) = entries.last() {
+			cursor.last_key = Some(last.key.clone());
+		}
+
+		let has_more = !cursor.exhausted;
+		Ok(RangeBatch {
+			entries,
+			has_more,
+		})
+	}
+}
+
+fn bound_shape(b: Bound<&[u8]>) -> Bound<()> {
+	match b {
+		Bound::Included(_) => Bound::Included(()),
+		Bound::Excluded(_) => Bound::Excluded(()),
+		Bound::Unbounded => Bound::Unbounded,
+	}
+}
+
+struct RangeChunkRequest<'a> {
+	table: EntryKind,
+	start: Bound<&'a [u8]>,
+	end: Bound<&'a [u8]>,
+	version: CommitVersion,
+	batch_size: usize,
+	descending: bool,
 }
 
 impl TierStorage for SqliteWarmStorage {
@@ -151,31 +244,46 @@ impl TierStorage for SqliteWarmStorage {
 
 	fn range_next(
 		&self,
-		_table: EntryKind,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
-		_start: Bound<&[u8]>,
-		_end: Bound<&[u8]>,
-		_version: CommitVersion,
-		_batch_size: usize,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
+		version: CommitVersion,
+		batch_size: usize,
 	) -> Result<RangeBatch> {
-		// Phase 1: warm does not participate in range iteration. Returning an
-		// empty exhausted batch keeps the existing tier-merge code in
-		// `store/multi.rs` running against hot only.
-		cursor.exhausted = true;
-		Ok(RangeBatch::empty())
+		self.range_chunk(
+			cursor,
+			RangeChunkRequest {
+				table,
+				start,
+				end,
+				version,
+				batch_size,
+				descending: false,
+			},
+		)
 	}
 
 	fn range_rev_next(
 		&self,
-		_table: EntryKind,
+		table: EntryKind,
 		cursor: &mut RangeCursor,
-		_start: Bound<&[u8]>,
-		_end: Bound<&[u8]>,
-		_version: CommitVersion,
-		_batch_size: usize,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
+		version: CommitVersion,
+		batch_size: usize,
 	) -> Result<RangeBatch> {
-		cursor.exhausted = true;
-		Ok(RangeBatch::empty())
+		self.range_chunk(
+			cursor,
+			RangeChunkRequest {
+				table,
+				start,
+				end,
+				version,
+				batch_size,
+				descending: true,
+			},
+		)
 	}
 
 	fn ensure_table(&self, table: EntryKind) -> Result<()> {

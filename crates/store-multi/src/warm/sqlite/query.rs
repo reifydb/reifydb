@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::ops::Bound;
+
 use reifydb_core::common::CommitVersion;
 
 #[inline]
@@ -42,4 +44,46 @@ pub(super) fn build_upsert_warm_current_sql(table_name: &str) -> String {
 		 WHERE excluded.version >= \"{0}\".version",
 		table_name
 	)
+}
+
+/// Range scan over `__warm_current` at a snapshot version.
+///
+/// Bind parameters in declaration order: `[start?, end?, last_key?, version, limit]`.
+/// The `version` filter (`version <= ?`) skips rows whose stored version is newer
+/// than the requested snapshot, mirroring `build_get_warm_current_sql`.
+///
+/// `version` is stored as a big-endian 8-byte BLOB; SQLite compares BLOBs
+/// lexicographically, so `<=` over those bytes is numeric `<=`.
+pub(super) fn build_range_warm_current_sql(
+	table_name: &str,
+	start: Bound<()>,
+	end: Bound<()>,
+	has_last_key: bool,
+	descending: bool,
+) -> String {
+	let mut sql = format!("SELECT key, version, value FROM \"{}\" WHERE 1=1", table_name);
+	match start {
+		Bound::Included(()) => sql.push_str(" AND key >= ?"),
+		Bound::Excluded(()) => sql.push_str(" AND key > ?"),
+		Bound::Unbounded => {}
+	}
+	match end {
+		Bound::Included(()) => sql.push_str(" AND key <= ?"),
+		Bound::Excluded(()) => sql.push_str(" AND key < ?"),
+		Bound::Unbounded => {}
+	}
+	if has_last_key {
+		sql.push_str(if descending {
+			" AND key < ?"
+		} else {
+			" AND key > ?"
+		});
+	}
+	sql.push_str(" AND version <= ?");
+	if descending {
+		sql.push_str(" ORDER BY key DESC LIMIT ?");
+	} else {
+		sql.push_str(" ORDER BY key ASC LIMIT ?");
+	}
+	sql
 }
