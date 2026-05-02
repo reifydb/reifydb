@@ -14,7 +14,6 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff, Diffs},
 	},
-	row::Ttl,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_sdk::{
@@ -50,7 +49,7 @@ impl FFIOperatorMetadata for PassthroughOperator {
 }
 
 impl FFIOperator for PassthroughOperator {
-	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>, _ttl: Option<Ttl>) -> Result<Self> {
+	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
 		Ok(Self)
 	}
 

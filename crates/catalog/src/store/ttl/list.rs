@@ -2,10 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::shape::ShapeId,
+	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 	key::{
 		EncodableKey,
-		ttl::{RowTtlKey, RowTtlKeyRange},
+		operator_ttl::{OperatorTtlKey, OperatorTtlKeyRange},
+		row_ttl::{RowTtlKey, RowTtlKeyRange},
 	},
 	row::Ttl,
 };
@@ -18,6 +19,13 @@ use crate::{CatalogStore, Result};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowTtlEntry {
 	pub shape: ShapeId,
+	pub config: Ttl,
+}
+
+/// A per-operator TTL configuration entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperatorTtlEntry {
+	pub node: FlowNodeId,
 	pub config: Ttl,
 }
 
@@ -36,6 +44,28 @@ impl CatalogStore {
 			{
 				result.push(RowTtlEntry {
 					shape: key.shape,
+					config,
+				});
+			}
+		}
+
+		Ok(result)
+	}
+
+	/// List all per-operator TTL configurations.
+	#[allow(dead_code)]
+	pub fn list_operator_ttls(rx: &mut Transaction<'_>) -> Result<Vec<OperatorTtlEntry>> {
+		let mut result = Vec::new();
+
+		let stream = rx.range(OperatorTtlKeyRange::full_scan(), 1024)?;
+
+		for entry in stream {
+			let entry = entry?;
+			if let Some(key) = OperatorTtlKey::decode(&entry.key)
+				&& let Some(config) = decode_ttl_config(&entry.row)
+			{
+				result.push(OperatorTtlEntry {
+					node: key.node,
 					config,
 				});
 			}

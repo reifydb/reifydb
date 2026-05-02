@@ -681,11 +681,11 @@ impl<'bump> Parser<'bump> {
 						_ => {
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'key', 'tag', 'precision', or 'ttl'"
+									expected: "'key', 'tag', 'precision', or 'row'"
 										.to_string(),
 								},
 								message: format!(
-									"expected 'key', 'tag', 'precision', or 'ttl', found `{}`",
+									"expected 'key', 'tag', 'precision', or 'row', found `{}`",
 									current.fragment.text()
 								),
 								fragment: current.fragment.to_owned(),
@@ -733,14 +733,14 @@ impl<'bump> Parser<'bump> {
 							}
 						});
 					}
-					"ttl" => {
+					"row" => {
 						ttl = Some(self.parse_ttl()?);
 					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'key', 'tag', 'precision', or 'ttl'"
+								expected: "'key', 'tag', 'precision', or 'row'"
 									.to_string(),
 							},
 							message: format!(
@@ -896,7 +896,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional WITH clause for tick/ttl configuration
+		// Parse optional WITH clause for tick/row configuration
 		let (tick, ttl) = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_tick_with_clause()?
@@ -992,7 +992,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional WITH clause for tick/ttl configuration
+		// Parse optional WITH clause for tick/row configuration
 		let (tick, ttl) = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_tick_with_clause()?
@@ -1113,16 +1113,16 @@ impl<'bump> Parser<'bump> {
 				self.consume_operator(Operator::Colon)?;
 
 				match key.fragment.text() {
-					"ttl" => {
+					"row" => {
 						ttl = Some(self.parse_ttl()?);
 					}
 					_other => {
 						let fragment = key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'ttl'".to_string(),
+								expected: "'row'".to_string(),
 							},
-							message: format!("expected 'ttl', found `{}`", fragment.text()),
+							message: format!("expected 'row', found `{}`", fragment.text()),
 							fragment,
 						}));
 					}
@@ -1186,11 +1186,11 @@ impl<'bump> Parser<'bump> {
 					_ => {
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'capacity', 'partition_by', or 'ttl'"
+								expected: "'capacity', 'partition_by', or 'row'"
 									.to_string(),
 							},
 							message: format!(
-								"expected 'capacity', 'partition_by', or 'ttl', found `{}`",
+								"expected 'capacity', 'partition_by', or 'row', found `{}`",
 								current.fragment.text()
 							),
 							fragment: current.fragment.to_owned(),
@@ -1234,14 +1234,14 @@ impl<'bump> Parser<'bump> {
 					}
 					self.consume_operator(Operator::CloseCurly)?;
 				}
-				"ttl" => {
+				"row" => {
 					ttl = Some(self.parse_ttl()?);
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'capacity', 'partition_by', or 'ttl'".to_string(),
+							expected: "'capacity', 'partition_by', or 'row'".to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
@@ -2176,14 +2176,14 @@ impl<'bump> Parser<'bump> {
 						"tick" => {
 							tick = Some(self.parse_tick_duration()?);
 						}
-						"ttl" => {
+						"row" => {
 							ttl = Some(self.parse_ttl()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'propagate_evictions', 'partition_by', 'tick', or 'ttl'"
+									expected: "'capacity', 'propagate_evictions', 'partition_by', 'tick', or 'row'"
 										.to_string(),
 								},
 								message: format!(
@@ -2261,7 +2261,7 @@ impl<'bump> Parser<'bump> {
 						"tick" => {
 							tick = Some(self.parse_tick_duration()?);
 						}
-						"ttl" => {
+						"row" => {
 							ttl = Some(self.parse_ttl()?);
 						}
 						other => {
@@ -2269,7 +2269,7 @@ impl<'bump> Parser<'bump> {
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
 									expected:
-										"'key', 'precision', 'tick', or 'ttl'"
+										"'key', 'precision', 'tick', or 'row'"
 											.to_string(),
 								},
 								message: format!(
@@ -2299,8 +2299,8 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	/// Parse a WITH clause containing `tick` and/or `ttl` for table-backed views.
-	/// Expects the WITH keyword to already be consumed. Parses `{ tick: "5m", ttl: { duration: "1m" } }`.
+	/// Parse a WITH clause containing `tick` and/or `row` for table-backed views.
+	/// Expects the WITH keyword to already be consumed. Parses `{ tick: "5m", row: { duration: "1m" } }`.
 	fn parse_view_tick_with_clause(&mut self) -> Result<(Option<Duration>, Option<AstTtl<'bump>>)> {
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -2320,14 +2320,14 @@ impl<'bump> Parser<'bump> {
 				"tick" => {
 					tick = Some(self.parse_tick_duration()?);
 				}
-				"ttl" => {
+				"row" => {
 					ttl = Some(self.parse_ttl()?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'tick' or 'ttl'".to_string(),
+							expected: "'tick' or 'row'".to_string(),
 						},
 						message: format!("unexpected key '{}' in WITH clause", other),
 						fragment,
@@ -2466,9 +2466,9 @@ impl<'bump> Parser<'bump> {
 				.unwrap_or_else(|| Fragment::internal("end of input"));
 			Error::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
-					expected: "'duration' is required in ttl config".to_string(),
+					expected: "'duration' is required in row config".to_string(),
 				},
-				message: "'duration' is required in ttl config".to_string(),
+				message: "'duration' is required in row config".to_string(),
 				fragment,
 			})
 		})?;
@@ -2480,10 +2480,10 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse an optional `WITH { ttl: { ... } }` clause on a streaming operator
+	/// Parse an optional `WITH { row: { ... } }` clause on a streaming operator
 	/// (e.g. DISTINCT, JOIN). Returns `None` if no `WITH` keyword follows.
 	///
-	/// The body uses the same `ttl: { duration, on, mode }` shape as row TTL on
+	/// The body uses the same `row: { duration, on, mode }` shape as row TTL on
 	/// tables/views. Operator-side compile rejects `mode: delete` since operator
 	/// state cleanup is silent (`drop` only); this is enforced in the compile
 	/// stage, not the parser.
@@ -2506,14 +2506,14 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
-				"ttl" => {
+				"row" => {
 					ttl = Some(self.parse_ttl()?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'ttl'".to_string(),
+							expected: "'row'".to_string(),
 						},
 						message: format!("unexpected key '{}' in operator WITH clause", other),
 						fragment,

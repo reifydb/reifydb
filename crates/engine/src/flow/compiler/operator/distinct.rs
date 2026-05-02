@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_catalog::store::ttl::create::create_operator_ttl;
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
@@ -71,6 +72,7 @@ impl CompileOperator for DistinctCompiler {
 			.map(|col| Expression::Column(ColumnExpression(resolved_to_column_identifier(col))))
 			.collect();
 
+		let ttl = self.ttl.clone();
 		let node_id = compiler.add_node(
 			txn,
 			Distinct {
@@ -78,6 +80,12 @@ impl CompileOperator for DistinctCompiler {
 				ttl: self.ttl,
 			},
 		)?;
+
+		if let Some(ttl) = ttl
+			&& let Transaction::Admin(admin) = txn
+		{
+			create_operator_ttl(admin, node_id, &ttl)?;
+		}
 
 		compiler.add_edge(txn, &input_node, &node_id)?;
 		Ok(node_id)

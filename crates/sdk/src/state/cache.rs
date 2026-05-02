@@ -5,10 +5,10 @@ use std::{collections::HashMap, hash::Hash, mem};
 
 use postcard::{from_bytes, to_allocvec};
 use reifydb_core::{
-	encoded::{key::IntoEncodedKey, row::EncodedRow},
+	encoded::{key::IntoEncodedKey, shape::RowShape},
 	util::lru::LruCache,
 };
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_type::value::blob::Blob;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -48,8 +48,9 @@ where
 		let state = ctx.state();
 		match state.get(&encoded_key)? {
 			Some(encoded_row) => {
-				// Deserialize and cache
-				let value: V = from_bytes(encoded_row.as_ref()).map_err(|e| {
+				let shape = RowShape::operator_state();
+				let blob = shape.get_blob(&encoded_row, 0);
+				let value: V = from_bytes(blob.as_bytes()).map_err(|e| {
 					FFIError::Serialization(format!("deserialization failed: {}", e))
 				})?;
 				self.cache.put(key.clone(), value.clone());
@@ -79,6 +80,7 @@ where
 	/// single remove.
 	pub fn flush(&mut self, ctx: &mut OperatorContext) -> Result<()> {
 		let dirty = mem::take(&mut self.dirty);
+		let shape = RowShape::operator_state();
 		for (key, slot) in dirty {
 			let encoded_key = (&key).into_encoded_key();
 			match slot {
@@ -86,8 +88,9 @@ where
 					let bytes = to_allocvec(&value).map_err(|e| {
 						FFIError::Serialization(format!("serialization failed: {}", e))
 					})?;
-					let encoded_row = EncodedRow(CowVec::new(bytes));
-					ctx.state().set(&encoded_key, &encoded_row)?;
+					let mut row = shape.allocate();
+					shape.set_blob(&mut row, 0, &Blob::new(bytes));
+					ctx.state().set(&encoded_key, &row)?;
 				}
 				None => {
 					ctx.state().remove(&encoded_key)?;

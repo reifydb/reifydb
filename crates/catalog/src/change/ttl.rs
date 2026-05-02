@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
-	key::{EncodableKey, ttl::RowTtlKey},
+	key::{EncodableKey, row_ttl::RowTtlKey},
 };
 use reifydb_transaction::transaction::Transaction;
 

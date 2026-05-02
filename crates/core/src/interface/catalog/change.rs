@@ -9,7 +9,7 @@ use crate::{
 		binding::Binding,
 		config::Config,
 		dictionary::Dictionary,
-		flow::Flow,
+		flow::{Flow, FlowNodeId},
 		handler::Handler,
 		identity::{GrantedRole, Identity, Role},
 		migration::{Migration, MigrationEvent},
@@ -212,6 +212,15 @@ pub trait CatalogTrackRowTtlChangeOperations {
 	fn track_row_ttl_deleted(&mut self, shape: ShapeId, ttl: Ttl) -> Result<()>;
 }
 
+/// Trait for tracking per-operator TTL changes during a transaction.
+pub trait CatalogTrackOperatorTtlChangeOperations {
+	fn track_operator_ttl_created(&mut self, node: FlowNodeId, ttl: Ttl) -> Result<()>;
+
+	fn track_operator_ttl_updated(&mut self, node: FlowNodeId, pre: Ttl, post: Ttl) -> Result<()>;
+
+	fn track_operator_ttl_deleted(&mut self, node: FlowNodeId, ttl: Ttl) -> Result<()>;
+}
+
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackBindingChangeOperations
@@ -237,5 +246,6 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackViewChangeOperations
 	+ CatalogTrackConfigChangeOperations
 	+ CatalogTrackRowTtlChangeOperations
+	+ CatalogTrackOperatorTtlChangeOperations
 {
 }

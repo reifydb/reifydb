@@ -2,8 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackRowTtlChangeOperations, shape::ShapeId},
-	key::ttl::RowTtlKey,
+	interface::catalog::{
+		change::{CatalogTrackOperatorTtlChangeOperations, CatalogTrackRowTtlChangeOperations},
+		flow::FlowNodeId,
+		shape::ShapeId,
+	},
+	key::{operator_ttl::OperatorTtlKey, row_ttl::RowTtlKey},
 	row::Ttl,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -16,6 +20,14 @@ pub fn create_row_ttl(txn: &mut AdminTransaction, shape: ShapeId, config: &Ttl) 
 	let value = encode_ttl_config(config);
 	txn.set(&RowTtlKey::encoded(shape), value)?;
 	txn.track_row_ttl_created(shape, config.clone())?;
+	Ok(())
+}
+
+/// Store a per-operator TTL configuration for a flow node.
+pub fn create_operator_ttl(txn: &mut AdminTransaction, node: FlowNodeId, config: &Ttl) -> Result<()> {
+	let value = encode_ttl_config(config);
+	txn.set(&OperatorTtlKey::encoded(node), value)?;
+	txn.track_operator_ttl_created(node, config.clone())?;
 	Ok(())
 }
 

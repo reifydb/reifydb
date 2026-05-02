@@ -744,4 +744,4 @@ pub mod tests {
 	}
 }
 
-// TTL behaviour is exercised by the integration suite at `crates/cdc/tests/ttl.rs`.
+// TTL behaviour is exercised by the integration suite at `crates/cdc/tests/row_ttl`.

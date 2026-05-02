@@ -152,7 +152,7 @@ impl JoinOperator {
 	}
 
 	fn state_shape() -> RowShape {
-		RowShape::testing(&[Type::Blob])
+		RowShape::operator_state()
 	}
 
 	/// Compute join keys for all rows in Columns

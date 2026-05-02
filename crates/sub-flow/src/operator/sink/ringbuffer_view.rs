@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_catalog::store::ringbuffer::update::{decode_ringbuffer_metadata, encode_ringbuffer_metadata};
 use reifydb_core::{
-	encoded::shape::{RowShape, RowShapeField},
+	encoded::shape::RowShape,
 	interface::{
 		catalog::{
 			flow::FlowNodeId, id::RingBufferId, ringbuffer::RingBufferMetadata, shape::ShapeId, view::View,
@@ -22,7 +22,7 @@ use reifydb_transaction::interceptor::view_row::ViewRowInterceptor;
 use reifydb_type::{
 	Result,
 	error::Error,
-	value::{blob::Blob, datetime::DateTime, row_number::RowNumber, r#type::Type},
+	value::{blob::Blob, datetime::DateTime, row_number::RowNumber},
 };
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
@@ -70,7 +70,7 @@ impl SinkRingBufferViewOperator {
 			ringbuffer_id,
 			capacity,
 			propagate_evictions,
-			state_shape: RowShape::new(vec![RowShapeField::unconstrained("state", Type::Blob)]),
+			state_shape: RowShape::operator_state(),
 		}
 	}
 

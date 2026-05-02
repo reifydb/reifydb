@@ -11,11 +11,7 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::{
-	Result,
-	error::Error,
-	value::{blob::Blob, r#type::Type},
-};
+use reifydb_type::{Result, error::Error, value::blob::Blob};
 
 use super::state::{JoinSide, JoinSideEntry};
 use crate::{
@@ -54,7 +50,7 @@ impl Store {
 		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
 				// Deserialize JoinSideEntry from the encoded
-				let shape = RowShape::testing(&[Type::Blob]);
+				let shape = RowShape::operator_state();
 				let blob = shape.get_blob(&row, 0);
 				if blob.is_empty() {
 					return Ok(None);
@@ -74,7 +70,7 @@ impl Store {
 		let serialized = to_stdvec(entry)
 			.map_err(|e| Error(Box::new(internal!("Failed to serialize JoinSideEntry: {}", e))))?;
 
-		let shape = RowShape::testing(&[Type::Blob]);
+		let shape = RowShape::operator_state();
 		let now_nanos = txn.clock().now_nanos();
 		let (mut row, created_at) = match state_get(self.node_id, txn, &key)? {
 			Some(existing) => {

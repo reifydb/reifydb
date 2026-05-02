@@ -13,7 +13,7 @@ use reifydb_core::{
 			binding::Binding,
 			config::{Config, ConfigKey},
 			dictionary::Dictionary,
-			flow::{Flow, FlowId},
+			flow::{Flow, FlowId, FlowNodeId},
 			handler::Handler,
 			id::{
 				BindingId, HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
@@ -51,11 +51,11 @@ use crate::{
 		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
 		TransactionalConfigChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityChanges,
-		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalPolicyChanges,
-		TransactionalProcedureChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
-		TransactionalRowTtlChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
-		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
-		TransactionalTestChanges, TransactionalViewChanges,
+		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalOperatorTtlChanges,
+		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
+		TransactionalRoleChanges, TransactionalRowTtlChanges, TransactionalSeriesChanges,
+		TransactionalSinkChanges, TransactionalSourceChanges, TransactionalSumTypeChanges,
+		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -551,6 +551,16 @@ impl TransactionalRowTtlChanges for QueryTransaction {
 	}
 
 	fn is_row_ttl_deleted(&self, _shape: ShapeId) -> bool {
+		false
+	}
+}
+
+impl TransactionalOperatorTtlChanges for QueryTransaction {
+	fn find_operator_ttl(&self, _node: FlowNodeId) -> Option<&Ttl> {
+		None
+	}
+
+	fn is_operator_ttl_deleted(&self, _node: FlowNodeId) -> bool {
 		false
 	}
 }

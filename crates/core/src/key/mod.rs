@@ -93,6 +93,7 @@ pub mod namespace_source;
 pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
+pub mod operator_ttl;
 pub mod policy;
 pub mod policy_op;
 pub mod primary_key;
@@ -104,6 +105,7 @@ pub mod ringbuffer;
 pub mod role;
 pub mod row;
 pub mod row_sequence;
+pub mod row_ttl;
 pub mod series;
 pub mod series_row;
 pub mod shape;
@@ -115,7 +117,6 @@ pub mod system_version;
 pub mod table;
 pub mod token;
 pub mod transaction_version;
-pub mod ttl;
 pub mod variant_handler;
 pub mod view;
 #[derive(Debug)]
@@ -376,8 +377,12 @@ impl Key {
 				// Source/Sink keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
-			KeyKind::Ttl => {
+			KeyKind::RowTtl => {
 				// Ttl keys are used directly via EncodableKey trait, not through Key enum
+				None
+			}
+			KeyKind::OperatorTtl => {
+				// OperatorTtl keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
 			KeyKind::Procedure => ProcedureKey::decode(key).map(Self::Procedure),

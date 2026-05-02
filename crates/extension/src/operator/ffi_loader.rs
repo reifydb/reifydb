@@ -5,7 +5,6 @@ use std::{
 	collections::HashMap,
 	ffi::c_void,
 	path::{Path, PathBuf},
-	ptr,
 	sync::{OnceLock, RwLock},
 };
 
@@ -13,13 +12,9 @@ use libloading::Symbol;
 use reifydb_abi::operator::{
 	column::OperatorColumnsFFI,
 	descriptor::OperatorDescriptorFFI,
-	ttl::{TTL_ANCHOR_CREATED, TTL_ANCHOR_UPDATED, TtlFFI},
 	types::{OPERATOR_MAGIC, OperatorCreateFnFFI},
 };
-use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	row::{Ttl, TtlAnchor},
-};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 use reifydb_type::value::constraint::{FFITypeConstraint, TypeConstraint};
 
@@ -133,7 +128,6 @@ impl FFIOperatorLoader {
 		path: &Path,
 		config: &[u8],
 		operator_id: FlowNodeId,
-		ttl: Option<Ttl>,
 	) -> FFIResult<Option<(OperatorDescriptorFFI, *mut c_void)>> {
 		if !self.load_operator_library(path)? {
 			return Ok(None);
@@ -151,16 +145,7 @@ impl FFIOperatorLoader {
 			*create_symbol
 		};
 
-		let ttl_ffi: Option<TtlFFI> = ttl.map(|t| TtlFFI {
-			duration_nanos: t.duration_nanos,
-			anchor: match t.anchor {
-				TtlAnchor::Created => TTL_ANCHOR_CREATED,
-				TtlAnchor::Updated => TTL_ANCHOR_UPDATED,
-			},
-		});
-		let ttl_ptr: *const TtlFFI = ttl_ffi.as_ref().map_or(ptr::null(), |t| t as *const _);
-
-		let instance = create_fn(config.as_ptr(), config.len(), operator_id.0, ttl_ptr);
+		let instance = create_fn(config.as_ptr(), config.len(), operator_id.0);
 		if instance.is_null() {
 			return Err(FFIError::Other("Failed to create operator instance".to_string()));
 		}
@@ -175,7 +160,6 @@ impl FFIOperatorLoader {
 		operator: &str,
 		operator_id: FlowNodeId,
 		config: &[u8],
-		ttl: Option<Ttl>,
 	) -> FFIResult<(OperatorDescriptorFFI, *mut c_void)> {
 		let path = self
 			.operator_paths
@@ -183,7 +167,7 @@ impl FFIOperatorLoader {
 			.ok_or_else(|| FFIError::Other(format!("Operator not found: {}", operator)))?
 			.clone();
 
-		self.load_operator(&path, config, operator_id, ttl)?
+		self.load_operator(&path, config, operator_id)?
 			.ok_or_else(|| FFIError::Other(format!("Operator library no longer valid: {}", operator)))
 	}
 

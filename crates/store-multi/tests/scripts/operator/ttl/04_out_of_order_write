@@ -1,0 +1,35 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Out-of-order write: V5 lands first (becomes current with old created_at),
+# then V3 arrives later (lower version, gets parked in __historical with
+# its own fresh created_at). The TTL scanner only inspects current's
+# anchor. Current's anchor is old, so the whole key expires - including
+# the fresher V3 historical entry.
+
+set 1=v5 version=5 created=1000
+set 1=v3 version=3 created=9000
+---
+ok
+ok
+
+count_current
+count_historical
+---
+current: 1
+historical: 1
+
+versions 1
+---
+v5 created=1000 updated=1000 value="v5"
+v3 created=9000 updated=9000 value="v3"
+
+scan_ttl mode=created duration=5000 now=10000
+---
+expired=1 versions_dropped=2
+
+count_current
+count_historical
+---
+current: 0
+historical: 0

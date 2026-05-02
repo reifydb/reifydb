@@ -15,7 +15,7 @@ use reifydb_core::{
 	util::encoding::format::raw::Raw,
 };
 use reifydb_store_multi::{
-	gc::ttl::{
+	gc::row::{
 		ScanStats,
 		scanner::{
 			ScanResult::{Exhausted, Yielded},

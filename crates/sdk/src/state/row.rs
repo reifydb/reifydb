@@ -163,7 +163,6 @@ pub mod tests {
 		encoded::key::EncodedKey,
 		interface::catalog::flow::FlowNodeId,
 		key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
-		row::Ttl,
 	};
 	use reifydb_type::value::{Value, row_number::RowNumber};
 
@@ -190,7 +189,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for RowNumberTestOperator {
-		fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>, _ttl: Option<Ttl>) -> Result<Self> {
+		fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
 

@@ -226,7 +226,7 @@ impl WindowOperator {
 			ts: config.ts,
 			compiled_group_by,
 			compiled_aggregations,
-			layout: RowShape::testing(&[Type::Blob]),
+			layout: RowShape::operator_state(),
 			routines: config.routines,
 			row_number_provider: RowNumberProvider::new(config.node),
 			runtime_context: config.runtime_context,

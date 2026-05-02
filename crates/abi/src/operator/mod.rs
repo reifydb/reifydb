@@ -4,6 +4,5 @@
 pub mod capabilities;
 pub mod column;
 pub mod descriptor;
-pub mod ttl;
 pub mod types;
 pub mod vtable;

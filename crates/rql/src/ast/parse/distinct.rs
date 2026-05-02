@@ -168,7 +168,7 @@ pub mod tests {
 	#[test]
 	fn test_distinct_with_ttl_duration_only() {
 		let bump = Bump::new();
-		let source = "DISTINCT { x } WITH { ttl: { duration: '1h' } }";
+		let source = "DISTINCT { x } WITH { row: { duration: '1h' } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -177,7 +177,7 @@ pub mod tests {
 		let Ast::Distinct(distinct) = result.first_unchecked() else {
 			panic!("Expected Distinct operator");
 		};
-		let ttl = distinct.ttl.as_ref().expect("expected ttl");
+		let ttl = distinct.ttl.as_ref().expect("expected row");
 		assert_eq!(ttl.duration.fragment.text(), "1h");
 		assert!(ttl.anchor.is_none());
 		assert!(ttl.mode.is_none());
@@ -186,7 +186,7 @@ pub mod tests {
 	#[test]
 	fn test_distinct_with_ttl_full_config() {
 		let bump = Bump::new();
-		let source = "DISTINCT { x } WITH { ttl: { duration: '5m', on: updated, mode: drop } }";
+		let source = "DISTINCT { x } WITH { row: { duration: '5m', on: updated, mode: drop } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -195,7 +195,7 @@ pub mod tests {
 		let Ast::Distinct(distinct) = result.first_unchecked() else {
 			panic!("Expected Distinct operator");
 		};
-		let ttl = distinct.ttl.as_ref().expect("expected ttl");
+		let ttl = distinct.ttl.as_ref().expect("expected row");
 		assert_eq!(ttl.duration.fragment.text(), "5m");
 		assert_eq!(ttl.anchor.as_ref().unwrap().fragment.text(), "updated");
 		assert_eq!(ttl.mode.as_ref().unwrap().fragment.text(), "drop");

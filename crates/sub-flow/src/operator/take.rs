@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_type::{
 	Result,
 	error::Error,
-	value::{blob::Blob, row_number::RowNumber, r#type::Type},
+	value::{blob::Blob, row_number::RowNumber},
 };
 use serde::{Deserialize, Serialize};
 
@@ -47,7 +47,7 @@ impl TakeOperator {
 			parent,
 			node,
 			limit,
-			shape: RowShape::testing(&[Type::Blob]),
+			shape: RowShape::operator_state(),
 		}
 	}
 

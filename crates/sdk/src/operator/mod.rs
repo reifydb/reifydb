@@ -16,7 +16,7 @@ pub mod view_row;
 use change::BorrowedChange;
 use column::OperatorColumn;
 use context::OperatorContext;
-use reifydb_core::{interface::catalog::flow::FlowNodeId, row::Ttl};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_type::value::datetime::DateTime;
 
 use crate::error::Result;
@@ -43,12 +43,7 @@ pub struct Tick {
 
 pub trait FFIOperator: 'static {
 	/// Construct an operator instance.
-	///
-	/// `ttl` carries the operator-state TTL configured via `WITH { ttl: { ... } }`
-	/// in the flow DDL. `None` means no eviction (the absent-clause default;
-	/// state grows unbounded). When `Some`, `cleanup_mode` is always `Drop` -
-	/// operator-state cleanup is silent by design.
-	fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>, ttl: Option<Ttl>) -> Result<Self>
+	fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self>
 	where
 		Self: Sized;
 

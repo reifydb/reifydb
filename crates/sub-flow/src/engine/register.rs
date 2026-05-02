@@ -419,7 +419,7 @@ impl FlowEngine {
 			Apply {
 				operator,
 				expressions,
-				ttl,
+				ttl: _,
 			} => {
 				let config = evaluate_operator_config(
 					expressions.as_slice(),
@@ -448,12 +448,8 @@ impl FlowEngine {
 							))));
 						}
 
-						let ffi_op = self.create_ffi_operator(
-							operator.as_str(),
-							node.id,
-							&config,
-							ttl,
-						)?;
+						let ffi_op =
+							self.create_ffi_operator(operator.as_str(), node.id, &config)?;
 
 						self.operators.insert(
 							node.id,
@@ -465,7 +461,7 @@ impl FlowEngine {
 					#[cfg(not(reifydb_target = "native"))]
 					{
 						let _ = operator;
-						let _ = ttl;
+
 						return Err(Error(Box::new(internal!(
 							"FFI operators are not supported in WASM"
 						))));

@@ -162,7 +162,7 @@ struct DistinctEntry {
 	/// The first row that had this distinct value
 	first_row: SerializedRow,
 	/// Nanos since epoch when this entry was last touched (insert or update).
-	/// Used by tick-driven ttl: entries older than `cutoff` are evicted.
+	/// Used by tick-driven row: entries older than `cutoff` are evicted.
 	last_seen_nanos: u64,
 }
 
@@ -220,7 +220,7 @@ impl DistinctOperator {
 			parent,
 			node,
 			compiled_expressions,
-			shape: RowShape::testing(&[Type::Blob]),
+			shape: RowShape::operator_state(),
 			routines,
 			runtime_context,
 			ttl_nanos,
@@ -704,7 +704,7 @@ mod ttl_tests {
 	fn tick_evicts_only_entries_past_cutoff() {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
-		// 10ms ttl
+		// 10ms row
 		let op = make_op(2, Some(10_000_000), &engine);
 		let admin = engine.begin_admin(IdentityId::system()).unwrap();
 		let mut txn = FlowTransaction::deferred(
@@ -719,7 +719,7 @@ mod ttl_tests {
 		op.apply(&mut txn, build_insert(42, 1)).unwrap();
 		op.apply(&mut txn, build_insert(43, 2)).unwrap();
 
-		// Advance to t = 1005ms (5ms < 10ms ttl) - tick must NOT evict
+		// Advance to t = 1005ms (5ms < 10ms row) - tick must NOT evict
 		mock_clock.advance_millis(5);
 		let result = op
 			.tick(
@@ -733,7 +733,7 @@ mod ttl_tests {
 		txn.flush_operator_states().unwrap();
 		assert_eq!(op.load_distinct_state(&mut txn).unwrap().entries.len(), 2);
 
-		// Advance to t = 1020ms (20ms > 10ms ttl) - tick must evict both
+		// Advance to t = 1020ms (20ms > 10ms row) - tick must evict both
 		mock_clock.advance_millis(15);
 		let result = op
 			.tick(
@@ -772,7 +772,7 @@ mod ttl_tests {
 		// Insert k=43 at t = 1015ms (this and k=42 are both fresh)
 		op.apply(&mut txn, build_insert(43, 2)).unwrap();
 
-		// Tick at t = 1020ms (5ms since both were last touched - within ttl)
+		// Tick at t = 1020ms (5ms since both were last touched - within row)
 		mock_clock.advance_millis(5);
 		op.tick(
 			&mut txn,

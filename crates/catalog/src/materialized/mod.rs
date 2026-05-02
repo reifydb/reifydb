@@ -13,6 +13,7 @@ pub mod load;
 pub mod migration;
 pub mod namespace;
 pub mod operator_retention_strategy;
+pub mod operator_ttl;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
@@ -166,6 +167,8 @@ pub struct MaterializedCatalogInner {
 	pub(crate) operator_retention_strategies: SkipMap<FlowNodeId, MultiVersionRetentionStrategy>,
 	/// MultiVersion TTL configurations indexed by shape ID
 	pub(crate) row_ttls: SkipMap<ShapeId, MultiVersionRowTtl>,
+	/// MultiVersion operator-state TTL configurations indexed by flow node ID
+	pub(crate) operator_ttls: SkipMap<FlowNodeId, MultiVersionRowTtl>,
 	/// MultiVersion dictionary definitions indexed by dictionary ID
 	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionary>,
 	/// Index from (namespace_id, dictionary_name) to dictionary ID for fast name lookups
@@ -290,6 +293,7 @@ impl MaterializedCatalog {
 			shape_retention_strategies: SkipMap::new(),
 			operator_retention_strategies: SkipMap::new(),
 			row_ttls: SkipMap::new(),
+			operator_ttls: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),
 			sumtypes: SkipMap::new(),

@@ -233,7 +233,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		self.history.clear();
 
 		// Recreate the operator
-		self.operator = T::new(self.node_id, &self.config, None)?;
+		self.operator = T::new(self.node_id, &self.config)?;
 		Ok(())
 	}
 
@@ -365,7 +365,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 		});
 
 		// Create the operator
-		let operator = T::new(self.node_id, &self.config, None)?;
+		let operator = T::new(self.node_id, &self.config)?;
 
 		Ok(OperatorTestHarness {
 			operator,
@@ -422,7 +422,6 @@ pub mod tests {
 		common::CommitVersion,
 		encoded::{key::IntoEncodedKey, shape::RowShape},
 		interface::catalog::flow::FlowNodeId,
-		row::Ttl,
 	};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
@@ -455,7 +454,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for TestOperator {
-		fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>, _ttl: Option<Ttl>) -> Result<Self> {
+		fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self {
 				_node_id: operator_id,
 				_config: config.clone(),
@@ -486,7 +485,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for StatefulTestOperator {
-		fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>, _ttl: Option<Ttl>) -> Result<Self> {
+		fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
 

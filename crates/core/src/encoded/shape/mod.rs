@@ -13,7 +13,7 @@ use std::{
 	iter,
 	ops::Deref,
 	ptr,
-	sync::{Arc, OnceLock},
+	sync::{Arc, LazyLock, OnceLock},
 };
 
 use reifydb_type::{
@@ -433,7 +433,21 @@ impl RowShape {
 				.collect(),
 		)
 	}
+
+	/// Canonical row layout for operator state: a single Blob column named "state".
+	///
+	/// All operator-state writes go through this shape so the persisted bytes are
+	/// a regular `EncodedRow` with the standard 24-byte header (`created_at_nanos`,
+	/// `updated_at_nanos`). The actual operator-defined value lives in the Blob
+	/// column. This lets the row-TTL eviction path read every operator-state row
+	/// uniformly without per-operator schema knowledge.
+	pub fn operator_state() -> Self {
+		OPERATOR_STATE_SHAPE.clone()
+	}
 }
+
+static OPERATOR_STATE_SHAPE: LazyLock<RowShape> =
+	LazyLock::new(|| RowShape::new(vec![RowShapeField::unconstrained("state", Type::Blob)]));
 
 #[cfg(test)]
 mod tests {

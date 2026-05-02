@@ -22,7 +22,7 @@ fn test_row_ttl_sync_to_materialized_catalog() {
 	engine.admin("CREATE NAMESPACE test");
 	engine.admin(r#"
 		CREATE TABLE test::users { id: int4 } WITH {
-			ttl: { duration: '1h', on: created, mode: drop }
+			row: { duration: '1h', on: created, mode: drop }
 		};
 	"#);
 
@@ -54,7 +54,7 @@ fn test_row_ttl_replication_sync() {
 		panic!("{e:?}");
 	}
 	let r = txn.rql(
-		"CREATE TABLE test::users { id: int4 } WITH { ttl: { duration: '1m', on: created, mode: drop } }",
+		"CREATE TABLE test::users { id: int4 } WITH { row: { duration: '1m', on: created, mode: drop } }",
 		Default::default(),
 	);
 	if let Some(e) = r.error {

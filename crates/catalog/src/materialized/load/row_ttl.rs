@@ -3,7 +3,7 @@
 
 use reifydb_core::key::{
 	EncodableKey,
-	ttl::{RowTtlKey, RowTtlKeyRange},
+	row_ttl::{RowTtlKey, RowTtlKeyRange},
 };
 use reifydb_transaction::transaction::Transaction;
 use tracing::warn;

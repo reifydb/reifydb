@@ -9,7 +9,7 @@ use reifydb_core::{
 		binding::Binding,
 		config::{Config, ConfigKey},
 		dictionary::Dictionary,
-		flow::{Flow, FlowId},
+		flow::{Flow, FlowId, FlowNodeId},
 		handler::Handler,
 		id::{
 			BindingId, HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId,
@@ -59,6 +59,7 @@ pub trait TransactionalChanges:
 	+ TransactionalViewChanges
 	+ TransactionalConfigChanges
 	+ TransactionalRowTtlChanges
+	+ TransactionalOperatorTtlChanges
 {
 }
 
@@ -76,6 +77,12 @@ pub trait TransactionalRowTtlChanges {
 	fn find_row_ttl(&self, shape: ShapeId) -> Option<&Ttl>;
 
 	fn is_row_ttl_deleted(&self, shape: ShapeId) -> bool;
+}
+
+pub trait TransactionalOperatorTtlChanges {
+	fn find_operator_ttl(&self, node: FlowNodeId) -> Option<&Ttl>;
+
+	fn is_operator_ttl_deleted(&self, node: FlowNodeId) -> bool;
 }
 
 pub trait TransactionalConfigChanges {
@@ -323,6 +330,8 @@ pub struct TransactionalCatalogChanges {
 	pub view: Vec<Change<View>>,
 	/// All row TTL changes in order (no coalescing)
 	pub row_ttl: Vec<Change<(ShapeId, Ttl)>>,
+	/// All per-operator TTL changes in order (no coalescing)
+	pub operator_ttl: Vec<Change<(FlowNodeId, Ttl)>>,
 	/// Order of operations for replay/rollback
 	pub log: Vec<Operation>,
 }
@@ -351,6 +360,7 @@ pub struct CatalogChangesSavepoint {
 	policy_len: usize,
 	view_len: usize,
 	row_ttl_len: usize,
+	operator_ttl_len: usize,
 	log_len: usize,
 }
 
@@ -380,6 +390,7 @@ impl TransactionalCatalogChanges {
 			policy_len: self.policy.len(),
 			view_len: self.view.len(),
 			row_ttl_len: self.row_ttl.len(),
+			operator_ttl_len: self.operator_ttl.len(),
 			log_len: self.log.len(),
 		}
 	}
@@ -408,6 +419,7 @@ impl TransactionalCatalogChanges {
 		self.policy.truncate(sp.policy_len);
 		self.view.truncate(sp.view_len);
 		self.row_ttl.truncate(sp.row_ttl_len);
+		self.operator_ttl.truncate(sp.operator_ttl_len);
 		self.log.truncate(sp.log_len);
 	}
 
@@ -762,6 +774,21 @@ impl TransactionalCatalogChanges {
 			op,
 		});
 	}
+
+	pub fn add_operator_ttl_change(&mut self, change: Change<(FlowNodeId, Ttl)>) {
+		let node = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|(n, _)| *n)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.operator_ttl.push(change);
+		self.log.push(Operation::OperatorTtl {
+			node,
+			op,
+		});
+	}
 }
 
 /// Represents a single change
@@ -880,6 +907,10 @@ pub enum Operation {
 		shape: ShapeId,
 		op: OperationType,
 	},
+	OperatorTtl {
+		node: FlowNodeId,
+		op: OperationType,
+	},
 }
 
 impl TransactionalCatalogChanges {
@@ -909,6 +940,7 @@ impl TransactionalCatalogChanges {
 			policy: Vec::new(),
 			view: Vec::new(),
 			row_ttl: Vec::new(),
+			operator_ttl: Vec::new(),
 			log: Vec::new(),
 		}
 	}

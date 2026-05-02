@@ -15,8 +15,6 @@ use postcard::to_stdvec;
 use reifydb_catalog::catalog::Catalog;
 #[cfg(reifydb_target = "native")]
 use reifydb_core::internal;
-#[cfg(reifydb_target = "native")]
-use reifydb_core::row::Ttl;
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -100,17 +98,15 @@ impl FlowEngine {
 		operator: &str,
 		node_id: FlowNodeId,
 		config: &BTreeMap<String, Value>,
-		ttl: Option<Ttl>,
 	) -> Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
 		let mut loader_write = loader.write().unwrap();
 
-		// Serialize config to postcard
 		let config_bytes = to_stdvec(config)
 			.map_err(|e| Error(Box::new(internal!("Failed to serialize operator config: {:?}", e))))?;
 
 		let (descriptor, instance) = loader_write
-			.create_operator_by_name(operator, node_id, &config_bytes, ttl)
+			.create_operator_by_name(operator, node_id, &config_bytes)
 			.map_err(|e| Error(Box::new(internal!("Failed to create FFI operator: {:?}", e))))?;
 
 		Ok(Box::new(FFIOperator::new(descriptor, instance, node_id, self.executor.clone())))

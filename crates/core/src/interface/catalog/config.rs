@@ -44,6 +44,8 @@ pub enum ConfigKey {
 	QueryRowBatchSize,
 	RowTtlScanBatchSize,
 	RowTtlScanInterval,
+	OperatorTtlScanBatchSize,
+	OperatorTtlScanInterval,
 	HistoricalGcBatchSize,
 	HistoricalGcInterval,
 	CdcTtlDuration,
@@ -63,6 +65,8 @@ impl ConfigKey {
 			Self::QueryRowBatchSize,
 			Self::RowTtlScanBatchSize,
 			Self::RowTtlScanInterval,
+			Self::OperatorTtlScanBatchSize,
+			Self::OperatorTtlScanInterval,
 			Self::HistoricalGcBatchSize,
 			Self::HistoricalGcInterval,
 			Self::CdcTtlDuration,
@@ -82,6 +86,8 @@ impl ConfigKey {
 			Self::QueryRowBatchSize => Value::Uint2(32),
 			Self::RowTtlScanBatchSize => Value::Uint8(10000),
 			Self::RowTtlScanInterval => Value::Duration(Duration::from_seconds(60).unwrap()),
+			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
+			Self::OperatorTtlScanInterval => Value::Duration(Duration::from_seconds(60).unwrap()),
 			Self::HistoricalGcBatchSize => Value::Uint8(50_000),
 			Self::HistoricalGcInterval => Value::Duration(Duration::from_seconds(30).unwrap()),
 			Self::CdcTtlDuration => Value::None {
@@ -105,6 +111,12 @@ impl ConfigKey {
 			}
 			Self::RowTtlScanBatchSize => "Max rows to examine per batch during a row TTL scan.",
 			Self::RowTtlScanInterval => "How often the row TTL actor should scan for expired rows.",
+			Self::OperatorTtlScanBatchSize => {
+				"Max rows to examine per batch during an operator-state TTL scan."
+			}
+			Self::OperatorTtlScanInterval => {
+				"How often the operator-state TTL actor should scan for expired rows."
+			}
 			Self::HistoricalGcBatchSize => {
 				"Max historical (key, version) pairs scanned per shape per historical GC tick."
 			}
@@ -139,6 +151,8 @@ impl ConfigKey {
 			Self::QueryRowBatchSize => false,
 			Self::RowTtlScanBatchSize => false,
 			Self::RowTtlScanInterval => false,
+			Self::OperatorTtlScanBatchSize => false,
+			Self::OperatorTtlScanInterval => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => false,
@@ -158,6 +172,8 @@ impl ConfigKey {
 			Self::QueryRowBatchSize => &[Type::Uint2],
 			Self::RowTtlScanBatchSize => &[Type::Uint8],
 			Self::RowTtlScanInterval => &[Type::Duration],
+			Self::OperatorTtlScanBatchSize => &[Type::Uint8],
+			Self::OperatorTtlScanInterval => &[Type::Duration],
 			Self::HistoricalGcBatchSize => &[Type::Uint8],
 			Self::HistoricalGcInterval => &[Type::Duration],
 			Self::CdcTtlDuration => &[Type::Duration],
@@ -181,6 +197,8 @@ impl ConfigKey {
 			Self::QueryRowBatchSize => false,
 			Self::RowTtlScanBatchSize => false,
 			Self::RowTtlScanInterval => false,
+			Self::OperatorTtlScanBatchSize => false,
+			Self::OperatorTtlScanInterval => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => true,
@@ -348,6 +366,8 @@ impl fmt::Display for ConfigKey {
 			Self::QueryRowBatchSize => write!(f, "QUERY_ROW_BATCH_SIZE"),
 			Self::RowTtlScanBatchSize => write!(f, "ROW_TTL_SCAN_BATCH_SIZE"),
 			Self::RowTtlScanInterval => write!(f, "ROW_TTL_SCAN_INTERVAL"),
+			Self::OperatorTtlScanBatchSize => write!(f, "OPERATOR_TTL_SCAN_BATCH_SIZE"),
+			Self::OperatorTtlScanInterval => write!(f, "OPERATOR_TTL_SCAN_INTERVAL"),
 			Self::HistoricalGcBatchSize => write!(f, "HISTORICAL_GC_BATCH_SIZE"),
 			Self::HistoricalGcInterval => write!(f, "HISTORICAL_GC_INTERVAL"),
 			Self::CdcTtlDuration => write!(f, "CDC_TTL_DURATION"),
@@ -371,6 +391,8 @@ impl FromStr for ConfigKey {
 			"QUERY_ROW_BATCH_SIZE" => Ok(Self::QueryRowBatchSize),
 			"ROW_TTL_SCAN_BATCH_SIZE" => Ok(Self::RowTtlScanBatchSize),
 			"ROW_TTL_SCAN_INTERVAL" => Ok(Self::RowTtlScanInterval),
+			"OPERATOR_TTL_SCAN_BATCH_SIZE" => Ok(Self::OperatorTtlScanBatchSize),
+			"OPERATOR_TTL_SCAN_INTERVAL" => Ok(Self::OperatorTtlScanInterval),
 			"HISTORICAL_GC_BATCH_SIZE" => Ok(Self::HistoricalGcBatchSize),
 			"HISTORICAL_GC_INTERVAL" => Ok(Self::HistoricalGcInterval),
 			"CDC_TTL_DURATION" => Ok(Self::CdcTtlDuration),
@@ -543,7 +565,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 14);
+		assert_eq!(all.len(), 16);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));

@@ -74,7 +74,7 @@ impl SinkSubscriptionOperator {
 			node,
 			subscription,
 			counter: Counter::with_key(node, counter_key, CounterDirection::Descending),
-			shape: RowShape::testing(&[Type::Blob]),
+			shape: RowShape::operator_state(),
 		}
 	}
 
