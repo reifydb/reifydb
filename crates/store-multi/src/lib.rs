@@ -12,6 +12,7 @@ use reifydb_core::{
 use reifydb_type::Result;
 
 pub mod cold;
+pub mod flush;
 pub mod gc;
 pub mod hot;
 pub mod tier;
@@ -75,12 +76,40 @@ impl MultiStore {
 		MultiStore::Standard(StandardMultiStore::testing_memory_with_eventbus(event_bus))
 	}
 
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_warm_sqlite() -> Self {
+		MultiStore::Standard(StandardMultiStore::testing_memory_with_warm_sqlite())
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_warm_sqlite_with_eventbus(event_bus: EventBus) -> Self {
+		MultiStore::Standard(StandardMultiStore::testing_memory_with_warm_sqlite_with_eventbus(event_bus))
+	}
+
+	/// Block until the actor has drained its accumulated `pending` map of
+	/// dirty keys (the same code the periodic Tick runs), and the result is
+	/// in warm. No-op when the warm tier is not configured.
+	pub fn flush_pending_blocking(&self) {
+		match self {
+			MultiStore::Standard(store) => store.flush_pending_blocking(),
+		}
+	}
+
 	/// Get access to the hot storage tier.
 	///
 	/// Returns `None` if the hot tier is not configured.
 	pub fn hot(&self) -> Option<&hot::storage::HotStorage> {
 		match self {
 			MultiStore::Standard(store) => store.hot(),
+		}
+	}
+
+	/// Get access to the warm storage tier.
+	///
+	/// Returns `None` if the warm tier is not configured.
+	pub fn warm(&self) -> Option<&warm::WarmStorage> {
+		match self {
+			MultiStore::Standard(store) => store.warm(),
 		}
 	}
 }

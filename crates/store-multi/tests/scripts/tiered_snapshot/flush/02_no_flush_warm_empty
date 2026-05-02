@@ -1,0 +1,38 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Defect targets:
+#   - stray flush in commit hot path
+#   - listener writing to warm directly instead of just queueing
+
+set a=1   version=1
+set b=2   version=2
+set c=3   version=3
+---
+ok
+
+# Without flush, warm must remain empty
+warm_get a version=3
+---
+"a" => None
+
+warm_get b version=3
+---
+"b" => None
+
+warm_get c version=3
+---
+"c" => None
+
+# Cascade still works because hot has the data
+get a version=3
+---
+"a" => "1"
+
+get b version=3
+---
+"b" => "2"
+
+get c version=3
+---
+"c" => "3"

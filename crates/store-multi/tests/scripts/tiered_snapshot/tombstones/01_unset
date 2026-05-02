@@ -1,0 +1,38 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Defect targets:
+#   - listener silently dropping Unset deltas
+#   - tombstones not being flushed (warm reports stale "alive")
+#   - cascade incorrectly falling through hot tombstone to warm/cold
+
+set k=alive   version=1
+flush
+---
+ok
+
+# Warm has the live value
+warm_get k version=1
+---
+"k" => "alive"
+
+# Now tombstone via Unset
+unset k=alive   version=2
+flush
+---
+ok
+
+# Warm now reports None at and after v=2 (tombstone)
+warm_get k version=2
+---
+"k" => None
+
+# Cascade at v=2: hot tombstone short-circuits to None
+get k version=2
+---
+"k" => None
+
+# Cascade at v=1: hot's historical still has alive
+get k version=1
+---
+"k" => "alive"

@@ -1,0 +1,33 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Defect targets:
+#   - warm storing the wrong version (e.g. an earlier one)
+#   - drain mishandling a key written multiple times in one batch (last-write-wins
+#     in upsert_pending should pick the highest version)
+#   - warm overwriting itself with stale data instead of latest
+
+set k=A   version=1
+set k=B   version=2
+set k=C   version=3
+flush
+---
+ok
+
+# Warm stores ONLY the latest committed value
+warm_get k version=3
+---
+"k" => "C"
+
+# Cascade reads at older versions still find A and B via hot's __historical
+get k version=1
+---
+"k" => "A"
+
+get k version=2
+---
+"k" => "B"
+
+get k version=3
+---
+"k" => "C"

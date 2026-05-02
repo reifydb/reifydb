@@ -1,0 +1,35 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Defect targets:
+#   - upsert_pending coalescing logic preferring an older tombstone over a
+#     newer set
+#   - warm row not being overwritten by a subsequent set at higher version
+#   - drain emitting only the tombstone and dropping the resurrection
+
+set k=A     version=1
+unset k=A   version=2
+set k=B     version=3
+flush
+---
+ok
+
+# Warm holds the resurrected value at the highest version
+warm_get k version=3
+---
+"k" => "B"
+
+# Cascade at v=3 sees B
+get k version=3
+---
+"k" => "B"
+
+# Cascade at v=2 sees the tombstone via hot's __historical
+get k version=2
+---
+"k" => None
+
+# Cascade at v=1 sees A
+get k version=1
+---
+"k" => "A"

@@ -1,0 +1,49 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Defect targets:
+#   - missing or broken regression guard in build_upsert_warm_current_sql
+#   - drain writing the older version over the newer one in warm
+#
+# Sequence:
+#   1. Commit at v=3 (becomes hot's __current).
+#   2. Flush -> warm has (k, v=3, "high").
+#   3. Commit at v=1 (older than current; lands in hot's __historical).
+#   4. Flush -> drain reads hot at v=1, finds "low" (from historical), sends
+#      upsert (k, v=1, "low") to warm. Warm's regression guard rejects it
+#      because warm's existing version (3) > incoming (1). Warm stays at
+#      (k, v=3, "high").
+
+set k=high   version=3
+flush
+---
+ok
+
+set k=low   version=1
+flush
+---
+ok
+
+# Warm must NOT have regressed
+warm_get k version=3
+---
+"k" => "high"
+
+# Reads below the stored version are rejected
+warm_get k version=1
+---
+"k" => None
+
+# Hot still serves v=1 from its historical chain
+hot_get k version=1
+---
+"k" => "low"
+
+# Cascade is historical-aware via hot
+get k version=1
+---
+"k" => "low"
+
+get k version=3
+---
+"k" => "high"

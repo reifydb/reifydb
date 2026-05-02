@@ -180,6 +180,10 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 			Delta::Remove {
 				key,
 			} => {
+				deletes.push(MultiDelete {
+					key: key.clone(),
+					value_bytes: 0,
+				});
 				batches.entry(table).or_default().push((key.0.clone(), None));
 			}
 			Delta::Drop {
@@ -608,11 +612,10 @@ impl StandardMultiStore {
 			}
 		}
 
-		// Reverse sort + take(batch_size) before tombstone filtering.
+		// All collected entries must be returned or dropped; cursor already advanced past them.
 		let items: Vec<MultiVersionRow> = collected
 			.into_iter()
 			.rev()
-			.take(batch_size)
 			.filter_map(|(key_bytes, (v, value))| {
 				value.map(|val| MultiVersionRow {
 					key: EncodedKey(CowVec::new(key_bytes)),
@@ -622,7 +625,7 @@ impl StandardMultiStore {
 			})
 			.collect();
 
-		let has_more = items.len() >= batch_size || !cursor.exhausted;
+		let has_more = !cursor.exhausted;
 
 		Ok(MultiVersionBatch {
 			items,

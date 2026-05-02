@@ -1,0 +1,24 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Defect targets:
+#   - listener silently dropping MultiCommittedEvent
+#   - drain skipping kinds in pending
+#   - flush_pending_blocking being a no-op
+
+set k=1     version=1
+---
+ok
+
+# No flush yet -> warm must be empty
+warm_get k version=1
+---
+"k" => None
+
+flush
+---
+ok
+
+warm_get k version=1
+---
+"k" => "1"
