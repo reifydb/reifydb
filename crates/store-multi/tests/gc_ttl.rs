@@ -15,12 +15,15 @@ use reifydb_core::{
 	util::encoding::format::raw::Raw,
 };
 use reifydb_store_multi::{
+	gc::ttl::{
+		ScanStats,
+		scanner::{
+			ScanResult::{Exhausted, Yielded},
+			drop_expired_keys, scan_shape_by_created_at, scan_shape_by_updated_at,
+		},
+	},
 	hot::storage::HotStorage,
 	tier::{RangeCursor, TierStorage},
-	ttl::{
-		ScanStats,
-		scanner::{drop_expired_keys, scan_shape_by_created_at, scan_shape_by_updated_at},
-	},
 };
 use reifydb_testing::{
 	tempdir::temp_dir,
@@ -192,8 +195,8 @@ impl testscript::runner::Runner for Runner {
 					}
 
 					match result {
-						reifydb_store_multi::ttl::scanner::ScanResult::Yielded => continue,
-						reifydb_store_multi::ttl::scanner::ScanResult::Exhausted => break,
+						Yielded => continue,
+						Exhausted => break,
 					}
 				}
 

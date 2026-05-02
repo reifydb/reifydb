@@ -173,6 +173,13 @@ where
 		self.inner.command.done_until()
 	}
 
+	/// Highest version strictly below which no in-flight read transaction is
+	/// observing; versions less than this are GC-safe in `__historical`.
+	#[instrument(name = "transaction::manager::query_done_until", level = "trace", skip(self))]
+	pub fn query_done_until(&self) -> CommitVersion {
+		self.inner.query.done_until()
+	}
+
 	/// Wait for the watermark to reach the given version with a timeout.
 	/// Returns true if the watermark reached the target, false if timeout occurred.
 	#[instrument(name = "transaction::manager::wait_for_mark_timeout", level = "trace", skip(self))]
@@ -310,6 +317,13 @@ impl MultiTransaction {
 	/// Clear the conflict detection window after bootstrap.
 	pub fn bootstrapping_completed(&self) {
 		self.0.bootstrapping_completed();
+	}
+
+	/// Highest version strictly below which no in-flight read transaction is
+	/// observing; versions less than this are GC-safe in `__historical`.
+	#[instrument(name = "transaction::query_done_until", level = "trace", skip(self))]
+	pub fn query_done_until(&self) -> CommitVersion {
+		self.0.tm.query_done_until()
 	}
 }
 

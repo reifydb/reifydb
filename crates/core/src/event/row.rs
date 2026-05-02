@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use crate::interface::catalog::shape::ShapeId;
+use crate::{common::CommitVersion, interface::catalog::shape::ShapeId};
 
 define_event! {
 	/// Emitted after a row TTL scan cycle completes.
@@ -14,5 +14,13 @@ define_event! {
 		pub versions_dropped: u64,
 		pub bytes_discovered: HashMap<ShapeId, u64>,
 		pub bytes_reclaimed: HashMap<ShapeId, u64>,
+	}
+}
+
+define_event! {
+	pub struct HistoricalGcSweepEvent {
+		pub cutoff: CommitVersion,
+		pub shapes_scanned: u64,
+		pub versions_dropped: u64,
 	}
 }

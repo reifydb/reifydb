@@ -44,6 +44,8 @@ pub enum ConfigKey {
 	QueryRowBatchSize,
 	RowTtlScanBatchSize,
 	RowTtlScanInterval,
+	HistoricalGcBatchSize,
+	HistoricalGcInterval,
 	CdcTtlDuration,
 	CdcCompactInterval,
 	CdcCompactBlockSize,
@@ -61,6 +63,8 @@ impl ConfigKey {
 			Self::QueryRowBatchSize,
 			Self::RowTtlScanBatchSize,
 			Self::RowTtlScanInterval,
+			Self::HistoricalGcBatchSize,
+			Self::HistoricalGcInterval,
 			Self::CdcTtlDuration,
 			Self::CdcCompactInterval,
 			Self::CdcCompactBlockSize,
@@ -78,6 +82,8 @@ impl ConfigKey {
 			Self::QueryRowBatchSize => Value::Uint2(32),
 			Self::RowTtlScanBatchSize => Value::Uint8(10000),
 			Self::RowTtlScanInterval => Value::Duration(Duration::from_seconds(60).unwrap()),
+			Self::HistoricalGcBatchSize => Value::Uint8(50_000),
+			Self::HistoricalGcInterval => Value::Duration(Duration::from_seconds(30).unwrap()),
 			Self::CdcTtlDuration => Value::None {
 				inner: Type::Duration,
 			},
@@ -99,6 +105,12 @@ impl ConfigKey {
 			}
 			Self::RowTtlScanBatchSize => "Max rows to examine per batch during a row TTL scan.",
 			Self::RowTtlScanInterval => "How often the row TTL actor should scan for expired rows.",
+			Self::HistoricalGcBatchSize => {
+				"Max historical (key, version) pairs scanned per shape per historical GC tick."
+			}
+			Self::HistoricalGcInterval => {
+				"How often the historical-version GC actor sweeps __historical for versions older than the oracle read watermark."
+			}
 			Self::CdcTtlDuration => {
 				"Maximum age of CDC entries before eviction. When unset, CDC is retained forever; \
 				 when set, must be > 0 and entries older than this duration are evicted regardless \
@@ -127,6 +139,8 @@ impl ConfigKey {
 			Self::QueryRowBatchSize => false,
 			Self::RowTtlScanBatchSize => false,
 			Self::RowTtlScanInterval => false,
+			Self::HistoricalGcBatchSize => false,
+			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => false,
 			Self::CdcCompactInterval => false,
 			Self::CdcCompactBlockSize => false,
@@ -144,6 +158,8 @@ impl ConfigKey {
 			Self::QueryRowBatchSize => &[Type::Uint2],
 			Self::RowTtlScanBatchSize => &[Type::Uint8],
 			Self::RowTtlScanInterval => &[Type::Duration],
+			Self::HistoricalGcBatchSize => &[Type::Uint8],
+			Self::HistoricalGcInterval => &[Type::Duration],
 			Self::CdcTtlDuration => &[Type::Duration],
 			Self::CdcCompactInterval => &[Type::Duration],
 			Self::CdcCompactBlockSize => &[Type::Uint8],
@@ -165,6 +181,8 @@ impl ConfigKey {
 			Self::QueryRowBatchSize => false,
 			Self::RowTtlScanBatchSize => false,
 			Self::RowTtlScanInterval => false,
+			Self::HistoricalGcBatchSize => false,
+			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => true,
 			Self::CdcCompactInterval => false,
 			Self::CdcCompactBlockSize => false,
@@ -221,6 +239,22 @@ impl ConfigKey {
 			Self::CdcCompactZstdLevel => match value {
 				Value::Uint1(v) if (1..=22).contains(v) => Ok(()),
 				Value::Uint1(_) => Err("CDC_COMPACT_ZSTD_LEVEL must be in [1, 22]".to_string()),
+				_ => Ok(()),
+			},
+			Self::HistoricalGcBatchSize => match value {
+				Value::Uint8(0) => {
+					Err("HISTORICAL_GC_BATCH_SIZE must be greater than zero".to_string())
+				}
+				_ => Ok(()),
+			},
+			Self::HistoricalGcInterval => match value {
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("HISTORICAL_GC_INTERVAL must be greater than zero".to_string())
+					}
+				}
 				_ => Ok(()),
 			},
 			_ => Ok(()),
@@ -314,6 +348,8 @@ impl fmt::Display for ConfigKey {
 			Self::QueryRowBatchSize => write!(f, "QUERY_ROW_BATCH_SIZE"),
 			Self::RowTtlScanBatchSize => write!(f, "ROW_TTL_SCAN_BATCH_SIZE"),
 			Self::RowTtlScanInterval => write!(f, "ROW_TTL_SCAN_INTERVAL"),
+			Self::HistoricalGcBatchSize => write!(f, "HISTORICAL_GC_BATCH_SIZE"),
+			Self::HistoricalGcInterval => write!(f, "HISTORICAL_GC_INTERVAL"),
 			Self::CdcTtlDuration => write!(f, "CDC_TTL_DURATION"),
 			Self::CdcCompactInterval => write!(f, "CDC_COMPACT_INTERVAL"),
 			Self::CdcCompactBlockSize => write!(f, "CDC_COMPACT_BLOCK_SIZE"),
@@ -335,6 +371,8 @@ impl FromStr for ConfigKey {
 			"QUERY_ROW_BATCH_SIZE" => Ok(Self::QueryRowBatchSize),
 			"ROW_TTL_SCAN_BATCH_SIZE" => Ok(Self::RowTtlScanBatchSize),
 			"ROW_TTL_SCAN_INTERVAL" => Ok(Self::RowTtlScanInterval),
+			"HISTORICAL_GC_BATCH_SIZE" => Ok(Self::HistoricalGcBatchSize),
+			"HISTORICAL_GC_INTERVAL" => Ok(Self::HistoricalGcInterval),
 			"CDC_TTL_DURATION" => Ok(Self::CdcTtlDuration),
 			"CDC_COMPACT_INTERVAL" => Ok(Self::CdcCompactInterval),
 			"CDC_COMPACT_BLOCK_SIZE" => Ok(Self::CdcCompactBlockSize),
@@ -505,7 +543,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 12);
+		assert_eq!(all.len(), 14);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
@@ -731,5 +769,40 @@ mod tests {
 			})
 			.unwrap_err();
 		assert!(matches!(err, AcceptError::TypeMismatch { .. }));
+	}
+
+	#[test]
+	fn test_historical_gc_keys_round_trip() {
+		assert_eq!("HISTORICAL_GC_BATCH_SIZE".parse::<ConfigKey>().unwrap(), ConfigKey::HistoricalGcBatchSize);
+		assert_eq!("HISTORICAL_GC_INTERVAL".parse::<ConfigKey>().unwrap(), ConfigKey::HistoricalGcInterval);
+		assert_eq!(format!("{}", ConfigKey::HistoricalGcBatchSize), "HISTORICAL_GC_BATCH_SIZE");
+		assert_eq!(format!("{}", ConfigKey::HistoricalGcInterval), "HISTORICAL_GC_INTERVAL");
+	}
+
+	#[test]
+	fn test_historical_gc_defaults() {
+		assert_eq!(ConfigKey::HistoricalGcBatchSize.default_value(), Value::Uint8(50_000));
+		assert!(matches!(ConfigKey::HistoricalGcInterval.default_value(), Value::Duration(_)));
+	}
+
+	#[test]
+	fn test_historical_gc_batch_size_rejects_zero() {
+		match ConfigKey::HistoricalGcBatchSize.accept(Value::Uint8(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_historical_gc_interval_rejects_zero() {
+		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
+		match ConfigKey::HistoricalGcInterval.accept(zero).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
 	}
 }

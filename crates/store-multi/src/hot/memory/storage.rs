@@ -8,12 +8,18 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{
+		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
+		store::EntryKind,
+	},
+};
 use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
 use super::entry::{CurrentMap, Entries, Entry, HistoricalMap, entry_id_to_key};
-use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
+use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
 /// Memory-based primitive storage implementation.
 ///
@@ -48,6 +54,24 @@ impl MemoryPrimitiveStorage {
 	pub fn count_current(&self, table: EntryKind) -> Result<u64> {
 		let table_key = entry_id_to_key(table);
 		Ok(self.inner.entries.data.get(&table_key).map(|e| e.current.read().len() as u64).unwrap_or(0))
+	}
+
+	pub fn list_all_entry_kinds(&self) -> Result<Vec<EntryKind>> {
+		let mut out = Vec::new();
+		for key in self.inner.entries.data.keys() {
+			if key == "multi" {
+				out.push(EntryKind::Multi);
+			} else if let Some(rest) = key.strip_prefix("source:")
+				&& let Ok(id) = rest.parse::<u64>()
+			{
+				out.push(EntryKind::Source(ShapeId::Table(TableId(id))));
+			} else if let Some(rest) = key.strip_prefix("operator:")
+				&& let Ok(id) = rest.parse::<u64>()
+			{
+				out.push(EntryKind::Operator(FlowNodeId(id)));
+			}
+		}
+		Ok(out)
 	}
 
 	pub fn count_historical(&self, table: EntryKind) -> Result<u64> {
@@ -599,6 +623,87 @@ impl TierStorage for MemoryPrimitiveStorage {
 		versions.sort_by(|a, b| b.0.cmp(&a.0));
 
 		Ok(versions)
+	}
+
+	#[instrument(name = "store::multi::memory::scan_historical_below", level = "trace", skip(self, cursor), fields(table = ?table, cutoff = cutoff.0, batch_size = batch_size))]
+	fn scan_historical_below(
+		&self,
+		table: EntryKind,
+		cutoff: CommitVersion,
+		cursor: &mut HistoricalCursor,
+		batch_size: usize,
+	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
+		if cursor.exhausted || batch_size == 0 {
+			return Ok(Vec::new());
+		}
+
+		let table_key = entry_id_to_key(table);
+		let entry = match self.inner.entries.data.get(&table_key) {
+			Some(e) => e,
+			None => {
+				cursor.exhausted = true;
+				return Ok(Vec::new());
+			}
+		};
+
+		let historical = entry.historical.read();
+
+		let mut collected: Vec<(CowVec<u8>, CommitVersion)> = Vec::new();
+		let mut over_limit = false;
+
+		for (key, versions) in historical.iter() {
+			match (cursor.last_key.as_ref(), cursor.last_version) {
+				(Some(lk), _) if key < lk => continue,
+				(Some(lk), Some(lv)) if key == lk => {
+					for (Reverse(v), _value) in versions.iter().rev() {
+						if *v <= lv {
+							continue;
+						}
+						if *v >= cutoff {
+							continue;
+						}
+						collected.push((key.clone(), *v));
+						if collected.len() > batch_size {
+							over_limit = true;
+							break;
+						}
+					}
+				}
+				_ => {
+					for (Reverse(v), _value) in versions.iter().rev() {
+						if *v >= cutoff {
+							continue;
+						}
+						collected.push((key.clone(), *v));
+						if collected.len() > batch_size {
+							over_limit = true;
+							break;
+						}
+					}
+				}
+			}
+
+			if over_limit {
+				break;
+			}
+		}
+
+		collected.sort_by(|a, b| a.0.as_slice().cmp(b.0.as_slice()).then(a.1.0.cmp(&b.1.0)));
+
+		let has_more = collected.len() > batch_size;
+		if has_more {
+			collected.truncate(batch_size);
+		}
+
+		if let Some(last) = collected.last() {
+			cursor.last_key = Some(last.0.clone());
+			cursor.last_version = Some(last.1);
+		}
+		if !has_more {
+			cursor.exhausted = true;
+		}
+
+		Ok(collected)
 	}
 }
 

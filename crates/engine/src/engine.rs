@@ -564,6 +564,13 @@ impl StandardEngine {
 		self.multi.done_until()
 	}
 
+	/// Highest version strictly below which no in-flight read transaction is
+	/// observing; versions less than this are GC-safe in `__historical`.
+	#[inline]
+	pub fn query_done_until(&self) -> CommitVersion {
+		self.multi.query_done_until()
+	}
+
 	/// Wait for the watermark to reach the given version with a timeout.
 	/// Returns true if the watermark reached the target, false if timeout occurred.
 	#[inline]

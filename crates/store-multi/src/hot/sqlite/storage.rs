@@ -7,7 +7,14 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{common::CommitVersion, error::diagnostic::internal::internal, interface::store::EntryKind};
+use reifydb_core::{
+	common::CommitVersion,
+	error::diagnostic::internal::internal,
+	interface::{
+		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
+		store::EntryKind,
+	},
+};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sqlite::{
 	SqliteConfig,
@@ -17,7 +24,7 @@ use reifydb_sqlite::{
 use reifydb_type::{Result, error, util::cowvec::CowVec};
 use rusqlite::{
 	CachedStatement, Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql,
-	Transaction as SqliteTransaction, params,
+	Transaction as SqliteTransaction, params, types::Value as SqliteValue,
 };
 use tracing::{field, instrument, trace_span};
 
@@ -29,7 +36,7 @@ use super::{
 		version_to_bytes,
 	},
 };
-use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
+use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
 /// SQLite-based primitive storage with split current/historical layout.
 ///
@@ -107,6 +114,41 @@ impl SqlitePrimitiveStorage {
 			Err(e) if e.to_string().contains("no such table") => Ok(0),
 			Err(e) => Err(error!(internal(format!("Failed to count historical: {}", e)))),
 		}
+	}
+
+	pub fn list_all_entry_kinds(&self) -> Result<Vec<EntryKind>> {
+		let conn = self.inner.conn.lock();
+		let mut stmt = conn
+			.prepare(
+				"SELECT name FROM sqlite_master \
+				 WHERE type='table' \
+				   AND (name LIKE 'source_%__historical' OR name LIKE 'operator_%__historical' OR name = 'multi__historical')",
+			)
+			.map_err(|e| error!(internal(format!("Failed to prepare list_all_entry_kinds: {}", e))))?;
+
+		let names: Vec<String> = stmt
+			.query_map([], |row| row.get::<_, String>(0))
+			.map_err(|e| error!(internal(format!("Failed to query list_all_entry_kinds: {}", e))))?
+			.filter_map(|r| r.ok())
+			.collect();
+
+		let mut out = Vec::with_capacity(names.len());
+		for name in names {
+			if name == "multi__historical" {
+				out.push(EntryKind::Multi);
+			} else if let Some(rest) = name.strip_prefix("source_")
+				&& let Some(id_str) = rest.strip_suffix("__historical")
+				&& let Ok(id) = id_str.parse::<u64>()
+			{
+				out.push(EntryKind::Source(ShapeId::Table(TableId(id))));
+			} else if let Some(rest) = name.strip_prefix("operator_")
+				&& let Some(id_str) = rest.strip_suffix("__historical")
+				&& let Ok(id) = id_str.parse::<u64>()
+			{
+				out.push(EntryKind::Operator(FlowNodeId(id)));
+			}
+		}
+		Ok(out)
 	}
 
 	/// Create both physical tables (current + historical) for a logical table.
@@ -298,6 +340,92 @@ impl TierStorage for SqlitePrimitiveStorage {
 
 		Ok(versions)
 	}
+
+	#[instrument(name = "store::multi::sqlite::scan_historical_below", level = "trace", skip(self, cursor), fields(table = ?table, cutoff = cutoff.0, batch_size = batch_size))]
+	fn scan_historical_below(
+		&self,
+		table: EntryKind,
+		cutoff: CommitVersion,
+		cursor: &mut HistoricalCursor,
+		batch_size: usize,
+	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
+		if cursor.exhausted || batch_size == 0 {
+			return Ok(Vec::new());
+		}
+
+		let historical_name = historical_table_name(table);
+		let cutoff_bytes = version_to_bytes(cutoff);
+		let limit = (batch_size as i64).saturating_add(1);
+		let conn = self.inner.conn.lock();
+
+		// Why: rewrite `(key, version) > (last_key, last_version)` so the (key,
+		// version) PK index can be used directly.
+		let (resume_clause, mut params): (&str, Vec<SqliteValue>) =
+			match (cursor.last_key.as_ref(), cursor.last_version) {
+				(Some(k), Some(v)) => (
+					"AND (key > ?2 OR (key = ?2 AND version > ?3))",
+					vec![
+						SqliteValue::Blob(cutoff_bytes.to_vec()),
+						SqliteValue::Blob(k.to_vec()),
+						SqliteValue::Blob(version_to_bytes(v).to_vec()),
+					],
+				),
+				_ => ("", vec![SqliteValue::Blob(cutoff_bytes.to_vec())]),
+			};
+		params.push(SqliteValue::Integer(limit));
+
+		let sql = format!(
+			"SELECT key, version FROM \"{}\" WHERE version < ?1 {} ORDER BY key ASC, version ASC LIMIT ?{}",
+			historical_name,
+			resume_clause,
+			params.len()
+		);
+
+		let mut stmt = match conn.prepare_cached(&sql) {
+			Ok(stmt) => stmt,
+			Err(e) if e.to_string().contains("no such table") => {
+				cursor.exhausted = true;
+				return Ok(Vec::new());
+			}
+			Err(e) => {
+				return Err(error!(internal(format!(
+					"Failed to prepare scan_historical_below: {}",
+					e
+				))));
+			}
+		};
+
+		let params_refs: Vec<&dyn ToSql> = params.iter().map(|p| p as &dyn ToSql).collect();
+
+		let raw: Vec<(CowVec<u8>, CommitVersion)> = match stmt.query_map(params_refs.as_slice(), |row| {
+			let key: Vec<u8> = row.get(0)?;
+			let version_bytes: Vec<u8> = row.get(1)?;
+			Ok((CowVec::new(key), version_from_bytes(&version_bytes)))
+		}) {
+			Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+			Err(e) if e.to_string().contains("no such table") => {
+				cursor.exhausted = true;
+				return Ok(Vec::new());
+			}
+			Err(e) => return Err(error!(internal(format!("Failed to scan historical: {}", e)))),
+		};
+
+		let has_more = raw.len() > batch_size;
+		let mut entries = raw;
+		if has_more {
+			entries.truncate(batch_size);
+		}
+
+		if let Some(last) = entries.last() {
+			cursor.last_key = Some(last.0.clone());
+			cursor.last_version = Some(last.1);
+		}
+		if !has_more {
+			cursor.exhausted = true;
+		}
+
+		Ok(entries)
+	}
 }
 
 impl SqlitePrimitiveStorage {
@@ -376,14 +504,35 @@ impl SqlitePrimitiveStorage {
 			collected
 		};
 
+		// has_more and cursor.last_key are derived from raw_rows (the
+		// `__current` rows the SQL LIMIT actually saw), not from the
+		// post-fallback `entries` list. Otherwise a current row whose
+		// version > snapshot and which has no visible historical
+		// version (the row gets dropped from `entries`) silently makes
+		// has_more=false even though SQL returned batch_size+1 rows.
+		// That truncates the iteration short and skips every key past
+		// the LIMIT window. Cursor must advance past every raw row we
+		// looked at, regardless of whether it ended up in the result.
+		let has_more = raw_rows.len() > batch_size;
+		let process_count = if has_more {
+			batch_size
+		} else {
+			raw_rows.len()
+		};
+		let last_raw_key: Option<CowVec<u8>> = if process_count > 0 {
+			Some(raw_rows[process_count - 1].0.clone())
+		} else {
+			None
+		};
+
 		// For each row whose current.version > snapshot, fall back to
 		// historical. Most rows in the steady state pass the snapshot
 		// check, so this loop is usually pure pass-through.
-		let mut entries: Vec<RawEntry> = Vec::with_capacity(raw_rows.len());
+		let mut entries: Vec<RawEntry> = Vec::with_capacity(process_count);
 		let mut historical_stmt: Option<CachedStatement<'_>> = None;
 		let historical_sql = build_get_historical_sql(&historical_name);
 
-		for (key, cur_version, cur_value) in raw_rows {
+		for (key, cur_version, cur_value) in raw_rows.into_iter().take(process_count) {
 			if cur_version <= version {
 				entries.push(RawEntry {
 					key,
@@ -434,18 +583,13 @@ impl SqlitePrimitiveStorage {
 		}
 		drop(historical_stmt);
 
-		let has_more = entries.len() > batch_size;
-		if has_more {
-			entries.truncate(batch_size);
-		}
-
 		let batch = RangeBatch {
 			entries,
 			has_more,
 		};
 
-		if let Some(last_entry) = batch.entries.last() {
-			cursor.last_key = Some(last_entry.key.clone());
+		if let Some(lk) = last_raw_key {
+			cursor.last_key = Some(lk);
 		}
 		if !batch.has_more {
 			cursor.exhausted = true;

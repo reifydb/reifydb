@@ -6,12 +6,8 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
+use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierStorage};
 
-/// Warm storage tier.
-///
-/// This is a placeholder enum with no variants yet.
-/// Will be implemented when warm tier storage is needed.
 #[derive(Clone)]
 pub enum WarmStorage {}
 
@@ -65,6 +61,16 @@ impl TierStorage for WarmStorage {
 	}
 
 	fn get_all_versions(&self, _table: EntryKind, _key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
+		match *self {}
+	}
+
+	fn scan_historical_below(
+		&self,
+		_table: EntryKind,
+		_cutoff: CommitVersion,
+		_cursor: &mut HistoricalCursor,
+		_batch_size: usize,
+	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
 		match *self {}
 	}
 }

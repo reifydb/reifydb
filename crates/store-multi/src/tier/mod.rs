@@ -55,6 +55,25 @@ pub struct RangeCursor {
 	pub exhausted: bool,
 }
 
+/// Cursor state for streaming `__historical` scans, where the PK is `(key, version)`
+/// and a single key may have many versions, so resuming requires both halves.
+#[derive(Debug, Clone, Default)]
+pub struct HistoricalCursor {
+	pub last_key: Option<CowVec<u8>>,
+	pub last_version: Option<CommitVersion>,
+	pub exhausted: bool,
+}
+
+impl HistoricalCursor {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	pub fn is_exhausted(&self) -> bool {
+		self.exhausted
+	}
+}
+
 impl RangeCursor {
 	/// Create a new cursor at the start of a range.
 	pub fn new() -> Self {
@@ -157,6 +176,22 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	///
 	/// Returns a vector of (version, value) pairs, sorted by version descending.
 	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>>;
+
+	/// Scan `__historical` for `(key, version)` pairs whose `version < cutoff`,
+	/// in ascending `(key, version)` order, paginated via `cursor`.
+	///
+	/// Used by the historical-version GC actor to find versions safe to drop
+	/// (no live reader could observe them - the watermark contract). The pair
+	/// returned is suitable to feed straight into `TierStorage::drop`.
+	///
+	/// `__current` is never touched - this scan is purely over `__historical`.
+	fn scan_historical_below(
+		&self,
+		table: EntryKind,
+		cutoff: CommitVersion,
+		cursor: &mut HistoricalCursor,
+		batch_size: usize,
+	) -> Result<Vec<(CowVec<u8>, CommitVersion)>>;
 }
 
 /// Marker trait for storage tiers that support the tier storage interface.

@@ -11,35 +11,26 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 use super::memory::storage::MemoryPrimitiveStorage;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use super::sqlite::storage::SqlitePrimitiveStorage;
-use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage};
+use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage};
 
-/// Hot storage tier.
-///
-/// Provides a single interface for hot tier storage operations, dispatching
-/// to either Memory or SQLite implementations.
 #[derive(Clone)]
 #[repr(u8)]
 pub enum HotStorage {
-	/// In-memory storage (non-persistent)
 	Memory(MemoryPrimitiveStorage) = 0,
-	/// SQLite-based persistent storage
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(SqlitePrimitiveStorage) = 1,
 }
 
 impl HotStorage {
-	/// Create a new in-memory backend
 	pub fn memory() -> Self {
 		Self::Memory(MemoryPrimitiveStorage::new())
 	}
 
-	/// Create a new SQLite backend with in-memory database
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite_in_memory() -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::in_memory())
 	}
 
-	/// Create a new SQLite backend with the given configuration
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(config: SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::new(config))
@@ -47,7 +38,6 @@ impl HotStorage {
 }
 
 impl HotStorage {
-	/// Run periodic maintenance (vacuum + shrink) to reclaim memory.
 	pub fn maintenance(&self) {
 		match self {
 			Self::Memory(_) => {}
@@ -72,6 +62,14 @@ impl HotStorage {
 			Self::Memory(s) => s.count_historical(table),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.count_historical(table),
+		}
+	}
+
+	pub fn list_all_entry_kinds(&self) -> Result<Vec<EntryKind>> {
+		match self {
+			Self::Memory(s) => s.list_all_entry_kinds(),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => s.list_all_entry_kinds(),
 		}
 	}
 }
@@ -171,6 +169,21 @@ impl TierStorage for HotStorage {
 			Self::Memory(s) => s.get_all_versions(table, key),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.get_all_versions(table, key),
+		}
+	}
+
+	#[inline]
+	fn scan_historical_below(
+		&self,
+		table: EntryKind,
+		cutoff: CommitVersion,
+		cursor: &mut HistoricalCursor,
+		batch_size: usize,
+	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
+		match self {
+			Self::Memory(s) => s.scan_historical_below(table, cutoff, cursor, batch_size),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => s.scan_historical_below(table, cutoff, cursor, batch_size),
 		}
 	}
 }

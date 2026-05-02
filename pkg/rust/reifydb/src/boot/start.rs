@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::shape::RowShape,
+	interface::catalog::config::GetConfig,
 	key::{
 		EncodableKey,
 		system_version::{SystemVersion, SystemVersionKey},
@@ -10,7 +14,13 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSystem;
-use reifydb_store_multi::{MultiStore, ttl::actor::spawn_row_ttl_actor};
+use reifydb_store_multi::{
+	MultiStore,
+	gc::{
+		historical::{QueryWatermark, actor::spawn_historical_gc_actor},
+		ttl::actor::spawn_row_ttl_actor,
+	},
+};
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_type::value::r#type::Type;
 
@@ -55,7 +65,23 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, actor_system: &ActorSystem) 
 
 	let catalog = engine.catalog();
 
-	let _ttl_actor = spawn_row_ttl_actor(store, actor_system.clone(), catalog);
+	let _ttl_actor = spawn_row_ttl_actor(store.clone(), actor_system.clone(), catalog.clone());
+
+	let watermark = EngineQueryWatermark {
+		engine: engine.clone(),
+	};
+	let config: Arc<dyn GetConfig> = Arc::new(catalog);
+	let _gc_actor = spawn_historical_gc_actor(store, actor_system.clone(), watermark, config);
 
 	Ok(())
+}
+
+struct EngineQueryWatermark {
+	engine: StandardEngine,
+}
+
+impl QueryWatermark for EngineQueryWatermark {
+	fn query_done_until(&self) -> CommitVersion {
+		self.engine.query_done_until()
+	}
 }

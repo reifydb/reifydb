@@ -12,9 +12,9 @@ use reifydb_core::{
 use reifydb_type::Result;
 
 pub mod cold;
+pub mod gc;
 pub mod hot;
 pub mod tier;
-pub mod ttl;
 pub mod warm;
 
 pub mod config;

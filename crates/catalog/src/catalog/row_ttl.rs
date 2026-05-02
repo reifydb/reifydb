@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::{config::GetConfig, shape::ShapeId},
 	row::RowTtl,
 };
-use reifydb_store_multi::ttl::ListRowTtls;
+use reifydb_store_multi::gc::ttl::ListRowTtls;
 
 use crate::catalog::Catalog;
 
