@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use reifydb_catalog::materialized::MaterializedCatalog;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -100,7 +100,7 @@ where
 		let mut system_changes: Vec<SystemChange> = Vec::new();
 
 		let mut acquired_slabs: Vec<Arc<Columns>> = Vec::new();
-		let catalog = self.host.catalog().materialized();
+		let catalog = self.host.catalog();
 
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
@@ -138,7 +138,7 @@ where
 		&self,
 		delta: &Delta,
 		version: CommitVersion,
-		catalog: &MaterializedCatalog,
+		catalog: &Catalog,
 		diffs_by_shape: &mut BTreeMap<ShapeId, Vec<Diff>>,
 		system_changes: &mut Vec<SystemChange>,
 		acquired_slabs: &mut Vec<Arc<Columns>>,
@@ -170,7 +170,7 @@ where
 		delta: &Delta,
 		row_number: RowNumber,
 		version: CommitVersion,
-		catalog: &MaterializedCatalog,
+		catalog: &Catalog,
 		acquired_slabs: &mut Vec<Arc<Columns>>,
 	) -> Option<Diff> {
 		match delta {
@@ -193,7 +193,7 @@ where
 		row: &EncodedRow,
 		row_number: RowNumber,
 		version: CommitVersion,
-		catalog: &MaterializedCatalog,
+		catalog: &Catalog,
 		acquired_slabs: &mut Vec<Arc<Columns>>,
 	) -> Option<Diff> {
 		let pre = self.transaction_store.get_previous_version(key, version).ok().flatten();
@@ -231,7 +231,7 @@ where
 		&self,
 		row: &EncodedRow,
 		row_number: RowNumber,
-		catalog: &MaterializedCatalog,
+		catalog: &Catalog,
 		acquired_slabs: &mut Vec<Arc<Columns>>,
 	) -> Option<Diff> {
 		let mut pre_buf = self.slab_pool.acquire();
@@ -338,8 +338,7 @@ where
 
 	#[inline]
 	fn find_eviction_target(&self) -> Result<Option<CommitVersion>> {
-		let Some(ttl) = self.host.catalog().materialized().get_config_duration_opt(ConfigKey::CdcTtlDuration)
-		else {
+		let Some(ttl) = self.host.catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration) else {
 			return Ok(None);
 		};
 		let cutoff_nanos = self.clock.now_nanos().saturating_sub(ttl.as_nanos() as u64);

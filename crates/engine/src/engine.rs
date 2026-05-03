@@ -13,6 +13,7 @@ use std::{
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
+	interceptor::MaterializedCatalogInterceptor,
 	vtable::{
 		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
@@ -46,7 +47,7 @@ use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_type::{
 	error::Error,
@@ -295,9 +296,9 @@ impl StandardEngine {
 	pub fn register_virtual_table<T: UserVTable>(&self, namespace: &str, name: &str, table: T) -> Result<VTableId> {
 		let catalog = self.catalog();
 
+		let mut qry = self.begin_query(IdentityId::root())?;
 		let ns_def = catalog
-			.materialized()
-			.find_namespace_by_name(namespace)
+			.find_namespace_by_name(&mut Transaction::Query(&mut qry), namespace)?
 			.ok_or_else(|| Error(Box::new(namespace_not_found(Fragment::None, namespace))))?;
 
 		let table_id = self.executor.virtual_table_registry.allocate_id();
@@ -397,7 +398,9 @@ impl StandardEngine {
 
 		let catalog_for_interceptor = catalog.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
-			interceptors.post_commit.add(catalog_for_interceptor.post_commit_interceptor());
+			interceptors
+				.post_commit
+				.add(Arc::new(MaterializedCatalogInterceptor::new(&catalog_for_interceptor)));
 		}));
 
 		let interceptors = Arc::new(interceptors);

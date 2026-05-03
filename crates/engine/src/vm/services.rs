@@ -19,6 +19,7 @@ use reifydb_routine::{
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_store_single::SingleStore;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::VariantRef;
 
 #[cfg(not(reifydb_single_threaded))]
@@ -72,8 +73,8 @@ impl Services {
 		}
 	}
 
-	pub fn get_handlers(&self, variant: VariantRef) -> Vec<Arc<dyn Procedure>> {
-		self.routines.get_handlers(self.catalog.materialized(), variant)
+	pub fn get_handlers(&self, txn: &mut Transaction<'_>, variant: VariantRef) -> Vec<Arc<dyn Procedure>> {
+		self.routines.get_handlers(&self.catalog, txn, variant)
 	}
 
 	pub fn get_procedure(&self, name: &str) -> Option<Arc<dyn Procedure>> {

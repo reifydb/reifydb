@@ -8,7 +8,8 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
-use reifydb_catalog::materialized::MaterializedCatalog;
+use reifydb_catalog::catalog::Catalog;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::VariantRef;
 
 use super::{Function, FunctionKind, Procedure};
@@ -132,14 +133,19 @@ impl RoutinesInner {
 			.collect()
 	}
 
-	pub fn get_handlers(&self, catalog: &MaterializedCatalog, variant: VariantRef) -> Vec<Arc<dyn Procedure>> {
+	pub fn get_handlers(
+		&self,
+		catalog: &Catalog,
+		txn: &mut Transaction<'_>,
+		variant: VariantRef,
+	) -> Vec<Arc<dyn Procedure>> {
 		{
 			let mut state = self.handlers.write().unwrap();
 			if !state.deferred.is_empty() {
 				let deferred = mem::take(&mut state.deferred);
 				let mut still_deferred = Vec::new();
 				for (path, handler) in deferred {
-					match resolve_event_path(&path, catalog) {
+					match resolve_event_path(&path, catalog, txn) {
 						Ok(resolved) => {
 							state.resolved.entry(resolved).or_default().push(handler);
 						}
@@ -336,7 +342,7 @@ mod tests {
 	}
 }
 
-fn resolve_event_path(path: &str, catalog: &MaterializedCatalog) -> Result<VariantRef, String> {
+fn resolve_event_path(path: &str, catalog: &Catalog, txn: &mut Transaction<'_>) -> Result<VariantRef, String> {
 	let parts: Vec<&str> = path.split("::").collect();
 	if parts.len() != 3 {
 		return Err(format!(
@@ -347,11 +353,13 @@ fn resolve_event_path(path: &str, catalog: &MaterializedCatalog) -> Result<Varia
 	let (namespace_name, event_name, variant_name) = (parts[0], parts[1], parts[2]);
 
 	let namespace = catalog
-		.find_namespace_by_name(namespace_name)
+		.find_namespace_by_name(txn, namespace_name)
+		.map_err(|e| format!("find_namespace_by_name failed: {e}"))?
 		.ok_or_else(|| format!("Namespace '{}' not found", namespace_name))?;
 
 	let sumtype = catalog
-		.find_sumtype_by_name(namespace.id(), event_name)
+		.find_sumtype_by_name(txn, namespace.id(), event_name)
+		.map_err(|e| format!("find_sumtype_by_name failed: {e}"))?
 		.ok_or_else(|| format!("SumType '{}' not found in namespace '{}'", event_name, namespace_name))?;
 
 	let variant_name_lower = variant_name.to_lowercase();

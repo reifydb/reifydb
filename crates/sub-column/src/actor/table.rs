@@ -79,7 +79,13 @@ impl TableMaterializationActor {
 		};
 		let current = query_txn.version();
 
-		let tables = self.engine.catalog().materialized().list_tables();
+		let tables = match self.engine.catalog().list_tables_all(&mut Transaction::Query(&mut query_txn)) {
+			Ok(t) => t,
+			Err(e) => {
+				warn!("table materialization: list_tables_all failed: {e}");
+				return;
+			}
+		};
 		for table in tables {
 			if state.last_seen.get(&table.id).copied() == Some(current) {
 				continue;
@@ -129,8 +135,9 @@ impl TableMaterializationActor {
 		let namespace = self
 			.engine
 			.catalog()
-			.materialized()
-			.find_namespace(table.namespace)
+			.find_namespace(&mut Transaction::Query(&mut *query_txn), table.namespace)
+			.ok()
+			.flatten()
 			.map(|ns| ns.name().to_string())
 			.unwrap_or_default();
 

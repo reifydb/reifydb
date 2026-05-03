@@ -35,7 +35,6 @@ pub mod vtable;
 use std::sync::Arc;
 
 use reifydb_core::interface::catalog::vtable::VTable;
-use reifydb_transaction::interceptor::transaction::PostCommitInterceptor;
 
 use crate::{Result, materialized::MaterializedCatalog};
 
@@ -61,10 +60,6 @@ impl Catalog {
 
 	pub fn register_vtable_user(&self, def: Arc<VTable>) -> Result<()> {
 		self.materialized.register_vtable_user(def)
-	}
-
-	pub fn post_commit_interceptor(&self) -> Arc<dyn PostCommitInterceptor> {
-		Arc::new(crate::interceptor::MaterializedCatalogInterceptor::new(self.materialized.clone()))
 	}
 }
 

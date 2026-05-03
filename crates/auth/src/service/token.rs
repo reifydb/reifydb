@@ -38,7 +38,8 @@ impl AuthService {
 
 		for auth in auths {
 			if let Ok(AuthStep::Authenticated) = provider.authenticate(&auth.properties, &creds)
-				&& let Some(ident) = catalog.materialized().find_identity(auth.identity)
+				&& let Ok(Some(ident)) =
+					catalog.find_identity(&mut Transaction::Query(&mut txn), auth.identity)
 				&& ident.enabled
 			{
 				return Some(Token {

@@ -3,16 +3,16 @@
 
 use reifydb_transaction::interceptor::transaction::{PostCommitContext, PostCommitInterceptor};
 
-use crate::{Result, materialized::MaterializedCatalog};
+use crate::{Result, catalog::Catalog, materialized::MaterializedCatalog};
 
 pub struct MaterializedCatalogInterceptor {
 	catalog: MaterializedCatalog,
 }
 
 impl MaterializedCatalogInterceptor {
-	pub fn new(catalog: MaterializedCatalog) -> Self {
+	pub fn new(catalog: &Catalog) -> Self {
 		Self {
-			catalog,
+			catalog: catalog.materialized.clone(),
 		}
 	}
 }

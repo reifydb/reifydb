@@ -8,8 +8,15 @@ use reifydb_core::{
 	row::Ttl,
 };
 use reifydb_store_multi::gc::row::ListRowTtls;
+use reifydb_transaction::transaction::Transaction;
 
 use crate::catalog::Catalog;
+
+impl Catalog {
+	pub fn find_row_ttl(&self, txn: &mut Transaction<'_>, shape: ShapeId) -> Option<Ttl> {
+		self.materialized.find_row_ttl_at(shape, txn.version())
+	}
+}
 
 impl ListRowTtls for Catalog {
 	fn list_row_ttls(&self) -> Vec<(ShapeId, Ttl)> {

@@ -155,7 +155,7 @@ pub(crate) fn dispatch(
 		}
 	}
 
-	let native_handlers = services.get_handlers(variant_ref);
+	let native_handlers = services.get_handlers(tx, variant_ref);
 	let native_count = native_handlers.len();
 	if !native_handlers.is_empty() {
 		let mut named_map = HashMap::new();

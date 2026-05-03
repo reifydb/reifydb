@@ -35,7 +35,9 @@ fn test_row_ttl_sync_to_materialized_catalog() {
 		.expect("table not found");
 	let shape = ShapeId::Table(table.id);
 
-	let ttl = catalog.materialized().find_row_ttl(shape).expect("TTL not found in materialized catalog");
+	let ttl = catalog
+		.find_row_ttl(&mut Transaction::Admin(&mut txn), shape)
+		.expect("TTL not found in materialized catalog");
 	assert_eq!(ttl.duration_nanos, 3_600_000_000_000);
 }
 
@@ -84,8 +86,7 @@ fn test_row_ttl_replication_sync() {
 	let shape = ShapeId::Table(table.id);
 
 	let ttl = replica_catalog
-		.materialized()
-		.find_row_ttl(shape)
+		.find_row_ttl(&mut Transaction::Admin(&mut q_txn), shape)
 		.expect("TTL not found in replica materialized catalog");
 	assert_eq!(ttl.duration_nanos, 60_000_000_000);
 }

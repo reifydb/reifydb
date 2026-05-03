@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb::{ConfigKey, Value, embedded, value::duration::Duration};
+use reifydb::{ConfigKey, GetConfig, Value, embedded, value::duration::Duration};
 
 #[test]
 fn test_with_config_applied_at_bootstrap() {
@@ -11,7 +11,7 @@ fn test_with_config_applied_at_bootstrap() {
 		.build()
 		.unwrap();
 
-	let value = db.catalog().materialized().get_config(ConfigKey::CdcTtlDuration);
+	let value = db.catalog().get_config(ConfigKey::CdcTtlDuration);
 	assert!(matches!(value, Value::Duration(d) if d == one_hour));
 }
 
@@ -26,9 +26,9 @@ fn test_with_configs_applies_multiple() {
 		.unwrap();
 
 	let catalog = db.catalog();
-	assert!(matches!(catalog.materialized().get_config(ConfigKey::OracleWindowSize), Value::Uint8(1000)));
+	assert!(matches!(catalog.get_config(ConfigKey::OracleWindowSize), Value::Uint8(1000)));
 	assert!(matches!(
-		catalog.materialized().get_config(ConfigKey::CdcTtlDuration),
+		catalog.get_config(ConfigKey::CdcTtlDuration),
 		Value::Duration(d) if d == Duration::from_hours(2).unwrap()
 	));
 }
@@ -44,6 +44,6 @@ fn test_invalid_value_fails_at_build() {
 #[test]
 fn test_defaults_preserved_when_no_override() {
 	let db = embedded::memory().build().unwrap();
-	let value = db.catalog().materialized().get_config(ConfigKey::CdcTtlDuration);
+	let value = db.catalog().get_config(ConfigKey::CdcTtlDuration);
 	assert!(matches!(value, Value::None { .. }));
 }

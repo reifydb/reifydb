@@ -12,9 +12,9 @@ use reifydb_core::{
 use reifydb_type::value::row_number::RowNumber;
 use tracing::warn;
 
-use crate::materialized::MaterializedCatalog;
+use crate::catalog::Catalog;
 
-fn decode_row(catalog: &MaterializedCatalog, row_number: RowNumber, row: EncodedRow) -> Option<Row> {
+fn decode_row(catalog: &Catalog, row_number: RowNumber, row: EncodedRow) -> Option<Row> {
 	if row.len() < SHAPE_HEADER_SIZE {
 		warn!("EncodedRow too short for shape fingerprint ({} < {})", row.len(), SHAPE_HEADER_SIZE);
 		return None;
@@ -34,29 +34,24 @@ fn decode_row(catalog: &MaterializedCatalog, row_number: RowNumber, row: Encoded
 	}
 }
 
-pub fn build_insert_diff(catalog: &MaterializedCatalog, row_number: RowNumber, post: EncodedRow) -> Option<Diff> {
+pub fn build_insert_diff(catalog: &Catalog, row_number: RowNumber, post: EncodedRow) -> Option<Diff> {
 	let row = decode_row(catalog, row_number, post)?;
 	Some(Diff::insert(Columns::from_row(&row)))
 }
 
-pub fn build_update_diff(
-	catalog: &MaterializedCatalog,
-	row_number: RowNumber,
-	pre: EncodedRow,
-	post: EncodedRow,
-) -> Option<Diff> {
+pub fn build_update_diff(catalog: &Catalog, row_number: RowNumber, pre: EncodedRow, post: EncodedRow) -> Option<Diff> {
 	let pre_row = decode_row(catalog, row_number, pre)?;
 	let post_row = decode_row(catalog, row_number, post)?;
 	Some(Diff::update(Columns::from_row(&pre_row), Columns::from_row(&post_row)))
 }
 
-pub fn build_remove_diff(catalog: &MaterializedCatalog, row_number: RowNumber, pre: EncodedRow) -> Option<Diff> {
+pub fn build_remove_diff(catalog: &Catalog, row_number: RowNumber, pre: EncodedRow) -> Option<Diff> {
 	let row = decode_row(catalog, row_number, pre)?;
 	Some(Diff::remove(Columns::from_row(&row)))
 }
 
 pub fn build_insert_diff_into(
-	catalog: &MaterializedCatalog,
+	catalog: &Catalog,
 	row_number: RowNumber,
 	post: EncodedRow,
 	post_buf: &mut Arc<Columns>,
@@ -67,7 +62,7 @@ pub fn build_insert_diff_into(
 }
 
 pub fn build_update_diff_into(
-	catalog: &MaterializedCatalog,
+	catalog: &Catalog,
 	row_number: RowNumber,
 	pre: EncodedRow,
 	post: EncodedRow,
@@ -82,7 +77,7 @@ pub fn build_update_diff_into(
 }
 
 pub fn build_remove_diff_into(
-	catalog: &MaterializedCatalog,
+	catalog: &Catalog,
 	row_number: RowNumber,
 	pre: EncodedRow,
 	pre_buf: &mut Arc<Columns>,
@@ -93,7 +88,7 @@ pub fn build_remove_diff_into(
 }
 
 pub fn build_insert_diff_into_with_pool(
-	catalog: &MaterializedCatalog,
+	catalog: &Catalog,
 	row_number: RowNumber,
 	post: EncodedRow,
 	post_buf: &mut Arc<Columns>,
@@ -105,7 +100,7 @@ pub fn build_insert_diff_into_with_pool(
 }
 
 pub fn build_update_diff_into_with_pool(
-	catalog: &MaterializedCatalog,
+	catalog: &Catalog,
 	row_number: RowNumber,
 	pre: EncodedRow,
 	post: EncodedRow,
@@ -121,7 +116,7 @@ pub fn build_update_diff_into_with_pool(
 }
 
 pub fn build_remove_diff_into_with_pool(
-	catalog: &MaterializedCatalog,
+	catalog: &Catalog,
 	row_number: RowNumber,
 	pre: EncodedRow,
 	pre_buf: &mut Arc<Columns>,

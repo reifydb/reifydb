@@ -98,7 +98,14 @@ impl SeriesMaterializationActor {
 		};
 		let catalog = self.engine.catalog();
 		let now_wall = UNIX_EPOCH + Duration::from_nanos(self.engine.clock().now_nanos());
-		for series in catalog.materialized().list_series() {
+		let series_list = match catalog.list_series_all(&mut Transaction::Query(&mut query_txn)) {
+			Ok(s) => s,
+			Err(e) => {
+				warn!("series materialization: list_series_all failed: {e}");
+				return;
+			}
+		};
+		for series in series_list {
 			self.materialize_series_buckets(state, &mut query_txn, &catalog, &series, now_wall);
 		}
 	}
@@ -210,8 +217,7 @@ impl SeriesMaterializationActor {
 		let catalog = self.engine.catalog();
 
 		let namespace_def = catalog
-			.materialized()
-			.find_namespace(series.namespace)
+			.find_namespace(&mut Transaction::Query(&mut *query_txn), series.namespace)?
 			.ok_or_else(|| missing_namespace(series))?;
 		let resolved_namespace =
 			ResolvedNamespace::new(Fragment::internal(namespace_def.name()), namespace_def.clone());
