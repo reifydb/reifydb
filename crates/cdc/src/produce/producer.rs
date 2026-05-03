@@ -100,7 +100,7 @@ where
 		let mut system_changes: Vec<SystemChange> = Vec::new();
 
 		let mut acquired_slabs: Vec<Arc<Columns>> = Vec::new();
-		let catalog = self.host.materialized_catalog();
+		let catalog = self.host.catalog().materialized();
 
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
@@ -338,7 +338,7 @@ where
 
 	#[inline]
 	fn find_eviction_target(&self) -> Result<Option<CommitVersion>> {
-		let Some(ttl) = self.host.materialized_catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration)
+		let Some(ttl) = self.host.catalog().materialized().get_config_duration_opt(ConfigKey::CdcTtlDuration)
 		else {
 			return Ok(None);
 		};

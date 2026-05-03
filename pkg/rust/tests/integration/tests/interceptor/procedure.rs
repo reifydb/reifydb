@@ -10,7 +10,8 @@ fn create_procedure_propagates_to_materialized_cache() {
 	admin(&db, "create namespace demo");
 	admin(&db, "create procedure demo::greet as { \"hi\" }");
 
-	let mat = &db.engine().catalog().materialized;
+	let cat = db.catalog();
+	let mat = cat.materialized();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let proc = mat.find_procedure_by_name(ns.id(), "greet").unwrap();
 	assert_eq!(proc.name(), "greet");

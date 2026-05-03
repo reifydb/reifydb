@@ -12,6 +12,6 @@ fn create_user_propagates_to_materialized_cache() {
 	admin(&db, "create user alice");
 
 	let identity =
-		db.engine().catalog().materialized.find_identity_by_name_at("alice", CommitVersion(u64::MAX)).unwrap();
+		db.catalog().materialized().find_identity_by_name_at("alice", CommitVersion(u64::MAX)).unwrap();
 	assert_eq!(identity.name, "alice");
 }

@@ -156,7 +156,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 			.filter_map(|(pos, col)| {
 				if let ColumnBuffer::DictionaryId(container) = col.data() {
 					let dict_id = container.dictionary_id()?;
-					let dictionary = catalog.materialized.find_dictionary(dict_id)?;
+					let dictionary = catalog.materialized().find_dictionary(dict_id)?;
 					Some((pos, dictionary))
 				} else {
 					None

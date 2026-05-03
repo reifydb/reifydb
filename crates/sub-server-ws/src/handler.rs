@@ -747,16 +747,16 @@ async fn handle_call(
 	conn: &mut ConnectionContext<'_>,
 ) -> Result<WsResponse, String> {
 	let binding =
-		conn.state.engine().materialized_catalog().find_ws_binding_by_name(&req.name).ok_or_else(|| {
+		conn.state.engine().catalog().materialized().find_ws_binding_by_name(&req.name).ok_or_else(|| {
 			build_error(request_id, "NOT_FOUND", &format!("no WS binding named `{}`", req.name))
 		})?;
 
 	let procedure =
-		conn.state.engine().materialized_catalog().find_procedure(binding.procedure_id).ok_or_else(|| {
+		conn.state.engine().catalog().materialized().find_procedure(binding.procedure_id).ok_or_else(|| {
 			build_error(request_id, "INTERNAL_ERROR", "binding references missing procedure")
 		})?;
 	let namespace =
-		conn.state.engine().materialized_catalog().find_namespace(binding.namespace).ok_or_else(|| {
+		conn.state.engine().catalog().materialized().find_namespace(binding.namespace).ok_or_else(|| {
 			build_error(request_id, "INTERNAL_ERROR", "binding references missing namespace")
 		})?;
 

@@ -11,7 +11,7 @@ fn create_policy_propagates_to_materialized_cache() {
 	admin(&db, "create table demo::t { id: uint8 }");
 	admin(&db, "create table policy demo_policy on demo::t { from: { filter { true } } }");
 
-	let policies = db.engine().catalog().materialized.list_all_policies();
+	let policies = db.catalog().materialized().list_all_policies();
 	assert_eq!(policies.len(), 1);
 	assert_eq!(policies[0].name.as_deref(), Some("demo_policy"));
 	assert_eq!(policies[0].target_namespace.as_deref(), Some("demo"));

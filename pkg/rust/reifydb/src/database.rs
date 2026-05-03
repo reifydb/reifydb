@@ -13,6 +13,7 @@ use std::{
 
 use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_runtime::{
 	SharedRuntime,
@@ -113,6 +114,10 @@ impl Database {
 
 	pub fn engine(&self) -> &StandardEngine {
 		&self.engine
+	}
+
+	pub fn catalog(&self) -> Catalog {
+		self.engine.catalog()
 	}
 
 	/// Borrowed view over the database's progress watermarks. Use to ask

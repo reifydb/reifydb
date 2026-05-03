@@ -11,6 +11,6 @@ fn create_role_propagates_to_materialized_cache() {
 
 	admin(&db, "create role analyst");
 
-	let role = db.engine().catalog().materialized.find_role_by_name_at("analyst", CommitVersion(u64::MAX)).unwrap();
+	let role = db.catalog().materialized().find_role_by_name_at("analyst", CommitVersion(u64::MAX)).unwrap();
 	assert_eq!(role.name, "analyst");
 }

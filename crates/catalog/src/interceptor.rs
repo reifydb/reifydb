@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_transaction::interceptor::transaction::{PostCommitContext, PostCommitInterceptor};
 
-use crate::Result;
+use crate::{Result, materialized::MaterializedCatalog};
 
-pub(crate) struct MaterializedCatalogInterceptor {
+pub struct MaterializedCatalogInterceptor {
 	catalog: MaterializedCatalog,
 }
 

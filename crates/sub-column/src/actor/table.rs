@@ -79,7 +79,7 @@ impl TableMaterializationActor {
 		};
 		let current = query_txn.version();
 
-		let tables = self.engine.catalog().materialized.list_tables();
+		let tables = self.engine.catalog().materialized().list_tables();
 		for table in tables {
 			if state.last_seen.get(&table.id).copied() == Some(current) {
 				continue;
@@ -129,7 +129,7 @@ impl TableMaterializationActor {
 		let namespace = self
 			.engine
 			.catalog()
-			.materialized
+			.materialized()
 			.find_namespace(table.namespace)
 			.map(|ns| ns.name().to_string())
 			.unwrap_or_default();

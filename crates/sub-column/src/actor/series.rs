@@ -98,7 +98,7 @@ impl SeriesMaterializationActor {
 		};
 		let catalog = self.engine.catalog();
 		let now_wall = UNIX_EPOCH + Duration::from_nanos(self.engine.clock().now_nanos());
-		for series in catalog.materialized.list_series() {
+		for series in catalog.materialized().list_series() {
 			self.materialize_series_buckets(state, &mut query_txn, &catalog, &series, now_wall);
 		}
 	}
@@ -210,7 +210,7 @@ impl SeriesMaterializationActor {
 		let catalog = self.engine.catalog();
 
 		let namespace_def = catalog
-			.materialized
+			.materialized()
 			.find_namespace(series.namespace)
 			.ok_or_else(|| missing_namespace(series))?;
 		let resolved_namespace =

@@ -18,7 +18,8 @@ fn create_table_with_row_ttl_propagates_to_materialized_cache() {
 		"create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', on: created, mode: drop } } }",
 	);
 
-	let mat = &db.engine().catalog().materialized;
+	let cat = db.catalog();
+	let mat = cat.materialized();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let table = mat.find_table_by_name(ns.id(), "t").unwrap();
 	let ttl = mat.find_row_ttl(ShapeId::Table(table.id)).unwrap();

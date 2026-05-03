@@ -18,6 +18,7 @@ pub mod bootstrap;
 pub mod catalog;
 pub mod change;
 pub mod error;
+pub mod interceptor;
 pub mod materialized;
 pub mod shape;
 pub mod store;

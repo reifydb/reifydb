@@ -10,7 +10,8 @@ fn create_ringbuffer_propagates_to_materialized_cache() {
 	admin(&db, "create namespace demo");
 	admin(&db, "create ringbuffer demo::rb { id: uint8 } with { capacity: 10 }");
 
-	let mat = &db.engine().catalog().materialized;
+	let cat = db.catalog();
+	let mat = cat.materialized();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let rb = mat.find_ringbuffer_by_name(ns.id(), "rb").unwrap();
 	assert_eq!(rb.name, "rb");

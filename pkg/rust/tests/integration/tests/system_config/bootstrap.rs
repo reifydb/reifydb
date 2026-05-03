@@ -11,7 +11,7 @@ fn test_with_config_applied_at_bootstrap() {
 		.build()
 		.unwrap();
 
-	let value = db.engine().catalog().materialized.get_config(ConfigKey::CdcTtlDuration);
+	let value = db.catalog().materialized().get_config(ConfigKey::CdcTtlDuration);
 	assert!(matches!(value, Value::Duration(d) if d == one_hour));
 }
 
@@ -25,10 +25,10 @@ fn test_with_configs_applies_multiple() {
 		.build()
 		.unwrap();
 
-	let catalog = db.engine().catalog();
-	assert!(matches!(catalog.materialized.get_config(ConfigKey::OracleWindowSize), Value::Uint8(1000)));
+	let catalog = db.catalog();
+	assert!(matches!(catalog.materialized().get_config(ConfigKey::OracleWindowSize), Value::Uint8(1000)));
 	assert!(matches!(
-		catalog.materialized.get_config(ConfigKey::CdcTtlDuration),
+		catalog.materialized().get_config(ConfigKey::CdcTtlDuration),
 		Value::Duration(d) if d == Duration::from_hours(2).unwrap()
 	));
 }
@@ -44,6 +44,6 @@ fn test_invalid_value_fails_at_build() {
 #[test]
 fn test_defaults_preserved_when_no_override() {
 	let db = embedded::memory().build().unwrap();
-	let value = db.engine().catalog().materialized.get_config(ConfigKey::CdcTtlDuration);
+	let value = db.catalog().materialized().get_config(ConfigKey::CdcTtlDuration);
 	assert!(matches!(value, Value::None { .. }));
 }

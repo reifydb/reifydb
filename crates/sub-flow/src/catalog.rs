@@ -49,7 +49,7 @@ impl FlowCatalog {
 	}
 
 	pub fn find_view(&self, view_id: ViewId) -> Option<View> {
-		self.catalog.materialized.find_view(view_id)
+		self.catalog.materialized().find_view(view_id)
 	}
 
 	pub fn get_flow_ids(&self) -> Vec<FlowId> {

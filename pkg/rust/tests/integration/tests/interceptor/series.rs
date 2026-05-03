@@ -10,7 +10,8 @@ fn create_series_propagates_to_materialized_cache() {
 	admin(&db, "create namespace demo");
 	admin(&db, "create series demo::s { ts: datetime, v: int2 } with { key: ts }");
 
-	let mat = &db.engine().catalog().materialized;
+	let cat = db.catalog();
+	let mat = cat.materialized();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let series = mat.find_series_by_name(ns.id(), "s").unwrap();
 	assert_eq!(series.name, "s");

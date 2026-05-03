@@ -11,7 +11,8 @@ fn create_view_propagates_flow_to_materialized_cache() {
 	admin(&db, "create table demo::t { id: uint8 }");
 	admin(&db, "create view demo::v { id: uint8 } as { from demo::t }");
 
-	let mat = &db.engine().catalog().materialized;
+	let cat = db.catalog();
+	let mat = cat.materialized();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let flow = mat.find_flow_by_name(ns.id(), "v").unwrap();
 	assert_eq!(flow.name, "v");

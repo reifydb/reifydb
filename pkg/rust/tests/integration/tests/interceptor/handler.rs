@@ -17,7 +17,8 @@ fn create_handler_propagates_to_materialized_cache() {
 		"create handler demo::on_placed on demo::order_event::OrderPlaced { insert demo::audit [{ kind: \"placed\" }] }",
 	);
 
-	let mat = &db.engine().catalog().materialized;
+	let cat = db.catalog();
+	let mat = cat.materialized();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let handler = mat.find_handler_by_name_at(ns.id(), "on_placed", CommitVersion(u64::MAX)).unwrap();
 	assert_eq!(handler.name, "on_placed");

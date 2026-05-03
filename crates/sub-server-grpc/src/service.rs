@@ -645,20 +645,23 @@ impl ReifyDb for ReifyDbService {
 		let binding = self
 			.state
 			.engine()
-			.materialized_catalog()
+			.catalog()
+			.materialized()
 			.find_grpc_binding_by_name(&inner.name)
 			.ok_or_else(|| Status::not_found(format!("no gRPC binding named `{}`", inner.name)))?;
 
 		let procedure = self
 			.state
 			.engine()
-			.materialized_catalog()
+			.catalog()
+			.materialized()
 			.find_procedure(binding.procedure_id)
 			.ok_or_else(|| Status::internal("binding references missing procedure"))?;
 		let namespace = self
 			.state
 			.engine()
-			.materialized_catalog()
+			.catalog()
+			.materialized()
 			.find_namespace(binding.namespace)
 			.ok_or_else(|| Status::internal("binding references missing namespace"))?;
 

@@ -12,7 +12,8 @@ fn create_dictionary_propagates_to_materialized_cache() {
 	admin(&db, "create namespace demo");
 	admin(&db, "create dictionary demo::d for utf8 as uint4");
 
-	let mat = &db.engine().catalog().materialized;
+	let cat = db.catalog();
+	let mat = cat.materialized();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let dict = mat.find_dictionary_by_name(ns.id(), "d").unwrap();
 	assert_eq!(dict.name, "d");

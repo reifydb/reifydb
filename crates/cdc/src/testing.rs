@@ -3,7 +3,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_catalog::materialized::MaterializedCatalog;
+use reifydb_catalog::{catalog::Catalog, materialized::MaterializedCatalog};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
@@ -34,7 +34,7 @@ pub struct TestCdcHost {
 	multi: MultiTransaction,
 	single: SingleTransaction,
 	pub event_bus: EventBus,
-	pub materialized_catalog: MaterializedCatalog,
+	pub catalog: Catalog,
 	pub clock: Clock,
 	pub mock: MockClock,
 }
@@ -63,7 +63,7 @@ impl TestCdcHost {
 			multi,
 			single,
 			event_bus,
-			materialized_catalog,
+			catalog: Catalog::new(materialized_catalog),
 			clock,
 			mock,
 		}
@@ -108,8 +108,8 @@ impl CdcHost for TestCdcHost {
 		true
 	}
 
-	fn materialized_catalog(&self) -> &MaterializedCatalog {
-		&self.materialized_catalog
+	fn catalog(&self) -> &Catalog {
+		&self.catalog
 	}
 }
 

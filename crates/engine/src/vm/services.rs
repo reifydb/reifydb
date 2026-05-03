@@ -73,7 +73,7 @@ impl Services {
 	}
 
 	pub fn get_handlers(&self, variant: VariantRef) -> Vec<Arc<dyn Procedure>> {
-		self.routines.get_handlers(&self.catalog.materialized, variant)
+		self.routines.get_handlers(self.catalog.materialized(), variant)
 	}
 
 	pub fn get_procedure(&self, name: &str) -> Option<Arc<dyn Procedure>> {

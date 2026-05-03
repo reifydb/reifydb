@@ -13,7 +13,6 @@ use std::{
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
-	materialized::MaterializedCatalog,
 	vtable::{
 		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
@@ -60,7 +59,6 @@ use tracing::instrument;
 use crate::{
 	Result,
 	bulk_insert::builder::{BulkInsertBuilder, Unchecked, Validated},
-	interceptor::catalog::MaterializedCatalogInterceptor,
 	vm::{
 		Admin, Command, Query, Subscription,
 		executor::Executor,
@@ -295,9 +293,10 @@ impl StandardEngine {
 	}
 
 	pub fn register_virtual_table<T: UserVTable>(&self, namespace: &str, name: &str, table: T) -> Result<VTableId> {
-		let catalog = self.materialized_catalog();
+		let catalog = self.catalog();
 
 		let ns_def = catalog
+			.materialized()
 			.find_namespace_by_name(namespace)
 			.ok_or_else(|| Error(Box::new(namespace_not_found(Fragment::None, namespace))))?;
 
@@ -347,8 +346,8 @@ impl CdcHost for StandardEngine {
 		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}
 
-	fn materialized_catalog(&self) -> &MaterializedCatalog {
-		&self.catalog.materialized
+	fn catalog(&self) -> &Catalog {
+		&self.catalog
 	}
 }
 
@@ -396,11 +395,9 @@ impl StandardEngine {
 			.expect("SingleStore must be registered in IocContainer for metrics");
 		let stats_reader = MetricReader::new(metrics_store);
 
-		let materialized = catalog.materialized.clone();
+		let catalog_for_interceptor = catalog.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
-			interceptors
-				.post_commit
-				.add(Arc::new(MaterializedCatalogInterceptor::new(materialized.clone())));
+			interceptors.post_commit.add(catalog_for_interceptor.post_commit_interceptor());
 		}));
 
 		let interceptors = Arc::new(interceptors);
@@ -465,11 +462,6 @@ impl StandardEngine {
 	#[inline]
 	pub fn emit<E: Event>(&self, event: E) {
 		self.event_bus.emit(event)
-	}
-
-	#[inline]
-	pub fn materialized_catalog(&self) -> &MaterializedCatalog {
-		&self.catalog.materialized
 	}
 
 	#[inline]

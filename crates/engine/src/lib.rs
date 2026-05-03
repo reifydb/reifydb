@@ -15,7 +15,6 @@ pub mod environment;
 pub mod error;
 pub mod expression;
 pub mod flow;
-pub(crate) mod interceptor;
 pub mod policy;
 #[cfg(not(reifydb_single_threaded))]
 pub mod remote;

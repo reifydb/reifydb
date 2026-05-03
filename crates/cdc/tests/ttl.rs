@@ -60,7 +60,7 @@ impl TtlFixture {
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::with_clock(initial_nanos);
-		let catalog = host.materialized_catalog.clone();
+		let catalog = host.catalog.materialized().clone();
 		let mock = host.mock.clone();
 		let clock = host.clock.clone();
 

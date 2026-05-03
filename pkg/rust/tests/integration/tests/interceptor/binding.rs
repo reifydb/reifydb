@@ -16,7 +16,8 @@ fn create_binding_propagates_to_materialized_cache() {
 		"create http binding demo::greet_http for demo::greet with { method: \"POST\", path: \"/demo/greet\", format: \"json\" }",
 	);
 
-	let mat = &db.engine().catalog().materialized;
+	let cat = db.catalog();
+	let mat = cat.materialized();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let binding = mat.find_binding_by_name(ns.id(), "greet_http").unwrap();
 	let proc = mat.find_procedure_by_name(ns.id(), "greet").unwrap();

@@ -12,7 +12,8 @@ fn create_authentication_propagates_to_materialized_cache() {
 	admin(&db, "create user alice");
 	admin(&db, "create authentication for alice { method: token; token: 'secret' }");
 
-	let mat = &db.engine().catalog().materialized;
+	let cat = db.catalog();
+	let mat = cat.materialized();
 	let alice = mat.find_identity_by_name_at("alice", CommitVersion(u64::MAX)).unwrap();
 	let auths = mat.list_authentications_by_method_at("token", CommitVersion(u64::MAX));
 	assert_eq!(auths.len(), 1);

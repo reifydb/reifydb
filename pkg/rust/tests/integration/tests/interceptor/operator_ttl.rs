@@ -22,7 +22,7 @@ fn create_view_with_operator_ttl_propagates_to_materialized_cache() {
 		}",
 	);
 
-	let ttls = db.engine().catalog().list_operator_ttls();
+	let ttls = db.catalog().list_operator_ttls();
 
 	assert!(!ttls.is_empty());
 

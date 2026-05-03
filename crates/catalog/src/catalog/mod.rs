@@ -32,11 +32,16 @@ pub mod test;
 pub mod view;
 pub mod vtable;
 
-use crate::materialized::MaterializedCatalog;
+use std::sync::Arc;
+
+use reifydb_core::interface::catalog::vtable::VTable;
+use reifydb_transaction::interceptor::transaction::PostCommitInterceptor;
+
+use crate::{Result, materialized::MaterializedCatalog};
 
 #[derive(Debug, Clone)]
 pub struct Catalog {
-	pub materialized: MaterializedCatalog,
+	pub(crate) materialized: MaterializedCatalog,
 }
 
 impl Catalog {
@@ -48,6 +53,18 @@ impl Catalog {
 
 	pub fn testing() -> Self {
 		Self::new(MaterializedCatalog::new())
+	}
+
+	pub fn materialized(&self) -> &MaterializedCatalog {
+		&self.materialized
+	}
+
+	pub fn register_vtable_user(&self, def: Arc<VTable>) -> Result<()> {
+		self.materialized.register_vtable_user(def)
+	}
+
+	pub fn post_commit_interceptor(&self) -> Arc<dyn PostCommitInterceptor> {
+		Arc::new(crate::interceptor::MaterializedCatalogInterceptor::new(self.materialized.clone()))
 	}
 }
 

@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use reifydb_catalog::materialized::MaterializedCatalog;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::CommitVersion;
 use reifydb_transaction::transaction::{command::CommandTransaction, query::QueryTransaction};
 use reifydb_type::Result;
@@ -19,5 +19,5 @@ pub trait CdcHost: Clone + Send + Sync + 'static {
 
 	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool;
 
-	fn materialized_catalog(&self) -> &MaterializedCatalog;
+	fn catalog(&self) -> &Catalog;
 }
