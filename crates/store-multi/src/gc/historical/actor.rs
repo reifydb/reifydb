@@ -24,7 +24,7 @@ use tracing::{debug, trace, warn};
 
 use super::{GcStats, QueryWatermark};
 use crate::{
-	hot::storage::HotStorage,
+	buffer::storage::BufferStorage,
 	store::StandardMultiStore,
 	tier::{HistoricalCursor, TierStorage},
 };
@@ -65,8 +65,8 @@ impl<W: QueryWatermark> Actor<W> {
 			trace!("Historical GC sweep already in progress, skipping tick");
 			return;
 		}
-		let Some(hot) = self.store.hot() else {
-			warn!("Historical GC sweep skipped: hot tier is not configured");
+		let Some(buffer) = self.store.buffer() else {
+			warn!("Historical GC sweep skipped: buffer tier is not configured");
 			return;
 		};
 
@@ -80,8 +80,8 @@ impl<W: QueryWatermark> Actor<W> {
 		}
 
 		let batch_size = self.batch_size();
-		let stats = self.sweep_all_shapes(hot, cutoff, batch_size, &mut state.cursors);
-		self.finish_sweep(hot, cutoff, &stats);
+		let stats = self.sweep_all_shapes(buffer, cutoff, batch_size, &mut state.cursors);
+		self.finish_sweep(buffer, cutoff, &stats);
 
 		state.sweeping = false;
 	}
@@ -94,14 +94,14 @@ impl<W: QueryWatermark> Actor<W> {
 	#[inline]
 	fn sweep_all_shapes(
 		&self,
-		hot: &HotStorage,
+		buffer: &BufferStorage,
 		cutoff: CommitVersion,
 		batch_size: usize,
 		cursors: &mut HashMap<EntryKind, HistoricalCursor>,
 	) -> GcStats {
 		let mut stats = GcStats::default();
 
-		let entry_kinds = match hot.list_all_entry_kinds() {
+		let entry_kinds = match buffer.list_all_entry_kinds() {
 			Ok(v) => v,
 			Err(e) => {
 				warn!(error = %e, "Historical GC sweep failed: list_all_entry_kinds");
@@ -115,7 +115,7 @@ impl<W: QueryWatermark> Actor<W> {
 				*cursor = HistoricalCursor::default();
 			}
 
-			let dropped = match self.sweep_shape(hot, entry_kind, cutoff, batch_size, cursor) {
+			let dropped = match self.sweep_shape(buffer, entry_kind, cutoff, batch_size, cursor) {
 				Ok(n) => n,
 				Err(e) => {
 					warn!(?entry_kind, error = %e, "Historical GC sweep failed for shape");
@@ -131,9 +131,9 @@ impl<W: QueryWatermark> Actor<W> {
 	}
 
 	#[inline]
-	fn finish_sweep(&self, hot: &HotStorage, cutoff: CommitVersion, stats: &GcStats) {
+	fn finish_sweep(&self, buffer: &BufferStorage, cutoff: CommitVersion, stats: &GcStats) {
 		if stats.versions_dropped > 0 {
-			hot.maintenance();
+			buffer.maintenance();
 			debug!(
 				cutoff = cutoff.0,
 				shapes_scanned = stats.shapes_scanned,
@@ -153,13 +153,13 @@ impl<W: QueryWatermark> Actor<W> {
 
 	fn sweep_shape(
 		&self,
-		hot: &HotStorage,
+		buffer: &BufferStorage,
 		entry_kind: EntryKind,
 		cutoff: CommitVersion,
 		batch_size: usize,
 		cursor: &mut HistoricalCursor,
 	) -> Result<u64> {
-		let entries = hot.scan_historical_below(entry_kind, cutoff, cursor, batch_size)?;
+		let entries = buffer.scan_historical_below(entry_kind, cutoff, cursor, batch_size)?;
 		if entries.is_empty() {
 			return Ok(0);
 		}
@@ -167,7 +167,7 @@ impl<W: QueryWatermark> Actor<W> {
 		let count = entries.len() as u64;
 		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>> = HashMap::new();
 		batches.insert(entry_kind, entries);
-		hot.drop(batches)?;
+		buffer.drop(batches)?;
 		Ok(count)
 	}
 }

@@ -1,0 +1,27 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Defect targets:
+#   - cascade not consulting persistent on buffer NotFound
+#   - get_at_version's tombstone disambiguation incorrectly returning
+#     Tombstone for a key persistent actually has
+
+# Plant a value directly in persistent. Buffer never sees this key.
+persistent_set k=warm_planted   version=5
+---
+ok
+
+# Buffer has nothing
+buffer_get k version=5
+---
+"k" => None
+
+# Persistent has the planted value
+persistent_get k version=5
+---
+"k" => "warm_planted"
+
+# Cascade falls through buffer -> persistent and returns the persistent value
+get k version=5
+---
+"k" => "warm_planted"

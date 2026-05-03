@@ -10,8 +10,8 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
-	config::{HotConfig, MultiStoreConfig, WarmConfig},
-	hot::storage::HotStorage,
+	buffer::storage::BufferStorage,
+	config::{BufferConfig, MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
@@ -28,11 +28,10 @@ fn test_tiered(path: &Path) {
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 		let store = StandardMultiStore::new(MultiStoreConfig {
-			hot: Some(HotConfig {
-				storage: HotStorage::memory(),
+			buffer: Some(BufferConfig {
+				storage: BufferStorage::memory(),
 			}),
-			warm: Some(WarmConfig::sqlite_in_memory()),
-			cold: None,
+			persistent: Some(PersistentConfig::sqlite_in_memory()),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,

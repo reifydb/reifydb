@@ -22,7 +22,7 @@ use tracing::{debug, error, warn};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::{TierBatch, TierStorage};
-use crate::{hot::storage::HotStorage, warm::WarmStorage};
+use crate::{buffer::storage::BufferStorage, persistent::PersistentStorage};
 
 #[derive(Clone)]
 pub enum FlushMessage {
@@ -55,29 +55,29 @@ pub struct FlushActorState {
 
 #[allow(dead_code)]
 pub struct FlushActor {
-	hot: HotStorage,
-	warm: WarmStorage,
+	buffer: BufferStorage,
+	persistent: PersistentStorage,
 	flush_interval: Duration,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl FlushActor {
-	pub fn new(hot: HotStorage, warm: WarmStorage, flush_interval: Duration) -> Self {
+	pub fn new(buffer: BufferStorage, persistent: PersistentStorage, flush_interval: Duration) -> Self {
 		Self {
-			hot,
-			warm,
+			buffer,
+			persistent,
 			flush_interval,
 		}
 	}
 
 	pub fn spawn(
 		system: &ActorSystem,
-		hot: HotStorage,
-		warm: WarmStorage,
+		buffer: BufferStorage,
+		persistent: PersistentStorage,
 		flush_interval: Duration,
 	) -> ActorRef<FlushMessage> {
-		let actor = Self::new(hot, warm, flush_interval);
-		system.spawn_system("warm-flush", actor).actor_ref().clone()
+		let actor = Self::new(buffer, persistent, flush_interval);
+		system.spawn_system("persistent-flush", actor).actor_ref().clone()
 	}
 
 	fn merge_dirty(
@@ -116,13 +116,13 @@ impl FlushActor {
 				let value = if entry.is_tombstone {
 					None
 				} else {
-					match self.hot.get(kind, key.as_ref(), entry.version) {
+					match self.buffer.get(kind, key.as_ref(), entry.version) {
 						Ok(Some(v)) => Some(v),
 						Ok(None) => {
 							continue;
 						}
 						Err(e) => {
-							warn!(?kind, error = %e, "warm flush: hot read failed");
+							warn!(?kind, error = %e, "persistent flush: buffer read failed");
 							continue;
 						}
 					}
@@ -140,15 +140,15 @@ impl FlushActor {
 		let mut total = 0usize;
 		for (version, batch) in by_version {
 			let count: usize = batch.values().map(|v| v.len()).sum();
-			if let Err(e) = self.warm.set(version, batch) {
-				error!(version = version.0, error = %e, "warm flush: set failed");
+			if let Err(e) = self.persistent.set(version, batch) {
+				error!(version = version.0, error = %e, "persistent flush: set failed");
 			} else {
 				total += count;
 			}
 		}
 
 		if total > 0 {
-			debug!(rows = total, "warm flush completed");
+			debug!(rows = total, "persistent flush completed");
 		}
 
 		state.flushing = false;
@@ -186,7 +186,7 @@ impl Actor for FlushActor {
 	type Message = FlushMessage;
 
 	fn init(&self, ctx: &Context<FlushMessage>) -> FlushActorState {
-		debug!("Warm flush actor started");
+		debug!("Persistent flush actor started");
 		let timer_handle =
 			ctx.schedule_tick(self.flush_interval, |nanos| FlushMessage::Tick(DateTime::from_nanos(nanos)));
 		FlushActorState {
@@ -213,7 +213,7 @@ impl Actor for FlushActor {
 				self.drain(state);
 			}
 			FlushMessage::Shutdown => {
-				debug!("Warm flush actor shutting down");
+				debug!("Persistent flush actor shutting down");
 				self.drain(state);
 				return Directive::Stop;
 			}
@@ -228,7 +228,7 @@ impl Actor for FlushActor {
 	}
 
 	fn post_stop(&self) {
-		debug!("Warm flush actor stopped");
+		debug!("Persistent flush actor stopped");
 	}
 
 	fn config(&self) -> ActorConfig {

@@ -15,7 +15,7 @@ use reifydb_routine::routine::registry::RoutinesConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_runtime::context::clock::Clock;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
-use reifydb_store_multi::hot::storage::HotStorage;
+use reifydb_store_multi::buffer::storage::BufferStorage;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
@@ -45,11 +45,10 @@ use reifydb_type::value::Value;
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
-) -> Result<(HotStorage, PoolConfig)> {
-	let multi_hot = factory.open_multi_hot();
+) -> Result<(BufferStorage, PoolConfig)> {
+	let multi_buffer = factory.open_multi_buffer();
 	let persisted = read_configs(
-		Some(&multi_hot),
-		None,
+		Some(&multi_buffer),
 		None,
 		&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
 	)?;
@@ -72,7 +71,7 @@ fn pool_config_from_sources(
 		system_threads: resolve(ConfigKey::ThreadsSystem),
 		query_threads: resolve(ConfigKey::ThreadsQuery),
 	};
-	Ok((multi_hot, pools))
+	Ok((multi_buffer, pools))
 }
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, traits::WithSubsystem};
@@ -303,7 +302,7 @@ impl ServerBuilder {
 
 	#[allow(unused_mut)]
 	pub fn build(mut self) -> Result<Database> {
-		let (multi_hot, pool_config) =
+		let (multi_buffer, pool_config) =
 			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
@@ -311,7 +310,7 @@ impl ServerBuilder {
 
 		let actor_system = runtime.actor_system().scope();
 		let (multi_store, single_store, transaction_single, eventbus) =
-			self.storage_factory.create_with_multi_hot(multi_hot, &actor_system);
+			self.storage_factory.create_with_multi_buffer(multi_buffer, &actor_system);
 		let materialized_catalog = MaterializedCatalog::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),

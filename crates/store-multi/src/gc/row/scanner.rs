@@ -14,7 +14,7 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 
 use super::ScanStats;
 use crate::{
-	hot::storage::HotStorage,
+	buffer::storage::BufferStorage,
 	tier::{RangeCursor, TierStorage},
 };
 
@@ -31,7 +31,7 @@ pub enum ScanResult {
 }
 
 pub fn scan_shape_by_created_at(
-	storage: &HotStorage,
+	storage: &BufferStorage,
 	shape_id: ShapeId,
 	ttl_config: &Ttl,
 	now_nanos: u64,
@@ -76,7 +76,7 @@ pub fn scan_shape_by_created_at(
 }
 
 pub fn scan_shape_by_updated_at(
-	storage: &HotStorage,
+	storage: &BufferStorage,
 	shape_id: ShapeId,
 	ttl_config: &Ttl,
 	now_nanos: u64,
@@ -130,7 +130,7 @@ fn bound_as_ref(bound: &Bound<impl AsRef<[u8]>>) -> Bound<&[u8]> {
 
 // TODO: batch version lookups - currently O(N) individual get_all_versions
 
-pub fn drop_expired_keys(storage: &HotStorage, expired: &[ExpiredRow], stats: &mut ScanStats) -> Result<()> {
+pub fn drop_expired_keys(storage: &BufferStorage, expired: &[ExpiredRow], stats: &mut ScanStats) -> Result<()> {
 	if expired.is_empty() {
 		return Ok(());
 	}

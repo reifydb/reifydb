@@ -57,8 +57,8 @@ impl<P: ListRowTtls> Actor<P> {
 			return;
 		}
 
-		let Some(hot) = self.store.hot() else {
-			warn!("Row TTL scan skipped: hot tier is not configured");
+		let Some(buffer) = self.store.buffer() else {
+			warn!("Row TTL scan skipped: buffer tier is not configured");
 			return;
 		};
 
@@ -85,7 +85,7 @@ impl<P: ListRowTtls> Actor<P> {
 
 			let scan_result = match ttl_config.anchor {
 				TtlAnchor::Created => scanner::scan_shape_by_created_at(
-					hot,
+					buffer,
 					*shape_id,
 					ttl_config,
 					now_nanos,
@@ -93,7 +93,7 @@ impl<P: ListRowTtls> Actor<P> {
 					&mut cursor,
 				),
 				TtlAnchor::Updated => scanner::scan_shape_by_updated_at(
-					hot,
+					buffer,
 					*shape_id,
 					ttl_config,
 					now_nanos,
@@ -119,7 +119,7 @@ impl<P: ListRowTtls> Actor<P> {
 								row.scanned_bytes;
 						}
 
-						match scanner::drop_expired_keys(hot, &expired, &mut stats) {
+						match scanner::drop_expired_keys(buffer, &expired, &mut stats) {
 							Ok(_) => {
 								let bytes_freed: u64 =
 									stats.bytes_reclaimed.values().sum();
@@ -149,7 +149,7 @@ impl<P: ListRowTtls> Actor<P> {
 		}
 
 		if stats.rows_expired > 0 {
-			hot.maintenance();
+			buffer.maintenance();
 
 			info!(
 				shapes_scanned = stats.shapes_scanned,

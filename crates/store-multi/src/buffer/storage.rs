@@ -15,13 +15,13 @@ use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBa
 
 #[derive(Clone)]
 #[repr(u8)]
-pub enum HotStorage {
+pub enum BufferStorage {
 	Memory(MemoryPrimitiveStorage) = 0,
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(SqlitePrimitiveStorage) = 1,
 }
 
-impl HotStorage {
+impl BufferStorage {
 	pub fn memory() -> Self {
 		Self::Memory(MemoryPrimitiveStorage::new())
 	}
@@ -37,7 +37,7 @@ impl HotStorage {
 	}
 }
 
-impl HotStorage {
+impl BufferStorage {
 	pub fn maintenance(&self) {
 		match self {
 			Self::Memory(_) => {}
@@ -74,7 +74,7 @@ impl HotStorage {
 	}
 }
 
-impl TierStorage for HotStorage {
+impl TierStorage for BufferStorage {
 	#[inline]
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
 		match self {
@@ -188,7 +188,7 @@ impl TierStorage for HotStorage {
 	}
 }
 
-impl TierBackend for HotStorage {}
+impl TierBackend for BufferStorage {}
 
 #[cfg(test)]
 pub mod tests {
@@ -196,7 +196,7 @@ pub mod tests {
 
 	#[test]
 	fn test_memory_backend() {
-		let storage = HotStorage::memory();
+		let storage = BufferStorage::memory();
 
 		let key = CowVec::new(b"key".to_vec());
 		let version = CommitVersion(1);
@@ -211,7 +211,7 @@ pub mod tests {
 
 	#[test]
 	fn test_sqlite_backend() {
-		let storage = HotStorage::sqlite_in_memory();
+		let storage = BufferStorage::sqlite_in_memory();
 
 		let key = CowVec::new(b"key".to_vec());
 		let version = CommitVersion(1);
@@ -226,7 +226,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next_memory() {
-		let storage = HotStorage::memory();
+		let storage = BufferStorage::memory();
 
 		let version = CommitVersion(1);
 		storage.set(
@@ -254,7 +254,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next_sqlite() {
-		let storage = HotStorage::sqlite_in_memory();
+		let storage = BufferStorage::sqlite_in_memory();
 
 		let version = CommitVersion(1);
 		storage.set(

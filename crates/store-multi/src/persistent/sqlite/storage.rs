@@ -24,29 +24,29 @@ use super::{
 use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
 #[derive(Clone)]
-pub struct SqliteWarmStorage {
-	inner: Arc<SqliteWarmStorageInner>,
+pub struct SqlitePersistentStorage {
+	inner: Arc<SqlitePersistentStorageInner>,
 }
 
-struct SqliteWarmStorageInner {
+struct SqlitePersistentStorageInner {
 	conn: Mutex<Connection>,
 }
 
-impl SqliteWarmStorage {
-	#[instrument(name = "store::multi::warm::sqlite::new", level = "debug", skip(config), fields(
+impl SqlitePersistentStorage {
+	#[instrument(name = "store::multi::persistent::sqlite::new", level = "debug", skip(config), fields(
 		db_path = ?config.path,
 		page_size = config.page_size,
 		journal_mode = %config.journal_mode.as_str()
 	))]
 	pub fn new(config: SqliteConfig) -> Self {
-		let db_path = resolve_db_path(config.path.clone(), "warm.db");
+		let db_path = resolve_db_path(config.path.clone(), "persistent.db");
 		let flags = convert_flags(&config.flags);
 
-		let conn = connect(&db_path, flags).expect("Failed to connect to warm database");
-		pragma::apply(&conn, &config).expect("Failed to configure warm SQLite pragmas");
+		let conn = connect(&db_path, flags).expect("Failed to connect to persistent database");
+		pragma::apply(&conn, &config).expect("Failed to configure persistent SQLite pragmas");
 
 		Self {
-			inner: Arc::new(SqliteWarmStorageInner {
+			inner: Arc::new(SqlitePersistentStorageInner {
 				conn: Mutex::new(conn),
 			}),
 		}
@@ -63,7 +63,7 @@ impl SqliteWarmStorage {
 		match conn.query_row(&sql, [], |row| row.get::<_, i64>(0)) {
 			Ok(c) => Ok(c as u64),
 			Err(e) if e.to_string().contains("no such table") => Ok(0),
-			Err(e) => Err(error!(internal(format!("Failed to count warm current: {}", e)))),
+			Err(e) => Err(error!(internal(format!("Failed to count persistent current: {}", e)))),
 		}
 	}
 
@@ -94,7 +94,7 @@ impl SqliteWarmStorage {
 				cursor.exhausted = true;
 				return Ok(RangeBatch::empty());
 			}
-			Err(e) => return Err(error!(internal(format!("Failed to prepare warm range: {}", e)))),
+			Err(e) => return Err(error!(internal(format!("Failed to prepare persistent range: {}", e)))),
 		};
 
 		let version_bytes = version_to_bytes(req.version).to_vec();
@@ -126,12 +126,12 @@ impl SqliteWarmStorage {
 		}) {
 			Ok(rows) => rows
 				.collect::<SqliteResult<Vec<_>>>()
-				.map_err(|e| error!(internal(format!("Failed to read warm row: {}", e))))?,
+				.map_err(|e| error!(internal(format!("Failed to read persistent row: {}", e))))?,
 			Err(e) if e.to_string().contains("no such table") => {
 				cursor.exhausted = true;
 				return Ok(RangeBatch::empty());
 			}
-			Err(e) => return Err(error!(internal(format!("Failed to scan warm range: {}", e)))),
+			Err(e) => return Err(error!(internal(format!("Failed to scan persistent range: {}", e)))),
 		};
 
 		if entries.len() < req.batch_size {
@@ -166,8 +166,8 @@ struct RangeChunkRequest<'a> {
 	descending: bool,
 }
 
-impl TierStorage for SqliteWarmStorage {
-	#[instrument(name = "store::multi::warm::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len(), version = version.0))]
+impl TierStorage for SqlitePersistentStorage {
+	#[instrument(name = "store::multi::persistent::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len(), version = version.0))]
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
 		let table_name = warm_current_table_name(table);
 		let conn = self.inner.conn.lock();
@@ -180,7 +180,7 @@ impl TierStorage for SqliteWarmStorage {
 				Ok((version_from_bytes(&version_bytes), value))
 			}),
 			Err(e) if e.to_string().contains("no such table") => Err(QueryReturnedNoRows),
-			Err(e) => return Err(error!(internal(format!("Failed to prepare warm get: {}", e)))),
+			Err(e) => return Err(error!(internal(format!("Failed to prepare persistent get: {}", e)))),
 		};
 
 		match result {
@@ -188,11 +188,11 @@ impl TierStorage for SqliteWarmStorage {
 			Ok(_) => Ok(None),
 			Err(QueryReturnedNoRows) => Ok(None),
 			Err(e) if e.to_string().contains("no such table") => Ok(None),
-			Err(e) => Err(error!(internal(format!("Failed to read warm: {}", e)))),
+			Err(e) => Err(error!(internal(format!("Failed to read persistent: {}", e)))),
 		}
 	}
 
-	#[instrument(name = "store::multi::warm::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
+	#[instrument(name = "store::multi::persistent::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		if batches.is_empty() {
 			return Ok(());
@@ -201,29 +201,30 @@ impl TierStorage for SqliteWarmStorage {
 		let conn = self.inner.conn.lock();
 		let tx = conn
 			.unchecked_transaction()
-			.map_err(|e| error!(internal(format!("Failed to start warm transaction: {}", e))))?;
+			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
 
 		let new_version_bytes = version_to_bytes(version);
 
 		for (table, entries) in batches {
 			let table_name = warm_current_table_name(table);
 			Self::create_table_if_needed(&tx, &table_name)
-				.map_err(|e| error!(internal(format!("Failed to ensure warm table: {}", e))))?;
+				.map_err(|e| error!(internal(format!("Failed to ensure persistent table: {}", e))))?;
 
 			let upsert_sql = build_upsert_warm_current_sql(&table_name);
 			let mut stmt = tx
 				.prepare_cached(&upsert_sql)
-				.map_err(|e| error!(internal(format!("Failed to prepare warm upsert: {}", e))))?;
+				.map_err(|e| error!(internal(format!("Failed to prepare persistent upsert: {}", e))))?;
 
 			for (key, value) in entries {
 				let key_slice = key.as_slice();
 				let value_slice = value.as_ref().map(|v| v.as_slice());
-				stmt.execute(params![key_slice, new_version_bytes.as_slice(), value_slice])
-					.map_err(|e| error!(internal(format!("Failed to upsert warm row: {}", e))))?;
+				stmt.execute(params![key_slice, new_version_bytes.as_slice(), value_slice]).map_err(
+					|e| error!(internal(format!("Failed to upsert persistent row: {}", e))),
+				)?;
 			}
 		}
 
-		tx.commit().map_err(|e| error!(internal(format!("Failed to commit warm transaction: {}", e))))
+		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))
 	}
 
 	fn range_next(
@@ -274,7 +275,7 @@ impl TierStorage for SqliteWarmStorage {
 		let table_name = warm_current_table_name(table);
 		let conn = self.inner.conn.lock();
 		Self::create_table_if_needed(&conn, &table_name)
-			.map_err(|e| error!(internal(format!("Failed to ensure warm table: {}", e))))
+			.map_err(|e| error!(internal(format!("Failed to ensure persistent table: {}", e))))
 	}
 
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
@@ -284,15 +285,15 @@ impl TierStorage for SqliteWarmStorage {
 		if let Err(e) = result
 			&& !e.to_string().contains("no such table")
 		{
-			return Err(error!(internal(format!("Failed to clear warm {}: {}", table_name, e))));
+			return Err(error!(internal(format!("Failed to clear persistent {}: {}", table_name, e))));
 		}
 		Ok(())
 	}
 
 	fn drop(&self, _batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
-		// TODO: change the TierStorage interface so warm doesn't have to expose
+		// TODO: change the TierStorage interface so persistent doesn't have to expose
 
-		panic!("SqliteWarmStorage::drop: warm tier has no historical chain to drop versions from");
+		panic!("SqlitePersistentStorage::drop: persistent tier has no historical chain to drop versions from");
 	}
 
 	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
@@ -311,7 +312,7 @@ impl TierStorage for SqliteWarmStorage {
 			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
 			Err(e) => {
 				return Err(error!(internal(format!(
-					"Failed to prepare warm get_all_versions: {}",
+					"Failed to prepare persistent get_all_versions: {}",
 					e
 				))));
 			}
@@ -321,7 +322,7 @@ impl TierStorage for SqliteWarmStorage {
 			Ok(row) => Ok(vec![row]),
 			Err(QueryReturnedNoRows) => Ok(Vec::new()),
 			Err(e) if e.to_string().contains("no such table") => Ok(Vec::new()),
-			Err(e) => Err(error!(internal(format!("Failed to read warm versions: {}", e)))),
+			Err(e) => Err(error!(internal(format!("Failed to read persistent versions: {}", e)))),
 		}
 	}
 
@@ -332,10 +333,10 @@ impl TierStorage for SqliteWarmStorage {
 		_cursor: &mut HistoricalCursor,
 		_batch_size: usize,
 	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
-		// TODO: change the TierStorage interface so warm doesn't have to expose
+		// TODO: change the TierStorage interface so persistent doesn't have to expose
 
-		panic!("SqliteWarmStorage::scan_historical_below: warm tier has no historical chain");
+		panic!("SqlitePersistentStorage::scan_historical_below: persistent tier has no historical chain");
 	}
 }
 
-impl TierBackend for SqliteWarmStorage {}
+impl TierBackend for SqlitePersistentStorage {}

@@ -11,18 +11,17 @@ use reifydb_core::{
 };
 use reifydb_type::Result;
 
-pub mod cold;
+pub mod buffer;
 pub mod flush;
 pub mod gc;
-pub mod hot;
+pub mod persistent;
 pub mod tier;
-pub mod warm;
 
 pub mod config;
 pub mod multi;
 pub mod store;
 
-use config::{HotConfig, MultiStoreConfig};
+use config::{BufferConfig, MultiStoreConfig};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -76,13 +75,13 @@ impl MultiStore {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_warm_sqlite() -> Self {
-		MultiStore::Standard(StandardMultiStore::testing_memory_with_warm_sqlite())
+	pub fn testing_memory_with_persistent_sqlite() -> Self {
+		MultiStore::Standard(StandardMultiStore::testing_memory_with_persistent_sqlite())
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_warm_sqlite_with_eventbus(event_bus: EventBus) -> Self {
-		MultiStore::Standard(StandardMultiStore::testing_memory_with_warm_sqlite_with_eventbus(event_bus))
+	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
+		MultiStore::Standard(StandardMultiStore::testing_memory_with_persistent_sqlite_with_eventbus(event_bus))
 	}
 
 	pub fn flush_pending_blocking(&self) {
@@ -91,15 +90,15 @@ impl MultiStore {
 		}
 	}
 
-	pub fn hot(&self) -> Option<&hot::storage::HotStorage> {
+	pub fn buffer(&self) -> Option<&buffer::storage::BufferStorage> {
 		match self {
-			MultiStore::Standard(store) => store.hot(),
+			MultiStore::Standard(store) => store.buffer(),
 		}
 	}
 
-	pub fn warm(&self) -> Option<&warm::WarmStorage> {
+	pub fn persistent(&self) -> Option<&persistent::PersistentStorage> {
 		match self {
-			MultiStore::Standard(store) => store.warm(),
+			MultiStore::Standard(store) => store.persistent(),
 		}
 	}
 }

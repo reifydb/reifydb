@@ -15,12 +15,12 @@ use reifydb_runtime::{
 use tracing::instrument;
 
 use crate::{
-	HotConfig, cold::ColdStorage, config::MultiStoreConfig, flush::actor::FlushMessage, hot::storage::HotStorage,
-	warm::WarmStorage,
+	BufferConfig, buffer::storage::BufferStorage, config::MultiStoreConfig, flush::actor::FlushMessage,
+	persistent::PersistentStorage,
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
-	config::WarmConfig,
+	config::PersistentConfig,
 	flush::{actor::FlushActor, listener::FlushEventListener},
 };
 
@@ -39,9 +39,8 @@ use crate::Result;
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
 
 pub struct StandardMultiStoreInner {
-	pub(crate) hot: Option<HotStorage>,
-	pub(crate) warm: Option<WarmStorage>,
-	pub(crate) cold: Option<ColdStorage>,
+	pub(crate) buffer: Option<BufferStorage>,
+	pub(crate) persistent: Option<PersistentStorage>,
 
 	pub(crate) drop_actor: ActorRef<DropMessage>,
 
@@ -55,19 +54,15 @@ pub struct StandardMultiStoreInner {
 
 impl StandardMultiStore {
 	#[instrument(name = "store::multi::new", level = "debug", skip(config), fields(
-		has_hot = config.hot.is_some(),
-		has_warm = config.warm.is_some(),
-		has_cold = config.cold.is_some(),
+		has_buffer = config.buffer.is_some(),
+		has_persistent = config.persistent.is_some(),
 	))]
 	pub fn new(config: MultiStoreConfig) -> Result<Self> {
-		let hot = config.hot.map(|c| c.storage);
-		// TODO: cold is still a placeholder.
-		let cold = None;
-		let _ = config.cold;
+		let buffer = config.buffer.map(|c| c.storage);
 
 		let actor_system = config.actor_system.clone();
 
-		let storage = hot.as_ref().expect("hot tier is required");
+		let storage = buffer.as_ref().expect("buffer tier is required");
 		let drop_config = DropWorkerConfig::default();
 		let drop_actor = DropActor::spawn(
 			&actor_system,
@@ -78,16 +73,16 @@ impl StandardMultiStore {
 		);
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		let (warm, flush_actor) = {
-			let warm_config = config.warm.clone();
-			let warm = warm_config.as_ref().map(|c| c.storage.clone());
-			let flush_actor = match (warm.as_ref(), warm_config.as_ref()) {
-				(Some(warm_storage), Some(warm_cfg)) => {
+		let (persistent, flush_actor) = {
+			let persistent_config = config.persistent.clone();
+			let persistent = persistent_config.as_ref().map(|c| c.storage.clone());
+			let flush_actor = match (persistent.as_ref(), persistent_config.as_ref()) {
+				(Some(persistent_storage), Some(persistent_cfg)) => {
 					let actor_ref = FlushActor::spawn(
 						&actor_system,
 						storage.clone(),
-						warm_storage.clone(),
-						warm_cfg.flush_interval,
+						persistent_storage.clone(),
+						persistent_cfg.flush_interval,
 					);
 					config.event_bus.register::<MultiCommittedEvent, _>(FlushEventListener::new(
 						actor_ref.clone(),
@@ -96,19 +91,18 @@ impl StandardMultiStore {
 				}
 				_ => None,
 			};
-			(warm, flush_actor)
+			(persistent, flush_actor)
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (warm, flush_actor): (Option<WarmStorage>, Option<ActorRef<FlushMessage>>) = {
-			let _ = config.warm;
+		let (persistent, flush_actor): (Option<PersistentStorage>, Option<ActorRef<FlushMessage>>) = {
+			let _ = config.persistent;
 			(None, None)
 		};
 
 		Ok(Self(Arc::new(StandardMultiStoreInner {
-			hot,
-			warm,
-			cold,
+			buffer,
+			persistent,
 			drop_actor,
 			flush_actor,
 			_actor_system: actor_system,
@@ -116,12 +110,12 @@ impl StandardMultiStore {
 		})))
 	}
 
-	pub fn hot(&self) -> Option<&HotStorage> {
-		self.hot.as_ref()
+	pub fn buffer(&self) -> Option<&BufferStorage> {
+		self.buffer.as_ref()
 	}
 
-	pub fn warm(&self) -> Option<&WarmStorage> {
-		self.warm.as_ref()
+	pub fn persistent(&self) -> Option<&PersistentStorage> {
+		self.persistent.as_ref()
 	}
 
 	pub fn flush_pending_blocking(&self) {
@@ -165,11 +159,10 @@ impl StandardMultiStore {
 		let pools = Pools::new(PoolConfig::sync_only());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(MultiStoreConfig {
-			hot: Some(HotConfig {
-				storage: HotStorage::memory(),
+			buffer: Some(BufferConfig {
+				storage: BufferStorage::memory(),
 			}),
-			warm: None,
-			cold: None,
+			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
@@ -180,22 +173,21 @@ impl StandardMultiStore {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_warm_sqlite() -> Self {
+	pub fn testing_memory_with_persistent_sqlite() -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
-		Self::testing_memory_with_warm_sqlite_with_eventbus(EventBus::new(&actor_system))
+		Self::testing_memory_with_persistent_sqlite_with_eventbus(EventBus::new(&actor_system))
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_warm_sqlite_with_eventbus(event_bus: EventBus) -> Self {
+	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(MultiStoreConfig {
-			hot: Some(HotConfig {
-				storage: HotStorage::memory(),
+			buffer: Some(BufferConfig {
+				storage: BufferStorage::memory(),
 			}),
-			warm: Some(WarmConfig::sqlite_in_memory()),
-			cold: None,
+			persistent: Some(PersistentConfig::sqlite_in_memory()),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,

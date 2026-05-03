@@ -15,6 +15,7 @@ use reifydb_core::{
 	util::encoding::format::raw::Raw,
 };
 use reifydb_store_multi::{
+	buffer::storage::BufferStorage,
 	gc::row::{
 		ScanStats,
 		scanner::{
@@ -22,7 +23,6 @@ use reifydb_store_multi::{
 			drop_expired_keys, scan_shape_by_created_at, scan_shape_by_updated_at,
 		},
 	},
-	hot::storage::HotStorage,
 	tier::{RangeCursor, TierStorage},
 };
 use reifydb_testing::{
@@ -36,29 +36,29 @@ use reifydb_testing::{
 use reifydb_type::util::cowvec::CowVec;
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-multi/tests/scripts/hot/ttl" as hot_ttl_memory => test_memory }
-test_each_path! { in "crates/store-multi/tests/scripts/hot/ttl" as hot_ttl_sqlite => test_sqlite }
+test_each_path! { in "crates/store-multi/tests/scripts/buffer/ttl" as buffer_ttl_memory => test_memory }
+test_each_path! { in "crates/store-multi/tests/scripts/buffer/ttl" as buffer_ttl_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let storage = HotStorage::memory();
+	let storage = BufferStorage::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
-		let storage = HotStorage::sqlite_in_memory();
+		let storage = BufferStorage::sqlite_in_memory();
 		run_path(&mut Runner::new(storage), path)
 	})
 	.expect("test failed")
 }
 
 pub struct Runner {
-	storage: HotStorage,
+	storage: BufferStorage,
 	shape: ShapeId,
 }
 
 impl Runner {
-	fn new(storage: HotStorage) -> Self {
+	fn new(storage: BufferStorage) -> Self {
 		Self {
 			storage,
 			shape: ShapeId::Table(TableId(1)),

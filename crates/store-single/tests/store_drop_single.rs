@@ -25,8 +25,8 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_single::{
-	config::{HotConfig, SingleStoreConfig},
-	hot::tier::HotTier,
+	buffer::tier::BufferTier,
+	config::{BufferConfig, SingleStoreConfig},
 	store::StandardSingleStore,
 };
 use reifydb_testing::{
@@ -41,13 +41,13 @@ test_each_path! { in "crates/store-single/tests/scripts/drop" as store_drop_sing
 test_each_path! { in "crates/store-single/tests/scripts/drop" as store_drop_single_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let storage = HotTier::memory();
+	let storage = BufferTier::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
-		let storage = HotTier::sqlite_in_memory();
+		let storage = BufferTier::sqlite_in_memory();
 		run_path(&mut Runner::new(storage), path)
 	})
 	.expect("test failed")
@@ -59,11 +59,11 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(storage: HotTier) -> Self {
+	fn new(storage: BufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let store = StandardSingleStore::new(SingleStoreConfig {
-			hot: Some(HotConfig {
+			buffer: Some(BufferConfig {
 				storage,
 			}),
 			event_bus: EventBus::new(&actor_system),

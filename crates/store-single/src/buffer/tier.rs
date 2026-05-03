@@ -14,14 +14,14 @@ use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 #[derive(Clone)]
 #[repr(u8)]
-pub enum HotTier {
+pub enum BufferTier {
 	Memory(MemoryPrimitiveStorage) = 0,
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(SqlitePrimitiveStorage) = 1,
 }
 
-impl HotTier {
+impl BufferTier {
 	pub fn memory() -> Self {
 		Self::Memory(MemoryPrimitiveStorage::new())
 	}
@@ -37,7 +37,7 @@ impl HotTier {
 	}
 }
 
-impl TierStorage for HotTier {
+impl TierStorage for BufferTier {
 	#[inline]
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		match self {
@@ -114,7 +114,7 @@ impl TierStorage for HotTier {
 	}
 }
 
-impl TierBackend for HotTier {}
+impl TierBackend for BufferTier {}
 
 #[cfg(test)]
 pub mod tests {
@@ -122,7 +122,7 @@ pub mod tests {
 
 	#[test]
 	fn test_memory_backend() {
-		let storage = HotTier::memory();
+		let storage = BufferTier::memory();
 
 		storage.set(vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))]).unwrap();
 		assert_eq!(storage.get(b"key").unwrap().as_deref(), Some(b"value".as_slice()));
@@ -130,7 +130,7 @@ pub mod tests {
 
 	#[test]
 	fn test_sqlite_backend() {
-		let storage = HotTier::sqlite_in_memory();
+		let storage = BufferTier::sqlite_in_memory();
 
 		storage.set(vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))]).unwrap();
 		assert_eq!(storage.get(b"key").unwrap().as_deref(), Some(b"value".as_slice()));
@@ -138,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next_memory() {
-		let storage = HotTier::memory();
+		let storage = BufferTier::memory();
 
 		storage.set(vec![
 			(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
@@ -157,7 +157,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next_sqlite() {
-		let storage = HotTier::sqlite_in_memory();
+		let storage = BufferTier::sqlite_in_memory();
 
 		storage.set(vec![
 			(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),

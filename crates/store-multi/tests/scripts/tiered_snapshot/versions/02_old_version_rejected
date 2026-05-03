@@ -2,7 +2,7 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Defect targets:
-#   - warm.get returning the stored value when stored_version > requested_version
+#   - persistent.get returning the stored value when stored_version > requested_version
 #     (would falsely show a value at a snapshot before it existed)
 
 set k=v3   version=3
@@ -10,21 +10,21 @@ flush
 ---
 ok
 
-# Warm has stored_version=3. Reads at lower versions must return None
+# Persistent has stored_version=3. Reads at lower versions must return None
 # (the value did not exist at that snapshot).
-warm_get k version=1
+persistent_get k version=1
 ---
 "k" => None
 
-warm_get k version=2
+persistent_get k version=2
 ---
 "k" => None
 
-# At and after stored_version, warm answers
-warm_get k version=3
+# At and after stored_version, persistent answers
+persistent_get k version=3
 ---
 "k" => "v3"
 
-warm_get k version=99
+persistent_get k version=99
 ---
 "k" => "v3"

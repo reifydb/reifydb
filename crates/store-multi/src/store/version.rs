@@ -54,7 +54,7 @@ pub mod tests {
 	use std::collections::HashMap;
 
 	use super::*;
-	use crate::hot::{memory::storage::MemoryPrimitiveStorage, storage::HotStorage};
+	use crate::buffer::{memory::storage::MemoryPrimitiveStorage, storage::BufferStorage};
 
 	#[test]
 	fn test_get_at_version_basic() {
@@ -116,7 +116,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_at_version_multiple_versions() {
-		let storage = HotStorage::memory();
+		let storage = BufferStorage::memory();
 
 		let key = CowVec::new(b"test_key".to_vec());
 
@@ -173,7 +173,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_at_version_before_any_version() {
-		let storage = HotStorage::memory();
+		let storage = BufferStorage::memory();
 
 		let key = CowVec::new(b"test_key".to_vec());
 

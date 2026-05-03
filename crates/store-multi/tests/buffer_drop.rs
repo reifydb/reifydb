@@ -12,7 +12,7 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format::raw::Raw},
 };
 use reifydb_store_multi::{
-	hot::storage::HotStorage,
+	buffer::storage::BufferStorage,
 	tier::{RangeCursor, TierStorage},
 };
 use reifydb_testing::{
@@ -26,32 +26,32 @@ use reifydb_testing::{
 use reifydb_type::util::cowvec::CowVec;
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-multi/tests/scripts/hot/drop" as hot_drop_memory => test_memory }
-test_each_path! { in "crates/store-multi/tests/scripts/hot/drop" as hot_drop_sqlite => test_sqlite }
+test_each_path! { in "crates/store-multi/tests/scripts/buffer/drop" as buffer_drop_memory => test_memory }
+test_each_path! { in "crates/store-multi/tests/scripts/buffer/drop" as buffer_drop_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let storage = HotStorage::memory();
+	let storage = BufferStorage::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
-		let storage = HotStorage::sqlite_in_memory();
+		let storage = BufferStorage::sqlite_in_memory();
 		run_path(&mut Runner::new(storage), path)
 	})
 	.expect("test failed")
 }
 
-/// Runs physical drop tests for hot storage.
+/// Runs physical drop tests for buffer storage.
 pub struct Runner {
-	storage: HotStorage,
+	storage: BufferStorage,
 	table: EntryKind,
 	/// Current version counter - increments with each write
 	version: u64,
 }
 
 impl Runner {
-	fn new(storage: HotStorage) -> Self {
+	fn new(storage: BufferStorage) -> Self {
 		Self {
 			storage,
 			table: EntryKind::Multi,

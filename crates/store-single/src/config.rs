@@ -3,15 +3,15 @@
 
 use reifydb_core::event::EventBus;
 
-use crate::hot::tier::HotTier;
+use crate::buffer::tier::BufferTier;
 
 #[derive(Clone)]
 pub struct SingleStoreConfig {
-	pub hot: Option<HotConfig>,
+	pub buffer: Option<BufferConfig>,
 	pub event_bus: EventBus,
 }
 
 #[derive(Clone)]
-pub struct HotConfig {
-	pub storage: HotTier,
+pub struct BufferConfig {
+	pub storage: BufferTier,
 }

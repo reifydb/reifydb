@@ -2,7 +2,7 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Defect targets:
-#   - drain mutating warm a second time after pending was emptied
+#   - drain mutating persistent a second time after pending was emptied
 #   - panic on empty pending
 #   - flushing-flag reentrancy guard bug
 
@@ -15,6 +15,6 @@ ok
 ok
 ok
 
-warm_get k version=1
+persistent_get k version=1
 ---
 "k" => "1"

@@ -25,10 +25,10 @@ use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
 
 use crate::{
-	HotConfig, Result, SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet,
+	BufferConfig, Result, SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet,
 	SingleVersionRange, SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
+	buffer::tier::BufferTier,
 	config::SingleStoreConfig,
-	hot::tier::HotTier,
 	tier::{RangeCursor, TierStorage},
 };
 
@@ -36,23 +36,23 @@ use crate::{
 pub struct StandardSingleStore(Arc<StandardSingleStoreInner>);
 
 pub struct StandardSingleStoreInner {
-	pub(crate) hot: Option<HotTier>,
+	pub(crate) buffer: Option<BufferTier>,
 }
 
 impl StandardSingleStore {
 	#[instrument(name = "store::single::new", level = "debug", skip(config), fields(
-		has_hot = config.hot.is_some(),
+		has_hot = config.buffer.is_some(),
 	))]
 	pub fn new(config: SingleStoreConfig) -> Result<Self> {
-		let hot = config.hot.map(|c| c.storage);
+		let buffer = config.buffer.map(|c| c.storage);
 
 		Ok(Self(Arc::new(StandardSingleStoreInner {
-			hot,
+			buffer,
 		})))
 	}
 
-	pub fn hot(&self) -> Option<&HotTier> {
-		self.hot.as_ref()
+	pub fn buffer(&self) -> Option<&BufferTier> {
+		self.buffer.as_ref()
 	}
 }
 
@@ -73,8 +73,8 @@ impl StandardSingleStore {
 
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
 		Self::new(SingleStoreConfig {
-			hot: Some(HotConfig {
-				storage: HotTier::memory(),
+			buffer: Some(BufferConfig {
+				storage: BufferTier::memory(),
 			}),
 			event_bus,
 		})
@@ -85,8 +85,8 @@ impl StandardSingleStore {
 impl SingleVersionGet for StandardSingleStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
-		if let Some(hot) = &self.hot
-			&& let Some(value) = hot.get(key.as_ref())?
+		if let Some(buffer) = &self.buffer
+			&& let Some(value) = buffer.get(key.as_ref())?
 		{
 			return Ok(Some(SingleVersionRow {
 				key: key.clone(),
@@ -101,8 +101,8 @@ impl SingleVersionGet for StandardSingleStore {
 impl SingleVersionContains for StandardSingleStore {
 	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())), ret)]
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		if let Some(hot) = &self.hot
-			&& hot.contains(key.as_ref())?
+		if let Some(buffer) = &self.buffer
+			&& buffer.contains(key.as_ref())?
 		{
 			return Ok(true);
 		}
@@ -114,7 +114,7 @@ impl SingleVersionContains for StandardSingleStore {
 impl SingleVersionCommit for StandardSingleStore {
 	#[instrument(name = "store::single::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
 	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
-		let Some(storage) = &self.hot else {
+		let Some(storage) = &self.buffer else {
 			return Ok(());
 		};
 
@@ -154,12 +154,12 @@ impl SingleVersionRange for StandardSingleStore {
 
 		let (start, end) = make_range_bounds(&range);
 
-		if let Some(hot) = &self.hot {
+		if let Some(buffer) = &self.buffer {
 			let mut cursor = RangeCursor::new();
 
 			loop {
 				let batch =
-					hot.range_next(&mut cursor, bound_as_ref(&start), bound_as_ref(&end), 4096)?;
+					buffer.range_next(&mut cursor, bound_as_ref(&start), bound_as_ref(&end), 4096)?;
 
 				for entry in batch.entries {
 					all_entries.entry(entry.key).or_insert(entry.value);
@@ -198,11 +198,11 @@ impl SingleVersionRangeRev for StandardSingleStore {
 
 		let (start, end) = make_range_bounds(&range);
 
-		if let Some(hot) = &self.hot {
+		if let Some(buffer) = &self.buffer {
 			let mut cursor = RangeCursor::new();
 
 			loop {
-				let batch = hot.range_rev_next(
+				let batch = buffer.range_rev_next(
 					&mut cursor,
 					bound_as_ref(&start),
 					bound_as_ref(&end),

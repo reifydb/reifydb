@@ -142,17 +142,15 @@ pub fn decode_cdc_stats(bytes: &[u8]) -> Option<CdcStats> {
 
 fn tier_to_byte(tier: Tier) -> u8 {
 	match tier {
-		Tier::Hot => 0x00,
-		Tier::Warm => 0x01,
-		Tier::Cold => 0x02,
+		Tier::Buffer => 0x00,
+		Tier::Persistent => 0x01,
 	}
 }
 
 fn byte_to_tier(b: u8) -> Option<Tier> {
 	match b {
-		0x00 => Some(Tier::Hot),
-		0x01 => Some(Tier::Warm),
-		0x02 => Some(Tier::Cold),
+		0x00 => Some(Tier::Buffer),
+		0x01 => Some(Tier::Persistent),
 		_ => None,
 	}
 }
@@ -230,7 +228,7 @@ pub mod tests {
 
 	#[test]
 	fn test_type_stats_key_roundtrip() {
-		let tier = Tier::Warm;
+		let tier = Tier::Persistent;
 		let kind = KeyKind::Row;
 
 		let key = encode_type_stats_key(tier, kind);
@@ -241,7 +239,7 @@ pub mod tests {
 
 	#[test]
 	fn test_storage_stats_key_source_roundtrip() {
-		let tier = Tier::Hot;
+		let tier = Tier::Buffer;
 		let shape_id = ShapeId::Table(TableId(12345));
 		let id = MetricId::Shape(shape_id);
 
@@ -253,7 +251,7 @@ pub mod tests {
 
 	#[test]
 	fn test_storage_stats_key_flow_node_roundtrip() {
-		let tier = Tier::Cold;
+		let tier = Tier::Persistent;
 		let id = MetricId::FlowNode(FlowNodeId(999));
 
 		let key = encode_storage_stats_key(tier, id);
@@ -264,7 +262,7 @@ pub mod tests {
 
 	#[test]
 	fn test_storage_stats_key_system_roundtrip() {
-		let tier = Tier::Warm;
+		let tier = Tier::Persistent;
 		let id = MetricId::System;
 
 		let key = encode_storage_stats_key(tier, id);
@@ -324,11 +322,11 @@ pub mod tests {
 		let cdc_prefix = cdc_stats_key_prefix();
 
 		// Type stats key should start with type prefix
-		let type_key = encode_type_stats_key(Tier::Hot, KeyKind::Row);
+		let type_key = encode_type_stats_key(Tier::Buffer, KeyKind::Row);
 		assert!(type_key.starts_with(&type_prefix));
 
 		// Storage stats key should start with storage prefix
-		let storage_key = encode_storage_stats_key(Tier::Hot, MetricId::System);
+		let storage_key = encode_storage_stats_key(Tier::Buffer, MetricId::System);
 		assert!(storage_key.starts_with(&storage_prefix));
 
 		// CDC stats key should start with cdc prefix

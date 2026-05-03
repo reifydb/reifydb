@@ -26,7 +26,7 @@ use reifydb_type::util::cowvec::CowVec;
 use tracing::{Span, debug, error, instrument};
 
 use super::drop::find_keys_to_drop;
-use crate::{hot::storage::HotStorage, tier::TierStorage};
+use crate::{buffer::storage::BufferStorage, tier::TierStorage};
 
 #[derive(Debug, Clone)]
 pub struct DropWorkerConfig {
@@ -47,7 +47,7 @@ impl Default for DropWorkerConfig {
 use reifydb_core::actors::drop::{DropMessage, DropRequest};
 
 pub struct DropActor {
-	storage: HotStorage,
+	storage: BufferStorage,
 	event_bus: EventBus,
 	config: DropWorkerConfig,
 	clock: Clock,
@@ -64,7 +64,7 @@ pub struct DropActorState {
 }
 
 impl DropActor {
-	pub fn new(config: DropWorkerConfig, storage: HotStorage, event_bus: EventBus, clock: Clock) -> Self {
+	pub fn new(config: DropWorkerConfig, storage: BufferStorage, event_bus: EventBus, clock: Clock) -> Self {
 		Self {
 			storage,
 			event_bus,
@@ -76,7 +76,7 @@ impl DropActor {
 	pub fn spawn(
 		system: &ActorSystem,
 		config: DropWorkerConfig,
-		storage: HotStorage,
+		storage: BufferStorage,
 		event_bus: EventBus,
 		clock: Clock,
 	) -> ActorRef<DropMessage> {
@@ -105,7 +105,7 @@ impl DropActor {
 	}
 
 	#[instrument(name = "drop::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
-	fn process_batch(storage: &HotStorage, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
+	fn process_batch(storage: &BufferStorage, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
 		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>> = HashMap::new();
 
 		let mut drops_with_stats = Vec::new();

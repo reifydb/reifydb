@@ -31,8 +31,8 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
-	config::{HotConfig, MultiStoreConfig},
-	hot::storage::HotStorage,
+	buffer::storage::BufferStorage,
+	config::{BufferConfig, MultiStoreConfig},
 	store::{
 		StandardMultiStore,
 		router::classify_key,
@@ -49,9 +49,9 @@ use testscript::command::Command;
 ///
 /// `auto_flush`:
 /// - `true` (default via `from_store` and `new`): every committing command is followed by `flush_pending_blocking()`.
-///   Used by memory/sqlite/tiered parity tests where reads must always see the latest commits in warm.
+///   Used by memory/sqlite/tiered parity tests where reads must always see the latest commits in persistent.
 /// - `false` (via `from_store_no_auto_flush`): commits do not implicitly flush; the explicit `flush` testscript command
-///   is the only way to move data into warm. Used by the tier-snapshot defect-hunting suite.
+///   is the only way to move data into persistent. Used by the tier-snapshot defect-hunting suite.
 pub struct Runner {
 	pub store: StandardMultiStore,
 	pub version: CommitVersion,
@@ -59,21 +59,20 @@ pub struct Runner {
 }
 
 impl Runner {
-	/// Hot-only constructor (memory or sqlite hot, no warm).
+	/// Buffer-only constructor (memory or sqlite buffer, no persistent).
 	///
 	/// Each integration test binary compiles its own copy of `common`; this
 	/// constructor is only consumed by `store_multi.rs`, so other binaries
 	/// see it as unused.
 	#[allow(dead_code)]
-	pub fn new(storage: HotStorage) -> Self {
+	pub fn new(storage: BufferStorage) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let store = StandardMultiStore::new(MultiStoreConfig {
-			hot: Some(HotConfig {
+			buffer: Some(BufferConfig {
 				storage,
 			}),
-			warm: None,
-			cold: None,
+			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus: EventBus::new(&actor_system),
@@ -281,15 +280,15 @@ impl testscript::runner::Runner for Runner {
 				writeln!(output, "ok")?;
 			}
 
-			"hot_get" => {
+			"buffer_get" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let hot = self.store.hot().ok_or("hot tier not configured")?;
+				let buffer = self.store.buffer().ok_or("buffer tier not configured")?;
 				let table = classify_key(&key);
-				let value = match get_at_version(hot, table, key.as_ref(), version)? {
+				let value = match get_at_version(buffer, table, key.as_ref(), version)? {
 					VersionedGetResult::Value {
 						value,
 						..
@@ -300,19 +299,19 @@ impl testscript::runner::Runner for Runner {
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 
-			"warm_get" => {
+			"persistent_get" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let warm = self.store.warm().ok_or("warm tier not configured")?;
+				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let table = classify_key(&key);
-				let value = warm.get(table, key.as_ref(), version)?.map(|v| v.to_vec());
+				let value = persistent.get(table, key.as_ref(), version)?.map(|v| v.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 
-			"warm_set" => {
+			"persistent_set" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
@@ -325,12 +324,12 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				let warm = self.store.warm().ok_or("warm tier not configured")?;
+				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let table = classify_key(&key);
 				let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> =
 					HashMap::new();
 				batches.entry(table).or_default().push((key.0.clone(), Some(value_bytes)));
-				warm.set(version, batches)?;
+				persistent.set(version, batches)?;
 			}
 
 			name => {

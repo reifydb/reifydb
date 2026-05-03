@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_multi::{
-	hot::storage::HotStorage,
+	buffer::storage::BufferStorage,
 	tier::{HistoricalCursor, TierStorage},
 };
 use reifydb_type::util::cowvec::CowVec;
@@ -37,7 +37,7 @@ fn val(s: &str) -> CowVec<u8> {
 
 /// Write `n` versions of the same key to the same shape. Each successive write
 /// supersedes the prior current and demotes it to historical.
-fn write_n_versions(storage: &HotStorage, k: &CowVec<u8>, n: u64) {
+fn write_n_versions(storage: &BufferStorage, k: &CowVec<u8>, n: u64) {
 	let kind = shape();
 	for v in 1..=n {
 		storage.set(CommitVersion(v), HashMap::from([(kind, vec![(k.clone(), Some(val(&format!("v{v}"))))])]))
@@ -47,7 +47,7 @@ fn write_n_versions(storage: &HotStorage, k: &CowVec<u8>, n: u64) {
 
 /// Drain `scan_historical_below` into `drop` until the cursor is exhausted.
 /// Returns the total number of versions deleted across all batches.
-fn sweep(storage: &HotStorage, kind: EntryKind, cutoff: CommitVersion, batch_size: usize) -> u64 {
+fn sweep(storage: &BufferStorage, kind: EntryKind, cutoff: CommitVersion, batch_size: usize) -> u64 {
 	let mut cursor = HistoricalCursor::default();
 	let mut total = 0u64;
 	loop {
@@ -68,7 +68,7 @@ fn sweep(storage: &HotStorage, kind: EntryKind, cutoff: CommitVersion, batch_siz
 
 #[test]
 fn memory_sweep_drops_only_versions_below_cutoff() {
-	let storage = HotStorage::memory();
+	let storage = BufferStorage::memory();
 	let k = key("k");
 	write_n_versions(&storage, &k, 100);
 
@@ -102,7 +102,7 @@ fn memory_sweep_drops_only_versions_below_cutoff() {
 
 #[test]
 fn sqlite_sweep_drops_only_versions_below_cutoff() {
-	let storage = HotStorage::sqlite_in_memory();
+	let storage = BufferStorage::sqlite_in_memory();
 	let k = key("k");
 	write_n_versions(&storage, &k, 100);
 
@@ -127,7 +127,7 @@ fn sqlite_sweep_drops_only_versions_below_cutoff() {
 
 #[test]
 fn sweep_with_cutoff_zero_is_noop() {
-	let storage = HotStorage::sqlite_in_memory();
+	let storage = BufferStorage::sqlite_in_memory();
 	let k = key("k");
 	write_n_versions(&storage, &k, 10);
 
@@ -138,7 +138,7 @@ fn sweep_with_cutoff_zero_is_noop() {
 
 #[test]
 fn sweep_with_cutoff_above_max_drops_all_historical() {
-	let storage = HotStorage::sqlite_in_memory();
+	let storage = BufferStorage::sqlite_in_memory();
 	let k = key("k");
 	write_n_versions(&storage, &k, 10);
 
@@ -151,7 +151,7 @@ fn sweep_with_cutoff_above_max_drops_all_historical() {
 
 #[test]
 fn sweep_paginates_across_many_keys() {
-	let storage = HotStorage::sqlite_in_memory();
+	let storage = BufferStorage::sqlite_in_memory();
 	for i in 0..50u8 {
 		let k = key(&format!("k-{i:03}"));
 		// Write 5 versions per key. v1..v4 land in historical, v5 in current.
@@ -174,7 +174,7 @@ fn sweep_does_not_touch_current_even_below_cutoff() {
 	// Edge: if writes were out of order so current.version < cutoff but a
 	// newer historical exists, we still must not delete from current. The
 	// scan is purely over the __historical table.
-	let storage = HotStorage::sqlite_in_memory();
+	let storage = BufferStorage::sqlite_in_memory();
 	let k = key("k");
 
 	// Write v10 first (lands in current).
@@ -199,7 +199,7 @@ fn sweep_does_not_touch_current_even_below_cutoff() {
 
 #[test]
 fn list_all_entry_kinds_returns_known_shapes() {
-	let storage = HotStorage::sqlite_in_memory();
+	let storage = BufferStorage::sqlite_in_memory();
 
 	let s1 = EntryKind::Source(ShapeId::Table(TableId(100)));
 	let s2 = EntryKind::Source(ShapeId::Table(TableId(200)));

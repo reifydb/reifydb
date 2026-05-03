@@ -2,8 +2,8 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Defect targets:
-#   - stray flush in commit hot path
-#   - listener writing to warm directly instead of just queueing
+#   - stray flush in commit buffer path
+#   - listener writing to persistent directly instead of just queueing
 
 set a=1   version=1
 set b=2   version=2
@@ -11,20 +11,20 @@ set c=3   version=3
 ---
 ok
 
-# Without flush, warm must remain empty
-warm_get a version=3
+# Without flush, persistent must remain empty
+persistent_get a version=3
 ---
 "a" => None
 
-warm_get b version=3
+persistent_get b version=3
 ---
 "b" => None
 
-warm_get c version=3
+persistent_get c version=3
 ---
 "c" => None
 
-# Cascade still works because hot has the data
+# Cascade still works because buffer has the data
 get a version=3
 ---
 "a" => "1"

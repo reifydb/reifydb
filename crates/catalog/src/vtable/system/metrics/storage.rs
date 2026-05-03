@@ -40,9 +40,8 @@ impl SystemMetricsStorage {
 
 fn tier_to_str(tier: Tier) -> &'static str {
 	match tier {
-		Tier::Hot => "hot",
-		Tier::Warm => "warm",
-		Tier::Cold => "cold",
+		Tier::Buffer => "buffer",
+		Tier::Persistent => "persistent",
 	}
 }
 
@@ -77,7 +76,7 @@ impl BaseVTable for SystemMetricsStorage {
 impl SystemMetricsStorage {
 	fn collect_simple_rows(&self, txn: &mut Transaction<'_>) -> Result<Vec<StorageRow>> {
 		let mut rows: Vec<StorageRow> = Vec::new();
-		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
+		for tier in [Tier::Buffer, Tier::Persistent] {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
 			for (metric_id, stats) in tier_stats {
 				if let Some(row) = self.primitive.match_metric_id(txn, metric_id)? {
@@ -104,7 +103,7 @@ impl SystemMetricsStorage {
 	fn collect_flow_rows(&self, txn: &mut Transaction<'_>) -> Result<Vec<StorageRow>> {
 		let mut aggregated: HashMap<(u64, u64, Tier), MultiStorageStats> = HashMap::new();
 
-		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
+		for tier in [Tier::Buffer, Tier::Persistent] {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
 			for (metric_id, stats) in tier_stats {
 				if let Some(row) = self.primitive.match_metric_id(txn, metric_id)? {

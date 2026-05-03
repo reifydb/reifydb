@@ -3,7 +3,7 @@
 
 # Defect targets:
 #   - listener treating Remove differently from Unset (both produce a
-#     tombstone in hot's __current; warm should mirror that as None)
+#     tombstone in buffer's __current; persistent should mirror that as None)
 #   - Remove deltas not classified into the tombstones map
 
 set k=alive   version=1
@@ -11,7 +11,7 @@ flush
 ---
 ok
 
-warm_get k version=1
+persistent_get k version=1
 ---
 "k" => "alive"
 
@@ -20,7 +20,7 @@ flush
 ---
 ok
 
-warm_get k version=2
+persistent_get k version=2
 ---
 "k" => None
 

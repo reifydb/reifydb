@@ -124,9 +124,8 @@ impl AddAssign for MultiStorageStats {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TieredStorageStats {
-	pub hot: MultiStorageStats,
-	pub warm: MultiStorageStats,
-	pub cold: MultiStorageStats,
+	pub buffer: MultiStorageStats,
+	pub persistent: MultiStorageStats,
 }
 
 impl TieredStorageStats {
@@ -136,38 +135,35 @@ impl TieredStorageStats {
 
 	pub fn get(&self, tier: Tier) -> &MultiStorageStats {
 		match tier {
-			Tier::Hot => &self.hot,
-			Tier::Warm => &self.warm,
-			Tier::Cold => &self.cold,
+			Tier::Buffer => &self.buffer,
+			Tier::Persistent => &self.persistent,
 		}
 	}
 
 	pub fn get_mut(&mut self, tier: Tier) -> &mut MultiStorageStats {
 		match tier {
-			Tier::Hot => &mut self.hot,
-			Tier::Warm => &mut self.warm,
-			Tier::Cold => &mut self.cold,
+			Tier::Buffer => &mut self.buffer,
+			Tier::Persistent => &mut self.persistent,
 		}
 	}
 
 	pub fn total_bytes(&self) -> u64 {
-		self.hot.total_bytes() + self.warm.total_bytes() + self.cold.total_bytes()
+		self.buffer.total_bytes() + self.persistent.total_bytes()
 	}
 
 	pub fn current_bytes(&self) -> u64 {
-		self.hot.current_bytes() + self.warm.current_bytes() + self.cold.current_bytes()
+		self.buffer.current_bytes() + self.persistent.current_bytes()
 	}
 
 	pub fn historical_bytes(&self) -> u64 {
-		self.hot.historical_bytes() + self.warm.historical_bytes() + self.cold.historical_bytes()
+		self.buffer.historical_bytes() + self.persistent.historical_bytes()
 	}
 }
 
 impl AddAssign for TieredStorageStats {
 	fn add_assign(&mut self, rhs: Self) {
-		self.hot += rhs.hot;
-		self.warm += rhs.warm;
-		self.cold += rhs.cold;
+		self.buffer += rhs.buffer;
+		self.persistent += rhs.persistent;
 	}
 }
 
@@ -349,13 +345,11 @@ pub mod tests {
 	#[test]
 	fn test_tier_stats() {
 		let mut tier_stats = TieredStorageStats::new();
-		tier_stats.get_mut(Tier::Hot).record_insert(10, 100);
-		tier_stats.get_mut(Tier::Warm).record_insert(20, 200);
-		tier_stats.get_mut(Tier::Cold).record_insert(30, 300);
+		tier_stats.get_mut(Tier::Buffer).record_insert(10, 100);
+		tier_stats.get_mut(Tier::Persistent).record_insert(20, 200);
 
-		assert_eq!(tier_stats.hot.total_bytes(), 110);
-		assert_eq!(tier_stats.warm.total_bytes(), 220);
-		assert_eq!(tier_stats.cold.total_bytes(), 330);
-		assert_eq!(tier_stats.total_bytes(), 660);
+		assert_eq!(tier_stats.buffer.total_bytes(), 110);
+		assert_eq!(tier_stats.persistent.total_bytes(), 220);
+		assert_eq!(tier_stats.total_bytes(), 330);
 	}
 }

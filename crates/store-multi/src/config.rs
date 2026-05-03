@@ -8,13 +8,12 @@ use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteConfig;
 
-use crate::{hot::storage::HotStorage, warm::WarmStorage};
+use crate::{buffer::storage::BufferStorage, persistent::PersistentStorage};
 
 #[derive(Clone)]
 pub struct MultiStoreConfig {
-	pub hot: Option<HotConfig>,
-	pub warm: Option<WarmConfig>,
-	pub cold: Option<ColdConfig>,
+	pub buffer: Option<BufferConfig>,
+	pub persistent: Option<PersistentConfig>,
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
 	pub event_bus: EventBus,
@@ -23,21 +22,21 @@ pub struct MultiStoreConfig {
 }
 
 #[derive(Clone)]
-pub struct HotConfig {
-	pub storage: HotStorage,
+pub struct BufferConfig {
+	pub storage: BufferStorage,
 }
 
 #[derive(Clone)]
-pub struct WarmConfig {
-	pub storage: WarmStorage,
+pub struct PersistentConfig {
+	pub storage: PersistentStorage,
 	pub flush_interval: Duration,
 }
 
-impl WarmConfig {
+impl PersistentConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(sqlite_config: SqliteConfig) -> Self {
 		Self {
-			storage: WarmStorage::sqlite(sqlite_config),
+			storage: PersistentStorage::sqlite(sqlite_config),
 			flush_interval: Duration::from_secs(5),
 		}
 	}
@@ -45,7 +44,7 @@ impl WarmConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite_in_memory() -> Self {
 		Self {
-			storage: WarmStorage::sqlite_in_memory(),
+			storage: PersistentStorage::sqlite_in_memory(),
 			flush_interval: Duration::from_secs(5),
 		}
 	}
@@ -56,13 +55,10 @@ impl WarmConfig {
 	}
 }
 
-#[derive(Clone, Default)]
-pub struct ColdConfig;
-
 #[derive(Clone, Debug)]
 pub struct RetentionConfig {
-	pub hot: Duration,
-	pub warm: Duration,
+	pub buffer: Duration,
+	pub persistent: Duration,
 }
 
 #[derive(Clone, Debug)]
@@ -75,8 +71,8 @@ pub struct MergeConfig {
 impl Default for RetentionConfig {
 	fn default() -> Self {
 		Self {
-			hot: Duration::from_secs(300),
-			warm: Duration::from_secs(3600),
+			buffer: Duration::from_secs(300),
+			persistent: Duration::from_secs(3600),
 		}
 	}
 }

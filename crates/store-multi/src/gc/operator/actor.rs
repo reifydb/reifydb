@@ -57,8 +57,8 @@ impl<P: ListOperatorTtls> Actor<P> {
 			return;
 		}
 
-		let Some(hot) = self.store.hot() else {
-			warn!("Operator TTL scan skipped: hot tier is not configured");
+		let Some(buffer) = self.store.buffer() else {
+			warn!("Operator TTL scan skipped: buffer tier is not configured");
 			return;
 		};
 
@@ -85,7 +85,7 @@ impl<P: ListOperatorTtls> Actor<P> {
 
 			let scan_result = match ttl_config.anchor {
 				TtlAnchor::Created => scanner::scan_operator_by_created_at(
-					hot,
+					buffer,
 					*node_id,
 					ttl_config,
 					now_nanos,
@@ -93,7 +93,7 @@ impl<P: ListOperatorTtls> Actor<P> {
 					&mut cursor,
 				),
 				TtlAnchor::Updated => scanner::scan_operator_by_updated_at(
-					hot,
+					buffer,
 					*node_id,
 					ttl_config,
 					now_nanos,
@@ -119,7 +119,8 @@ impl<P: ListOperatorTtls> Actor<P> {
 								row.scanned_bytes;
 						}
 
-						match scanner::drop_expired_operator_keys(hot, &expired, &mut stats) {
+						match scanner::drop_expired_operator_keys(buffer, &expired, &mut stats)
+						{
 							Ok(_) => {
 								let bytes_freed: u64 =
 									stats.bytes_reclaimed.values().sum();
@@ -149,7 +150,7 @@ impl<P: ListOperatorTtls> Actor<P> {
 		}
 
 		if stats.rows_expired > 0 {
-			hot.maintenance();
+			buffer.maintenance();
 
 			info!(
 				operators_scanned = stats.operators_scanned,

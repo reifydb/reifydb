@@ -10,8 +10,8 @@ set k=1     version=1
 ---
 ok
 
-# No flush yet -> warm must be empty
-warm_get k version=1
+# No flush yet -> persistent must be empty
+persistent_get k version=1
 ---
 "k" => None
 
@@ -19,6 +19,6 @@ flush
 ---
 ok
 
-warm_get k version=1
+persistent_get k version=1
 ---
 "k" => "1"

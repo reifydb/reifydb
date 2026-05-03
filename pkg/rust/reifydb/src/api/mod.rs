@@ -11,13 +11,13 @@ use reifydb_runtime::{
 use reifydb_sqlite::{DbPath, SqliteConfig};
 use reifydb_store_multi::{
 	MultiStore,
-	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
-	hot::storage::HotStorage,
+	buffer::storage::BufferStorage,
+	config::{BufferConfig as MultiBufferConfig, MultiStoreConfig},
 };
 use reifydb_store_single::{
 	SingleStore,
-	config::{HotConfig as SingleHotConfig, SingleStoreConfig},
-	hot::tier::HotTier,
+	buffer::tier::BufferTier,
+	config::{BufferConfig as SingleBufferConfig, SingleStoreConfig},
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 
@@ -38,25 +38,25 @@ pub enum StorageFactory {
 }
 
 impl StorageFactory {
-	pub(crate) fn open_multi_hot(&self) -> HotStorage {
+	pub(crate) fn open_multi_buffer(&self) -> BufferStorage {
 		match self {
-			StorageFactory::Memory => HotStorage::memory(),
-			StorageFactory::Sqlite(config) => HotStorage::sqlite(SqliteConfig {
+			StorageFactory::Memory => BufferStorage::memory(),
+			StorageFactory::Sqlite(config) => BufferStorage::sqlite(SqliteConfig {
 				path: multi_db_path(&config.path),
 				..config.clone()
 			}),
 		}
 	}
 
-	pub(crate) fn create_with_multi_hot(
+	pub(crate) fn create_with_multi_buffer(
 		&self,
-		multi_hot: HotStorage,
+		multi_buffer: BufferStorage,
 		actor_system: &ActorSystem,
 	) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 		match self {
-			StorageFactory::Memory => create_memory_store_with(multi_hot, actor_system),
+			StorageFactory::Memory => create_memory_store_with(multi_buffer, actor_system),
 			StorageFactory::Sqlite(config) => {
-				create_sqlite_store_with(multi_hot, config.clone(), actor_system)
+				create_sqlite_store_with(multi_buffer, config.clone(), actor_system)
 			}
 		}
 	}
@@ -71,17 +71,16 @@ fn multi_db_path(path: &DbPath) -> DbPath {
 }
 
 fn create_memory_store_with(
-	multi_hot: HotStorage,
+	multi_buffer: BufferStorage,
 	actor_system: &ActorSystem,
 ) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(actor_system);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
-		hot: Some(MultiHotConfig {
-			storage: multi_hot,
+		buffer: Some(MultiBufferConfig {
+			storage: multi_buffer,
 		}),
-		warm: None,
-		cold: None,
+		persistent: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
@@ -89,9 +88,9 @@ fn create_memory_store_with(
 		clock: Clock::Real,
 	});
 
-	let single_storage = HotTier::memory();
+	let single_storage = BufferTier::memory();
 	let single_store = SingleStore::standard(SingleStoreConfig {
-		hot: Some(SingleHotConfig {
+		buffer: Some(SingleBufferConfig {
 			storage: single_storage,
 		}),
 		event_bus: eventbus.clone(),
@@ -102,18 +101,17 @@ fn create_memory_store_with(
 }
 
 fn create_sqlite_store_with(
-	multi_hot: HotStorage,
+	multi_buffer: BufferStorage,
 	config: SqliteConfig,
 	actor_system: &ActorSystem,
 ) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(actor_system);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
-		hot: Some(MultiHotConfig {
-			storage: multi_hot,
+		buffer: Some(MultiBufferConfig {
+			storage: multi_buffer,
 		}),
-		warm: None,
-		cold: None,
+		persistent: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
@@ -130,9 +128,9 @@ fn create_sqlite_store_with(
 		path: single_path,
 		..config.clone()
 	};
-	let single_storage = HotTier::sqlite(single_config);
+	let single_storage = BufferTier::sqlite(single_config);
 	let single_store = SingleStore::standard(SingleStoreConfig {
-		hot: Some(SingleHotConfig {
+		buffer: Some(SingleBufferConfig {
 			storage: single_storage,
 		}),
 		event_bus: eventbus.clone(),

@@ -42,8 +42,8 @@ use reifydb_runtime::{
 };
 use reifydb_store_multi::{
 	MultiStore,
-	config::{HotConfig, MultiStoreConfig},
-	hot::storage::HotStorage,
+	buffer::storage::BufferStorage,
+	config::{BufferConfig, MultiStoreConfig},
 	store::StandardMultiStore,
 };
 use reifydb_store_single::SingleStore;
@@ -65,13 +65,13 @@ test_each_path! { in "crates/sub-metric/tests/scripts/storage" as metric_memory 
 test_each_path! { in "crates/sub-metric/tests/scripts/storage" as metric_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let data_storage = HotStorage::memory();
+	let data_storage = BufferStorage::memory();
 	runner::run_path(&mut Runner::new(data_storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
-		let data_storage = HotStorage::sqlite_in_memory();
+		let data_storage = BufferStorage::sqlite_in_memory();
 		runner::run_path(&mut Runner::new(data_storage), path)
 	})
 	.expect("test failed")
@@ -124,7 +124,7 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(data_storage: HotStorage) -> Self {
+	fn new(data_storage: BufferStorage) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
@@ -133,11 +133,10 @@ impl Runner {
 
 		let multi_store = MultiStore::Standard(
 			StandardMultiStore::new(MultiStoreConfig {
-				hot: Some(HotConfig {
+				buffer: Some(BufferConfig {
 					storage: data_storage,
 				}),
-				warm: None,
-				cold: None,
+				persistent: None,
 				retention: Default::default(),
 				merge_config: Default::default(),
 				event_bus: event_bus.clone(),
@@ -324,7 +323,7 @@ impl TestRunner for Runner {
 					return Err("timeout waiting for stats".into());
 				}
 
-				let storage_entries = self.storage_reader.scan_tier(Tier::Hot)?;
+				let storage_entries = self.storage_reader.scan_tier(Tier::Buffer)?;
 				let mut total_storage = MultiStorageStats::default();
 				for (_, stats) in storage_entries {
 					total_storage += stats;
@@ -356,7 +355,7 @@ impl TestRunner for Runner {
 					return Err("timeout waiting for stats".into());
 				}
 
-				let storage_entries = self.storage_reader.scan_tier(Tier::Hot)?;
+				let storage_entries = self.storage_reader.scan_tier(Tier::Buffer)?;
 				let mut total_storage = MultiStorageStats::default();
 				for (_, stats) in storage_entries {
 					total_storage += stats;
@@ -375,7 +374,7 @@ impl TestRunner for Runner {
 					return Err("timeout waiting for stats".into());
 				}
 
-				let storage_entries = self.storage_reader.scan_tier(Tier::Hot)?;
+				let storage_entries = self.storage_reader.scan_tier(Tier::Buffer)?;
 				let mut total_storage = MultiStorageStats::default();
 				for (_, stats) in storage_entries {
 					total_storage += stats;
@@ -413,7 +412,7 @@ impl TestRunner for Runner {
 					return Err("timeout waiting for stats".into());
 				}
 
-				let storage_entries = self.storage_reader.scan_tier(Tier::Hot)?;
+				let storage_entries = self.storage_reader.scan_tier(Tier::Buffer)?;
 				let mut total_storage = MultiStorageStats::default();
 				for (_, stats) in storage_entries {
 					total_storage += stats;

@@ -1,0 +1,96 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Defect targets:
+#   - persistent range_next/range_rev_next stub returning empty when persistent has data
+#   - tier merge dropping a persistent-only key whose buffer mirror was already
+#     tombstoned at a snapshot above the range scan version
+#   - persistent range emitting rows whose stored version > requested snapshot
+#     (should mirror point-get's `version <= ?` filter)
+#   - per-tier cursor advancing independently across tiers, causing the
+#     next call to re-emit keys already returned
+
+# Plant 6 keys across buffer+persistent so the range scan must consult both tiers.
+# persistent_set on a, c, e populates only persistent; set on b, d, f populates buffer
+# (the auto-flush is OFF for tier-snapshot tests, so b/d/f live only in buffer
+# until we call `flush`).
+
+persistent_set a=warm_a   version=10
+persistent_set c=warm_c   version=10
+persistent_set e=warm_e   version=10
+---
+ok
+
+set b=hot_b version=10
+set d=hot_d version=10
+set f=hot_f version=10
+---
+ok
+
+# Forward range at version=10: cascade should interleave a, b, c, d, e, f
+range "a..=f" version=10
+---
+"a" => "warm_a"
+"b" => "hot_b"
+"c" => "warm_c"
+"d" => "hot_d"
+"e" => "warm_e"
+"f" => "hot_f"
+
+# Reverse: same keys descending
+range "a..=f" reverse=true version=10
+---
+"f" => "hot_f"
+"e" => "warm_e"
+"d" => "hot_d"
+"c" => "warm_c"
+"b" => "hot_b"
+"a" => "warm_a"
+
+# Snapshot at version=5 (older than persistent's stored version of 10).
+# Persistent's `version <= ?` filter must skip its rows. Buffer has b,d,f at v=10
+# which are also > 5, so buffer returns nothing for those at v=5 either.
+# Result: empty.
+range "a..=f" version=5
+---
+ok
+
+# Tombstone interleave: set k=v=1, flush so persistent has v=1, then set k=v=20
+# (buffer only). At snapshot v=10, cascade should return persistent's v=1 value
+# (persistent.stored=1 <= 10, buffer's current is at v=20 > 10 so buffer falls back to
+# its historical at v=1).
+set k=alive version=1
+flush
+---
+ok
+
+set k=updated version=20
+---
+ok
+
+range "k..=k" version=10
+---
+"k" => "alive"
+
+# At v=20: buffer's current at v=20 wins over persistent's stale v=1.
+range "k..=k" version=20
+---
+"k" => "updated"
+
+# Now unset k at v=25 (tombstone); flush so persistent has v=25 tombstone too.
+unset k=alive version=25
+flush
+---
+ok
+
+# At v=25: cascade returns nothing (both tiers agree on tombstone).
+range "k..=k" version=25
+---
+ok
+
+# At v=20: buffer's current at v=25 (tombstone) is > 20, so buffer falls to
+# historical and finds "updated" at v=20. Persistent's stored is now v=25
+# (tombstone) which is > 20, so persistent skips. Result: buffer's "updated".
+range "k..=k" version=20
+---
+"k" => "updated"

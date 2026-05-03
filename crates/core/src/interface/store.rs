@@ -15,9 +15,8 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tier {
-	Hot,
-	Warm,
-	Cold,
+	Buffer,
+	Persistent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

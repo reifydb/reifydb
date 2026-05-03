@@ -110,7 +110,7 @@ impl MetricCollectorActor {
 					.map(|v| v.row.len() as u64)
 			};
 			if let Err(e) = state.storage_writer.record_write(
-				Tier::Hot,
+				Tier::Buffer,
 				write.key.as_ref(),
 				write.value_bytes,
 				pre_value_bytes,
@@ -149,7 +149,7 @@ impl MetricCollectorActor {
 fn record_deletes(state: &mut MetricActorState, deletes: &[MultiDelete]) {
 	for delete in deletes {
 		if let Err(e) =
-			state.storage_writer.record_delete(Tier::Hot, delete.key.as_ref(), Some(delete.value_bytes))
+			state.storage_writer.record_delete(Tier::Buffer, delete.key.as_ref(), Some(delete.value_bytes))
 		{
 			error!("Failed to record delete: {}", e);
 		}
@@ -159,7 +159,7 @@ fn record_deletes(state: &mut MetricActorState, deletes: &[MultiDelete]) {
 #[inline]
 fn record_drops(state: &mut MetricActorState, drops: &[MultiDrop]) {
 	for drop in drops {
-		if let Err(e) = state.storage_writer.record_drop(Tier::Hot, drop.key.as_ref(), drop.value_bytes) {
+		if let Err(e) = state.storage_writer.record_drop(Tier::Buffer, drop.key.as_ref(), drop.value_bytes) {
 			error!("Failed to record drop: {}", e);
 		}
 	}

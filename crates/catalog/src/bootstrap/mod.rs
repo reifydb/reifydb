@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_multi::{
-	cold::ColdStorage, hot::storage::HotStorage, store::multi::scan_tiers_latest, warm::WarmStorage,
+	buffer::storage::BufferStorage, persistent::PersistentStorage, store::multi::scan_tiers_latest,
 };
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
@@ -93,15 +93,14 @@ pub fn load_materialized_catalog(
 }
 
 pub fn read_configs(
-	hot: Option<&HotStorage>,
-	warm: Option<&WarmStorage>,
-	cold: Option<&ColdStorage>,
+	buffer: Option<&BufferStorage>,
+	persistent: Option<&PersistentStorage>,
 	keys: &[ConfigKey],
 ) -> Result<HashMap<ConfigKey, Value>> {
 	let mut found: HashMap<ConfigKey, Value> = HashMap::new();
 
 	let range = ConfigStorageKey::full_scan();
-	let batch = scan_tiers_latest(hot, warm, cold, range, CommitVersion(u64::MAX), 1024)?;
+	let batch = scan_tiers_latest(buffer, persistent, range, CommitVersion(u64::MAX), 1024)?;
 
 	for multi in batch.items {
 		let (key, value) = convert_config(multi);
@@ -135,26 +134,26 @@ mod read_configs_tests {
 		interface::{catalog::config::ConfigKey, store::EntryKind},
 		key::config::ConfigStorageKey,
 	};
-	use reifydb_store_multi::{hot::storage::HotStorage, tier::TierStorage};
+	use reifydb_store_multi::{buffer::storage::BufferStorage, tier::TierStorage};
 	use reifydb_type::value::Value;
 
 	use super::read_configs;
 	use crate::store::config::shape::config::{SHAPE, VALUE};
 
-	fn write_config(hot: &HotStorage, key: ConfigKey, value: Value, version: CommitVersion) {
+	fn write_config(buffer: &BufferStorage, key: ConfigKey, value: Value, version: CommitVersion) {
 		let mut row = SHAPE.allocate();
 		SHAPE.set_value(&mut row, VALUE, &Value::any(value));
 		let key_bytes = ConfigStorageKey::for_key(key);
 		let mut batches = HashMap::new();
 		batches.insert(EntryKind::Multi, vec![(key_bytes.0, Some(row.0))]);
-		hot.set(version, batches).unwrap();
+		buffer.set(version, batches).unwrap();
 	}
 
-	fn delete_config(hot: &HotStorage, key: ConfigKey, version: CommitVersion) {
+	fn delete_config(buffer: &BufferStorage, key: ConfigKey, version: CommitVersion) {
 		let key_bytes = ConfigStorageKey::for_key(key);
 		let mut batches = HashMap::new();
 		batches.insert(EntryKind::Multi, vec![(key_bytes.0, None)]);
-		hot.set(version, batches).unwrap();
+		buffer.set(version, batches).unwrap();
 	}
 
 	#[test]
@@ -162,7 +161,6 @@ mod read_configs_tests {
 		let out = read_configs(
 			None,
 			None,
-			None,
 			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
 		)
 		.unwrap();
@@ -172,11 +170,10 @@ mod read_configs_tests {
 	}
 
 	#[test]
-	fn returns_defaults_when_hot_is_empty() {
-		let hot = HotStorage::memory();
+	fn returns_defaults_when_buffer_is_empty() {
+		let buffer = BufferStorage::memory();
 		let out = read_configs(
-			Some(&hot),
-			None,
+			Some(&buffer),
 			None,
 			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
 		)
@@ -187,12 +184,12 @@ mod read_configs_tests {
 	}
 
 	#[test]
-	fn reads_persisted_value_from_hot() {
-		let hot = HotStorage::memory();
-		write_config(&hot, ConfigKey::ThreadsQuery, Value::Uint2(8), CommitVersion(1));
+	fn reads_persisted_value_from_buffer() {
+		let buffer = BufferStorage::memory();
+		write_config(&buffer, ConfigKey::ThreadsQuery, Value::Uint2(8), CommitVersion(1));
 
-		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsQuery, ConfigKey::ThreadsAsync])
-			.unwrap();
+		let out =
+			read_configs(Some(&buffer), None, &[ConfigKey::ThreadsQuery, ConfigKey::ThreadsAsync]).unwrap();
 
 		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(8));
 		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
@@ -200,44 +197,44 @@ mod read_configs_tests {
 
 	#[test]
 	fn latest_version_wins() {
-		let hot = HotStorage::memory();
-		write_config(&hot, ConfigKey::ThreadsSystem, Value::Uint2(4), CommitVersion(1));
-		write_config(&hot, ConfigKey::ThreadsSystem, Value::Uint2(16), CommitVersion(5));
-		write_config(&hot, ConfigKey::ThreadsSystem, Value::Uint2(8), CommitVersion(3));
+		let buffer = BufferStorage::memory();
+		write_config(&buffer, ConfigKey::ThreadsSystem, Value::Uint2(4), CommitVersion(1));
+		write_config(&buffer, ConfigKey::ThreadsSystem, Value::Uint2(16), CommitVersion(5));
+		write_config(&buffer, ConfigKey::ThreadsSystem, Value::Uint2(8), CommitVersion(3));
 
-		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsSystem]).unwrap();
+		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsSystem]).unwrap();
 
 		assert_eq!(out[&ConfigKey::ThreadsSystem], Value::Uint2(16));
 	}
 
 	#[test]
 	fn tombstone_returns_default() {
-		let hot = HotStorage::memory();
-		write_config(&hot, ConfigKey::ThreadsQuery, Value::Uint2(12), CommitVersion(1));
-		delete_config(&hot, ConfigKey::ThreadsQuery, CommitVersion(2));
+		let buffer = BufferStorage::memory();
+		write_config(&buffer, ConfigKey::ThreadsQuery, Value::Uint2(12), CommitVersion(1));
+		delete_config(&buffer, ConfigKey::ThreadsQuery, CommitVersion(2));
 
-		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsQuery]).unwrap();
+		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsQuery]).unwrap();
 
 		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(1));
 	}
 
 	#[test]
 	fn rejects_invalid_persisted_value_and_falls_back_to_default() {
-		let hot = HotStorage::memory();
-		write_config(&hot, ConfigKey::ThreadsAsync, Value::Uint2(0), CommitVersion(1));
+		let buffer = BufferStorage::memory();
+		write_config(&buffer, ConfigKey::ThreadsAsync, Value::Uint2(0), CommitVersion(1));
 
-		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsAsync]).unwrap();
+		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsAsync]).unwrap();
 
 		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
 	}
 
 	#[test]
 	fn unrequested_keys_are_ignored() {
-		let hot = HotStorage::memory();
-		write_config(&hot, ConfigKey::ThreadsQuery, Value::Uint2(8), CommitVersion(1));
-		write_config(&hot, ConfigKey::OracleWindowSize, Value::Uint8(999), CommitVersion(1));
+		let buffer = BufferStorage::memory();
+		write_config(&buffer, ConfigKey::ThreadsQuery, Value::Uint2(8), CommitVersion(1));
+		write_config(&buffer, ConfigKey::OracleWindowSize, Value::Uint8(999), CommitVersion(1));
 
-		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsQuery]).unwrap();
+		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsQuery]).unwrap();
 
 		assert_eq!(out.len(), 1);
 		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(8));
@@ -246,18 +243,16 @@ mod read_configs_tests {
 
 	#[test]
 	fn shape_stays_in_sync_with_set_config_path() {
-		// If the catalog's set_config layout changes, this test catches it: a row
-		// written with the same SHAPE / VALUE constants must be decodable by read_configs.
-		let hot = HotStorage::memory();
+		let buffer = BufferStorage::memory();
 		let mut row = SHAPE.allocate();
 		SHAPE.set_value(&mut row, VALUE, &Value::any(Value::Uint2(5)));
 
 		let key_bytes = ConfigStorageKey::for_key(ConfigKey::ThreadsSystem);
 		let mut batches = HashMap::new();
 		batches.insert(EntryKind::Multi, vec![(key_bytes.0, Some(row.0))]);
-		hot.set(CommitVersion(1), batches).unwrap();
+		buffer.set(CommitVersion(1), batches).unwrap();
 
-		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsSystem]).unwrap();
+		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsSystem]).unwrap();
 		assert_eq!(out[&ConfigKey::ThreadsSystem], Value::Uint2(5));
 	}
 }

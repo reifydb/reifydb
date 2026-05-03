@@ -2,8 +2,8 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Defect targets:
-#   - cascade falling through a hot tombstone to warm
-#   - warm "ghost" data masking a hot delete (the most subtle correctness
+#   - cascade falling through a buffer tombstone to persistent
+#   - persistent "ghost" data masking a buffer delete (the most subtle correctness
 #     defect in the cascade)
 
 set k=alive   version=1
@@ -11,34 +11,34 @@ flush
 ---
 ok
 
-# Plant a "ghost" value directly in warm at a HIGHER version
-warm_set k=ghost   version=5
+# Plant a "ghost" value directly in persistent at a HIGHER version
+persistent_set k=ghost   version=5
 ---
 ok
 
-# Now tombstone the key in hot at v=2 (between original and ghost)
+# Now tombstone the key in buffer at v=2 (between original and ghost)
 unset k=alive   version=2
 flush
 ---
 ok
 
-# Cascade at v=2: hot tombstone -> None. Must NOT fall through to warm's ghost.
+# Cascade at v=2: buffer tombstone -> None. Must NOT fall through to persistent's ghost.
 get k version=2
 ---
 "k" => None
 
-# At v=5: hot has tombstone at v=2 (latest current) -> tombstone short-circuits.
-# Cascade returns None even though warm has a value at v=5.
+# At v=5: buffer has tombstone at v=2 (latest current) -> tombstone short-circuits.
+# Cascade returns None even though persistent has a value at v=5.
 get k version=5
 ---
 "k" => None
 
-# Direct warm read shows the ghost is still there at v=5
-warm_get k version=5
+# Direct persistent read shows the ghost is still there at v=5
+persistent_get k version=5
 ---
 "k" => "ghost"
 
-# Cascade at v=1: hot's historical has alive
+# Cascade at v=1: buffer's historical has alive
 get k version=1
 ---
 "k" => "alive"

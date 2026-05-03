@@ -66,10 +66,10 @@ pub mod tests {
 	use std::collections::HashMap;
 
 	use super::*;
-	use crate::hot::storage::HotStorage;
+	use crate::buffer::storage::BufferStorage;
 
 	/// Create versioned test entries for a key
-	fn setup_versioned_entries(storage: &HotStorage, table: EntryKind, key: &[u8], versions: &[u64]) {
+	fn setup_versioned_entries(storage: &BufferStorage, table: EntryKind, key: &[u8], versions: &[u64]) {
 		for v in versions {
 			let entries = vec![(CowVec::new(key.to_vec()), Some(CowVec::new(vec![*v as u8])))];
 			storage.set(CommitVersion(*v), HashMap::from([(table, entries)])).unwrap();
@@ -83,7 +83,7 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_historical_versions() {
-		let storage = HotStorage::memory();
+		let storage = BufferStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -104,7 +104,7 @@ pub mod tests {
 
 	#[test]
 	fn test_keep_latest_with_pending() {
-		let storage = HotStorage::memory();
+		let storage = BufferStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -124,7 +124,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_version_no_drop() {
-		let storage = HotStorage::memory();
+		let storage = BufferStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -137,7 +137,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_storage() {
-		let storage = HotStorage::memory();
+		let storage = BufferStorage::memory();
 		let table = EntryKind::Multi;
 		let key = b"nonexistent";
 

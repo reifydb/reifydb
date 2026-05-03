@@ -12,6 +12,7 @@ use reifydb_core::{
 	util::encoding::format::raw::Raw,
 };
 use reifydb_store_multi::{
+	buffer::storage::BufferStorage,
 	gc::{
 		operator::{
 			OperatorScanStats,
@@ -21,7 +22,6 @@ use reifydb_store_multi::{
 		},
 		row::scanner::ScanResult::{Exhausted, Yielded},
 	},
-	hot::storage::HotStorage,
 	tier::{RangeCursor, TierStorage},
 };
 use reifydb_testing::{
@@ -39,25 +39,25 @@ test_each_path! { in "crates/store-multi/tests/scripts/operator/ttl" as operator
 test_each_path! { in "crates/store-multi/tests/scripts/operator/ttl" as operator_ttl_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let storage = HotStorage::memory();
+	let storage = BufferStorage::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
-		let storage = HotStorage::sqlite_in_memory();
+		let storage = BufferStorage::sqlite_in_memory();
 		run_path(&mut Runner::new(storage), path)
 	})
 	.expect("test failed")
 }
 
 pub struct Runner {
-	storage: HotStorage,
+	storage: BufferStorage,
 	node: FlowNodeId,
 }
 
 impl Runner {
-	fn new(storage: HotStorage) -> Self {
+	fn new(storage: BufferStorage) -> Self {
 		Self {
 			storage,
 			node: FlowNodeId(1),

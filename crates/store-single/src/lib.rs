@@ -11,12 +11,12 @@ use reifydb_core::{
 };
 use reifydb_type::Result;
 
+pub mod buffer;
 pub mod config;
-pub mod hot;
 pub mod store;
 pub mod tier;
 
-use config::{HotConfig, SingleStoreConfig};
+use config::{BufferConfig, SingleStoreConfig};
 use reifydb_core::{
 	delta::Delta,
 	encoded::key::{EncodedKey, EncodedKeyRange},
@@ -65,9 +65,9 @@ impl SingleStore {
 		SingleStore::Standard(StandardSingleStore::testing_memory_with_eventbus(event_bus))
 	}
 
-	pub fn hot(&self) -> Option<&hot::tier::HotTier> {
+	pub fn buffer(&self) -> Option<&buffer::tier::BufferTier> {
 		match self {
-			SingleStore::Standard(store) => store.hot(),
+			SingleStore::Standard(store) => store.buffer(),
 		}
 	}
 }

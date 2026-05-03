@@ -16,8 +16,7 @@ pub trait EncodedRowIterator: Iterator<Item = EncodedRow> {}
 
 impl<I: Iterator<Item = EncodedRow>> EncodedRowIterator for I {}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EncodedRow(pub CowVec<u8>);
 
 impl Deref for EncodedRow {

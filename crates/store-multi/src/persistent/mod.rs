@@ -14,28 +14,28 @@ use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBa
 pub mod sqlite;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use sqlite::storage::SqliteWarmStorage;
+use sqlite::storage::SqlitePersistentStorage;
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
-pub enum WarmStorage {
+pub enum PersistentStorage {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	Sqlite(SqliteWarmStorage) = 0,
+	Sqlite(SqlitePersistentStorage) = 0,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl WarmStorage {
+impl PersistentStorage {
 	pub fn sqlite(config: SqliteConfig) -> Self {
-		Self::Sqlite(SqliteWarmStorage::new(config))
+		Self::Sqlite(SqlitePersistentStorage::new(config))
 	}
 
 	pub fn sqlite_in_memory() -> Self {
-		Self::Sqlite(SqliteWarmStorage::in_memory())
+		Self::Sqlite(SqlitePersistentStorage::in_memory())
 	}
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl TierStorage for WarmStorage {
+impl TierStorage for PersistentStorage {
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
 		match self {
 			Self::Sqlite(s) => s.get(table, key, version),
@@ -114,7 +114,7 @@ impl TierStorage for WarmStorage {
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-impl TierStorage for WarmStorage {
+impl TierStorage for PersistentStorage {
 	fn get(&self, _table: EntryKind, _key: &[u8], _version: CommitVersion) -> Result<Option<CowVec<u8>>> {
 		match *self {}
 	}
@@ -174,4 +174,4 @@ impl TierStorage for WarmStorage {
 	}
 }
 
-impl TierBackend for WarmStorage {}
+impl TierBackend for PersistentStorage {}

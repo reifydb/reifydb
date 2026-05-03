@@ -30,10 +30,9 @@ use super::{
 };
 use crate::{
 	Result,
-	cold::ColdStorage,
-	hot::storage::HotStorage,
+	buffer::storage::BufferStorage,
+	persistent::PersistentStorage,
 	tier::{RangeBatch, RangeCursor, TierBatch, TierStorage},
-	warm::WarmStorage,
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
@@ -43,8 +42,8 @@ impl MultiVersionGet for StandardMultiStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		let table = classify_key(key);
 
-		if let Some(hot) = &self.hot {
-			match get_at_version(hot, table, key.as_ref(), version)? {
+		if let Some(buffer) = &self.buffer {
+			match get_at_version(buffer, table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
 					value,
 					version: v,
@@ -60,25 +59,8 @@ impl MultiVersionGet for StandardMultiStore {
 			}
 		}
 
-		if let Some(warm) = &self.warm {
-			match get_at_version(warm, table, key.as_ref(), version)? {
-				VersionedGetResult::Value {
-					value,
-					version: v,
-				} => {
-					return Ok(Some(MultiVersionRow {
-						key: key.clone(),
-						row: EncodedRow(value),
-						version: v,
-					}));
-				}
-				VersionedGetResult::Tombstone => return Ok(None),
-				VersionedGetResult::NotFound => {}
-			}
-		}
-
-		if let Some(cold) = &self.cold {
-			match get_at_version(cold, table, key.as_ref(), version)? {
+		if let Some(persistent) = &self.persistent {
+			match get_at_version(persistent, table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
 					value,
 					version: v,
@@ -108,7 +90,7 @@ impl MultiVersionContains for StandardMultiStore {
 impl MultiVersionCommit for StandardMultiStore {
 	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
-		let Some(storage) = &self.hot else {
+		let Some(storage) = &self.buffer else {
 			return Ok(());
 		};
 
@@ -244,11 +226,9 @@ impl StandardMultiStore {
 
 #[derive(Debug, Clone, Default)]
 pub struct MultiVersionRangeCursor {
-	pub hot: RangeCursor,
+	pub buffer: RangeCursor,
 
-	pub warm: RangeCursor,
-
-	pub cold: RangeCursor,
+	pub persistent: RangeCursor,
 
 	pub exhausted: bool,
 }
@@ -360,40 +340,31 @@ pub fn collected_to_batch(
 }
 
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn step_all_tiers(
-	hot: Option<&HotStorage>,
-	hot_cursor: &mut RangeCursor,
-	warm: Option<&WarmStorage>,
-	warm_cursor: &mut RangeCursor,
-	cold: Option<&ColdStorage>,
-	cold_cursor: &mut RangeCursor,
+	buffer: Option<&BufferStorage>,
+	buffer_cursor: &mut RangeCursor,
+	persistent: Option<&PersistentStorage>,
+	persistent_cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
 	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
 ) -> Result<bool> {
 	let mut any_progress = false;
-	if let Some(s) = hot
-		&& !hot_cursor.exhausted
+	if let Some(s) = buffer
+		&& !buffer_cursor.exhausted
 	{
-		any_progress |= scan_tier_chunk(s, hot_cursor, scan, collected)?;
+		any_progress |= scan_tier_chunk(s, buffer_cursor, scan, collected)?;
 	}
-	if let Some(s) = warm
-		&& !warm_cursor.exhausted
+	if let Some(s) = persistent
+		&& !persistent_cursor.exhausted
 	{
-		any_progress |= scan_tier_chunk(s, warm_cursor, scan, collected)?;
-	}
-	if let Some(s) = cold
-		&& !cold_cursor.exhausted
-	{
-		any_progress |= scan_tier_chunk(s, cold_cursor, scan, collected)?;
+		any_progress |= scan_tier_chunk(s, persistent_cursor, scan, collected)?;
 	}
 	Ok(any_progress)
 }
 
 pub fn scan_tiers_latest(
-	hot: Option<&HotStorage>,
-	warm: Option<&WarmStorage>,
-	cold: Option<&ColdStorage>,
+	buffer: Option<&BufferStorage>,
+	persistent: Option<&PersistentStorage>,
 	range: EncodedKeyRange,
 	version: CommitVersion,
 	max_keys: usize,
@@ -409,19 +380,16 @@ pub fn scan_tiers_latest(
 	};
 
 	let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
-	let mut hot_cursor = RangeCursor::default();
-	let mut warm_cursor = RangeCursor::default();
-	let mut cold_cursor = RangeCursor::default();
+	let mut buffer_cursor = RangeCursor::default();
+	let mut persistent_cursor = RangeCursor::default();
 	let mut exhausted = false;
 
 	while collected.len() < max_keys {
 		let progress = step_all_tiers(
-			hot,
-			&mut hot_cursor,
-			warm,
-			&mut warm_cursor,
-			cold,
-			&mut cold_cursor,
+			buffer,
+			&mut buffer_cursor,
+			persistent,
+			&mut persistent_cursor,
 			&scan,
 			&mut collected,
 		)?;
@@ -466,12 +434,10 @@ impl StandardMultiStore {
 
 		while collected.len() < batch_size {
 			let progress = step_all_tiers(
-				self.hot.as_ref(),
-				&mut cursor.hot,
-				self.warm.as_ref(),
-				&mut cursor.warm,
-				self.cold.as_ref(),
-				&mut cursor.cold,
+				self.buffer.as_ref(),
+				&mut cursor.buffer,
+				self.persistent.as_ref(),
+				&mut cursor.persistent,
 				&scan,
 				&mut collected,
 			)?;
@@ -568,22 +534,17 @@ impl StandardMultiStore {
 		while collected.len() < batch_size {
 			let mut any_progress = false;
 
-			if let Some(hot) = &self.hot
-				&& !cursor.hot.exhausted
+			if let Some(buffer) = &self.buffer
+				&& !cursor.buffer.exhausted
 			{
-				any_progress |= scan_tier_chunk_rev(hot, &mut cursor.hot, &scan, &mut collected)?;
+				any_progress |= scan_tier_chunk_rev(buffer, &mut cursor.buffer, &scan, &mut collected)?;
 			}
 
-			if let Some(warm) = &self.warm
-				&& !cursor.warm.exhausted
+			if let Some(persistent) = &self.persistent
+				&& !cursor.persistent.exhausted
 			{
-				any_progress |= scan_tier_chunk_rev(warm, &mut cursor.warm, &scan, &mut collected)?;
-			}
-
-			if let Some(cold) = &self.cold
-				&& !cursor.cold.exhausted
-			{
-				any_progress |= scan_tier_chunk_rev(cold, &mut cursor.cold, &scan, &mut collected)?;
+				any_progress |=
+					scan_tier_chunk_rev(persistent, &mut cursor.persistent, &scan, &mut collected)?;
 			}
 
 			if !any_progress {
@@ -616,14 +577,11 @@ impl StandardMultiStore {
 }
 
 fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor) {
-	if store.hot.is_none() {
-		cursor.hot.exhausted = true;
+	if store.buffer.is_none() {
+		cursor.buffer.exhausted = true;
 	}
-	if store.warm.is_none() {
-		cursor.warm.exhausted = true;
-	}
-	if store.cold.is_none() {
-		cursor.cold.exhausted = true;
+	if store.persistent.is_none() {
+		cursor.persistent.exhausted = true;
 	}
 }
 
@@ -651,7 +609,7 @@ fn apply_reverse_horizon(
 
 fn forward_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
 	let mut horizon: Option<CowVec<u8>> = None;
-	for tier in [&cursor.hot, &cursor.warm, &cursor.cold] {
+	for tier in [&cursor.buffer, &cursor.persistent] {
 		if tier.exhausted {
 			continue;
 		}
@@ -676,7 +634,7 @@ fn forward_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
 
 fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
 	let mut horizon: Option<CowVec<u8>> = None;
-	for tier in [&cursor.hot, &cursor.warm, &cursor.cold] {
+	for tier in [&cursor.buffer, &cursor.persistent] {
 		if tier.exhausted {
 			continue;
 		}
@@ -699,7 +657,7 @@ fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
 }
 
 fn rewind_over_advanced_forward(cursor: &mut MultiVersionRangeCursor, horizon: &CowVec<u8>) {
-	for tier in [&mut cursor.hot, &mut cursor.warm, &mut cursor.cold] {
+	for tier in [&mut cursor.buffer, &mut cursor.persistent] {
 		if tier.exhausted {
 			continue;
 		}
@@ -712,7 +670,7 @@ fn rewind_over_advanced_forward(cursor: &mut MultiVersionRangeCursor, horizon: &
 }
 
 fn rewind_over_advanced_reverse(cursor: &mut MultiVersionRangeCursor, horizon: &CowVec<u8>) {
-	for tier in [&mut cursor.hot, &mut cursor.warm, &mut cursor.cold] {
+	for tier in [&mut cursor.buffer, &mut cursor.persistent] {
 		if tier.exhausted {
 			continue;
 		}
@@ -734,7 +692,7 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 			return Ok(None);
 		}
 
-		let storage = self.hot.as_ref().expect("hot storage required for version lookups");
+		let storage = self.buffer.as_ref().expect("buffer storage required for version lookups");
 
 		let table = classify_key(key);
 		let prev_version = CommitVersion(before_version.0 - 1);
