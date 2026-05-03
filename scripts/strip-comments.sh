@@ -127,7 +127,6 @@ while ($i < $n) {
                 $end++ while $end < $n && substr($content, $end, 1) ne "\n";
                 my $cm = substr($content, $i, $end-$i);
                 if (is_marker($cm)) {
-                    $out =~ s/[ \t]+\z//;
                     $out .= $cm . ($end < $n ? "\n" : "");
                     $i = $end < $n ? $end+1 : $end;
                 } else {
