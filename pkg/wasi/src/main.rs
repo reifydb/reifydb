@@ -45,6 +45,7 @@ use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::timers::drain_expired_timers,
 	context::{RuntimeContext, clock::Clock},
+	pool::PoolConfig,
 };
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
@@ -75,7 +76,12 @@ struct Bridge {
 impl Bridge {
 	fn new(profile: BridgeProfile) -> Result<Self, Box<dyn Error>> {
 		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default().async_threads(1).system_threads(1).query_threads(1).seeded(0),
+			SharedRuntimeConfig::default().seeded(0),
+			PoolConfig {
+				async_threads: 1,
+				system_threads: 1,
+				query_threads: 1,
+			},
 		);
 
 		let actor_system = runtime.actor_system();

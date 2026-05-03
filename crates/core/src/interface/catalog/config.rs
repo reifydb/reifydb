@@ -55,6 +55,9 @@ pub enum ConfigKey {
 	CdcCompactMaxBlocksPerTick,
 	CdcCompactBlockCacheCapacity,
 	CdcCompactZstdLevel,
+	ThreadsAsync,
+	ThreadsSystem,
+	ThreadsQuery,
 }
 
 impl ConfigKey {
@@ -76,6 +79,9 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick,
 			Self::CdcCompactBlockCacheCapacity,
 			Self::CdcCompactZstdLevel,
+			Self::ThreadsAsync,
+			Self::ThreadsSystem,
+			Self::ThreadsQuery,
 		]
 	}
 
@@ -99,6 +105,9 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => Value::Uint8(16),
 			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
 			Self::CdcCompactZstdLevel => Value::Uint1(7),
+			Self::ThreadsAsync => Value::Uint2(1),
+			Self::ThreadsSystem => Value::Uint2(2),
+			Self::ThreadsQuery => Value::Uint2(1),
 		}
 	}
 
@@ -141,6 +150,18 @@ impl ConfigKey {
 				"Zstd compression level for CDC blocks. Range 1-22; higher means smaller blocks but \
 				 slower compression. Decompression cost is independent of level."
 			}
+			Self::ThreadsAsync => {
+				"Number of worker threads for the async runtime. Must be >= 1. \
+				 Read at boot before the runtime starts; changes require restart."
+			}
+			Self::ThreadsSystem => {
+				"Number of worker threads for the system pool (lightweight actors). \
+				 Must be >= 1. Changes require restart."
+			}
+			Self::ThreadsQuery => {
+				"Number of worker threads for the query pool (execution-heavy actors). \
+				 Must be >= 1. Changes require restart."
+			}
 		}
 	}
 
@@ -162,6 +183,9 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => false,
 			Self::CdcCompactBlockCacheCapacity => true,
 			Self::CdcCompactZstdLevel => false,
+			Self::ThreadsAsync => true,
+			Self::ThreadsSystem => true,
+			Self::ThreadsQuery => true,
 		}
 	}
 
@@ -183,6 +207,9 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => &[Type::Uint8],
 			Self::CdcCompactBlockCacheCapacity => &[Type::Uint8],
 			Self::CdcCompactZstdLevel => &[Type::Uint1],
+			Self::ThreadsAsync => &[Type::Uint2],
+			Self::ThreadsSystem => &[Type::Uint2],
+			Self::ThreadsQuery => &[Type::Uint2],
 		}
 	}
 
@@ -208,6 +235,9 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => false,
 			Self::CdcCompactBlockCacheCapacity => false,
 			Self::CdcCompactZstdLevel => false,
+			Self::ThreadsAsync => false,
+			Self::ThreadsSystem => false,
+			Self::ThreadsQuery => false,
 		}
 	}
 
@@ -273,6 +303,18 @@ impl ConfigKey {
 						Err("HISTORICAL_GC_INTERVAL must be greater than zero".to_string())
 					}
 				}
+				_ => Ok(()),
+			},
+			Self::ThreadsAsync => match value {
+				Value::Uint2(0) => Err("THREADS_ASYNC must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::ThreadsSystem => match value {
+				Value::Uint2(0) => Err("THREADS_SYSTEM must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::ThreadsQuery => match value {
+				Value::Uint2(0) => Err("THREADS_QUERY must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			_ => Ok(()),
@@ -377,6 +419,9 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => write!(f, "CDC_COMPACT_MAX_BLOCKS_PER_TICK"),
 			Self::CdcCompactBlockCacheCapacity => write!(f, "CDC_COMPACT_BLOCK_CACHE_CAPACITY"),
 			Self::CdcCompactZstdLevel => write!(f, "CDC_COMPACT_ZSTD_LEVEL"),
+			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
+			Self::ThreadsSystem => write!(f, "THREADS_SYSTEM"),
+			Self::ThreadsQuery => write!(f, "THREADS_QUERY"),
 		}
 	}
 }
@@ -402,6 +447,9 @@ impl FromStr for ConfigKey {
 			"CDC_COMPACT_MAX_BLOCKS_PER_TICK" => Ok(Self::CdcCompactMaxBlocksPerTick),
 			"CDC_COMPACT_BLOCK_CACHE_CAPACITY" => Ok(Self::CdcCompactBlockCacheCapacity),
 			"CDC_COMPACT_ZSTD_LEVEL" => Ok(Self::CdcCompactZstdLevel),
+			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
+			"THREADS_SYSTEM" => Ok(Self::ThreadsSystem),
+			"THREADS_QUERY" => Ok(Self::ThreadsQuery),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -565,7 +613,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 16);
+		assert_eq!(all.len(), 19);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
@@ -573,6 +621,61 @@ mod tests {
 		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
 		assert!(all.contains(&ConfigKey::CdcCompactZstdLevel));
 		assert!(all.contains(&ConfigKey::QueryRowBatchSize));
+		assert!(all.contains(&ConfigKey::ThreadsAsync));
+		assert!(all.contains(&ConfigKey::ThreadsSystem));
+		assert!(all.contains(&ConfigKey::ThreadsQuery));
+	}
+
+	#[test]
+	fn test_threads_keys_round_trip() {
+		assert_eq!("THREADS_ASYNC".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsAsync);
+		assert_eq!("THREADS_SYSTEM".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsSystem);
+		assert_eq!("THREADS_QUERY".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsQuery);
+		assert_eq!(format!("{}", ConfigKey::ThreadsAsync), "THREADS_ASYNC");
+		assert_eq!(format!("{}", ConfigKey::ThreadsSystem), "THREADS_SYSTEM");
+		assert_eq!(format!("{}", ConfigKey::ThreadsQuery), "THREADS_QUERY");
+	}
+
+	#[test]
+	fn test_threads_defaults() {
+		assert_eq!(ConfigKey::ThreadsAsync.default_value(), Value::Uint2(1));
+		assert_eq!(ConfigKey::ThreadsSystem.default_value(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsQuery.default_value(), Value::Uint2(1));
+	}
+
+	#[test]
+	fn test_threads_reject_zero() {
+		for key in [ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery] {
+			match key.accept(Value::Uint2(0)).unwrap_err() {
+				AcceptError::InvalidValue(reason) => {
+					assert!(
+						reason.contains("greater than zero"),
+						"{key}: unexpected reason: {reason}"
+					);
+				}
+				other => panic!("{key}: expected InvalidValue, got {other:?}"),
+			}
+		}
+	}
+
+	#[test]
+	fn test_threads_accept_positive() {
+		assert_eq!(ConfigKey::ThreadsAsync.accept(Value::Uint2(4)).unwrap(), Value::Uint2(4));
+		assert_eq!(ConfigKey::ThreadsSystem.accept(Value::Uint2(8)).unwrap(), Value::Uint2(8));
+		assert_eq!(ConfigKey::ThreadsQuery.accept(Value::Uint2(16)).unwrap(), Value::Uint2(16));
+	}
+
+	#[test]
+	fn test_threads_coerce_int4_to_uint2() {
+		let v = ConfigKey::ThreadsQuery.accept(Value::Int4(8)).unwrap();
+		assert_eq!(v, Value::Uint2(8));
+	}
+
+	#[test]
+	fn test_threads_require_restart() {
+		assert!(ConfigKey::ThreadsAsync.requires_restart());
+		assert!(ConfigKey::ThreadsSystem.requires_restart());
+		assert!(ConfigKey::ThreadsQuery.requires_restart());
 	}
 
 	#[test]

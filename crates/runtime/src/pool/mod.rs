@@ -26,9 +26,19 @@ pub struct PoolConfig {
 impl Default for PoolConfig {
 	fn default() -> Self {
 		Self {
+			async_threads: 1,
+			system_threads: 2,
+			query_threads: 1,
+		}
+	}
+}
+
+impl PoolConfig {
+	pub fn sync_only() -> Self {
+		Self {
+			async_threads: 0,
 			system_threads: 1,
 			query_threads: 1,
-			async_threads: 0,
 		}
 	}
 }

@@ -258,7 +258,7 @@ impl MultiTransaction {
 	pub fn testing() -> Self {
 		let multi_store = MultiStore::testing_memory();
 		let single_store = SingleStore::testing_memory();
-		let pools = Pools::new(PoolConfig::default());
+		let pools = Pools::new(PoolConfig::sync_only());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 

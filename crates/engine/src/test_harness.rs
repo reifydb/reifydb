@@ -265,12 +265,17 @@ impl TestEngineBuilder {
 
 #[inline]
 fn make_test_runtime(mock_clock: &MockClock) -> SharedRuntime {
-	let base = SharedRuntimeConfig::default().async_threads(2).system_threads(2).query_threads(2).seeded(1000);
+	let config = SharedRuntimeConfig::default().seeded(1000);
 	let config = SharedRuntimeConfig {
 		clock: Clock::Mock(mock_clock.clone()),
-		..base
+		..config
 	};
-	SharedRuntime::from_config(config)
+	let pools = PoolConfig {
+		async_threads: 2,
+		system_threads: 2,
+		query_threads: 2,
+	};
+	SharedRuntime::from_config(config, pools)
 }
 
 fn register_cdc_producer(
@@ -302,7 +307,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let pools = Pools::new(PoolConfig::default());
+	let pools = Pools::new(PoolConfig::sync_only());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
@@ -332,7 +337,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let pools = Pools::new(PoolConfig::default());
+	let pools = Pools::new(PoolConfig::sync_only());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());

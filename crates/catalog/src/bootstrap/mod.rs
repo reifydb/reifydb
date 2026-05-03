@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::collections::HashMap;
+
 use reifydb_core::{
+	common::CommitVersion,
 	event::EventBus,
 	interface::catalog::{config::ConfigKey, id::NamespaceId},
+	key::config::ConfigStorageKey,
 };
 use reifydb_runtime::context::clock::Clock;
+use reifydb_store_multi::{
+	cold::ColdStorage, hot::storage::HotStorage, store::multi::scan_tiers_latest, warm::WarmStorage,
+};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -13,7 +20,7 @@ use reifydb_transaction::{
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
 use reifydb_type::value::{Value, identity::IdentityId};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
 	Result,
@@ -22,6 +29,7 @@ use crate::{
 		MaterializedCatalog,
 		load::{MaterializedCatalogLoader, config::load_configs},
 	},
+	store::config::convert_config,
 };
 
 pub mod binding;
@@ -29,13 +37,6 @@ pub mod identity;
 pub mod metric;
 pub mod procedure;
 
-/// Bootstrap system objects: root identity, system procedures, metric ring buffers.
-///
-/// Must be called AFTER `load_materialized_catalog()`.
-/// Callers that need CDC to capture bootstrap commits should ensure the CDC
-/// producer is active before calling this function.
-///
-/// Skipped on replicas (they receive system objects via replication).
 pub fn bootstrap_system_objects(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
@@ -49,13 +50,6 @@ pub fn bootstrap_system_objects(
 	Ok(())
 }
 
-/// Apply builder-supplied system configuration overrides.
-///
-/// Each `(key, value)` pair is persisted via `Catalog::set_config`, overwriting any
-/// existing override for that key. Reuses the existing validation and change-tracking
-/// paths, so invalid values fail here exactly as they would at runtime.
-///
-/// Callers should skip this on replicas; configs propagate via replication.
 pub fn apply_bootstrap_configs(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
@@ -88,7 +82,6 @@ pub fn apply_bootstrap_configs(
 	Ok(())
 }
 
-/// Load all catalog data from storage into MaterializedCatalog.
 pub fn load_materialized_catalog(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
@@ -97,6 +90,176 @@ pub fn load_materialized_catalog(
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
 	MaterializedCatalogLoader::load_all(&mut Transaction::Query(&mut qt), catalog)?;
 	Ok(())
+}
+
+pub fn read_configs(
+	hot: Option<&HotStorage>,
+	warm: Option<&WarmStorage>,
+	cold: Option<&ColdStorage>,
+	keys: &[ConfigKey],
+) -> Result<HashMap<ConfigKey, Value>> {
+	let mut found: HashMap<ConfigKey, Value> = HashMap::new();
+
+	let range = ConfigStorageKey::full_scan();
+	let batch = scan_tiers_latest(hot, warm, cold, range, CommitVersion(u64::MAX), 1024)?;
+
+	for multi in batch.items {
+		let (key, value) = convert_config(multi);
+		if !keys.contains(&key) {
+			continue;
+		}
+		match key.accept(value) {
+			Ok(canonical) => {
+				found.insert(key, canonical);
+			}
+			Err(e) => {
+				warn!("ignoring invalid persisted value for {key}: {e}; falling back to default");
+			}
+		}
+	}
+
+	let mut out: HashMap<ConfigKey, Value> = HashMap::with_capacity(keys.len());
+	for key in keys {
+		let value = found.remove(key).unwrap_or_else(|| key.default_value());
+		out.insert(*key, value);
+	}
+	Ok(out)
+}
+
+#[cfg(test)]
+mod read_configs_tests {
+	use std::collections::HashMap;
+
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::{catalog::config::ConfigKey, store::EntryKind},
+		key::config::ConfigStorageKey,
+	};
+	use reifydb_store_multi::{hot::storage::HotStorage, tier::TierStorage};
+	use reifydb_type::value::Value;
+
+	use super::read_configs;
+	use crate::store::config::shape::config::{SHAPE, VALUE};
+
+	fn write_config(hot: &HotStorage, key: ConfigKey, value: Value, version: CommitVersion) {
+		let mut row = SHAPE.allocate();
+		SHAPE.set_value(&mut row, VALUE, &Value::any(value));
+		let key_bytes = ConfigStorageKey::for_key(key);
+		let mut batches = HashMap::new();
+		batches.insert(EntryKind::Multi, vec![(key_bytes.0, Some(row.0))]);
+		hot.set(version, batches).unwrap();
+	}
+
+	fn delete_config(hot: &HotStorage, key: ConfigKey, version: CommitVersion) {
+		let key_bytes = ConfigStorageKey::for_key(key);
+		let mut batches = HashMap::new();
+		batches.insert(EntryKind::Multi, vec![(key_bytes.0, None)]);
+		hot.set(version, batches).unwrap();
+	}
+
+	#[test]
+	fn returns_defaults_when_no_tiers_configured() {
+		let out = read_configs(
+			None,
+			None,
+			None,
+			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
+		)
+		.unwrap();
+		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
+		assert_eq!(out[&ConfigKey::ThreadsSystem], Value::Uint2(2));
+		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(1));
+	}
+
+	#[test]
+	fn returns_defaults_when_hot_is_empty() {
+		let hot = HotStorage::memory();
+		let out = read_configs(
+			Some(&hot),
+			None,
+			None,
+			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
+		)
+		.unwrap();
+		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
+		assert_eq!(out[&ConfigKey::ThreadsSystem], Value::Uint2(2));
+		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(1));
+	}
+
+	#[test]
+	fn reads_persisted_value_from_hot() {
+		let hot = HotStorage::memory();
+		write_config(&hot, ConfigKey::ThreadsQuery, Value::Uint2(8), CommitVersion(1));
+
+		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsQuery, ConfigKey::ThreadsAsync])
+			.unwrap();
+
+		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(8));
+		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
+	}
+
+	#[test]
+	fn latest_version_wins() {
+		let hot = HotStorage::memory();
+		write_config(&hot, ConfigKey::ThreadsSystem, Value::Uint2(4), CommitVersion(1));
+		write_config(&hot, ConfigKey::ThreadsSystem, Value::Uint2(16), CommitVersion(5));
+		write_config(&hot, ConfigKey::ThreadsSystem, Value::Uint2(8), CommitVersion(3));
+
+		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsSystem]).unwrap();
+
+		assert_eq!(out[&ConfigKey::ThreadsSystem], Value::Uint2(16));
+	}
+
+	#[test]
+	fn tombstone_returns_default() {
+		let hot = HotStorage::memory();
+		write_config(&hot, ConfigKey::ThreadsQuery, Value::Uint2(12), CommitVersion(1));
+		delete_config(&hot, ConfigKey::ThreadsQuery, CommitVersion(2));
+
+		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsQuery]).unwrap();
+
+		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(1));
+	}
+
+	#[test]
+	fn rejects_invalid_persisted_value_and_falls_back_to_default() {
+		let hot = HotStorage::memory();
+		write_config(&hot, ConfigKey::ThreadsAsync, Value::Uint2(0), CommitVersion(1));
+
+		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsAsync]).unwrap();
+
+		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
+	}
+
+	#[test]
+	fn unrequested_keys_are_ignored() {
+		let hot = HotStorage::memory();
+		write_config(&hot, ConfigKey::ThreadsQuery, Value::Uint2(8), CommitVersion(1));
+		write_config(&hot, ConfigKey::OracleWindowSize, Value::Uint8(999), CommitVersion(1));
+
+		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsQuery]).unwrap();
+
+		assert_eq!(out.len(), 1);
+		assert_eq!(out[&ConfigKey::ThreadsQuery], Value::Uint2(8));
+		assert!(!out.contains_key(&ConfigKey::OracleWindowSize));
+	}
+
+	#[test]
+	fn shape_stays_in_sync_with_set_config_path() {
+		// If the catalog's set_config layout changes, this test catches it: a row
+		// written with the same SHAPE / VALUE constants must be decodable by read_configs.
+		let hot = HotStorage::memory();
+		let mut row = SHAPE.allocate();
+		SHAPE.set_value(&mut row, VALUE, &Value::any(Value::Uint2(5)));
+
+		let key_bytes = ConfigStorageKey::for_key(ConfigKey::ThreadsSystem);
+		let mut batches = HashMap::new();
+		batches.insert(EntryKind::Multi, vec![(key_bytes.0, Some(row.0))]);
+		hot.set(CommitVersion(1), batches).unwrap();
+
+		let out = read_configs(Some(&hot), None, None, &[ConfigKey::ThreadsSystem]).unwrap();
+		assert_eq!(out[&ConfigKey::ThreadsSystem], Value::Uint2(5));
+	}
 }
 
 /// Find a namespace by its full `::`-separated path, or create it with the given id

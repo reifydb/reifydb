@@ -3,7 +3,7 @@
 
 use std::{fs::read_to_string, path::Path};
 
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
 use reifydb_type::{params::Params, value::Value};
 
 #[cfg(feature = "sub_flow")]
@@ -23,7 +23,7 @@ pub fn run_test_file(path: impl AsRef<Path>) -> Result<(), String> {
 
 /// Run RQL test content against a fresh in-memory database.
 pub fn run_test_str(content: &str) -> Result<(), String> {
-	let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default());
+	let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default(), PoolConfig::default());
 
 	let builder = embedded::memory().with_runtime(runtime);
 	#[cfg(feature = "sub_flow")]

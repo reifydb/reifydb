@@ -150,7 +150,7 @@ pub fn extract_remote_token(err: &Error) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+	use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
 	use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
 	use super::*;
@@ -254,7 +254,7 @@ mod tests {
 
 	#[test]
 	fn test_connect_failure_does_not_pollute_cache() {
-		let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default());
+		let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default(), PoolConfig::default());
 		let registry = RemoteRegistry::new(runtime);
 
 		// 127.0.0.1:1 is reserved; connect must fail fast.
@@ -265,7 +265,7 @@ mod tests {
 
 	#[test]
 	fn test_evict_missing_key_is_noop() {
-		let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default());
+		let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default(), PoolConfig::default());
 		let registry = RemoteRegistry::new(runtime);
 		registry.evict("http://127.0.0.1:1", None);
 		registry.evict("http://127.0.0.1:1", Some("tok"));

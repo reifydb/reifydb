@@ -17,7 +17,7 @@ pub mod actor;
 
 #[cfg(not(reifydb_target = "dst"))]
 use std::future::Future;
-use std::{sync::Arc, thread::available_parallelism};
+use std::sync::Arc;
 
 use crate::{
 	actor::system::ActorSystem,
@@ -25,28 +25,15 @@ use crate::{
 	pool::{PoolConfig, Pools},
 };
 
-/// Configuration for creating a [`SharedRuntime`].
 #[derive(Clone)]
 pub struct SharedRuntimeConfig {
-	/// Number of worker threads for async runtime (ignored in WASM)
-	pub async_threads: usize,
-	/// Number of worker threads for the system pool (lightweight actors).
-	pub system_threads: usize,
-	/// Number of worker threads for the query pool (execution-heavy actors).
-	pub query_threads: usize,
-	/// Clock for time operations (defaults to real system clock)
 	pub clock: Clock,
-	/// Random number generator (defaults to OS entropy)
 	pub rng: context::rng::Rng,
 }
 
 impl Default for SharedRuntimeConfig {
 	fn default() -> Self {
-		let cpus = available_parallelism().map_or(1, |n| n.get());
 		Self {
-			async_threads: 1,
-			system_threads: cpus.min(4),
-			query_threads: cpus,
 			clock: Clock::Real,
 			rng: context::rng::Rng::default(),
 		}
@@ -54,26 +41,6 @@ impl Default for SharedRuntimeConfig {
 }
 
 impl SharedRuntimeConfig {
-	/// Set the number of async worker threads.
-	pub fn async_threads(mut self, threads: usize) -> Self {
-		self.async_threads = threads;
-		self
-	}
-
-	/// Set the number of system pool threads (lightweight actors).
-	pub fn system_threads(mut self, threads: usize) -> Self {
-		self.system_threads = threads;
-		self
-	}
-
-	/// Set the number of query pool threads (execution-heavy actors).
-	pub fn query_threads(mut self, threads: usize) -> Self {
-		self.query_threads = threads;
-		self
-	}
-
-	/// Configure for deterministic testing with the given seed.
-	/// Sets a mock clock starting at `seed` milliseconds and a seeded RNG.
 	pub fn seeded(mut self, seed: u64) -> Self {
 		self.clock = Clock::Mock(MockClock::from_millis(seed));
 		self.rng = context::rng::Rng::seeded(seed);
@@ -186,13 +153,8 @@ struct SharedRuntimeInner {
 pub struct SharedRuntime(Arc<SharedRuntimeInner>);
 
 impl SharedRuntime {
-	/// Create a new shared runtime from configuration.
-	pub fn from_config(config: SharedRuntimeConfig) -> Self {
-		let pools = Pools::new(PoolConfig {
-			system_threads: config.system_threads,
-			query_threads: config.query_threads,
-			async_threads: config.async_threads,
-		});
+	pub fn from_config(config: SharedRuntimeConfig, pools: PoolConfig) -> Self {
+		let pools = Pools::new(pools);
 		let system = ActorSystem::new(pools.clone(), config.clock.clone());
 
 		Self(Arc::new(SharedRuntimeInner {
@@ -288,26 +250,34 @@ mod tests {
 	use super::*;
 
 	fn test_config() -> SharedRuntimeConfig {
-		SharedRuntimeConfig::default().async_threads(2).system_threads(2).query_threads(2)
+		SharedRuntimeConfig::default()
+	}
+
+	fn test_pools() -> PoolConfig {
+		PoolConfig {
+			async_threads: 2,
+			system_threads: 2,
+			query_threads: 2,
+		}
 	}
 
 	#[test]
 	fn test_runtime_creation() {
-		let runtime = SharedRuntime::from_config(test_config());
+		let runtime = SharedRuntime::from_config(test_config(), test_pools());
 		let result = runtime.block_on(async { 42 });
 		assert_eq!(result, 42);
 	}
 
 	#[test]
 	fn test_runtime_clone_shares_same_runtime() {
-		let rt1 = SharedRuntime::from_config(test_config());
+		let rt1 = SharedRuntime::from_config(test_config(), test_pools());
 		let rt2 = rt1.clone();
 		assert!(Arc::ptr_eq(&rt1.0, &rt2.0));
 	}
 
 	#[test]
 	fn test_spawn() {
-		let runtime = SharedRuntime::from_config(test_config());
+		let runtime = SharedRuntime::from_config(test_config(), test_pools());
 		let handle = runtime.spawn(async { 123 });
 		let result = runtime.block_on(handle).unwrap();
 		assert_eq!(result, 123);
@@ -315,7 +285,7 @@ mod tests {
 
 	#[test]
 	fn test_actor_system_accessible() {
-		let runtime = SharedRuntime::from_config(test_config());
+		let runtime = SharedRuntime::from_config(test_config(), test_pools());
 		let _system = runtime.actor_system();
 	}
 }

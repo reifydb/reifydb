@@ -38,27 +38,47 @@ pub enum StorageFactory {
 }
 
 impl StorageFactory {
-	/// Create the storage.
-	pub(crate) fn create(
+	pub(crate) fn open_multi_hot(&self) -> HotStorage {
+		match self {
+			StorageFactory::Memory => HotStorage::memory(),
+			StorageFactory::Sqlite(config) => HotStorage::sqlite(SqliteConfig {
+				path: multi_db_path(&config.path),
+				..config.clone()
+			}),
+		}
+	}
+
+	pub(crate) fn create_with_multi_hot(
 		&self,
+		multi_hot: HotStorage,
 		actor_system: &ActorSystem,
 	) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 		match self {
-			StorageFactory::Memory => create_memory_store(actor_system),
-			StorageFactory::Sqlite(config) => create_sqlite_store(config.clone(), actor_system),
+			StorageFactory::Memory => create_memory_store_with(multi_hot, actor_system),
+			StorageFactory::Sqlite(config) => {
+				create_sqlite_store_with(multi_hot, config.clone(), actor_system)
+			}
 		}
 	}
 }
 
-/// Internal: Create in-memory storage.
-fn create_memory_store(actor_system: &ActorSystem) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
+fn multi_db_path(path: &DbPath) -> DbPath {
+	match path {
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("multi.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("multi.db")),
+	}
+}
+
+fn create_memory_store_with(
+	multi_hot: HotStorage,
+	actor_system: &ActorSystem,
+) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(actor_system);
 
-	// Create multi-version store
-	let multi_storage = HotStorage::memory();
 	let multi_store = MultiStore::standard(MultiStoreConfig {
 		hot: Some(MultiHotConfig {
-			storage: multi_storage,
+			storage: multi_hot,
 		}),
 		warm: None,
 		cold: None,
@@ -69,7 +89,6 @@ fn create_memory_store(actor_system: &ActorSystem) -> (MultiStore, SingleStore, 
 		clock: Clock::Real,
 	});
 
-	// Create single-version store
 	let single_storage = HotTier::memory();
 	let single_store = SingleStore::standard(SingleStoreConfig {
 		hot: Some(SingleHotConfig {
@@ -82,29 +101,16 @@ fn create_memory_store(actor_system: &ActorSystem) -> (MultiStore, SingleStore, 
 	(multi_store, single_store, transaction_single, eventbus)
 }
 
-/// Internal: Create SQLite storage with the given configuration.
-fn create_sqlite_store(
+fn create_sqlite_store_with(
+	multi_hot: HotStorage,
 	config: SqliteConfig,
 	actor_system: &ActorSystem,
 ) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(actor_system);
 
-	// Modify config to use multi.db in a directory named after the UUID
-	let multi_path = match &config.path {
-		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
-		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("multi.db")),
-		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("multi.db")),
-	};
-	let multi_config = SqliteConfig {
-		path: multi_path,
-		..config.clone()
-	};
-
-	// Create multi-version store
-	let multi_storage = HotStorage::sqlite(multi_config);
 	let multi_store = MultiStore::standard(MultiStoreConfig {
 		hot: Some(MultiHotConfig {
-			storage: multi_storage,
+			storage: multi_hot,
 		}),
 		warm: None,
 		cold: None,
@@ -115,7 +121,6 @@ fn create_sqlite_store(
 		clock: Clock::Real,
 	});
 
-	// Create single-version config with single.db in same directory
 	let single_path = match &config.path {
 		DbPath::File(p) => DbPath::File(p.with_extension("").join("single.db")),
 		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("single.db")),

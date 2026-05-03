@@ -43,6 +43,7 @@ pub use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::{Clock, MockClock},
+	pool::PoolConfig,
 };
 pub use reifydb_sqlite::SqliteConfig;
 pub use reifydb_store_multi as multi_storage;

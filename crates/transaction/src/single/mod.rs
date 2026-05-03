@@ -62,7 +62,7 @@ impl SingleTransaction {
 	}
 
 	pub fn testing() -> Self {
-		let pools = Pools::new(PoolConfig::default());
+		let pools = Pools::new(PoolConfig::sync_only());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(SingleStore::testing_memory(), EventBus::new(&actor_system))
 	}

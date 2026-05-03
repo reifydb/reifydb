@@ -42,7 +42,7 @@ use reifydb_routine::{
 	function::default_native_functions, procedure::default_native_procedures, routine::registry::Routines,
 };
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock, pool::PoolConfig};
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
 	config::{HotConfig, MultiStoreConfig},
@@ -191,9 +191,13 @@ impl WasmDB {
 		#[cfg(feature = "console_error_panic_hook")]
 		set_panic_hook();
 
-		// WASM runtime with minimal threads (single-threaded)
 		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default().async_threads(1).system_threads(1).query_threads(1).seeded(0),
+			SharedRuntimeConfig::default().seeded(0),
+			PoolConfig {
+				async_threads: 1,
+				system_threads: 1,
+				query_threads: 1,
+			},
 		);
 
 		// Create actor system at the top level - this will be shared by

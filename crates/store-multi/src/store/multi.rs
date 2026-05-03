@@ -30,7 +30,10 @@ use super::{
 };
 use crate::{
 	Result,
-	tier::{RangeCursor, TierBatch, TierStorage},
+	cold::ColdStorage,
+	hot::storage::HotStorage,
+	tier::{RangeBatch, RangeCursor, TierBatch, TierStorage},
+	warm::WarmStorage,
 };
 
 /// Fixed chunk size for internal tier scans.
@@ -277,13 +280,175 @@ impl MultiVersionRangeCursor {
 	}
 }
 
-/// Parameters shared by tier scan operations (forward and reverse).
-struct TierScanQuery<'a> {
-	table: EntryKind,
-	start: &'a [u8],
-	end: &'a [u8],
+pub struct TierScanQuery<'a> {
+	pub table: EntryKind,
+	pub start: &'a [u8],
+	pub end: &'a [u8],
+	pub version: CommitVersion,
+	pub range: &'a EncodedKeyRange,
+}
+
+pub fn scan_tier_chunk<S: TierStorage>(
+	storage: &S,
+	cursor: &mut RangeCursor,
+	scan: &TierScanQuery,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) -> Result<bool> {
+	let batch = storage.range_next(
+		scan.table,
+		cursor,
+		Bound::Included(scan.start),
+		Bound::Included(scan.end),
+		scan.version,
+		TIER_SCAN_CHUNK_SIZE,
+	)?;
+	merge_tier_batch(batch, scan.range, collected)
+}
+
+pub fn scan_tier_chunk_rev<S: TierStorage>(
+	storage: &S,
+	cursor: &mut RangeCursor,
+	scan: &TierScanQuery,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) -> Result<bool> {
+	let batch = storage.range_rev_next(
+		scan.table,
+		cursor,
+		Bound::Included(scan.start),
+		Bound::Included(scan.end),
+		scan.version,
+		TIER_SCAN_CHUNK_SIZE,
+	)?;
+	merge_tier_batch(batch, scan.range, collected)
+}
+
+#[inline]
+fn merge_tier_batch(
+	batch: RangeBatch,
+	range: &EncodedKeyRange,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) -> Result<bool> {
+	if batch.entries.is_empty() {
+		return Ok(false);
+	}
+
+	for entry in batch.entries {
+		let original_key = entry.key.as_slice().to_vec();
+		let entry_version = entry.version;
+
+		let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
+		if !range.contains(&original_key_encoded) {
+			continue;
+		}
+
+		let should_update = match collected.get(&original_key) {
+			None => true,
+			Some((existing_version, _)) => entry_version > *existing_version,
+		};
+
+		if should_update {
+			collected.insert(original_key, (entry_version, entry.value));
+		}
+	}
+
+	Ok(true)
+}
+
+#[inline]
+pub fn collected_to_batch(
+	collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+	has_more: bool,
+) -> MultiVersionBatch {
+	let items: Vec<MultiVersionRow> = collected
+		.into_iter()
+		.filter_map(|(key_bytes, (v, value))| {
+			value.map(|val| MultiVersionRow {
+				key: EncodedKey(CowVec::new(key_bytes)),
+				row: EncodedRow(val),
+				version: v,
+			})
+		})
+		.collect();
+
+	MultiVersionBatch {
+		items,
+		has_more,
+	}
+}
+
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn step_all_tiers(
+	hot: Option<&HotStorage>,
+	hot_cursor: &mut RangeCursor,
+	warm: Option<&WarmStorage>,
+	warm_cursor: &mut RangeCursor,
+	cold: Option<&ColdStorage>,
+	cold_cursor: &mut RangeCursor,
+	scan: &TierScanQuery,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) -> Result<bool> {
+	let mut any_progress = false;
+	if let Some(s) = hot
+		&& !hot_cursor.exhausted
+	{
+		any_progress |= scan_tier_chunk(s, hot_cursor, scan, collected)?;
+	}
+	if let Some(s) = warm
+		&& !warm_cursor.exhausted
+	{
+		any_progress |= scan_tier_chunk(s, warm_cursor, scan, collected)?;
+	}
+	if let Some(s) = cold
+		&& !cold_cursor.exhausted
+	{
+		any_progress |= scan_tier_chunk(s, cold_cursor, scan, collected)?;
+	}
+	Ok(any_progress)
+}
+
+pub fn scan_tiers_latest(
+	hot: Option<&HotStorage>,
+	warm: Option<&WarmStorage>,
+	cold: Option<&ColdStorage>,
+	range: EncodedKeyRange,
 	version: CommitVersion,
-	range: &'a EncodedKeyRange,
+	max_keys: usize,
+) -> Result<MultiVersionBatch> {
+	let table = classify_key_range(&range);
+	let (start, end) = make_range_bounds(&range);
+	let scan = TierScanQuery {
+		table,
+		start: &start,
+		end: &end,
+		version,
+		range: &range,
+	};
+
+	let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
+	let mut hot_cursor = RangeCursor::default();
+	let mut warm_cursor = RangeCursor::default();
+	let mut cold_cursor = RangeCursor::default();
+	let mut exhausted = false;
+
+	while collected.len() < max_keys {
+		let progress = step_all_tiers(
+			hot,
+			&mut hot_cursor,
+			warm,
+			&mut warm_cursor,
+			cold,
+			&mut cold_cursor,
+			&scan,
+			&mut collected,
+		)?;
+		if !progress {
+			exhausted = true;
+			break;
+		}
+	}
+
+	Ok(collected_to_batch(collected, !exhausted))
 }
 
 impl StandardMultiStore {
@@ -316,111 +481,29 @@ impl StandardMultiStore {
 			range: &range,
 		};
 
-		// Collected entries: logical_key -> (version, value)
 		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
-		// Keep scanning until we have batch_size unique logical keys OR all tiers exhausted
 		while collected.len() < batch_size {
-			let mut any_progress = false;
-
-			// Scan chunk from hot tier
-			if let Some(hot) = &self.hot
-				&& !cursor.hot.exhausted
-			{
-				let progress = Self::scan_tier_chunk(hot, &mut cursor.hot, &scan, &mut collected)?;
-				any_progress |= progress;
-			}
-
-			// Scan chunk from warm tier
-			if let Some(warm) = &self.warm
-				&& !cursor.warm.exhausted
-			{
-				let progress = Self::scan_tier_chunk(warm, &mut cursor.warm, &scan, &mut collected)?;
-				any_progress |= progress;
-			}
-
-			// Scan chunk from cold tier
-			if let Some(cold) = &self.cold
-				&& !cursor.cold.exhausted
-			{
-				let progress = Self::scan_tier_chunk(cold, &mut cursor.cold, &scan, &mut collected)?;
-				any_progress |= progress;
-			}
-
-			if !any_progress {
-				// All tiers exhausted
+			let progress = step_all_tiers(
+				self.hot.as_ref(),
+				&mut cursor.hot,
+				self.warm.as_ref(),
+				&mut cursor.warm,
+				self.cold.as_ref(),
+				&mut cursor.cold,
+				&scan,
+				&mut collected,
+			)?;
+			if !progress {
 				cursor.exhausted = true;
 				break;
 			}
 		}
 
-		// Convert to MultiVersionRow in sorted key order, filtering out tombstones.
 		// Note: the per-tier cursor already advanced past every key we collected, so
 		// every collected entry must be either returned or dropped here - we cannot
 		// "leave them for next call" without losing them entirely.
-		let items: Vec<MultiVersionRow> = collected
-			.into_iter()
-			.filter_map(|(key_bytes, (v, value))| {
-				value.map(|val| MultiVersionRow {
-					key: EncodedKey(CowVec::new(key_bytes)),
-					row: EncodedRow(val),
-					version: v,
-				})
-			})
-			.collect();
-
-		let has_more = !cursor.exhausted;
-
-		Ok(MultiVersionBatch {
-			items,
-			has_more,
-		})
-	}
-
-	/// Scan a chunk from a single tier and merge into collected entries.
-	/// Returns true if any entries were processed (i.e., made progress).
-	fn scan_tier_chunk<S: TierStorage>(
-		storage: &S,
-		cursor: &mut RangeCursor,
-		scan: &TierScanQuery,
-		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
-	) -> Result<bool> {
-		let batch = storage.range_next(
-			scan.table,
-			cursor,
-			Bound::Included(scan.start),
-			Bound::Included(scan.end),
-			scan.version,
-			TIER_SCAN_CHUNK_SIZE,
-		)?;
-
-		if batch.entries.is_empty() {
-			return Ok(false);
-		}
-
-		for entry in batch.entries {
-			// Entry key is already the logical key, entry.version is the version
-			let original_key = entry.key.as_slice().to_vec();
-			let entry_version = entry.version;
-
-			// Skip if key is not within the requested logical range
-			let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
-			if !scan.range.contains(&original_key_encoded) {
-				continue;
-			}
-
-			// Update if no entry exists or this is a higher version
-			let should_update = match collected.get(&original_key) {
-				None => true,
-				Some((existing_version, _)) => entry_version > *existing_version,
-			};
-
-			if should_update {
-				collected.insert(original_key, (entry_version, entry.value));
-			}
-		}
-
-		Ok(true)
+		Ok(collected_to_batch(collected, !cursor.exhausted))
 	}
 
 	/// Create an iterator for forward range queries.
@@ -496,47 +579,36 @@ impl StandardMultiStore {
 			range: &range,
 		};
 
-		// Collected entries: logical_key -> (version, value)
 		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
-		// Keep scanning until we have batch_size unique logical keys OR all tiers exhausted
 		while collected.len() < batch_size {
 			let mut any_progress = false;
 
-			// Scan chunk from hot tier (reverse)
 			if let Some(hot) = &self.hot
 				&& !cursor.hot.exhausted
 			{
-				let progress = Self::scan_tier_chunk_rev(hot, &mut cursor.hot, &scan, &mut collected)?;
-				any_progress |= progress;
+				any_progress |= scan_tier_chunk_rev(hot, &mut cursor.hot, &scan, &mut collected)?;
 			}
 
-			// Scan chunk from warm tier (reverse)
 			if let Some(warm) = &self.warm
 				&& !cursor.warm.exhausted
 			{
-				let progress =
-					Self::scan_tier_chunk_rev(warm, &mut cursor.warm, &scan, &mut collected)?;
-				any_progress |= progress;
+				any_progress |= scan_tier_chunk_rev(warm, &mut cursor.warm, &scan, &mut collected)?;
 			}
 
-			// Scan chunk from cold tier (reverse)
 			if let Some(cold) = &self.cold
 				&& !cursor.cold.exhausted
 			{
-				let progress =
-					Self::scan_tier_chunk_rev(cold, &mut cursor.cold, &scan, &mut collected)?;
-				any_progress |= progress;
+				any_progress |= scan_tier_chunk_rev(cold, &mut cursor.cold, &scan, &mut collected)?;
 			}
 
 			if !any_progress {
-				// All tiers exhausted
 				cursor.exhausted = true;
 				break;
 			}
 		}
 
-		// Convert to MultiVersionRow in REVERSE sorted key order, filtering out tombstones
+		// Reverse sort + take(batch_size) before tombstone filtering.
 		let items: Vec<MultiVersionRow> = collected
 			.into_iter()
 			.rev()
@@ -556,52 +628,6 @@ impl StandardMultiStore {
 			items,
 			has_more,
 		})
-	}
-
-	/// Scan a chunk from a single tier in reverse and merge into collected entries.
-	/// Returns true if any entries were processed (i.e., made progress).
-	fn scan_tier_chunk_rev<S: TierStorage>(
-		storage: &S,
-		cursor: &mut RangeCursor,
-		scan: &TierScanQuery,
-		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
-	) -> Result<bool> {
-		let batch = storage.range_rev_next(
-			scan.table,
-			cursor,
-			Bound::Included(scan.start),
-			Bound::Included(scan.end),
-			scan.version,
-			TIER_SCAN_CHUNK_SIZE,
-		)?;
-
-		if batch.entries.is_empty() {
-			return Ok(false);
-		}
-
-		for entry in batch.entries {
-			// Entry key is already the logical key, entry.version is the version
-			let original_key = entry.key.as_slice().to_vec();
-			let entry_version = entry.version;
-
-			// Skip if key is not within the requested logical range
-			let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
-			if !scan.range.contains(&original_key_encoded) {
-				continue;
-			}
-
-			// Update if no entry exists or this is a higher version
-			let should_update = match collected.get(&original_key) {
-				None => true,
-				Some((existing_version, _)) => entry_version > *existing_version,
-			};
-
-			if should_update {
-				collected.insert(original_key, (entry_version, entry.value));
-			}
-		}
-
-		Ok(true)
 	}
 }
 

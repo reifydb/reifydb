@@ -4,7 +4,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use reifydb_auth::service::AuthConfigurator;
-use reifydb_catalog::materialized::MaterializedCatalog;
+use reifydb_catalog::{bootstrap::read_configs, materialized::MaterializedCatalog};
 use reifydb_core::interface::catalog::config::ConfigKey;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_metric::{
@@ -12,7 +12,10 @@ use reifydb_metric::{
 	registry::{MetricRegistry, StaticMetricRegistry},
 };
 use reifydb_routine::routine::registry::RoutinesConfigurator;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock};
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
+use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
+use reifydb_store_multi::hot::storage::HotStorage;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
@@ -38,6 +41,39 @@ use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_type::value::Value;
+
+fn pool_config_from_sources(
+	factory: &StorageFactory,
+	overrides: &[(ConfigKey, Value)],
+) -> Result<(HotStorage, PoolConfig)> {
+	let multi_hot = factory.open_multi_hot();
+	let persisted = read_configs(
+		Some(&multi_hot),
+		None,
+		None,
+		&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
+	)?;
+
+	let resolve = |key: ConfigKey| -> usize {
+		let value = overrides
+			.iter()
+			.rev()
+			.find(|(k, _)| *k == key)
+			.and_then(|(_, v)| key.accept(v.clone()).ok())
+			.unwrap_or_else(|| persisted[&key].clone());
+		match value {
+			Value::Uint2(v) => v as usize,
+			other => panic!("config key {key} expected Uint2, got {other:?}"),
+		}
+	};
+
+	let pools = PoolConfig {
+		async_threads: resolve(ConfigKey::ThreadsAsync),
+		system_threads: resolve(ConfigKey::ThreadsSystem),
+		query_threads: resolve(ConfigKey::ThreadsQuery),
+	};
+	Ok((multi_hot, pools))
+}
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, traits::WithSubsystem};
 use crate::{
@@ -265,13 +301,17 @@ impl ServerBuilder {
 		self
 	}
 
+	#[allow(unused_mut)]
 	pub fn build(mut self) -> Result<Database> {
+		let (multi_hot, pool_config) =
+			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
+
 		let runtime_config = self.runtime_config.unwrap_or_default();
-		let runtime = SharedRuntime::from_config(runtime_config);
+		let runtime = SharedRuntime::from_config(runtime_config, pool_config);
 
 		let actor_system = runtime.actor_system().scope();
 		let (multi_store, single_store, transaction_single, eventbus) =
-			self.storage_factory.create(&actor_system);
+			self.storage_factory.create_with_multi_hot(multi_hot, &actor_system);
 		let materialized_catalog = MaterializedCatalog::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),

@@ -69,7 +69,7 @@ impl Deref for StandardSingleStore {
 
 impl StandardSingleStore {
 	pub fn testing_memory() -> Self {
-		let pools = Pools::new(PoolConfig::default());
+		let pools = Pools::new(PoolConfig::sync_only());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::testing_memory_with_eventbus(EventBus::new(&actor_system))
 	}
