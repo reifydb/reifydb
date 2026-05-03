@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{
-	array::{Column, canonical::Canonical},
+	data::{Column, canonical::Canonical},
 	encoding::EncodingId,
 	stats::{Stat, StatsSet},
 };

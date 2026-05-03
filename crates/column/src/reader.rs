@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{
-	ColumnWithName, array::Column, buffer::ColumnBuffer, columns::Columns, mask::RowMask,
+	ColumnWithName, buffer::ColumnBuffer, columns::Columns, data::Column, mask::RowMask,
 };
 use reifydb_type::{
 	Result,
@@ -178,7 +178,7 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::catalog::id::TableId,
-		value::column::array::{Column, canonical::Canonical},
+		value::column::data::{Column, canonical::Canonical},
 	};
 	use reifydb_runtime::context::clock::Clock;
 	use reifydb_type::value::r#type::Type;

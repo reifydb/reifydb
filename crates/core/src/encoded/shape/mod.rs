@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Row-shape descriptor: the schema-of-bytes that explains how to interpret an `EncodedRow`.
+//!
+//! A `RowShape` lists every field (name, type constraint, byte offset, byte size, alignment) so storage backends,
+//! replication, and CDC can address fields without consulting the catalog. Submodules cover shape consolidation across
+//! rows of the same logical schema, schema evolution rules for adding and removing fields, structural fingerprinting
+//! used by plan caches and migration tooling, and conversion routines from typed schemas.
+//!
+//! Invariant: the `SHAPE_HEADER_SIZE` constant and the packed-mode bit layout (mode bit, length mask, offset mask) are
+//! part of the wire format. Reordering or resizing any of these regions silently breaks every row written under the
+//! previous layout.
+
 pub mod consolidate;
 pub mod evolution;
 pub mod fingerprint;

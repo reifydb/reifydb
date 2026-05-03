@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Columnar data model used by the engine and every consumer of query results.
+//!
+//! A column is a typed, possibly-nullable, possibly-dictionary-encoded buffer of values plus statistics, encoding
+//! metadata, and a none-bitmap.
+//!
+//! Invariant: a column's `RowMask` and `NoneBitmap` are always exactly aligned to its logical row count. Operations
+//! that grow or shrink the buffer must update the mask and bitmap atomically with respect to consumers; an off-by-one
+//! between length and mask silently produces wrong results in filter and aggregation paths.
+
 use std::fmt;
 
 use reifydb_type::{
@@ -13,12 +22,12 @@ use reifydb_type::{
 	},
 };
 
-use crate::value::column::{array::Column, buffer::ColumnBuffer};
+use crate::value::column::{buffer::ColumnBuffer, data::Column};
 
-pub mod array;
 pub mod buffer;
 pub mod columns;
 pub mod compressed;
+pub mod data;
 pub mod encoding;
 pub mod frame;
 pub mod headers;

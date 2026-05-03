@@ -8,6 +8,12 @@
 //
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
+
+//! Pluggable formatters for human-readable key and value rendering.
+//!
+//! The `Formatter` trait takes a raw key byte slice and an optional value byte slice and returns a printable string;
+//! the `raw` submodule provides the default hex rendering used by tools and tests. Implementors typically dispatch on
+//! the leading `KeyKind` byte to produce a structured rendering of catalog keys.
 pub mod raw;
 
 pub trait Formatter {

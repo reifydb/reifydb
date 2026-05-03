@@ -20,7 +20,7 @@ use crate::{
 	interface::catalog::column::Column as CatalogColumn,
 	row::Row,
 	value::column::{
-		ColumnBuffer, ColumnWithName, array::Column, buffer::pool::ColumnBufferPool, headers::ColumnHeaders,
+		ColumnBuffer, ColumnWithName, buffer::pool::ColumnBufferPool, data::Column, headers::ColumnHeaders,
 	},
 };
 

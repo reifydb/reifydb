@@ -9,8 +9,8 @@ use reifydb_type::{
 };
 
 use crate::value::column::{
-	array::{Column, ColumnData},
 	buffer::ColumnBuffer,
+	data::{Column, ColumnData},
 	encoding::EncodingId,
 	nones::NoneBitmap,
 	stats::StatsSet,

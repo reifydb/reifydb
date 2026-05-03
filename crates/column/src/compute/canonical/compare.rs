@@ -3,7 +3,7 @@
 
 use std::cmp::{Ordering, Ordering::*};
 
-use reifydb_core::value::column::{array::canonical::Canonical, buffer::ColumnBuffer};
+use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
 use reifydb_type::{
 	Result,
 	value::{Value, r#type::Type},

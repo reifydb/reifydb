@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::id::{SeriesId, TableId},
-	value::column::array::Column,
+	value::column::data::Column,
 };
 use reifydb_runtime::context::clock::Instant;
 use reifydb_type::{Result, value::r#type::Type};
@@ -175,7 +175,7 @@ pub struct SnapshotMeta {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{array::canonical::Canonical, buffer::ColumnBuffer};
+	use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
 	use reifydb_type::value::Value;
 
 	use super::*;

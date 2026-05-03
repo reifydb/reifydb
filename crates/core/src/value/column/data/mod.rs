@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! `ColumnData` is the polymorphic accessor (type, length, encoding, nullability, statistics, value extraction) that
+//! each concrete data implements. `Canonical` is the dense default data used for primitive-typed columns. The
+//! `CompareOp` and `SearchResult` enums express search-and-compare operations the engine performs over arrays during
+//! selection (binary search and range probing).
+
 pub mod canonical;
 
 use std::{any::Any, sync::Arc};

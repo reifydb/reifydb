@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Capture types used by the test harness to record what happened during a run.
+//!
+//! `CapturedEvent` records each event the bus dispatched (sequence number, namespace, event family, variant, depth,
+//! captured columns); `CapturedInvocation` records each handler invocation (sequence, namespace, handler, event,
+//! variant, duration, outcome). `TestingChanged` is the marker emitted by handlers that opt in to test capture for a
+//! specific row-shape type. These structures are runtime-only; they are not persisted and never appear in normal
+//! operation.
+
 use crate::value::column::columns::Columns;
 
 #[derive(Clone, Debug)]

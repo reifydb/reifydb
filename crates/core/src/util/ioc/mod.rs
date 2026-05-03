@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Inversion-of-control container used to register and resolve long-lived services by Rust type.
+//!
+//! `IocContainer` is a thread-safe map from `TypeId` to a type-erased value. Crates register implementations at startup
+//! (storage backends, evaluators, the event bus, the catalog) and resolve them by type later, which lets the same
+//! wiring code support both the in-process embedded runtime and the multi-tenant server runtime without threading every
+//! dependency through the call stack.
+//!
+//! Invariant: only one value per `TypeId` is registered. Registering twice silently overwrites the previous value;
+//! consumers should treat the container as immutable after startup wiring is complete.
+
 pub mod resolve_arc;
 pub mod resolve_rc;
 

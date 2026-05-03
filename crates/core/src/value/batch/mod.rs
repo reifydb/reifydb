@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Result-delivery wrapper that lets the engine hand back rows either lazily or eagerly.
+//!
+//! `Batch::Lazy` defers materialisation until the consumer asks for a value, so the engine can short-circuit on `LIMIT`
+//! and small subscriptions; `Batch::FullyMaterialized` carries the columns directly and is the form used when the
+//! consumer needs random access (display, aggregation, sorting). Both variants expose a uniform row-count,
+//! column-count, and value-getter interface so consumers do not need to branch.
+
 pub mod lazy;
 
 use lazy::LazyBatch;

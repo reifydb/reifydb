@@ -9,6 +9,17 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+//! Order-preserving codec used to turn typed keys into the bytes that go on disk.
+//!
+//! Encoded byte sequences sort lexicographically in the same order as the logical keys they represent, so range scans
+//! over the storage tier produce results in natural key order without any decode pass. Submodules cover the
+//! catalog-specific key encodings, the generic `Serializer` and `Deserializer` pair, and per-type encoders for
+//! booleans, floats, and signed and unsigned integers.
+//!
+//! Invariant: the codec is order-preserving. For any two values `a < b` in their natural ordering, their encoded bytes
+//! must satisfy `encode(a) < encode(b)` lexicographically. Storage range queries, CDC, and replication all rely on this
+//! property; breaking it silently corrupts every range-scan-based operation in the workspace.
+
 use serde::{Deserialize, Serialize};
 
 pub mod catalog;

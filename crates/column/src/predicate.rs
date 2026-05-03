@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{array::Column, buffer::ColumnBuffer, mask::RowMask};
+use reifydb_core::value::column::{buffer::ColumnBuffer, data::Column, mask::RowMask};
 use reifydb_type::{Result, value::Value};
 
 use crate::{
@@ -156,8 +156,8 @@ mod tests {
 	use std::sync::Arc;
 
 	use reifydb_core::value::column::{
-		array::{Column, canonical::Canonical},
 		buffer::ColumnBuffer,
+		data::{Column, canonical::Canonical},
 	};
 	use reifydb_type::value::r#type::Type;
 

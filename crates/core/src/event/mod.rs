@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Typed in-process event bus connecting the workspace's actors and subsystems.
+//!
+//! The `Event` trait marks any `Send + Sync + Clone + 'static` value that can be published; `EventListener<E>`
+//! registers a callback for one event type. Listener lists are keyed on Rust `TypeId`, so dispatch is purely by static
+//! type identity. Submodules group the standard event families: lifecycle (startup and shutdown), transaction, store,
+//! row, flow, procedure, and metric.
+//!
+//! Invariant: dispatch keys on Rust `TypeId`, not on type name. Two distinct types with the same name in different
+//! crates dispatch to disjoint listener lists; renaming an event type in one crate without renaming it in publishers
+//! and subscribers silently breaks delivery without a compile error at the bus call sites.
+
 use std::{
 	any::{Any, TypeId},
 	collections::HashMap,

@@ -209,6 +209,7 @@ trap 'rm -f "$TMPFILE"' EXIT INT TERM
 
 for file in "${files[@]}"; do
     [[ "$file" =~ /tests/ ]] && continue
+    case "$(basename "$file")" in lib.rs|mod.rs) continue ;; esac
 
     process_file "$file" > "$TMPFILE"
 

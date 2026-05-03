@@ -1,6 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Typed keys for every catalog object and system structure that ReifyDB persists.
+//!
+//! Each submodule defines a key type for one logical entry (namespaces, tables, columns, rows, indexes, flows,
+//! identities, policies, and so on), plus the cross-cutting `kind` module that enumerates the byte tag for each kind in
+//! `KeyKind`. Every key round-trips to and from the canonical byte layout via the order-preserving `keycode` codec in
+//! `util/encoding/keycode/`.
+//!
+//! Invariant: `KeyKind`'s `u8` discriminant is the on-disk key prefix. Reassigning, reordering, or recycling a byte
+//! corrupts every persisted database. New kinds must be added by appending a new variant; deletions require an explicit
+//! migration and remain reserved for forward compatibility.
+//!
+//! Invariant: every key type round-trips through `keycode` losslessly, and the codec preserves natural ordering.
+//! Storage iteration, range scans, and CDC consumers all rely on the byte order produced by `keycode` matching the
+//! natural order of the typed key.
+
 use authentication::AuthenticationKey;
 use binding::BindingKey;
 use cdc_consumer::CdcConsumerKey;

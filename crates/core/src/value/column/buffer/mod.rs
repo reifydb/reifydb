@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! `ColumnBuffer` and its operation surface: the typed-per-primitive buffer that stores actual values.
+//!
+//! The buffer enum has one variant per primitive type the database understands (the integer family from `i8`/`u8`
+//! through `i128`/`u128`, the float pair, booleans, UTF-8, blobs, the temporal family, decimals, the UUID variants,
+//! dictionaries, identities, plus an `Option` wrapper for nullability). Submodules implement the operations the engine
+//! performs on a buffer: extend, factory construction, filter, conversions, value access, the buffer pool, reorder,
+//! scatter, slice, and take.
+
 pub mod extend;
 pub mod factory;
 pub mod filter;

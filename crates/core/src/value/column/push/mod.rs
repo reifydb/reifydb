@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Typed `Push<T>` trait and its blanket implementations for every primitive `ColumnBuffer` accepts.
+//!
+//! Each submodule (`int`, `uint`, `decimal`, `none`, `uuid`, `value`) implements `Push<T>` for the variants of
+//! `ColumnBuffer` that store `T`. Pushing a value of the wrong type panics rather than silently coercing; correctness
+//! at the column boundary is enforced by the type system at the call site, so a panic here is a planner bug, not a user
+//! error.
+
 use std::fmt::Debug;
 
 use reifydb_type::{

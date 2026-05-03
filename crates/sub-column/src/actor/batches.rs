@@ -7,7 +7,7 @@ use reifydb_column::{
 	compress::Compressor,
 	snapshot::{ColumnBlock, ColumnChunks},
 };
-use reifydb_core::value::column::{array::canonical::Canonical, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, data::canonical::Canonical};
 use reifydb_type::{Result, value::r#type::Type};
 
 use crate::error::SubColumnError;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{array::canonical::Canonical, nones::NoneBitmap};
+use reifydb_core::value::column::{data::canonical::Canonical, nones::NoneBitmap};
 use reifydb_type::Result;
 
 pub fn slice(array: &Canonical, start: usize, end: usize) -> Result<Canonical> {

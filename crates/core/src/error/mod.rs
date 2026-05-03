@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! `CoreError` and the diagnostic catalogue.
+//!
+//! `CoreError` is the recoverable-error enum that surfaces failures from `core` (frame and flow processing, index
+//! constraints, encoding round-trips, transaction keyspace overlap, and similar cross-cutting conditions). The
+//! `diagnostic/` submodule organises every user-facing diagnostic produced by the workspace into per-subsystem
+//! catalogues so the wire layer can render them with stable codes and source-fragment context.
+//!
+//! Invariant: a `CoreError` variant that is reachable from a user operation must have a corresponding diagnostic in
+//! `diagnostic/`. Surfacing an error with no diagnostic produces a "no diagnostic" rendering on the client and a
+//! useless support ticket.
+
 use reifydb_type::{
 	error::{Error, IntoDiagnostic, TypeError},
 	fragment::Fragment,

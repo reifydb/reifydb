@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{array::canonical::Canonical, buffer::ColumnBuffer};
+use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
 use reifydb_type::{Result, value::Value};
 
 use crate::error::ColumnError;

@@ -15,7 +15,7 @@ use compressed::{
 	RleEncoding, SparseEncoding,
 };
 use reifydb_core::value::column::{
-	array::{Column, canonical::Canonical},
+	data::{Column, canonical::Canonical},
 	encoding::EncodingId,
 	stats::StatsSet,
 };
