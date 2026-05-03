@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 
+use postcard::from_bytes;
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
 use reifydb_type::value::Value;
+use serde::de::DeserializeOwned;
 
 use super::helpers::get_values;
 
@@ -95,6 +97,18 @@ impl TestStateStore {
 		let actual =
 			self.decode_value(key, shape).unwrap_or_else(|| panic!("Key {:?} not found in state", key));
 		assert_eq!(actual, expected, "State value mismatch for key {:?}", key);
+	}
+
+	pub fn decode_typed<T: DeserializeOwned>(&self, key: &EncodedKey) -> Option<T> {
+		let row = self.get(key)?;
+		let shape = RowShape::operator_state();
+		let blob = shape.get_blob(row, 0);
+		from_bytes(blob.as_bytes()).ok()
+	}
+
+	pub fn assert_typed_value<T: DeserializeOwned + PartialEq + Debug>(&self, key: &EncodedKey, expected: &T) {
+		let actual = self.decode_typed::<T>(key).unwrap_or_else(|| panic!("Key {:?} not found in state", key));
+		assert_eq!(&actual, expected, "Typed state value mismatch for key {:?}", key);
 	}
 
 	pub fn assert_exists(&self, key: &EncodedKey) {

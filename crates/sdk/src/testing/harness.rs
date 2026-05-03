@@ -424,10 +424,7 @@ pub mod tests {
 						.and_then(|s| s.first().copied());
 					if let (Some(&rn), Some(v)) = (row_numbers.first(), first_int8) {
 						let row_key = format!("row_{}", rn);
-						let shape = RowShape::testing(&[Type::Int8]);
-						let mut encoded = shape.allocate();
-						shape.set_values(&mut encoded, &[Value::Int8(v)]);
-						ctx.state().set(&row_key.into_encoded_key(), &encoded)?;
+						ctx.state().set::<i64>(&row_key.into_encoded_key(), &v)?;
 					}
 				}
 			}
@@ -568,13 +565,11 @@ pub mod tests {
 		// Verify output has the expected diff
 		assert_eq!(output.diffs.len(), 1);
 
-		// Verify the operator stored state correctly via FFI callbacks
+		// Verify the operator stored state correctly via FFI callbacks.
+		// State is wrapped in the canonical operator_state row + postcard
+		// payload, so assertions go through the typed accessor.
 		let state = harness.state();
-		let shape = RowShape::testing(&[Type::Int8]);
-		let key = encode_key("row_1");
-
-		// Assert the state was set through the FFI bridge
-		state.assert_value(&key, &[Value::Int8(42i64)], &shape);
+		state.assert_typed_value::<i64>(&encode_key("row_1"), &42i64);
 	}
 
 	#[test]
@@ -639,11 +634,9 @@ pub mod tests {
 
 		// Verify all three values were stored
 		let state = harness.state();
-		let shape = RowShape::testing(&[Type::Int8]);
-
-		state.assert_value(&encode_key("row_1"), &[Value::Int8(10i64)], &shape);
-		state.assert_value(&encode_key("row_2"), &[Value::Int8(20i64)], &shape);
-		state.assert_value(&encode_key("row_3"), &[Value::Int8(30i64)], &shape);
+		state.assert_typed_value::<i64>(&encode_key("row_1"), &10i64);
+		state.assert_typed_value::<i64>(&encode_key("row_2"), &20i64);
+		state.assert_typed_value::<i64>(&encode_key("row_3"), &30i64);
 
 		// Verify total state count
 		assert_eq!(state.len(), 3);

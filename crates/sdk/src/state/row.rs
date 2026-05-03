@@ -4,12 +4,12 @@
 use std::iter;
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
+	encoded::key::EncodedKey,
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	util::encoding::keycode::serializer::KeySerializer,
 };
-use reifydb_type::{util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_type::value::row_number::RowNumber;
 
 use crate::{error::Result, operator::context::OperatorContext};
 
@@ -38,24 +38,15 @@ impl RowNumberProvider {
 
 		for key in keys {
 			let map_key = self.make_map_key(key);
-			let internal_key = FlowNodeInternalStateKey::new(self.node, map_key.as_ref().to_vec());
+			let internal_key = FlowNodeInternalStateKey::new(self.node, map_key.as_ref().to_vec()).encode();
 
-			if let Some(existing_row) = ctx.state().get(&internal_key.encode())? {
-				let bytes = existing_row.as_ref();
-				if bytes.len() >= 8 {
-					let row_num = u64::from_be_bytes([
-						bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
-						bytes[7],
-					]);
-					results.push((RowNumber(row_num), false));
-					continue;
-				}
+			if let Some(row_num) = ctx.state().get::<u64>(&internal_key)? {
+				results.push((RowNumber(row_num), false));
+				continue;
 			}
 
 			let new_row_number = RowNumber(counter);
-
-			let row_num_bytes = counter.to_be_bytes().to_vec();
-			ctx.state().set(&internal_key.encode(), &EncodedRow(CowVec::new(row_num_bytes)))?;
+			ctx.state().set::<u64>(&internal_key, &counter)?;
 
 			results.push((new_row_number, true));
 			counter += 1;
@@ -77,30 +68,15 @@ impl RowNumberProvider {
 	}
 
 	fn load_counter(&self, ctx: &mut OperatorContext) -> Result<u64> {
-		let key = self.make_counter_key();
-		let internal_key = FlowNodeInternalStateKey::new(self.node, key.as_ref().to_vec());
-		match ctx.state().get(&internal_key.encode())? {
-			None => Ok(1),
-			Some(state_row) => {
-				let bytes = state_row.as_ref();
-				if bytes.len() >= 8 {
-					Ok(u64::from_be_bytes([
-						bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
-						bytes[7],
-					]))
-				} else {
-					Ok(1)
-				}
-			}
-		}
+		let internal_key =
+			FlowNodeInternalStateKey::new(self.node, self.make_counter_key().as_ref().to_vec()).encode();
+		Ok(ctx.state().get::<u64>(&internal_key)?.unwrap_or(1))
 	}
 
 	fn save_counter(&self, ctx: &mut OperatorContext, counter: u64) -> Result<()> {
-		let key = self.make_counter_key();
-		let internal_key = FlowNodeInternalStateKey::new(self.node, key.as_ref().to_vec());
-		let value = EncodedRow(CowVec::new(counter.to_be_bytes().to_vec()));
-		ctx.state().set(&internal_key.encode(), &value)?;
-		Ok(())
+		let internal_key =
+			FlowNodeInternalStateKey::new(self.node, self.make_counter_key().as_ref().to_vec()).encode();
+		ctx.state().set::<u64>(&internal_key, &counter)
 	}
 
 	fn make_counter_key(&self) -> EncodedKey {
@@ -125,9 +101,7 @@ impl RowNumberProvider {
 
 		let internal_prefix = FlowNodeInternalStateKey::new(self.node, prefix);
 		let prefix_key = internal_prefix.encode();
-		let entries = ctx.state().scan_prefix(&prefix_key)?;
-
-		for (key, _) in entries {
+		for key in ctx.state().keys_with_prefix(&prefix_key)? {
 			ctx.state().remove(&key)?;
 		}
 
