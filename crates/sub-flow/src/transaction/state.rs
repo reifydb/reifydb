@@ -4,7 +4,7 @@
 use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
+		row::{EncodedRow, SHAPE_HEADER_SIZE},
 		shape::RowShape,
 	},
 	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
@@ -34,9 +34,21 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		value_len = value.len()
 	))]
-	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, mut value: EncodedRow) -> Result<()> {
 		let state_key = FlowNodeStateKey::new(id, key.to_vec());
 		let encoded_key = state_key.encode();
+
+		if value.len() >= SHAPE_HEADER_SIZE
+			&& let Some(prior) = self.get(&encoded_key)?
+			&& prior.len() >= SHAPE_HEADER_SIZE
+		{
+			let prior_created = prior.created_at_nanos();
+			if prior_created != 0 {
+				let updated = value.updated_at_nanos();
+				value.set_timestamps(prior_created, updated);
+			}
+		}
+
 		self.set(&encoded_key, value)
 	}
 

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::shape::RowShape,
+	encoded::{row::SHAPE_HEADER_SIZE, shape::RowShape},
 	interface::{
 		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId, view::View},
 		change::{Change, ChangeOrigin, Diff},
@@ -116,11 +116,42 @@ impl SinkTableViewOperator {
 			let pre_row_number = coerced_pre.row_numbers[row_idx];
 			let post_row_number = coerced_post.row_numbers[row_idx];
 			let (_, pre_encoded) = encode_row_at_index(&coerced_pre, row_idx, shape, pre_row_number)?;
-			let (_, post_encoded) = encode_row_at_index(&coerced_post, row_idx, shape, post_row_number)?;
+			let (_, mut post_encoded) =
+				encode_row_at_index(&coerced_post, row_idx, shape, post_row_number)?;
 
-			let post_encoded = ViewRowInterceptor::pre_update(txn, view, post_row_number, post_encoded)?;
 			let pre_key = RowKey::encoded(object_id, pre_row_number);
 			let post_key = RowKey::encoded(object_id, post_row_number);
+
+			let prior_created = match txn.get(&post_key)? {
+				Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
+					let c = prior.created_at_nanos();
+					if c != 0 {
+						Some(c)
+					} else {
+						None
+					}
+				}
+				_ => None,
+			};
+			if prior_created.is_none() && pre_row_number != post_row_number {
+				match txn.get(&pre_key)? {
+					Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
+						let c = prior.created_at_nanos();
+						if c != 0 && post_encoded.len() >= SHAPE_HEADER_SIZE {
+							let updated = post_encoded.updated_at_nanos();
+							post_encoded.set_timestamps(c, updated);
+						}
+					}
+					_ => {}
+				}
+			} else if let Some(c) = prior_created
+				&& post_encoded.len() >= SHAPE_HEADER_SIZE
+			{
+				let updated = post_encoded.updated_at_nanos();
+				post_encoded.set_timestamps(c, updated);
+			}
+
+			let post_encoded = ViewRowInterceptor::pre_update(txn, view, post_row_number, post_encoded)?;
 			txn.remove(&pre_key)?;
 			txn.set(&post_key, post_encoded.clone())?;
 			ViewRowInterceptor::post_update(txn, view, post_row_number, &post_encoded, &pre_encoded)?;
