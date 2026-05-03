@@ -61,14 +61,13 @@ impl CdcConsume for FlowConsumeRef {
 			reply,
 		});
 
-		if let Err(send_err) = result {
-			if let FlowCoordinatorMessage::Consume {
+		if let Err(send_err) = result
+			&& let FlowCoordinatorMessage::Consume {
 				reply,
 				..
 			} = send_err.into_inner()
-			{
-				reply(Err(Error(Box::new(internal!("Coordinator actor stopped")))));
-			}
+		{
+			reply(Err(Error(Box::new(internal!("Coordinator actor stopped")))));
 		}
 	}
 }

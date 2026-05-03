@@ -85,13 +85,12 @@ pub async fn run_coordinator(
 			}
 		    } => {
 
-			if let Some(heap_entry) = heap.pop() {
-
-			    if let Some(entry) = registry.get(&heap_entry.task_id) {
+			if let Some(heap_entry) = heap.pop()
+			    && let Some(entry) = registry.get(&heap_entry.task_id)
+			{
 				let task = entry.task.clone();
 				let task_id = heap_entry.task_id;
 				let task_name = task.name.clone();
-
 
 				spawn_task(
 				    task_id,
@@ -102,7 +101,6 @@ pub async fn run_coordinator(
 				);
 
 				debug!("Spawned task: {}", task_name);
-			    }
 			}
 		    }
 

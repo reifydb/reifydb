@@ -12,6 +12,10 @@ use reifydb_abi::{constants::CURRENT_API, data::buffer::BufferFFI};
 
 use crate::error::ExtensionError;
 
+/// Extract a UTF-8 string from a `BufferFFI`.
+///
+/// # Safety
+/// The buffer must contain valid UTF-8 data and the pointer must be valid for the given length.
 pub unsafe fn buffer_to_string(buffer: &BufferFFI) -> String {
 	if buffer.ptr.is_null() || buffer.len == 0 {
 		return String::new();

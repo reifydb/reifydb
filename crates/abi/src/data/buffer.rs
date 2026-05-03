@@ -43,9 +43,10 @@ impl BufferFFI {
 		self.len == 0 || self.ptr.is_null()
 	}
 
-	// SAFETY: caller must ensure `self.ptr` is valid for reads of `self.len` bytes,
-
-	#[allow(clippy::missing_safety_doc)]
+	/// Get the buffer as a slice (unsafe - caller must ensure pointer validity)
+	///
+	/// # Safety
+	/// Caller must ensure the pointer is valid and the buffer has not been freed.
 	pub unsafe fn as_slice(&self) -> &[u8] {
 		if self.is_empty() {
 			&[]

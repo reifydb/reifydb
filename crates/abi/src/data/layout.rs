@@ -45,9 +45,10 @@ impl LayoutFFI {
 		}
 	}
 
-	// SAFETY: caller must ensure `self.fields` points to a valid array of at least
-
-	#[allow(clippy::missing_safety_doc)]
+	/// Get a field by index
+	///
+	/// # Safety
+	/// Caller must ensure the fields pointer is valid and the index is within bounds.
 	pub unsafe fn get_field(&self, index: usize) -> Option<&FieldFFI> {
 		if index < self.field_count && !self.fields.is_null() {
 			// SAFETY: Caller must ensure fields pointer is valid and index is in bounds

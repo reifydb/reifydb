@@ -61,16 +61,14 @@ impl QueryNode for RemoteFetchNode {
 
 				let params = if named_params.is_empty() {
 					_ctx.params.clone()
-				} else {
-					if let Params::Named(ref existing) = _ctx.params {
-						let mut merged = named_params;
-						for (k, v) in existing.iter() {
-							merged.insert(k.clone(), v.clone());
-						}
-						Params::Named(Arc::new(merged))
-					} else {
-						Params::Named(Arc::new(named_params))
+				} else if let Params::Named(ref existing) = _ctx.params {
+					let mut merged = named_params;
+					for (k, v) in existing.iter() {
+						merged.insert(k.clone(), v.clone());
 					}
+					Params::Named(Arc::new(merged))
+				} else {
+					Params::Named(Arc::new(named_params))
 				};
 
 				let frames = registry.forward_query(

@@ -150,11 +150,11 @@ impl QueryNode for TopKNode {
 
 			if heap.len() < self.limit {
 				heap.push(entry);
-			} else if let Some(top) = heap.peek() {
-				if entry.cmp(top) == Ordering::Less {
-					heap.pop();
-					heap.push(entry);
-				}
+			} else if let Some(top) = heap.peek()
+				&& entry.cmp(top) == Ordering::Less
+			{
+				heap.pop();
+				heap.push(entry);
 			}
 		}
 

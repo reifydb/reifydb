@@ -44,6 +44,12 @@ pub extern "C" fn host_alloc(size: usize) -> *mut u8 {
 	})
 }
 
+/// Free memory (no-op for arena memory, system free otherwise)
+///
+/// # Safety
+///
+/// - `ptr` must have been previously returned by `host_alloc` or `host_realloc`, or be null.
+/// - `size` must match the size used in the corresponding allocation.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_free(ptr: *mut u8, size: usize) {
 	if ptr.is_null() || size == 0 {
@@ -59,6 +65,12 @@ pub unsafe extern "C" fn host_free(ptr: *mut u8, size: usize) {
 	unsafe { dealloc(ptr, layout) }
 }
 
+/// Reallocate memory (allocates new for arena, uses system realloc otherwise)
+///
+/// # Safety
+///
+/// - `ptr` must have been previously returned by `host_alloc` or `host_realloc`, or be null.
+/// - `old_size` must match the size of the current allocation at `ptr`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8 {
 	if ptr.is_null() {

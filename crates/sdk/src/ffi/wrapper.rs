@@ -153,6 +153,11 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 	}
 }
 
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
+/// - `ctx` must be a valid pointer to a `ContextFFI`.
+/// - `input` must be a valid pointer to a `ChangeFFI` whose buffer pointers are valid for the duration of the call.
 #[instrument(name = "flow::operator::ffi::apply", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 ))]
@@ -205,6 +210,11 @@ pub unsafe extern "C" fn ffi_apply<O: FFIOperator>(
 	code
 }
 
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
+/// - `ctx` must be a valid pointer to a `ContextFFI`.
+/// - `row_numbers` must be valid for reading `count` elements, or null if `count` is 0.
 #[instrument(name = "flow::operator::ffi::pull", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 	row_count = count,
@@ -264,6 +274,10 @@ pub unsafe extern "C" fn ffi_pull<O: FFIOperator>(
 	code
 }
 
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
+/// - `ctx` must be a valid pointer to a `ContextFFI`.
 #[instrument(name = "flow::operator::ffi::tick", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 ))]
@@ -317,6 +331,10 @@ pub unsafe extern "C" fn ffi_tick<O: FFIOperator>(
 	code
 }
 
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` originally created by `Box::new`, or null (in which
+///   case this is a no-op).
 pub unsafe extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 	if instance.is_null() {
 		return;
@@ -335,6 +353,12 @@ pub unsafe extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 	}
 }
 
+/// FFI entry point for `flush_state`. Called once per txn at commit time.
+///
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>`.
+/// - `ctx` must point to a valid `ContextFFI` for the duration of the call.
 pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(instance: *mut c_void, ctx: *mut ContextFFI) -> i32 {
 	if instance.is_null() || ctx.is_null() {
 		return FFI_ERROR_NULL_PTR;

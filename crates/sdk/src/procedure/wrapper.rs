@@ -31,6 +31,10 @@ impl<T: FFIProcedure> ProcedureWrapper<T> {
 	}
 }
 
+/// # Safety
+///
+/// - `instance` must be a valid pointer to a `ProcedureWrapper<T>`.
+/// - `ctx` must point to a valid `ContextFFI` for the duration of the call.
 pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
@@ -75,6 +79,9 @@ pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 	code
 }
 
+/// # Safety
+///
+/// - `instance` must be a valid pointer to a `ProcedureWrapper<T>`, or null.
 pub unsafe extern "C" fn ffi_procedure_destroy<T: FFIProcedure>(instance: *mut c_void) {
 	if instance.is_null() {
 		return;

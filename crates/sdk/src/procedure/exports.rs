@@ -34,6 +34,11 @@ pub fn create_procedure_descriptor<T: FFIProcedureWithMetadata>() -> ProcedureDe
 	}
 }
 
+/// Create a procedure instance from FFI parameters
+///
+/// # Safety
+/// - config_ptr must be valid for config_len bytes or null
+/// - The returned pointer must be freed by calling the destroy function
 pub unsafe extern "C" fn create_procedure_instance<T: FFIProcedureWithMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,

@@ -71,6 +71,11 @@ pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> OperatorDescriptorFFI 
 	}
 }
 
+/// Create an operator instance from FFI parameters
+///
+/// # Safety
+/// - config_ptr must be valid for config_len bytes or null
+/// - The returned pointer must be freed by calling the destroy function
 pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,

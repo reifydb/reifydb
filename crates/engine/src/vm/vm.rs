@@ -202,7 +202,7 @@ impl<'a> Vm<'a> {
 	) -> Result<()> {
 		let params = self.params;
 		while self.ip < instructions.len() {
-			if self.batch_size > 1 && self.check_mask_merge_point()? {}
+			let _ = self.batch_size > 1 && self.check_mask_merge_point()?;
 
 			match &instructions[self.ip] {
 				Instruction::Halt => return Ok(()),

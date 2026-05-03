@@ -102,6 +102,27 @@ while ($i < $n) {
             my $nc = substr($content, $i+1, 1);
 
             if ($nc eq '/') {
+                # Find extent of contiguous // block: this line plus any
+                # following lines whose first non-whitespace chars are //.
+                my $block_end = $i;
+                $block_end++ while $block_end < $n && substr($content, $block_end, 1) ne "\n";
+                while ($block_end < $n) {
+                    my $j = $block_end + 1;
+                    $j++ while $j < $n && (substr($content, $j, 1) eq ' ' || substr($content, $j, 1) eq "\t");
+                    if ($j + 1 < $n && substr($content, $j, 2) eq '//') {
+                        $block_end = $j;
+                        $block_end++ while $block_end < $n && substr($content, $block_end, 1) ne "\n";
+                    } else {
+                        last;
+                    }
+                }
+                my $block = substr($content, $i, $block_end - $i);
+                if (index($block, '# Safety') >= 0) {
+                    $out .= $block . ($block_end < $n ? "\n" : "");
+                    $i = $block_end < $n ? $block_end + 1 : $block_end;
+                    next;
+                }
+
                 my $end = $i;
                 $end++ while $end < $n && substr($content, $end, 1) ne "\n";
                 my $cm = substr($content, $i, $end-$i);
@@ -124,7 +145,7 @@ while ($i < $n) {
                     else                                       { $end++ }
                 }
                 my $cm = substr($content, $i, $end-$i);
-                if (is_marker(substr($cm, 2))) {
+                if (is_marker(substr($cm, 2)) || index($cm, '# Safety') >= 0) {
                     $out .= $cm;
                 } else {
                     $out .= "\n" x ($cm =~ tr/\n//);

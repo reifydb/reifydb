@@ -144,6 +144,8 @@ pub fn with_registry<R>(registry: &BuilderRegistry, f: impl FnOnce() -> R) -> R 
 	result
 }
 
+/// # Safety
+/// `_ctx` may be null; all pointer access is guarded internally.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_acquire(
 	_ctx: *mut ContextFFI,
@@ -180,6 +182,8 @@ pub unsafe extern "C" fn host_builder_acquire(
 	handle.encode()
 }
 
+/// # Safety
+/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_data_ptr(handle: *mut ColumnBufferHandle) -> *mut u8 {
 	let Some(registry) = current_registry() else {
@@ -193,6 +197,8 @@ pub unsafe extern "C" fn host_builder_data_ptr(handle: *mut ColumnBufferHandle) 
 	}
 }
 
+/// # Safety
+/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_offsets_ptr(handle: *mut ColumnBufferHandle) -> *mut u64 {
 	let Some(registry) = current_registry() else {
@@ -209,6 +215,8 @@ pub unsafe extern "C" fn host_builder_offsets_ptr(handle: *mut ColumnBufferHandl
 	}
 }
 
+/// # Safety
+/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_bitvec_ptr(handle: *mut ColumnBufferHandle) -> *mut u8 {
 	let Some(registry) = current_registry() else {
@@ -228,6 +236,8 @@ pub unsafe extern "C" fn host_builder_bitvec_ptr(handle: *mut ColumnBufferHandle
 	}
 }
 
+/// # Safety
+/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_grow(handle: *mut ColumnBufferHandle, additional: usize) -> i32 {
 	let Some(registry) = current_registry() else {
@@ -254,6 +264,8 @@ pub unsafe extern "C" fn host_builder_grow(handle: *mut ColumnBufferHandle, addi
 	}
 }
 
+/// # Safety
+/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_commit(handle: *mut ColumnBufferHandle, written_count: usize) -> i32 {
 	let Some(registry) = current_registry() else {
@@ -324,6 +336,8 @@ pub unsafe extern "C" fn host_builder_commit(handle: *mut ColumnBufferHandle, wr
 	FFI_OK
 }
 
+/// # Safety
+/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_release(handle: *mut ColumnBufferHandle) {
 	let Some(registry) = current_registry() else {
@@ -334,6 +348,9 @@ pub unsafe extern "C" fn host_builder_release(handle: *mut ColumnBufferHandle) {
 	inner.slots.remove(&h.id);
 }
 
+/// # Safety
+/// `ctx` must be a valid `ContextFFI` pointer. All handle/name pointer arrays must be
+/// valid for the given counts, or null when the corresponding count is zero.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_emit_diff(
 	ctx: *mut ContextFFI,
