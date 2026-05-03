@@ -5,11 +5,16 @@
 # Format Targets - Format all Rust code with rustfmt
 # =============================================================================
 
-.PHONY: format format-rust format-workspace format-check
+.PHONY: format format-rust format-workspace format-check strip-comments
 
 # Main format target - formats everything
-format: format-rust
+format: strip-comments format-rust
 	@echo "✅ All code formatting complete!"
+
+# Strip comments
+strip-comments:
+	@echo "🧹 Stripping comments..."
+	@./scripts/strip-comments.sh
 
 # Format all Rust code
 format-rust: ensure-rustfmt format-workspace
@@ -18,6 +23,7 @@ format-rust: ensure-rustfmt format-workspace
 # Format and fail if files changed (for CI/make all)
 format-check: ensure-rustfmt
 	@echo "🎨 Formatting code..."
+	@./scripts/strip-comments.sh
 	@cargo +nightly fmt --all
 	@if ! git diff --quiet; then \
 		echo ""; \
