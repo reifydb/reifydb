@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Multi-version transactional path. Owns the conflict detector that decides whether a write transaction can
+//! commit at its read snapshot, the watermark machinery that tracks the lowest still-readable version for GC, and
+//! the oracle that hands out commit versions in monotonic order. Read, write, and replica transaction bodies are
+//! the three concrete shapes a multi-version transaction can take.
+//!
+//! Snapshot isolation is what this layer provides; serialisable isolation requires the conflict detector to
+//! consider read-write conflicts in addition to write-write, and that mode is selected per transaction at start.
+
 use std::time::Duration;
 
 use reifydb_core::common::CommitVersion;

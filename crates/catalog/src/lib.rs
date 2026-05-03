@@ -1,5 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! Concrete implementation of the catalog object hierarchy declared by `core::interface::catalog`. Owns the on-disk
+//! representation of namespaces, tables, views, flows, identities, policies, sequences, tokens, tests, and the system
+//! objects ReifyDB self-hosts; resolves names through the resolved-name machinery; and provides the materialized
+//! views that the engine reads to plan and execute queries.
+//!
+//! Catalog reads ride on a regular transaction; catalog writes go through the admin transaction so DDL and identity
+//! mutations are isolated from concurrent OLTP traffic and emit their own change records. Bootstrap installs the
+//! system namespace and the seed identities the rest of the system depends on; vtable exposes catalog state to RQL
+//! as queryable virtual tables.
+//!
+//! Invariant: persisted catalog ids (namespace id, table id, identity id, etc.) are stable across reboots; ephemeral
+//! per-boot ids exist for in-memory resolution but never round-trip through storage. Mixing the two leaves dangling
+//! references when the process restarts.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

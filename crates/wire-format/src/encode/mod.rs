@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Encoder side of RBCF. Takes a `Frame` of typed columns and lays them out into the binary wire format - frame
+//! header, per-column header, optional none-bitmap, encoded value bytes - selecting an encoding per column based
+//! on the heuristics in `heuristics.rs`. The fixed and varlen submodules handle the two width regimes the values
+//! split into.
+
 pub(crate) mod any;
 mod fixed;
 mod varlen;

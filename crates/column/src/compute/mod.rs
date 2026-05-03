@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Compute kernels that operate on encoded columns. Compare, take, slice, filter, sum, search-sorted, min/max -
+//! the primitives the engine VM dispatches to when it executes the per-instruction work of a query. Kernels
+//! prefer to run directly on the encoded bytes (canonical layout, dictionary indices, run-length runs) and only
+//! decode when they cannot.
+//!
+//! Adding a new kernel here is the right place to make a new operator vectorise; reaching for a per-row
+//! interpreter loop in the VM bypasses the work that lives in this module.
+
 pub mod canonical;
 
 use reifydb_core::value::column::{data::Column, mask::RowMask};

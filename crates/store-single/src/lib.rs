@@ -1,5 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! Single-version storage backend for workloads where snapshot isolation would only add overhead. Implements the
+//! `SingleVersionStore` family of traits from `core::interface::store`: get, contains, set, remove, commit, and the
+//! ranged scan iterators used by the engine for table and index walks.
+//!
+//! Writes are atomic per commit but never coexist with prior versions of the same key; readers always observe the
+//! latest committed value. The buffered tier batches recent writes and the persistent tier owns durable state, the
+//! same shape as the multi-version backend minus history.
+//!
+//! Invariant: a key's value after commit is the value the next reader sees - no version cursor, no time travel. Code
+//! that needs history must use `store-multi`; reaching here for it returns nothing useful.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! Build-time helper called from each downstream crate's `build.rs` to resolve the `reifydb_target` and
+//! `reifydb_single_threaded` cfg flags that gate platform-specific code paths. Nothing else in the workspace runs
+//! this code; it exists purely to keep target-detection logic in one place.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

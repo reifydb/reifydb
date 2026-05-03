@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Pluggable backing store for the CDC log. The in-memory implementation is the testing default; SQLite is the
+//! durable default for production deployments. Both implement the same trait surface so the producer and consumer
+//! sides are agnostic to which is configured.
+
 pub mod memory;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;

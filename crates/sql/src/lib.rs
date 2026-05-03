@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! SQL-to-RQL transpiler. Tokenises, parses, and emits a SQL statement into the equivalent RQL surface so callers
+//! who arrive with a SQL query can submit it to an engine that natively speaks RQL. Coverage is intentionally narrow:
+//! the goal is to support the SQL dialects existing tooling produces (SELECT, INSERT, UPDATE, DELETE, basic DDL),
+//! not to be a full ANSI implementation.
+//!
+//! The crate produces RQL text rather than a planner-internal tree on purpose - the boundary stays at the source
+//! level, so SQL behaviour can be verified by reading the emitted RQL and the resulting RQL diagnostics carry the
+//! source span the user submitted.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 

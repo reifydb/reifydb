@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Bumpalo-backed arena allocator used by the engine for per-request scratch storage. Plans, intermediate column
+//! buffers, and the bit-vectors that drive selection live in an arena tied to the request lifetime so the engine
+//! can release everything in one bump-reset rather than tracking individual allocations.
+
 use std::{
 	fmt::{self, Debug},
 	ops::Deref,

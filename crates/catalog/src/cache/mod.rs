@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! In-memory materialised view of the catalog: every catalog object the running engine has seen, indexed for fast
+//! lookup by id and qualified name. The materialised view is loaded at boot, kept in sync with catalog mutations
+//! through change events, and is what the engine, planner, and policy evaluator query when they need catalog state
+//! on the hot path.
+//!
+//! Because reads here are ubiquitous, the materialised view never blocks on the storage tier - it is built from
+//! storage at boot and updated incrementally afterwards. A miss here means the catalog is genuinely missing the
+//! object, not that we need to fall back to storage.
+
 pub mod authentication;
 pub mod binding;
 pub mod config;

@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Thread-pool abstraction. Splits work across three named pools - async I/O, system, and query - so the runtime
+//! can size each independently. Native targets get the tokio-backed implementation; single-threaded and DST targets
+//! get the in-memory variant. The `Pools` type both impls hand back is what `SharedRuntime` carries around.
+
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
 mod native;
 

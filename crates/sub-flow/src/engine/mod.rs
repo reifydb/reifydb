@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Flow execution engine. Registers compiled flow definitions, evaluates each flow's operator graph against
+//! incoming change deltas, and writes the resulting outputs back through the catalog. Process drives the per-tick
+//! work; eval is where individual operators run; register is the wiring step that turns a flow definition into
+//! an executable graph.
+
 pub mod eval;
 pub mod process;
 pub mod register;

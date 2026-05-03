@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Self-hosted system tables. Every catalog object kind ReifyDB stores about itself - identities, namespaces,
+//! columns, policies, flows, sequences, the system event log, and so on - is exposed here as a virtual table so
+//! it can be queried with regular RQL. The vtable definitions registered through this module are what `SELECT *
+//! FROM system.<thing>` reads from.
+
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::{

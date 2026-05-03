@@ -1,5 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! Multi-version storage backend for OLTP traffic. Implements the `MultiVersionStore` family of traits from
+//! `core::interface::store` so the engine can read at a snapshot, write a new version, and step backwards through
+//! history without coordinating with concurrent readers.
+//!
+//! The backend is tiered: hot writes land in the in-memory buffer, the flusher migrates them to persistent storage
+//! at commit boundaries, and the garbage collector reclaims versions that have aged out behind the configured
+//! retention. The persistent tier is pluggable - a SQLite-backed implementation is the default but the trait surface
+//! is what the engine binds to, so other backends can be slotted in.
+//!
+//! Invariant: a row at `version V` is the value visible to a reader whose snapshot is `>= V` and where no later
+//! version exists at `V' <= snapshot`. Commit must publish all deltas of a transaction atomically with respect to
+//! readers; partial visibility breaks snapshot isolation.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

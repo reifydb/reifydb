@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Volcano-style execution: open/next/close iterator pipeline that pulls rows through scans, joins, and other
+//! relational operators a row-at-a-time (or column-batch-at-a-time). Sits alongside the vectorised path; the
+//! planner picks one based on the shape of the query and the cost model.
+
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
 	value::column::{buffer::ColumnBuffer, columns::Columns},

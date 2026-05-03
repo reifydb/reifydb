@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Workspace-wide value system. Defines the `Value` enum every column carries, the `Type` enum that classifies it,
+//! the `Constraint` family that narrows a type (max-bytes, precision-scale, optional), and the per-primitive
+//! representations - integers, unsigned integers, decimals, floats, blobs, booleans, temporals, UUIDs, JSON,
+//! identity ids, and row numbers - that those variants wrap.
+//!
+//! The variants, their order, and their on-the-wire shape are stable. Adding a variant is a coordinated
+//! workspace change that lands together with `wire-format` and the storage encoders; rearranging existing
+//! variants silently corrupts persisted data.
+
 use std::{
 	cmp::Ordering,
 	fmt::{Display, Formatter},

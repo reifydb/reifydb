@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Public `Transaction` handle. Wraps either a single-version or multi-version transaction body in a uniform
+//! shape so callers in the engine, planner, and policy layers do not branch on backend. Exposes the get/set/range
+//! primitives, delta accumulation, commit, the shape-resolution helpers, and the admin-only mutations the catalog
+//! tier needs.
+
 use std::sync::Arc;
 
 use reifydb_core::{

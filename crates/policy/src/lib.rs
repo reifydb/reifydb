@@ -1,5 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! Default-deny read and write policy enforcement layered between the engine and the catalog. For reads, policies are
+//! compiled into filter predicates and injected into the logical plan so unauthorised rows are eliminated before they
+//! reach the consumer. For writes, the engine consults this crate at the commit boundary and rejects any operation
+//! the active identity has not been explicitly granted.
+//!
+//! Policies are stored in the catalog as RQL fragments; this crate parses, plans, and caches them so per-query
+//! evaluation does not pay the parse and compile cost. The cached predicates are keyed by the catalog object and
+//! identity scope they apply to.
+//!
+//! Invariant: read default is `Filter(false)` (deny everything) and write default is the `PolicyDenied` error - if no
+//! matching policy is found, access does not happen. The single exception is the root identity, which bypasses all
+//! policy checks; anywhere else a bypass would be a security regression.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

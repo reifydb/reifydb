@@ -1,5 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! Process-level runtime: actor system, thread pools, async executors, time and randomness, and the synchronisation
+//! primitives the rest of the workspace builds on. The `SharedRuntime` handle carries the actor system, the pool set,
+//! the clock, and the seeded RNG together so any subsystem that needs to spawn work, sleep, or generate ids gets a
+//! consistent view of the world.
+//!
+//! The crate abstracts platform differences: native targets get a tokio-backed pool, WebAssembly gets a single-task
+//! executor, the deterministic-simulation target (`reifydb_target = "dst"`) gets a virtual scheduler. All three sit
+//! behind the same `SharedRuntime` API so callers do not branch on platform.
+//!
+//! Invariant: `SharedRuntime::seeded(...)` is what produces a deterministic ReifyDB - same seed, same trace. Any
+//! source of non-determinism inside the runtime (an unmocked clock, an unseeded RNG, a pool that schedules outside
+//! the seeded executor) defeats DST replays and breaks the simulation harness.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Planner-side expression representation. Mirrors the AST's expression shapes but in a form that has been
+//! type-checked, name-resolved, and stripped of source-only details. The engine consumes these expressions to
+//! evaluate filters, projections, and join conditions; routine call resolution and JSON-path navigation are part
+//! of this representation rather than the runtime.
+
 pub mod fragment;
 pub mod join;
 pub mod json;

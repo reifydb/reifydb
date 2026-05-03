@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Shared SQLite configuration and connection plumbing used by ReifyDB storage subsystems. Owns the typed
+//! representation of paths (file, tmpfs, in-memory), open flags, journal/sync/temp-store modes, and pragma settings,
+//! and exposes the connection wrapper that the buffer and persistent tiers wrap their storage on top of.
+//!
+//! The crate is configuration-only: it does not implement any `core::interface::store` trait. Storage backends
+//! (`store-multi`, `store-single`) consume `SqliteConfig` to spin up their persistent tier; nothing here knows about
+//! deltas, versions, or the encoded-key layout.
+
 #[cfg(not(target_os = "linux"))]
 use std::env;
 use std::path::{Path, PathBuf};

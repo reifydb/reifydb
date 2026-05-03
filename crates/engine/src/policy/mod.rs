@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Engine-side policy enforcement. Wraps `reifydb-policy`'s evaluators with the call-sites the VM needs: write
+//! policy at commit boundaries, identity policy at session start, callable policy when invoking a routine. Read
+//! policy is injected into the plan before execution; this module handles the cases where injection isn't enough
+//! and the engine has to actively gate an operation.
+//!
+//! Anything that mutates state or transitions a session goes through these enforce calls. Bypassing them - even
+//! for a "trusted" code path inside the engine - means the matching policy never runs.
+
 use std::sync::Arc;
 
 use reifydb_core::{

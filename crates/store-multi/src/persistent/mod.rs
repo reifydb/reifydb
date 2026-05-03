@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Cold tier of the multi-version store. Holds the durable, version-history-bearing record of every key the
+//! buffer has flushed. The default backend is SQLite; the trait surface is generic so other backends can be
+//! plugged in without touching the buffer or transaction layer.
+
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};

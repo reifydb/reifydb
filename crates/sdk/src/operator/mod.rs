@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Operator authoring surface for SDK consumers. An operator is a node in a flow graph that takes a set of input
+//! columns, transforms them, and produces output columns; this module exposes the builder, the column and row
+//! views, the diff representation an operator emits, and the context that gives the operator access to engine
+//! services. Anything an extension needs to write a useful operator lives here.
+
 use std::collections::HashMap;
 
 use reifydb_type::value::{Value, row_number::RowNumber};

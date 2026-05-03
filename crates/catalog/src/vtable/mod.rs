@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Virtual-table runtime. Each system table the catalog exposes through `system/` is backed by a vtable handler
+//! registered here; when an RQL query reads from one of those tables, the engine dispatches to the matching
+//! handler which materialises the rows from in-memory catalog state. No persisted bytes back system tables, only
+//! a snapshot of what the materialised catalog already knows.
+
 use std::sync::Arc;
 
 use reifydb_core::{

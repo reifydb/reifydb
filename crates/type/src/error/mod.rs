@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Diagnostic and error machinery used by every other crate in the workspace. The `Error` type carries a structured
+//! `Diagnostic` plus the source-fragment context needed to render a user-visible message that points at the
+//! offending span; the rendering, the serde shape, and the helper macros that simplify producing one all live here.
+//!
+//! Anything that surfaces a failure to a user goes through this type. Returning a bare string from deeper code is
+//! what causes a diagnostic to lose its source span between layers.
+
 use std::{
 	fmt::{Display, Formatter},
 	mem,

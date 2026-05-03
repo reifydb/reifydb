@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Single-version transactional path. No snapshot isolation, no conflict detector, no version oracle - a write
+//! transaction sees its own buffered changes and commits them atomically against the underlying single-version
+//! store. Suitable for OLTP workloads that do not need history and are willing to take last-writer-wins semantics
+//! between concurrent writers in exchange for less overhead.
+
 use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
