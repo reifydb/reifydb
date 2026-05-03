@@ -13,7 +13,6 @@ impl<'bump> Parser<'bump> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Aggregate)?;
 
-		// Parse optional projections: AGGREGATE { expr, ... } or skip if BY follows
 		let projections = if !self.current()?.is_keyword(Keyword::By) {
 			if !self.current()?.is_operator(OpenCurly) {
 				return Err(RqlError::OperatorMissingBraces {
@@ -28,7 +27,6 @@ impl<'bump> Parser<'bump> {
 			Vec::new()
 		};
 
-		// Parse optional BY clause
 		let by = if !self.is_eof() && self.current().is_ok_and(|t| t.is_keyword(Keyword::By)) {
 			let by_token = self.consume_keyword(Keyword::By)?;
 			if !self.current()?.is_operator(OpenCurly) {

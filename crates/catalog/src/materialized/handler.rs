@@ -13,7 +13,6 @@ use reifydb_type::value::sumtype::VariantRef;
 use crate::materialized::{MaterializedCatalog, MultiVersionHandler};
 
 impl MaterializedCatalog {
-	/// Find a handler by ID at a specific version
 	pub fn find_handler_at(&self, handler: HandlerId, version: CommitVersion) -> Option<Handler> {
 		self.handlers.get(&handler).and_then(|entry| {
 			let multi = entry.value();
@@ -21,7 +20,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a handler by name in a namespace at a specific version
 	pub fn find_handler_by_name_at(
 		&self,
 		namespace: NamespaceId,
@@ -34,7 +32,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// List all handlers for a specific event variant at a specific version
 	pub fn list_handlers_for_variant_at(&self, variant: VariantRef, version: CommitVersion) -> Vec<Handler> {
 		if let Some(entry) = self.handlers_by_variant.get(&variant) {
 			entry.value().iter().filter_map(|id| self.find_handler_at(*id, version)).collect()
@@ -47,10 +44,8 @@ impl MaterializedCatalog {
 		if let Some(entry) = self.handlers.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{
-			// Remove old name from index
 			self.handlers_by_name.remove(&(pre.namespace, pre.name.clone()));
 
-			// Remove from variant index
 			if let Some(ids_entry) = self.handlers_by_variant.get(&pre.variant) {
 				let mut ids = ids_entry.value().clone();
 				ids.retain(|existing| *existing != id);
@@ -63,7 +58,6 @@ impl MaterializedCatalog {
 		if let Some(new) = handler {
 			self.handlers_by_name.insert((new.namespace, new.name.clone()), id);
 
-			// Add to variant index
 			if let Some(entry) = self.handlers_by_variant.get(&new.variant) {
 				let mut ids = entry.value().clone();
 				if !ids.contains(&id) {

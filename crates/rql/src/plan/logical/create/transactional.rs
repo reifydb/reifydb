@@ -34,7 +34,6 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		// Use the view identifier directly from AST
 		let view = ast.view;
 
 		let with = if let Some(as_statement) = ast.as_clause {

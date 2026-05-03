@@ -12,14 +12,6 @@ use reifydb_core::{
 };
 use reifydb_type::value::datetime::DateTime;
 
-/// Accumulates per-row flow change diffs and produces batched `Change` objects
-/// grouped by `ShapeId`.
-///
-/// During DML operations, each row modification pushes a `(ShapeId, Diff)`
-/// entry. At commit time, `take_changes()` groups entries by origin and produces
-/// one `Change` per shape - eliminating the need for a separate merge pass.
-///
-/// Supports savepoint/restore via `len()` / `truncate()`.
 #[derive(Debug, Default)]
 pub struct ChangeAccumulator {
 	entries: Vec<(ShapeId, Diff)>,
@@ -32,30 +24,22 @@ impl ChangeAccumulator {
 		}
 	}
 
-	/// Track a single diff for a shape shape.
 	pub fn track(&mut self, shape: ShapeId, diff: Diff) {
 		self.entries.push((shape, diff));
 	}
 
-	/// Number of tracked entries (used for savepoint snapshots).
 	pub fn len(&self) -> usize {
 		self.entries.len()
 	}
 
-	/// Truncate to a previously saved length (for savepoint restore).
 	pub fn truncate(&mut self, len: usize) {
 		self.entries.truncate(len);
 	}
 
-	/// Clear all accumulated entries.
 	pub fn clear(&mut self) {
 		self.entries.clear();
 	}
 
-	/// Drain all entries and produce batched `Change` objects grouped by `ShapeId`.
-	///
-	/// Each `ShapeId` produces a single `Change` with all its diffs collected
-	/// in order. The version is stamped at this point.
 	pub fn take_changes(&mut self, version: CommitVersion, changed_at: DateTime) -> Vec<Change> {
 		let entries = mem::take(&mut self.entries);
 		let mut grouped: BTreeMap<ShapeId, Vec<Diff>> = BTreeMap::new();
@@ -78,8 +62,6 @@ impl ChangeAccumulator {
 		self.entries.is_empty()
 	}
 
-	/// Drain entries from `offset` onwards and produce batched `Change` objects.
-	/// Entries before `offset` are preserved.
 	pub fn take_changes_from(
 		&mut self,
 		offset: usize,
@@ -104,8 +86,6 @@ impl ChangeAccumulator {
 			.collect()
 	}
 
-	/// Read entries from a given offset without draining.
-	/// Used by testing::*::changed() to read mutations since the baseline.
 	pub fn entries_from(&self, offset: usize) -> &[(ShapeId, Diff)] {
 		if offset >= self.entries.len() {
 			&[]

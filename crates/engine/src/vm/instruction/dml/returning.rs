@@ -23,7 +23,6 @@ use crate::{
 	vm::{services::Services, stack::SymbolTable},
 };
 
-/// Decode multiple encoded rows into a single Columns structure using the shape.
 pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedRow)]) -> Columns {
 	let fields = shape.fields();
 
@@ -50,10 +49,6 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 	Columns::with_system_columns(columns_vec, row_numbers, created_at, updated_at)
 }
 
-/// If every RETURNING expression is a simple `Expression::Column`, extract
-/// those columns from `input` by name and return a new `Columns`.
-/// Returns `None` if any expression is not a plain column reference or
-/// if a referenced column is missing from `input`.
 fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Columns> {
 	let mut cols: Vec<ColumnWithName> = Vec::with_capacity(exprs.len());
 	for expr in exprs {
@@ -76,7 +71,6 @@ fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Colum
 	}
 }
 
-/// Evaluate RETURNING expressions against the given columns.
 pub(crate) fn evaluate_returning(
 	services: &Arc<Services>,
 	symbols: &SymbolTable,

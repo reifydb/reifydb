@@ -23,7 +23,6 @@ use reifydb_type::{
 use crate::value::column::buffer::{ColumnBuffer, with_container};
 
 macro_rules! push_or_promote {
-	// Helper: wrap a column in Option if there are preceding none values
 	(@wrap_option $self:expr, $new_col:expr, $len:expr) => {
 		if $len > 0 {
 			let mut bitvec = BitVec::repeat($len, false);
@@ -36,14 +35,14 @@ macro_rules! push_or_promote {
 			*$self = $new_col;
 		}
 	};
-	// Tuple variant, uses self.push(value)
+
 	($self:expr, $val:expr, $col_variant:ident, $factory_expr:expr) => {
 		match $self {
 			ColumnBuffer::$col_variant(_) => $self.push($val),
 			_ => unimplemented!(),
 		}
 	};
-	// Struct variant, uses self.push(value)
+
 	(struct $self:expr, $val:expr, $col_variant:ident, $factory_expr:expr) => {
 		match $self {
 			ColumnBuffer::$col_variant {
@@ -52,14 +51,14 @@ macro_rules! push_or_promote {
 			_ => unimplemented!(),
 		}
 	};
-	// Tuple variant, direct container push (no Push trait impl needed)
+
 	(direct $self:expr, $val:expr, $col_variant:ident, $factory_expr:expr) => {
 		match $self {
 			ColumnBuffer::$col_variant(container) => container.push($val),
 			_ => unimplemented!(),
 		}
 	};
-	// Struct variant, direct container push
+
 	(struct_direct $self:expr, $val:expr, $col_variant:ident, $factory_expr:expr) => {
 		match $self {
 			ColumnBuffer::$col_variant {
@@ -73,7 +72,6 @@ macro_rules! push_or_promote {
 
 impl ColumnBuffer {
 	pub fn push_value(&mut self, value: Value) {
-		// Handle Option wrapper: delegate to inner and update bitvec
 		if let ColumnBuffer::Option {
 			inner,
 			bitvec,
@@ -83,9 +81,8 @@ impl ColumnBuffer {
 				with_container!(inner.as_mut(), |c| c.push_default());
 				DataBitVec::push(bitvec, false);
 			} else if DataBitVec::count_ones(bitvec) == 0 {
-				// All-none Option column - need to promote inner type to match the value
 				let len = inner.len();
-				// Create a new typed column with defaults for the none rows, then push the value
+
 				let mut new_inner = match &value {
 					Value::Boolean(_) => ColumnBuffer::bool(vec![false; len]),
 					Value::Float4(_) => ColumnBuffer::float4(vec![0.0f32; len]),

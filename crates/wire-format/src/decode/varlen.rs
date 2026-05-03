@@ -17,8 +17,6 @@ use reifydb_type::value::{
 
 use crate::{encoding::rle::decode_rle_varlen, error::DecodeError};
 
-/// Decode a plain-encoded variable-length column.
-/// Returns `None` if the type code is not a variable-length type.
 pub(crate) fn decode_varlen_plain(
 	type_code: u8,
 	row_count: usize,
@@ -71,7 +69,6 @@ pub(crate) fn decode_varlen_plain(
 	Some(result)
 }
 
-/// Decode an RLE-encoded variable-length column.
 pub(crate) fn decode_rle_varlen_column(
 	type_code: u8,
 	row_count: usize,

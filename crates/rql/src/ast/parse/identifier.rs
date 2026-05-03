@@ -21,21 +21,14 @@ impl<'bump> Parser<'bump> {
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
-	/// Parse an identifier or keyword as an identifier (simple, no hyphen handling)
-	/// Used in expression contexts where hyphens should remain as operators
 	pub(crate) fn parse_as_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
 		let token = self.consume_name()?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
-	/// Parse an identifier that may contain hyphens, allowing keywords as the first token
-	/// Used in DDL contexts where hyphenated identifiers are supported
-	/// Consumes: (identifier|keyword) [-(identifier|keyword)]*
-	/// Returns: UnqualifiedIdentifier with combined text
 	pub(crate) fn parse_identifier_with_hyphens(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
 		let first_token = self.advance()?;
 
-		// Helper to check if a token can be used as an identifier part
 		let is_identifier_like = |token: &Token| {
 			matches!(
 				token.kind,
@@ -43,8 +36,6 @@ impl<'bump> Parser<'bump> {
 			)
 		};
 
-		// Reject bare numbers as identifiers (e.g., `42`), but allow if followed by hyphen+identifier (e.g.,
-		// `10-min`)
 		if matches!(first_token.kind, TokenKind::Literal(Literal::Number)) {
 			let has_hyphen_continuation = !self.is_eof()
 				&& self.current_expect_operator(Operator::Minus).is_ok()
@@ -62,8 +53,6 @@ impl<'bump> Parser<'bump> {
 		let start_column = first_token.fragment.column();
 		let first_fragment = first_token.fragment;
 
-		// Check if next token is hyphen followed by identifier or keyword
-		// If not, return what we have so far (no allocations beyond bump)
 		if self.is_eof()
 			|| self.current_expect_operator(Operator::Minus).is_err()
 			|| self.position + 1 >= self.tokens.len()
@@ -80,22 +69,19 @@ impl<'bump> Parser<'bump> {
 			return Ok(UnqualifiedIdentifier::from_fragment(fragment));
 		}
 
-		// Build combined string in place for hyphenated identifiers
 		let mut combined = String::from(first_token.fragment.text());
 
-		// Look for pattern: - (identifier | keyword | number)
 		while !self.is_eof()
 			&& self.current_expect_operator(Operator::Minus).is_ok()
 			&& self.position + 1 < self.tokens.len()
 			&& is_identifier_like(&self.tokens[self.position + 1])
 		{
-			self.consume_operator(Operator::Minus)?; // consume hyphen
-			let next_token = self.advance()?; // consume identifier or keyword or number
+			self.consume_operator(Operator::Minus)?;
+			let next_token = self.advance()?;
 			combined.push('-');
 			combined.push_str(next_token.fragment.text());
 		}
 
-		// Validate: no consecutive hyphens
 		if combined.contains("--") {
 			return Err(AstError::UnexpectedToken {
 				expected: "identifier without consecutive hyphens".to_string(),
@@ -104,7 +90,6 @@ impl<'bump> Parser<'bump> {
 			.into());
 		}
 
-		// Create Fragment with combined text
 		let text = self.bump().alloc_str(&combined);
 		let fragment = BumpFragment::Statement {
 			text,
@@ -117,8 +102,6 @@ impl<'bump> Parser<'bump> {
 		Ok(UnqualifiedIdentifier::from_fragment(fragment))
 	}
 
-	/// Parse a double-colon-separated chain of identifiers: `a::b::c::d`
-	/// Returns all segments. Caller splits namespace vs. name.
 	pub(crate) fn parse_double_colon_separated_identifiers(&mut self) -> Result<Vec<UnqualifiedIdentifier<'bump>>> {
 		let mut segments = vec![self.parse_identifier_with_hyphens()?];
 		while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {
@@ -128,19 +111,13 @@ impl<'bump> Parser<'bump> {
 		Ok(segments)
 	}
 
-	/// Parse a potentially qualified column identifier
-	/// Handles patterns like: column, table.column, ns::table.column, ns1::ns2::table.column
-	/// Supports hyphenated identifiers like: my-column, my-table.my-column
 	pub(crate) fn parse_column_identifier(&mut self) -> Result<MaybeQualifiedColumnIdentifier<'bump>> {
-		// Parse :: separated identifiers for namespace::table qualification
 		let mut ns_table_segments = self.parse_double_colon_separated_identifiers()?;
 
-		// Check for .column (dot-separated column access)
 		if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
 			self.consume_operator(Operator::Dot)?;
 			let col = self.parse_identifier_with_hyphens()?;
 
-			// ns_table_segments = [namespace..., table], col = column
 			let table = ns_table_segments.pop().unwrap();
 			let namespace: Vec<_> = ns_table_segments.into_iter().map(|s| s.into_fragment()).collect();
 
@@ -150,7 +127,6 @@ impl<'bump> Parser<'bump> {
 				col.into_fragment(),
 			))
 		} else {
-			// No dot found - all segments are just identifiers
 			Self::segments_to_column_identifier(ns_table_segments)
 		}
 	}

@@ -133,8 +133,7 @@ impl<'bump> Compiler<'bump> {
 						}
 
 						dictionary_id = Some(dictionary.id);
-						// Embed dictionary constraint so the TypeConstraint carries id_type
-						// info
+
 						constraint = TypeConstraint::with_constraint(
 							constraint.get_type(),
 							Constraint::Dictionary(dictionary.id, dictionary.id_type),

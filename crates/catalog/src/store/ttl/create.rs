@@ -15,7 +15,6 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use super::encode_ttl_config;
 use crate::Result;
 
-/// Store a TTL configuration for a shape (table, ringbuffer, or series)
 pub fn create_row_ttl(txn: &mut AdminTransaction, shape: ShapeId, config: &Ttl) -> Result<()> {
 	let value = encode_ttl_config(config);
 	txn.set(&RowTtlKey::encoded(shape), value)?;
@@ -23,7 +22,6 @@ pub fn create_row_ttl(txn: &mut AdminTransaction, shape: ShapeId, config: &Ttl) 
 	Ok(())
 }
 
-/// Store a per-operator TTL configuration for a flow node.
 pub fn create_operator_ttl(txn: &mut AdminTransaction, node: FlowNodeId, config: &Ttl) -> Result<()> {
 	let value = encode_ttl_config(config);
 	txn.set(&OperatorTtlKey::encoded(node), value)?;

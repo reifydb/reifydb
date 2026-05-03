@@ -50,7 +50,6 @@ impl QueryNode for AssertNode {
 			let row_count = columns.row_count();
 			let session = EvalContext::from_query(stored_ctx);
 
-			// Evaluate each assert expression
 			for assert_expr in &self.expressions {
 				let eval_ctx = session.with_eval(columns.clone(), row_count);
 
@@ -122,7 +121,6 @@ impl QueryNode for AssertNode {
 				}
 			}
 
-			// Passthrough: return the original columns unchanged
 			Ok(Some(columns))
 		} else {
 			Ok(None)

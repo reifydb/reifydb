@@ -17,7 +17,6 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_delete(&mut self) -> Result<AstDelete<'bump>> {
 		let token = self.consume_keyword(Keyword::Delete)?;
 
-		// 1. Parse target (REQUIRED) - namespace.table or just table
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
 			return Err(RqlError::DeleteMissingTarget {
 				fragment: token.fragment.to_owned(),
@@ -34,7 +33,6 @@ impl<'bump> Parser<'bump> {
 			UnresolvedShapeIdentifier::new(vec![], segments.remove(0).into_fragment())
 		};
 
-		// 2. Parse FILTER clause - REQUIRED
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Filter) {
 			return Err(RqlError::DeleteMissingFilterClause {
 				fragment: token.fragment.to_owned(),

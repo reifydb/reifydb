@@ -12,7 +12,6 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionSink};
 
 impl MaterializedCatalog {
-	/// Find a sink by ID at a specific version
 	pub fn find_sink_at(&self, sink: SinkId, version: CommitVersion) -> Option<Sink> {
 		self.sinks.get(&sink).and_then(|entry| {
 			let multi = entry.value();
@@ -20,7 +19,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a sink by name in a namespace at a specific version
 	pub fn find_sink_by_name_at(&self, namespace: NamespaceId, name: &str, version: CommitVersion) -> Option<Sink> {
 		self.sinks_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let sink_id = *entry.value();
@@ -28,7 +26,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a sink by ID (returns latest version)
 	pub fn find_sink(&self, sink: SinkId) -> Option<Sink> {
 		self.sinks.get(&sink).and_then(|entry| {
 			let multi = entry.value();
@@ -36,7 +33,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a sink by name in a namespace (returns latest version)
 	pub fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Sink> {
 		self.sinks_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let sink_id = *entry.value();
@@ -45,7 +41,6 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_sink(&self, id: SinkId, version: CommitVersion, sink: Option<Sink>) {
-		// Look up the current sink to update the index
 		if let Some(entry) = self.sinks.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

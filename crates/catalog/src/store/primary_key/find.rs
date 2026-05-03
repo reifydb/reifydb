@@ -35,7 +35,6 @@ impl CatalogStore {
 				None => return Ok(None),
 			},
 			ShapeId::TableVirtual(_) => {
-				// Virtual tables don't have primary keys
 				return Ok(None);
 			}
 			ShapeId::RingBuffer(ringbuffer_id) => match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
@@ -43,16 +42,13 @@ impl CatalogStore {
 				None => return Ok(None),
 			},
 			ShapeId::Dictionary(_) => {
-				// Dictionaries don't have traditional primary keys
 				return Ok(None);
 			}
 			ShapeId::Series(_) => {
-				// Series use timestamp-based key ordering, no traditional primary keys
 				return Ok(None);
 			}
 		};
 
-		// Fetch the primary key details
 		let primary_key_multi = match rx.get(&PrimaryKeyKey::encoded(primary_key_id))? {
 			Some(multi) => multi,
 			None => return_internal_error!(format!(
@@ -61,11 +57,9 @@ impl CatalogStore {
 			)),
 		};
 
-		// Deserialize column IDs
 		let column_ids_blob = primary_key::SHAPE.get_blob(&primary_key_multi.row, primary_key::COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
-		// Fetch full Column for each column ID
 		let mut columns = Vec::new();
 		for column_id in column_ids {
 			let column = Self::get_column(rx, column_id)?;

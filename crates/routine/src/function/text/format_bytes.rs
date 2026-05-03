@@ -86,7 +86,6 @@ macro_rules! process_decimal_column {
 
 		for i in 0..$row_count {
 			if let Some(value) = $container.get(i) {
-				// Truncate decimal to integer by parsing the integer part
 				let s = value.to_string();
 				let int_part = s.split('.').next().unwrap_or("0");
 				let bytes = int_part.parse::<i64>().unwrap_or(0);
@@ -103,7 +102,6 @@ macro_rules! process_decimal_column {
 	}};
 }
 
-/// Formats bytes using binary units (1024-based: B, KiB, MiB, GiB, TiB, PiB)
 pub struct FormatBytes {
 	info: RoutineInfo,
 }

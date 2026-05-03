@@ -33,9 +33,6 @@ use crate::{
 	},
 };
 
-/// Write transaction that commits at a version supplied by the primary,
-/// bypassing oracle conflict detection and CDC. The only write path on a
-/// replica node.
 pub struct MultiReplicaTransaction {
 	engine: MultiTransaction,
 

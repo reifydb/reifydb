@@ -19,13 +19,12 @@ use crate::{
 };
 
 pub trait FFIProcedureMetadata {
-	/// Procedure name (must be unique within a library)
 	const NAME: &'static str;
-	/// API version for FFI compatibility (must match host's CURRENT_API)
+
 	const API: u32;
-	/// Semantic version of the procedure (e.g., "1.0.0")
+
 	const VERSION: &'static str;
-	/// Human-readable description of the procedure
+
 	const DESCRIPTION: &'static str;
 }
 
@@ -34,10 +33,6 @@ pub trait FFIProcedure: 'static {
 	where
 		Self: Sized;
 
-	/// Run the procedure.
-	///
-	/// Emit the result via `ctx.builder()` -- typically a single
-	/// `emit_insert`, mirroring `FFIOperator::pull`.
 	fn call(&mut self, ctx: &mut FFIProcedureContext, params: Params) -> Result<()>;
 }
 
@@ -60,9 +55,6 @@ impl FFIProcedureContext {
 		raw_procedure_rql(self, rql, params)
 	}
 
-	/// Acquire a `ColumnsBuilder` for emitting output columns directly into
-	/// host-pool-owned buffers. The builder borrows this context for the
-	/// duration of the FFI call.
 	pub fn builder(&mut self) -> ColumnsBuilder<'_> {
 		ColumnsBuilder::from_raw_ctx(self.ctx)
 	}

@@ -103,7 +103,6 @@ impl QueryNode for NestedLoopJoinNode {
 		let right_width = right_columns.len();
 		let left_row_numbers = left_columns.row_numbers.to_vec();
 
-		// Resolve column names with conflict detection
 		let resolved = resolve_column_names(&left_columns, &right_columns, &self.alias, None);
 
 		let session = EvalContext::from_query(ctx);
@@ -117,7 +116,6 @@ impl QueryNode for NestedLoopJoinNode {
 			for j in 0..right_rows {
 				let right_row = right_columns.get_row(j);
 
-				// Build evaluation columns
 				let eval_columns = build_eval_columns(
 					&left_columns,
 					&right_columns,
@@ -144,7 +142,6 @@ impl QueryNode for NestedLoopJoinNode {
 				}
 			}
 
-			// Add unmatched left rows with undefined values for right columns
 			if self.mode == NestedLoopMode::Left && !matched {
 				let mut combined = left_row.clone();
 				combined.extend(vec![Value::none(); right_width]);
@@ -155,7 +152,6 @@ impl QueryNode for NestedLoopJoinNode {
 			}
 		}
 
-		// Create columns with conflict-resolved names
 		let names_refs: Vec<&str> = resolved.qualified_names.iter().map(|s| s.as_str()).collect();
 		let columns = if result_row_numbers.is_empty() {
 			Columns::from_rows(&names_refs, &result_rows)

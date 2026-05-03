@@ -26,18 +26,11 @@ use crate::{
 	compute::{Compute, DefaultCompute},
 };
 
-// One `Encoding` per concrete encoding id. Compressed encodings will fill in
-// real `try_compress`/`canonicalize` bodies; canonical encodings perform an
-// identity wrap and return their input back.
 pub trait Encoding: Send + Sync + 'static {
 	fn id(&self) -> EncodingId;
 
-	// Try to compress the canonical input into this encoding. `Ok(None)` means
-	// "this encoding doesn't apply to this input" - the compressor will try
-	// the next candidate.
 	fn try_compress(&self, input: &Canonical, cfg: &CompressConfig) -> Result<Option<Column>>;
 
-	// Decode an array of this encoding back to its canonical form. Must be total.
 	fn canonicalize(&self, array: &Column) -> Result<Canonical>;
 
 	fn compute(&self) -> &dyn Compute {
@@ -95,9 +88,6 @@ impl EncodingRegistry {
 	}
 }
 
-// Process-global registry. Built once on first access; subsequent calls
-// return the same reference, which compute dispatch and predicate evaluation
-// consult to route through encoding-specific specializations.
 static GLOBAL: OnceLock<EncodingRegistry> = OnceLock::new();
 
 pub fn global() -> &'static EncodingRegistry {

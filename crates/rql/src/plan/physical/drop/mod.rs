@@ -284,8 +284,6 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<PhysicalPlan<'bump>> {
 		let subscription_name = self.interner.intern_fragment(&drop.identifier);
 
-		// Subscriptions are looked up by ID at execution time, not by name in a namespace.
-		// We pass the name through and let the VM handler resolve it.
 		Ok(PhysicalPlan::DropSubscription(nodes::DropSubscriptionNode {
 			subscription_name,
 			if_exists: drop.if_exists,

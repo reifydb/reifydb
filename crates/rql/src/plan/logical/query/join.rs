@@ -21,17 +21,12 @@ use crate::{
 	},
 };
 
-/// Build expression tree from using clause pairs.
-/// Each pair (expr1, expr2) becomes an equality condition expr1 == expr2.
-/// Pairs are combined using AND or OR based on their connectors.
 fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -> Result<Vec<Expression>> {
 	let compiler = JoinConditionCompiler::new(Some(alias.to_owned()));
 	let fragment = using.token.fragment.to_owned();
 
-	// Check if any connector is OR (determines the overall combination strategy)
 	let use_or = using.pairs.iter().any(|p| matches!(p.connector, Some(JoinConnector::Or)));
 
-	// Build equality expressions for each pair
 	let mut eq_exprs: Vec<Expression> = Vec::new();
 	for pair in using.pairs {
 		let left_expr = compiler.compile(BumpBox::into_inner(pair.first))?;
@@ -43,14 +38,11 @@ fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -
 		}));
 	}
 
-	// If only one expression, return it directly
 	if eq_exprs.len() == 1 {
 		return Ok(eq_exprs);
 	}
 
-	// Build the combined expression
 	let combined = if use_or {
-		// OR all expressions together
 		eq_exprs.into_iter()
 			.reduce(|acc, expr| {
 				Expression::Or(OrExpression {
@@ -61,7 +53,6 @@ fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -
 			})
 			.unwrap()
 	} else {
-		// AND all expressions together (default)
 		eq_exprs.into_iter()
 			.reduce(|acc, expr| {
 				Expression::And(AndExpression {

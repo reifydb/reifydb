@@ -20,7 +20,6 @@ use render::DefaultRenderer;
 
 use crate::{fragment::Fragment, value::r#type::Type};
 
-/// Entry in the operator call chain for flow operator errors
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OperatorChainEntry {
 	pub node_id: u64,
@@ -39,7 +38,7 @@ pub struct Diagnostic {
 	pub help: Option<String>,
 	pub notes: Vec<String>,
 	pub cause: Option<Box<Diagnostic>>,
-	/// Operator call chain when error occurred (for flow operator errors)
+
 	pub operator_chain: Option<Vec<OperatorChainEntry>>,
 }
 
@@ -73,8 +72,6 @@ impl Display for Diagnostic {
 }
 
 impl Diagnostic {
-	/// Set the RQL for this diagnostic and all nested diagnostics
-	/// recursively
 	pub fn with_rql(&mut self, rql: String) {
 		self.rql = Some(rql.clone());
 
@@ -85,12 +82,7 @@ impl Diagnostic {
 		}
 	}
 
-	/// Set or update the fragment for this diagnostic and all nested
-	/// diagnostics recursively
 	pub fn with_fragment(&mut self, new_fragment: Fragment) {
-		// Always update the fragment, not just when it's None
-		// This is needed for cast errors that need to update the
-		// fragment
 		self.fragment = new_fragment;
 
 		if let Some(ref mut cause) = self.cause {
@@ -98,8 +90,6 @@ impl Diagnostic {
 		}
 	}
 
-	/// Get the fragment if this is a Statement fragment (for backward
-	/// compatibility)
 	pub fn fragment(&self) -> Option<Fragment> {
 		match &self.fragment {
 			Fragment::Statement {
@@ -110,13 +100,7 @@ impl Diagnostic {
 	}
 }
 
-/// Trait for converting error types into Diagnostic.
-///
-/// Implement this trait to provide rich diagnostic information for custom error types.
-/// The trait consumes the error (takes `self` by value) to allow moving owned data
-/// into the diagnostic.
 pub trait IntoDiagnostic {
-	/// Convert self into a Diagnostic with error code, message, fragment, and other metadata.
 	fn into_diagnostic(self) -> Diagnostic;
 }
 
@@ -335,10 +319,7 @@ pub enum ProcedureErrorKind {
 	UndefinedProcedure {
 		name: String,
 	},
-	/// A catalog entry for a Native/FFI/WASM procedure references a `native_name` that
-	/// is not registered in the runtime `Procedures` registry. This is a user-visible
-	/// condition - can happen after a binary upgrade that removed a built-in, or after
-	/// an FFI/WASM plugin was removed.
+
 	NoRegisteredImplementation {
 		name: String,
 	},

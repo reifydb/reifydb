@@ -16,11 +16,9 @@ use crate::{
 	},
 };
 
-/// Load all primary keys from storage
 pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = PrimaryKeyKey::full_scan();
 
-	// Collect entries first to avoid borrow issues with nested async calls
 	let mut entries = Vec::new();
 	{
 		let stream = rx.range(range, 1024)?;

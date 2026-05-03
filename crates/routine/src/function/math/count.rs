@@ -55,7 +55,6 @@ impl<'a> Routine<FunctionContext<'a>> for Count {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		// SCALAR: Horizontal Count (count of non-null arguments in each row)
 		let row_count = args.row_count();
 		let mut counts = vec![0i64; row_count];
 
@@ -98,7 +97,6 @@ impl Accumulator for CountAccumulator {
 		let column = &args[0];
 		let column_name = args.name_at(0);
 
-		// Check if this is count(*) by examining if we have a dummy column
 		let is_count_star = column_name.text() == "dummy" && matches!(column, ColumnBuffer::Int4(_));
 
 		if is_count_star {

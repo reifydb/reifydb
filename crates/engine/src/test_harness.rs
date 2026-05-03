@@ -68,17 +68,14 @@ impl Default for TestEngine {
 }
 
 impl TestEngine {
-	/// Create a new TestEngine with all subsystems (CDC, metrics, etc.).
 	pub fn new() -> Self {
 		Self::builder().with_cdc().build()
 	}
 
-	/// Start configuring a test engine via the builder.
 	pub fn builder() -> TestEngineBuilder {
 		TestEngineBuilder::default()
 	}
 
-	/// Run an admin RQL statement as system identity. Panics on error.
 	pub fn admin(&self, rql: &str) -> Vec<Frame> {
 		let r = self.engine.admin_as(IdentityId::system(), rql, Params::None);
 		if let Some(e) = r.error {
@@ -87,7 +84,6 @@ impl TestEngine {
 		r.frames
 	}
 
-	/// Run a command RQL statement as system identity. Panics on error.
 	pub fn command(&self, rql: &str) -> Vec<Frame> {
 		let r = self.engine.command_as(IdentityId::system(), rql, Params::None);
 		if let Some(e) = r.error {
@@ -96,7 +92,6 @@ impl TestEngine {
 		r.frames
 	}
 
-	/// Run a query RQL statement as system identity. Panics on error.
 	pub fn query(&self, rql: &str) -> Vec<Frame> {
 		let r = self.engine.query_as(IdentityId::system(), rql, Params::None);
 		if let Some(e) = r.error {
@@ -105,7 +100,6 @@ impl TestEngine {
 		r.frames
 	}
 
-	/// Run an admin statement expecting an error. Panics if it succeeds.
 	pub fn admin_err(&self, rql: &str) -> String {
 		let r = self.engine.admin_as(IdentityId::system(), rql, Params::None);
 		match r.error {
@@ -114,7 +108,6 @@ impl TestEngine {
 		}
 	}
 
-	/// Run a command statement expecting an error. Panics if it succeeds.
 	pub fn command_err(&self, rql: &str) -> String {
 		let r = self.engine.command_as(IdentityId::system(), rql, Params::None);
 		match r.error {
@@ -123,7 +116,6 @@ impl TestEngine {
 		}
 	}
 
-	/// Run a query statement expecting an error. Panics if it succeeds.
 	pub fn query_err(&self, rql: &str) -> String {
 		let r = self.engine.query_as(IdentityId::system(), rql, Params::None);
 		match r.error {
@@ -132,23 +124,18 @@ impl TestEngine {
 		}
 	}
 
-	/// Count rows in the first frame.
 	pub fn row_count(frames: &[Frame]) -> usize {
 		frames.first().map(|f| f.row_count()).unwrap_or(0)
 	}
 
-	/// Return the system identity used by this harness.
 	pub fn identity() -> IdentityId {
 		IdentityId::system()
 	}
 
-	/// Access the underlying StandardEngine.
 	pub fn inner(&self) -> &StandardEngine {
 		&self.engine
 	}
 
-	/// The mock clock backing the test engine. Use `.advance_millis()` etc. to
-	/// move time forward deterministically.
 	pub fn mock_clock(&self) -> MockClock {
 		self.mock_clock.clone()
 	}
@@ -175,8 +162,6 @@ impl TestEngineBuilder {
 		self
 	}
 
-	/// Use a SQLite-backed CDC store instead of the default in-memory backend.
-	/// Implies `with_cdc()`.
 	#[cfg(not(target_arch = "wasm32"))]
 	pub fn with_sqlite_cdc(mut self, config: SqliteConfig) -> Self {
 		self.cdc = true;

@@ -11,7 +11,6 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `CREATE USER name`
 	pub(crate) fn parse_create_identity(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 
@@ -21,7 +20,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse `CREATE ROLE name`
 	pub(crate) fn parse_create_role(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 
@@ -31,7 +29,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse `DROP USER [IF EXISTS] name`
 	pub(crate) fn parse_drop_identity(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume(TokenKind::Identifier)?;
@@ -43,7 +40,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse `DROP ROLE [IF EXISTS] name`
 	pub(crate) fn parse_drop_role(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume(TokenKind::Identifier)?;

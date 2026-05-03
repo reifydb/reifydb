@@ -80,11 +80,11 @@ pub enum ColumnBuffer<S: Storage = Cow> {
 		precision: Precision,
 		scale: Scale,
 	},
-	// Container for Any type (heterogeneous values)
+
 	Any(AnyContainer<S>),
-	// Container for DictionaryEntryId values
+
 	DictionaryId(DictionaryContainer<S>),
-	// Nullable wrapper: inner holds the typed data, bitvec tracks definedness
+
 	Option {
 		inner: Box<ColumnBuffer<S>>,
 		bitvec: S::BitVec,
@@ -562,7 +562,6 @@ impl<'de> Deserialize<'de> for ColumnBuffer<Cow> {
 	}
 }
 
-/// Extracts the container from every ColumnBuffer variant and evaluates an expression.
 macro_rules! with_container {
 	($self:expr, |$c:ident| $body:expr) => {
 		match $self {
@@ -622,7 +621,6 @@ macro_rules! with_container {
 pub(crate) use with_container;
 
 impl<S: Storage> ColumnBuffer<S> {
-	/// Unwrap Option to inner data + bitvec. Non-Option returns self + None.
 	pub fn unwrap_option(&self) -> (&ColumnBuffer<S>, Option<&S::BitVec>) {
 		match self {
 			ColumnBuffer::Option {
@@ -633,7 +631,6 @@ impl<S: Storage> ColumnBuffer<S> {
 		}
 	}
 
-	/// Owned version: consume self and return inner data + optional bitvec.
 	pub fn into_unwrap_option(self) -> (ColumnBuffer<S>, Option<S::BitVec>) {
 		match self {
 			ColumnBuffer::Option {
@@ -815,7 +812,6 @@ impl<S: Storage> ColumnBuffer<S> {
 		}
 	}
 
-	/// Clear all data, retaining the allocated capacity for reuse.
 	pub fn clear(&mut self) {
 		match self {
 			ColumnBuffer::Option {

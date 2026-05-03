@@ -19,12 +19,9 @@ macro_rules! as_values {
 	($val:expr) => {{ EncodedRow(CowVec::new(keycode::serialize(&$val))) }};
 }
 
-/// Benchmark showing the performance improvement of the new oracle
-/// implementation
 pub fn oracle_performance_benchmark() {
 	println!("=== Oracle Performance Benchmark ===\n");
 
-	// Test different transaction counts to show scaling behavior
 	let test_sizes = vec![1000, 5000, 10000, 25000];
 
 	for &num_txns in &test_sizes {
@@ -34,7 +31,6 @@ pub fn oracle_performance_benchmark() {
 
 		let start = Instant::now();
 
-		// Create transactions sequentially (worst case for O(N²) algorithm)
 		for i in 0..num_txns {
 			let mut tx = engine.begin_command().unwrap();
 
@@ -54,16 +50,10 @@ pub fn oracle_performance_benchmark() {
 	}
 }
 
-/// Benchmark concurrent performance
 pub fn concurrent_oracle_benchmark() {
 	println!("=== Concurrent Oracle Performance Benchmark ===\n");
 
-	let test_configs = vec![
-		(10, 1000), // 10 threads, 1000 txns each
-		(50, 500),  // 50 threads, 500 txns each
-		(100, 250), // 100 threads, 250 txns each
-		(1000, 50), // 1000 threads, 50 txns each
-	];
+	let test_configs = vec![(10, 1000), (50, 500), (100, 250), (1000, 50)];
 
 	for &(num_threads, txns_per_thread) in &test_configs {
 		let total_txns = num_threads * txns_per_thread;
@@ -107,16 +97,14 @@ pub fn concurrent_oracle_benchmark() {
 	}
 }
 
-/// Benchmark with actual conflicts to test conflict detection performance
 pub fn conflict_detection_benchmark() {
 	println!("=== Conflict Detection Performance Benchmark ===\n");
 
 	let engine = MultiTransaction::testing();
 
-	// Pre-populate with some data to create realistic conflict scenarios
 	for i in 0..1000 {
 		let mut tx = engine.begin_command().unwrap();
-		let key = as_key!(format!("shared_key_{}", i % 100)); // 100 different keys
+		let key = as_key!(format!("shared_key_{}", i % 100));
 		let value = as_values!(i);
 		tx.set(&key, value).unwrap();
 		tx.commit().unwrap();
@@ -124,7 +112,6 @@ pub fn conflict_detection_benchmark() {
 
 	println!("Pre-populated with 1000 transactions across 100 keys");
 
-	// Now test conflict detection performance
 	let num_conflict_txns = 10000;
 	let start = Instant::now();
 	let mut conflicts = 0;
@@ -132,7 +119,6 @@ pub fn conflict_detection_benchmark() {
 	for i in 0..num_conflict_txns {
 		let mut tx = engine.begin_command().unwrap();
 
-		// Try to modify keys that might conflict
 		let key = as_key!(format!("shared_key_{}", i % 100));
 		let value = as_values!(i + 1000);
 

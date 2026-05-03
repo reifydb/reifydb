@@ -55,7 +55,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeAge {
 				for i in 0..row_count {
 					match (container1.get(i), container2.get(i)) {
 						(Some(dt1), Some(dt2)) => {
-							// Extract time nanos since midnight
 							let nanos1 = dt1.time().to_nanos_since_midnight() as i64;
 							let nanos2 = dt2.time().to_nanos_since_midnight() as i64;
 							let mut nanos_diff = nanos1 - nanos2;
@@ -66,7 +65,6 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeAge {
 								nanos_diff += 86_400_000_000_000;
 							}
 
-							// Extract date parts
 							let date1 = dt1.date();
 							let date2 = dt2.date();
 

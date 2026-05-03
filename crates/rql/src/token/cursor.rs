@@ -5,20 +5,18 @@ use reifydb_type::fragment::{StatementColumn, StatementLine};
 
 use crate::bump::BumpFragment;
 
-/// A cursor over the input string that tracks position for tokenization
 pub struct Cursor<'bump> {
 	input: &'bump str,
 	pos: usize,
 	line: u32,
 	column: u32,
 	line_start: usize,
-	// Cache current character to avoid repeated UTF-8 validation
+
 	current_char: Option<char>,
 	current_char_len: usize,
 }
 
 impl<'bump> Cursor<'bump> {
-	/// Create a new cursor at the beginning of the input
 	pub fn new(input: &'bump str) -> Self {
 		let (current_char, current_char_len) = if input.is_empty() {
 			(None, 0)
@@ -38,24 +36,17 @@ impl<'bump> Cursor<'bump> {
 		}
 	}
 
-	/// Check if we've reached the end of input
 	pub fn is_eof(&self) -> bool {
 		self.current_char.is_none()
 	}
 
-	/// Peek at the current character without consuming
 	pub fn peek(&self) -> Option<char> {
 		self.current_char
 	}
 
-	/// Peek at the next n bytes without consuming
-	/// Note: This peeks at BYTES, not characters. Be careful with UTF-8!
 	pub fn peek_str(&self, n: usize) -> &str {
-		// Find a safe end position that doesn't split UTF-8 characters
 		let mut end = (self.pos + n).min(self.input.len());
 
-		// If we're not at the end of the string and not at a char
-		// boundary, back up to the previous char boundary
 		while end > self.pos && end < self.input.len() && !self.input.is_char_boundary(end) {
 			end -= 1;
 		}
@@ -63,12 +54,10 @@ impl<'bump> Cursor<'bump> {
 		&self.input[self.pos..end]
 	}
 
-	/// Peek ahead n characters and return the character
 	pub fn peek_ahead(&self, n: usize) -> Option<char> {
 		self.input[self.pos..].chars().nth(n)
 	}
 
-	/// Consume and return the current character
 	pub fn consume(&mut self) -> Option<char> {
 		if let Some(ch) = self.current_char {
 			self.pos += self.current_char_len;
@@ -80,7 +69,6 @@ impl<'bump> Cursor<'bump> {
 				self.column += 1;
 			}
 
-			// Update cached character
 			if self.pos < self.input.len() {
 				let remaining = &self.input[self.pos..];
 				let next_char = remaining.chars().next().unwrap();
@@ -97,7 +85,6 @@ impl<'bump> Cursor<'bump> {
 		}
 	}
 
-	/// Consume characters while the predicate is true
 	pub fn consume_while<F>(&mut self, mut predicate: F) -> &'bump str
 	where
 		F: FnMut(char) -> bool,
@@ -112,7 +99,6 @@ impl<'bump> Cursor<'bump> {
 		&self.input[start..self.pos]
 	}
 
-	/// Consume a specific string if it matches at the current position
 	pub fn consume_str(&mut self, s: &str) -> bool {
 		if self.peek_str(s.len()) == s {
 			for _ in 0..s.len() {
@@ -124,7 +110,6 @@ impl<'bump> Cursor<'bump> {
 		}
 	}
 
-	/// Consume a string case-insensitively
 	pub fn consume_str_ignore_case(&mut self, s: &str) -> bool {
 		let peek = self.peek_str(s.len());
 		if peek.eq_ignore_ascii_case(s) {
@@ -137,7 +122,6 @@ impl<'bump> Cursor<'bump> {
 		}
 	}
 
-	/// Check if `#` at current position starts a system column name
 	fn is_system_column_ahead(&self) -> bool {
 		const SYSTEM_COLUMNS: &[&str] = &["rownum", "created_at", "updated_at"];
 		let remaining = &self.input[self.pos..];
@@ -155,21 +139,18 @@ impl<'bump> Cursor<'bump> {
 		false
 	}
 
-	/// Skip whitespace characters - optimized for common ASCII cases
 	pub fn skip_whitespace(&mut self) {
-		// Fast path for ASCII whitespace (most common case)
 		while let Some(ch) = self.current_char {
 			match ch {
 				' ' | '\t' | '\r' | '\n' => {
 					self.consume();
 				}
 				'#' => {
-					// Check if this is a system column (e.g., #created_at) rather than a comment
 					if self.is_system_column_ahead() {
 						break;
 					}
-					// Single-line comment: skip to end of line or EOF
-					self.consume(); // consume '#'
+
+					self.consume();
 					while let Some(ch) = self.current_char {
 						if ch == '\n' {
 							self.consume();
@@ -179,8 +160,6 @@ impl<'bump> Cursor<'bump> {
 					}
 				}
 				_ => {
-					// Fall back to full Unicode whitespace
-					// check for non-ASCII
 					if ch.is_whitespace() {
 						self.consume();
 					} else {
@@ -191,23 +170,18 @@ impl<'bump> Cursor<'bump> {
 		}
 	}
 
-	/// Get the current position in the input
 	pub fn pos(&self) -> usize {
 		self.pos
 	}
 
-	/// Get the current line number
 	pub fn line(&self) -> u32 {
 		self.line
 	}
 
-	/// Get the current column number
 	pub fn column(&self) -> u32 {
 		self.column
 	}
 
-	/// Create a BumpFragment from a start position to current position.
-	/// Zero-copy: returns a slice of the original input string.
 	pub fn make_fragment(&self, start_pos: usize, start_line: u32, start_column: u32) -> BumpFragment<'bump> {
 		BumpFragment::Statement {
 			text: &self.input[start_pos..self.pos],
@@ -218,8 +192,6 @@ impl<'bump> Cursor<'bump> {
 		}
 	}
 
-	/// Create a fragment for UTF-8 text content (without surrounding
-	/// quotes). Zero-copy: returns a slice of the original input string.
 	pub fn make_utf8_fragment(
 		&self,
 		text_start: usize,
@@ -237,7 +209,6 @@ impl<'bump> Cursor<'bump> {
 		}
 	}
 
-	/// Save current position state
 	pub fn save_state(&self) -> CursorState {
 		CursorState {
 			pos: self.pos,
@@ -249,7 +220,6 @@ impl<'bump> Cursor<'bump> {
 		}
 	}
 
-	/// Restore a previously saved position state
 	pub fn restore_state(&mut self, state: CursorState) {
 		self.pos = state.pos;
 		self.line = state.line;
@@ -259,13 +229,11 @@ impl<'bump> Cursor<'bump> {
 		self.current_char_len = state.current_char_len;
 	}
 
-	/// Get a slice of the remaining input from current position
 	pub fn remaining_input(&self) -> &'bump str {
 		&self.input[self.pos..]
 	}
 }
 
-/// Saved cursor state for backtracking
 #[derive(Clone, Copy)]
 pub struct CursorState {
 	pos: usize,

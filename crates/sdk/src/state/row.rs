@@ -13,14 +13,6 @@ use reifydb_type::{util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::{error::Result, operator::context::OperatorContext};
 
-/// Provides stable row numbers for keys with automatic Insert/Update detection
-///
-/// This component maintains:
-/// - A sequential counter for generating new row numbers
-/// - A mapping from keys to their assigned row numbers
-///
-/// When a key is seen for the first time, it gets a new row number and returns
-/// true. When a key is seen again, it returns the existing row number and false.
 pub struct RowNumberProvider {
 	node: FlowNodeId,
 }
@@ -32,9 +24,6 @@ impl RowNumberProvider {
 		}
 	}
 
-	/// Get or create RowNumbers for a batch of keys
-	/// Returns Vec<(RowNumber, is_new)> in the same order as input keys
-	/// where is_new indicates if the row number was newly created
 	pub fn get_or_create_row_numbers_batch<'a, I>(
 		&self,
 		ctx: &mut OperatorContext,
@@ -48,12 +37,10 @@ impl RowNumberProvider {
 		let initial_counter = counter;
 
 		for key in keys {
-			// Check if we already have a row number for this key
 			let map_key = self.make_map_key(key);
 			let internal_key = FlowNodeInternalStateKey::new(self.node, map_key.as_ref().to_vec());
 
 			if let Some(existing_row) = ctx.state().get(&internal_key.encode())? {
-				// Key exists, return existing row number
 				let bytes = existing_row.as_ref();
 				if bytes.len() >= 8 {
 					let row_num = u64::from_be_bytes([
@@ -65,10 +52,8 @@ impl RowNumberProvider {
 				}
 			}
 
-			// Key doesn't exist, allocate a new row number
 			let new_row_number = RowNumber(counter);
 
-			// Save the mapping from key to row number
 			let row_num_bytes = counter.to_be_bytes().to_vec();
 			ctx.state().set(&internal_key.encode(), &EncodedRow(CowVec::new(row_num_bytes)))?;
 
@@ -76,7 +61,6 @@ impl RowNumberProvider {
 			counter += 1;
 		}
 
-		// Save the updated counter if we allocated any new row numbers
 		if counter != initial_counter {
 			self.save_counter(ctx, counter)?;
 		}
@@ -96,9 +80,8 @@ impl RowNumberProvider {
 		let key = self.make_counter_key();
 		let internal_key = FlowNodeInternalStateKey::new(self.node, key.as_ref().to_vec());
 		match ctx.state().get(&internal_key.encode())? {
-			None => Ok(1), // First time, start at 1
+			None => Ok(1),
 			Some(state_row) => {
-				// Parse the stored counter
 				let bytes = state_row.as_ref();
 				if bytes.len() >= 8 {
 					Ok(u64::from_be_bytes([
@@ -122,26 +105,24 @@ impl RowNumberProvider {
 
 	fn make_counter_key(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'C'); // 'C' for counter
+		serializer.extend_u8(b'C');
 		EncodedKey::new(serializer.finish())
 	}
 
 	fn make_map_key(&self, key: &EncodedKey) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'M'); // 'M' for mapping
+		serializer.extend_u8(b'M');
 		serializer.extend_bytes(key.as_ref());
 		EncodedKey::new(serializer.finish())
 	}
 
 	pub fn remove_by_prefix(&self, ctx: &mut OperatorContext, key_prefix: &[u8]) -> Result<()> {
-		// Create the prefix for scanning (node_id added by FlowNodeInternalStateKey wrapper)
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'M'); // 'M' for mapping
+		serializer.extend_u8(b'M');
 		prefix.extend_from_slice(&serializer.finish());
 		prefix.extend_from_slice(key_prefix);
 
-		// Wrap with FlowNodeInternalStateKey and scan for all keys with this prefix
 		let internal_prefix = FlowNodeInternalStateKey::new(self.node, prefix);
 		let prefix_key = internal_prefix.encode();
 		let entries = ctx.state().scan_prefix(&prefix_key)?;

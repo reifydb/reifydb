@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system namespace information
 pub struct SystemNamespaces {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

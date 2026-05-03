@@ -8,20 +8,17 @@ use reifydb_type::Result;
 
 use crate::builder::TracingConfigurator;
 
-/// Factory for creating TracingSubsystem instances
 pub struct TracingSubsystemFactory {
 	configurator: Option<Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send>>,
 }
 
 impl TracingSubsystemFactory {
-	/// Create a new factory with default configuration
 	pub fn new() -> Self {
 		Self {
 			configurator: None,
 		}
 	}
 
-	/// Create a factory with a custom configurator
 	pub fn with_configurator<F>(configurator: F) -> Self
 	where
 		F: FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static,
@@ -40,7 +37,6 @@ impl Default for TracingSubsystemFactory {
 
 impl SubsystemFactory for TracingSubsystemFactory {
 	fn provide_interceptors(&self, builder: InterceptorBuilder, _ioc: &IocContainer) -> InterceptorBuilder {
-		// Tracing subsystem doesn't need any special interceptors
 		builder
 	}
 

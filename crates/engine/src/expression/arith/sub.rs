@@ -31,7 +31,7 @@ pub(crate) fn sub_columns(
 			&left.data(), &right.data();
 			fixed: sub_numeric, arb: sub_numeric_clone (ctx, target, fragment);
 
-			// Duration - Duration
+
 			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => {
 				let mut container = TemporalContainer::with_capacity(l.len());
 				for i in 0..l.len() {

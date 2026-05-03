@@ -8,8 +8,6 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Get a TTL configuration for a shape
-	/// Returns an error if no TTL is configured
 	#[allow(dead_code)]
 	pub fn get_row_ttl(rx: &mut Transaction<'_>, shape: ShapeId) -> Result<Ttl> {
 		Self::find_row_ttl(rx, shape)?.ok_or_else(|| {

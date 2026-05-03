@@ -22,13 +22,9 @@ pub trait VersionProvider: Send + Sync + Clone {
 	fn next(&self) -> Result<CommitVersion>;
 	fn current(&self) -> Result<CommitVersion>;
 
-	/// Advance the version counter to at least the given version.
-	/// Used by replica replication to keep the version provider in sync
-	/// with replicated data from the primary.
 	fn advance_to(&self, _version: CommitVersion) {}
 }
 
-/// Helper struct for initial block setup
 #[derive(Debug)]
 struct VersionBlock {
 	last: u64,
@@ -47,11 +43,11 @@ impl VersionBlock {
 #[derive(Clone)]
 pub struct StandardVersionProvider {
 	single: SingleTransaction,
-	// Lock-free atomic counter for fast-path version allocation
+
 	next_version: Arc<AtomicU64>,
-	// Block boundary tracking (only accessed when crossing block boundaries)
+
 	current_block_end: Arc<AtomicU64>,
-	// Mutex for block boundary persistence (rare - 1 in BLOCK_SIZE operations)
+
 	block_persist_lock: Arc<Mutex<()>>,
 	shape: RowShape,
 }
@@ -60,11 +56,9 @@ impl StandardVersionProvider {
 	pub fn new(single: SingleTransaction) -> Result<Self> {
 		let shape = RowShape::new(vec![RowShapeField::unconstrained("version", Type::Uint8)]);
 
-		// Load current version and allocate first block
 		let current_version = Self::load_current_version(&shape, &single)?;
 		let first_block = VersionBlock::new(current_version);
 
-		// Persist the end of first block to storage
 		Self::persist_version(&shape, &single, first_block.last)?;
 
 		Ok(Self {
@@ -99,35 +93,25 @@ impl StandardVersionProvider {
 
 impl VersionProvider for StandardVersionProvider {
 	fn next(&self) -> Result<CommitVersion> {
-		// FAST PATH: Lock-free atomic increment
 		let version = self.next_version.fetch_add(1, Ordering::SeqCst) + 1;
 
-		// Check if we're still within the current block
 		let block_end = self.current_block_end.load(Ordering::SeqCst);
 		if version <= block_end {
 			return Ok(CommitVersion(version));
 		}
 
-		// SLOW PATH: We've crossed a block boundary, need to persist
-		// This is rare (1 in BLOCK_SIZE = 100,000 operations)
 		let _lock = self.block_persist_lock.lock();
 
-		// Double-check: another thread may have already extended the block
 		let block_end = self.current_block_end.load(Ordering::SeqCst);
 		if version <= block_end {
 			return Ok(CommitVersion(version));
 		}
 
-		// Calculate new block boundary
-		// The version we allocated may be beyond the current block_end
-		// We need to allocate enough blocks to cover it
 		let new_block_start = (version / BLOCK_SIZE) * BLOCK_SIZE;
 		let new_block_end = new_block_start + BLOCK_SIZE;
 
-		// Persist the new block boundary to storage
 		Self::persist_version(&self.shape, &self.single, new_block_end)?;
 
-		// Update the block end atomically
 		self.current_block_end.store(new_block_end, Ordering::SeqCst);
 
 		Ok(CommitVersion(version))

@@ -102,7 +102,6 @@ impl RingBufferMetadataKey {
 		.encode()
 	}
 
-	/// Returns a range scanning all partition metadata keys for a given ringbuffer (prefix scan).
 	pub fn full_scan_for_ringbuffer(ringbuffer: RingBufferId) -> EncodedKeyRange {
 		let mut start = KeySerializer::with_capacity(10);
 		start.extend_u8(VERSION);

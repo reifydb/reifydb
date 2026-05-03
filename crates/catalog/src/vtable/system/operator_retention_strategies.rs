@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes operator retention strategy information
 pub struct SystemOperatorRetentionStrategies {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
@@ -59,7 +58,6 @@ impl BaseVTable for SystemOperatorRetentionStrategies {
 		for entry in strategies {
 			operator_ids.push(entry.operator.0);
 
-			// Encode strategy
 			match entry.strategy {
 				RetentionStrategy::KeepForever => {
 					strategy_types.push("keep_forever");

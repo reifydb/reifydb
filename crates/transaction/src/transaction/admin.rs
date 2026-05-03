@@ -104,13 +104,6 @@ use crate::{
 	},
 };
 
-/// An active admin transaction that supports Query + DML + DDL operations.
-///
-/// AdminTransaction is the most privileged transaction type, capable of
-/// executing DDL (shape changes), DML (data mutations), and queries.
-/// It tracks catalog definition changes (TransactionalCatalogChanges) for DDL.
-///
-/// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct AdminTransaction {
 	pub multi: MultiTransaction,
 	pub single: SingleTransaction,
@@ -120,23 +113,17 @@ pub struct AdminTransaction {
 	pub event_bus: EventBus,
 	pub changes: TransactionalCatalogChanges,
 
-	// Track row changes for post-commit events
 	pub(crate) row_changes: Vec<RowChange>,
 	pub interceptors: Interceptors,
 
-	// Accumulate flow changes for transactional view pre-commit processing
 	pub(crate) accumulator: ChangeAccumulator,
 
-	/// The identity executing this transaction.
 	pub identity: IdentityId,
 
-	/// Optional RQL executor for running RQL within this transaction.
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 
-	/// Clock for timestamping flow changes at commit.
 	pub(crate) clock: Clock,
 
-	/// When the transaction has been poisoned, stores the original error diagnostic.
 	poison_cause: Option<Diagnostic>,
 }
 
@@ -149,7 +136,6 @@ enum TransactionState {
 }
 
 impl AdminTransaction {
-	/// Creates a new active admin transaction with a pre-commit callback
 	#[instrument(name = "transaction::admin::new", level = "debug", skip_all)]
 	pub fn new(
 		multi: MultiTransaction,
@@ -178,14 +164,10 @@ impl AdminTransaction {
 		})
 	}
 
-	/// Set the RQL executor for this transaction.
 	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
 		self.executor = Some(executor);
 	}
 
-	/// Execute RQL within this transaction using the attached executor.
-	///
-	/// Panics if no `RqlExecutor` has been set on this transaction.
 	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
 		if let Err(e) = self.check_active() {
 			return ExecutionResult {
@@ -207,8 +189,6 @@ impl AdminTransaction {
 		&self.event_bus
 	}
 
-	/// Check if transaction is still active and return appropriate error if
-	/// not
 	pub(crate) fn check_active(&self) -> Result<()> {
 		match self.state {
 			TransactionState::Active => Ok(()),
@@ -221,21 +201,16 @@ impl AdminTransaction {
 		}
 	}
 
-	/// Mark this transaction as poisoned, storing the original error diagnostic.
 	pub(crate) fn poison(&mut self, cause: Diagnostic) {
 		self.state = TransactionState::Poisoned;
 		self.poison_cause = Some(cause);
 	}
 
-	/// Clear the poisoned state so the transaction can be reused after a restore.
 	pub(crate) fn unpoison(&mut self) {
 		self.state = TransactionState::Active;
 		self.poison_cause = None;
 	}
 
-	/// Commit the transaction.
-	/// Since single transactions are short-lived and auto-commit,
-	/// this only commits the multi transaction.
 	#[instrument(name = "transaction::admin::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
@@ -273,7 +248,6 @@ impl AdminTransaction {
 		Ok(version)
 	}
 
-	/// Rollback the transaction.
 	#[instrument(name = "transaction::admin::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> Result<()> {
 		self.check_active()?;
@@ -281,18 +255,15 @@ impl AdminTransaction {
 			self.state = TransactionState::RolledBack;
 			multi.rollback()
 		} else {
-			// This should never happen due to check_active
 			unreachable!("Transaction state inconsistency")
 		}
 	}
 
-	/// Get access to the pending writes in this transaction
 	#[instrument(name = "transaction::admin::pending_writes", level = "trace", skip(self))]
 	pub fn pending_writes(&self) -> &PendingWrites {
 		self.cmd.as_ref().unwrap().pending_writes()
 	}
 
-	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "transaction::admin::with_single_query", level = "trace", skip(self, keys, f))]
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
@@ -304,7 +275,6 @@ impl AdminTransaction {
 		self.single.with_query(keys, f)
 	}
 
-	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "transaction::admin::with_single_command", level = "trace", skip(self, keys, f))]
 	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
@@ -316,7 +286,6 @@ impl AdminTransaction {
 		self.single.with_command(keys, f)
 	}
 
-	/// Execute a function with a query transaction view.
 	#[instrument(name = "transaction::admin::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&self, f: F) -> Result<R>
 	where
@@ -360,7 +329,6 @@ impl AdminTransaction {
 		f(&mut query_txn)
 	}
 
-	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::admin::begin_single_query", level = "trace", skip(self, keys))]
 	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
@@ -370,7 +338,6 @@ impl AdminTransaction {
 		self.single.begin_query(keys)
 	}
 
-	/// Begin a single-version command transaction for specific keys
 	#[instrument(name = "transaction::admin::begin_single_command", level = "trace", skip(self, keys))]
 	pub fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
 	where
@@ -380,17 +347,14 @@ impl AdminTransaction {
 		self.single.begin_command(keys)
 	}
 
-	/// Get reference to catalog changes for this transaction
 	pub fn get_changes(&self) -> &TransactionalCatalogChanges {
 		&self.changes
 	}
 
-	/// Track a row change for post-commit event emission
 	pub fn track_row_change(&mut self, change: RowChange) {
 		self.row_changes.push(change);
 	}
 
-	/// Track a flow change for transactional view pre-commit processing.
 	pub fn track_flow_change(&mut self, change: Change) {
 		if let ChangeOrigin::Shape(id) = change.origin {
 			for diff in change.diffs {
@@ -399,55 +363,46 @@ impl AdminTransaction {
 		}
 	}
 
-	/// Get the transaction version
 	#[inline]
 	pub fn version(&self) -> CommitVersion {
 		self.cmd.as_ref().unwrap().version()
 	}
 
-	/// Get the transaction ID
 	#[inline]
 	pub fn id(&self) -> TransactionId {
 		self.cmd.as_ref().unwrap().id()
 	}
 
-	/// Get a value by key
 	#[inline]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
-	/// Read the committed value at the transaction's read version, ignoring
-	/// pending intra-tx writes.
 	#[inline]
 	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().get_committed(key)?.map(|v| v.into_multi_version_row()))
 	}
 
-	/// Check if a key exists
 	#[inline]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().contains_key(key)
 	}
 
-	/// Get a prefix batch
 	#[inline]
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().prefix(prefix)
 	}
 
-	/// Get a reverse prefix batch
 	#[inline]
 	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().prefix_rev(prefix)
 	}
 
-	/// Read as of version exclusive
 	#[inline]
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		self.check_active()?;
@@ -455,21 +410,18 @@ impl AdminTransaction {
 		Ok(())
 	}
 
-	/// Set a key-value pair
 	#[inline]
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, row)
 	}
 
-	/// Unset a key, preserving the deleted values.
 	#[inline]
 	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().unset(key, row)
 	}
 
-	/// Remove a key without preserving the deleted values.
 	#[inline]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_active()?;
@@ -483,7 +435,6 @@ impl AdminTransaction {
 		Ok(())
 	}
 
-	/// Create a streaming iterator for forward range queries.
 	#[inline]
 	pub fn range(
 		&mut self,
@@ -494,7 +445,6 @@ impl AdminTransaction {
 		Ok(self.cmd.as_mut().unwrap().range(range, batch_size))
 	}
 
-	/// Create a streaming iterator for reverse range queries.
 	#[inline]
 	pub fn range_rev(
 		&mut self,
@@ -888,7 +838,6 @@ impl TransactionalChanges for AdminTransaction {}
 impl Drop for AdminTransaction {
 	fn drop(&mut self) {
 		if let Some(mut multi) = self.cmd.take() {
-			// Auto-rollback if still active or poisoned (not committed or rolled back)
 			if self.state == TransactionState::Active || self.state == TransactionState::Poisoned {
 				let _ = multi.rollback();
 			}

@@ -9,8 +9,6 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, vtable::VTableRegistry};
 
 impl CatalogStore {
-	/// Find a shape (table, store::view, or virtual table) by its ShapeId
-	/// Returns None if the shape doesn't exist
 	pub(crate) fn find_shape(rx: &mut Transaction<'_>, shape: impl Into<ShapeId>) -> Result<Option<Shape>> {
 		let shape_id = shape.into();
 
@@ -31,7 +29,6 @@ impl CatalogStore {
 			}
 			ShapeId::TableVirtual(vtable_id) => {
 				if let Some(vtable) = VTableRegistry::find_vtable(rx, vtable_id)? {
-					// Convert Arc<VTable> to VTable
 					let vtable = Arc::try_unwrap(vtable).unwrap_or_else(|arc| (*arc).clone());
 					Ok(Some(Shape::TableVirtual(vtable)))
 				} else {
@@ -40,19 +37,17 @@ impl CatalogStore {
 			}
 			ShapeId::RingBuffer(_ringbuffer_id) => {
 				// TODO: Implement find_ringbuffer when ring
-				// buffer catalog is ready For now, ring
-				// buffers are not yet queryable
+
 				Ok(None)
 			}
 			ShapeId::Dictionary(_dictionary_id) => {
 				// TODO: Implement find_dictionary when dictionary
-				// catalog is ready For now, dictionaries return
-				// None as they use a different retrieval mechanism
+
 				Ok(None)
 			}
 			ShapeId::Series(_series_id) => {
 				// TODO: Implement find_series when series
-				// catalog is ready
+
 				Ok(None)
 			}
 		}

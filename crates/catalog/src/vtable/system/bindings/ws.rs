@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes WebSocket bindings.
 pub struct SystemBindingsWs {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

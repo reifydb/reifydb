@@ -69,7 +69,6 @@ impl FlowNodeInternalStateKey {
 		Self::new(node.into(), key.into()).encode()
 	}
 
-	/// Create a range for scanning all entries of a specific operator
 	pub fn node_range(node: FlowNodeId) -> EncodedKeyRange {
 		let range = FlowNodeInternalStateKeyRange::new(node);
 		EncodedKeyRange::start_end(range.start(), range.end())

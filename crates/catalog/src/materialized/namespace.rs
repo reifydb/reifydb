@@ -9,7 +9,6 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionNamespace};
 
 impl MaterializedCatalog {
-	/// Find a namespace by ID at a specific version
 	pub fn find_namespace_at(&self, namespace: NamespaceId, version: CommitVersion) -> Option<Namespace> {
 		self.namespaces.get(&namespace).and_then(|entry| {
 			let multi = entry.value();
@@ -17,7 +16,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a namespace by name at a specific version
 	pub fn find_namespace_by_name_at(&self, namespace: &str, version: CommitVersion) -> Option<Namespace> {
 		self.namespaces_by_name.get(namespace).and_then(|entry| {
 			let namespace_id = *entry.value();
@@ -25,7 +23,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a namespace by ID (returns latest version)
 	pub fn find_namespace(&self, namespace: NamespaceId) -> Option<Namespace> {
 		self.namespaces.get(&namespace).and_then(|entry| {
 			let multi = entry.value();
@@ -33,7 +30,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a namespace by name (returns latest version)
 	pub fn find_namespace_by_name(&self, namespace: &str) -> Option<Namespace> {
 		self.namespaces_by_name.get(namespace).and_then(|entry| {
 			let namespace_id = *entry.value();
@@ -41,7 +37,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a child namespace by parent ID and local name at a specific version
 	pub fn find_child_namespace_at(
 		&self,
 		parent_id: NamespaceId,
@@ -58,7 +53,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a child namespace by parent ID and local name (returns latest version)
 	pub fn find_child_namespace(&self, parent_id: NamespaceId, name: &str) -> Option<Namespace> {
 		self.namespaces.iter().find_map(|entry| {
 			let ns = entry.value().get_latest()?;
@@ -71,11 +65,9 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_namespace(&self, id: NamespaceId, version: CommitVersion, namespace: Option<Namespace>) {
-		// Look up the current namespace to update the index
 		if let Some(entry) = self.namespaces.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{
-			// Remove old name from index
 			self.namespaces_by_name.remove(pre.name());
 		}
 

@@ -30,19 +30,10 @@ use smallvec::smallvec;
 use crate::Result;
 
 pub(crate) trait DictionaryOperations {
-	/// Insert a value into the dictionary, returning its ID.
-	/// If the value already exists, returns the existing ID.
-	/// If the value is new, assigns a new ID and stores it.
-	/// The returned ID type matches the dictionary's `id_type`.
 	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId>;
 
-	/// Get a value from the dictionary by its ID.
-	/// Returns None if the ID doesn't exist.
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>>;
 
-	/// Find the ID of a value in the dictionary without inserting.
-	/// Returns the ID if the value exists, None otherwise.
-	/// The returned ID type matches the dictionary's `id_type`.
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>>;
 }
 
@@ -50,41 +41,31 @@ impl DictionaryOperations for CommandTransaction {
 	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
 		let value = DictionaryRowInterceptor::pre_insert(self, dictionary, value.clone())?;
 
-		// 1. Serialize value and compute hash
 		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
-		// 2. Check if value already exists (lookup by hash)
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		if let Some(existing) = self.get(&entry_key)? {
-			// Value exists, return existing ID
 			let id = u128::from_be_bytes(existing.row[..16].try_into().unwrap());
 			return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
 		}
 
-		// 3. Value doesn't exist - get next ID from sequence
 		let seq_key = DictionarySequenceKey::encoded(dictionary.id);
 		let next_id = match self.get(&seq_key)? {
 			Some(v) => u128::from_be_bytes(v.row[..16].try_into().unwrap()) + 1,
-			None => 1, // First entry
+			None => 1,
 		};
 
-		// 4. Validate the new ID fits in the dictionary's id_type (early check)
 		let entry_id = DictionaryEntryId::from_u128(next_id, dictionary.id_type.clone())?;
 
-		// 5. Store the entry (hash -> id + value_bytes)
 		let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
 		entry_value.extend_from_slice(&next_id.to_be_bytes());
 		entry_value.extend_from_slice(&value_bytes);
 		self.set(&entry_key, EncodedRow(CowVec::new(entry_value)))?;
 
-		// 6. Store reverse index (id -> value_bytes)
-		// Note: DictionaryEntryIndexKey currently uses u64, so we truncate
-		// This limits practical dictionary size to u64::MAX entries
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
 		self.set(&index_key, EncodedRow(CowVec::new(value_bytes)))?;
 
-		// 7. Update sequence
 		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
 
 		DictionaryRowInterceptor::post_insert(self, dictionary, entry_id, &value)?;
@@ -93,7 +74,6 @@ impl DictionaryOperations for CommandTransaction {
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		// Note: DictionaryEntryIndexKey currently uses u64, so we truncate
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
 		match self.get(&index_key)? {
 			Some(v) => {
@@ -125,44 +105,35 @@ impl DictionaryOperations for AdminTransaction {
 	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
 		let value = DictionaryRowInterceptor::pre_insert(self, dictionary, value.clone())?;
 
-		// 1. Serialize value and compute hash
 		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
-		// 2. Check if value already exists (lookup by hash)
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		if let Some(existing) = self.get(&entry_key)? {
-			// Value exists, return existing ID
 			let id = u128::from_be_bytes(existing.row[..16].try_into().unwrap());
 			return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
 		}
 
-		// 3. Value doesn't exist - get next ID from sequence
 		let seq_key = DictionarySequenceKey::encoded(dictionary.id);
 		let next_id = match self.get(&seq_key)? {
 			Some(v) => u128::from_be_bytes(v.row[..16].try_into().unwrap()) + 1,
-			None => 1, // First entry
+			None => 1,
 		};
 
-		// 4. Validate the new ID fits in the dictionary's id_type (early check)
 		let entry_id = DictionaryEntryId::from_u128(next_id, dictionary.id_type.clone())?;
 
-		// 5. Store the entry (hash -> id + value_bytes)
 		let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
 		entry_value.extend_from_slice(&next_id.to_be_bytes());
 		entry_value.extend_from_slice(&value_bytes);
 		self.set(&entry_key, EncodedRow(CowVec::new(entry_value)))?;
 
-		// 6. Store reverse index (id -> value_bytes)
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
 		self.set(&index_key, EncodedRow(CowVec::new(value_bytes)))?;
 
-		// 7. Update sequence
 		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
 
 		DictionaryRowInterceptor::post_insert(self, dictionary, entry_id, &value)?;
 
-		// Track for testing::dictionaries::changed()
 		self.track_flow_change(Change {
 			origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
 			version: CommitVersion(0),
@@ -201,11 +172,8 @@ impl DictionaryOperations for AdminTransaction {
 	}
 }
 
-/// Implementation for Transaction (both Command and Query)
-/// This provides read-only access to dictionaries for query operations.
 impl DictionaryOperations for Transaction<'_> {
 	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-		// Only command and admin transactions can insert
 		match self {
 			Transaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
 			Transaction::Admin(admin) => admin.insert_into_dictionary(dictionary, value),
@@ -220,7 +188,6 @@ impl DictionaryOperations for Transaction<'_> {
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		// Both command and query transactions can read
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128() as u64);
 		match self.get(&index_key)? {
 			Some(v) => {
@@ -233,7 +200,6 @@ impl DictionaryOperations for Transaction<'_> {
 	}
 
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		// Both command and query transactions can read
 		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 

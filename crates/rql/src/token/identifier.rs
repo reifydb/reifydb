@@ -6,7 +6,6 @@ use super::{
 	token::{Token, TokenKind},
 };
 
-/// Scan for an identifier token
 pub fn scan_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
@@ -24,7 +23,6 @@ pub fn scan_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	})
 }
 
-/// Scan for a backtick-quoted identifier (`...`)
 pub fn scan_quoted_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek()? != '`' {
 		return None;
@@ -33,14 +31,14 @@ pub fn scan_quoted_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> 
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
-	cursor.consume(); // consume opening backtick
+	cursor.consume();
 
 	let ident_start = cursor.pos();
 
 	while let Some(ch) = cursor.peek() {
 		if ch == '`' {
 			let ident_end = cursor.pos();
-			cursor.consume(); // consume closing backtick
+			cursor.consume();
 
 			let fragment = cursor.make_utf8_fragment(
 				ident_start,
@@ -58,12 +56,9 @@ pub fn scan_quoted_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> 
 		cursor.consume();
 	}
 
-	None // Unterminated quoted identifier
+	None
 }
 
-/// Scan for an identifier that starts with a digit (e.g., `10min`, `5sec`, `10_min`).
-/// Returns `None` if the token is a pure number (no alpha chars), or starts with
-/// a number literal prefix like `0x`, `0b`, `0o`.
 pub fn scan_digit_starting_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
@@ -71,12 +66,10 @@ pub fn scan_digit_starting_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Tok
 
 	let state = cursor.save_state();
 
-	// Must start with an ASCII digit
 	if !cursor.peek().is_some_and(|c| c.is_ascii_digit()) {
 		return None;
 	}
 
-	// Guard: bail on 0x/0b/0o prefixes (those are number literals)
 	let prefix = cursor.peek_str(2);
 	if prefix.eq_ignore_ascii_case("0x") || prefix.eq_ignore_ascii_case("0b") || prefix.eq_ignore_ascii_case("0o") {
 		return None;
@@ -95,7 +88,6 @@ pub fn scan_digit_starting_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Tok
 	});
 
 	if !has_alpha {
-		// Pure number - restore cursor and return None
 		cursor.restore_state(state);
 		return None;
 	}

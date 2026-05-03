@@ -12,10 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::subscriptions::*, vtable::SUBSCRIPTIONS};
 
-/// Returns the static definition for the system.subscriptions virtual table.
-///
-/// This table exposes all currently active subscriptions, showing their
-/// subscription ID and the number of columns in the subscription schema.
 pub fn subscriptions() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

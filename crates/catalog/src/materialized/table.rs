@@ -12,7 +12,6 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionTable};
 
 impl MaterializedCatalog {
-	/// Find a table by ID at a specific version
 	pub fn find_table_at(&self, table: TableId, version: CommitVersion) -> Option<Table> {
 		self.tables.get(&table).and_then(|entry| {
 			let multi = entry.value();
@@ -20,7 +19,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a table by name in a namespace at a specific version
 	pub fn find_table_by_name_at(
 		&self,
 		namespace: NamespaceId,
@@ -33,7 +31,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a table by ID (returns latest version)
 	pub fn find_table(&self, table: TableId) -> Option<Table> {
 		self.tables.get(&table).and_then(|entry| {
 			let multi = entry.value();
@@ -41,7 +38,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a table by name in a namespace (returns latest version)
 	pub fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Table> {
 		self.tables_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let table_id = *entry.value();
@@ -49,7 +45,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// List the latest version of all tables.
 	pub fn list_tables(&self) -> Vec<Table> {
 		self.tables.iter().filter_map(|entry| entry.value().get_latest()).collect()
 	}
@@ -58,7 +53,6 @@ impl MaterializedCatalog {
 		if let Some(entry) = self.tables.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{
-			// Remove old name from index
 			self.tables_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 

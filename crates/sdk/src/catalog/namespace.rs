@@ -20,28 +20,23 @@ pub(super) fn raw_catalog_find_namespace(
 	version: CommitVersion,
 ) -> Result<Option<Namespace>, FFIError> {
 	unsafe {
-		// Get callback function
 		let callback = (*ctx.ctx).callbacks.catalog.find_namespace;
 
-		// Allocate output buffer on stack
 		let mut output = MaybeUninit::<NamespaceFFI>::uninit();
 
-		// Call FFI callback
 		let result = callback(ctx.ctx, namespace_id.0, version.0, output.as_mut_ptr());
 
 		match result {
 			FFI_OK => {
-				// Success - unmarshal namespace
 				let ffi_ns = output.assume_init();
 				let namespace = unmarshal_namespace(&ffi_ns)?;
 
-				// Free FFI-allocated memory
 				let free_callback = (*ctx.ctx).callbacks.catalog.free_namespace;
 				free_callback(&mut output.as_mut_ptr().read());
 
 				Ok(Some(namespace))
 			}
-			FFI_NOT_FOUND => Ok(None), // Not found
+			FFI_NOT_FOUND => Ok(None),
 			_ => Err(FFIError::Other("Failed to find namespace".to_string())),
 		}
 	}
@@ -53,38 +48,31 @@ pub(super) fn raw_catalog_find_namespace_by_name(
 	version: CommitVersion,
 ) -> Result<Option<Namespace>, FFIError> {
 	unsafe {
-		// Get callback function
 		let callback = (*ctx.ctx).callbacks.catalog.find_namespace_by_name;
 
-		// Prepare name bytes
 		let name_bytes = name.as_bytes();
 
-		// Allocate output buffer on stack
 		let mut output = MaybeUninit::<NamespaceFFI>::uninit();
 
-		// Call FFI callback
 		let result = callback(ctx.ctx, name_bytes.as_ptr(), name_bytes.len(), version.0, output.as_mut_ptr());
 
 		match result {
 			FFI_OK => {
-				// Success - unmarshal namespace
 				let ffi_ns = output.assume_init();
 				let namespace = unmarshal_namespace(&ffi_ns)?;
 
-				// Free FFI-allocated memory
 				let free_callback = (*ctx.ctx).callbacks.catalog.free_namespace;
 				free_callback(&mut output.as_mut_ptr().read());
 
 				Ok(Some(namespace))
 			}
-			FFI_NOT_FOUND => Ok(None), // Not found
+			FFI_NOT_FOUND => Ok(None),
 			_ => Err(FFIError::Other("Failed to find namespace by name".to_string())),
 		}
 	}
 }
 
 unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<Namespace, FFIError> {
-	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_ns.name.ptr.is_null() && ffi_ns.name.len > 0 {
 		unsafe { from_raw_parts(ffi_ns.name.ptr, ffi_ns.name.len) }
 	} else {

@@ -9,8 +9,6 @@ use reifydb_type::Result;
 
 use super::wasm::WasmScalarFunction;
 
-/// Scan a directory for `.wasm` files and register each as a `WasmScalarFunction` into the given
-/// `RoutinesConfigurator`, returning the updated builder.
 pub fn register_wasm_scalar_functions_from_dir(
 	dir: &Path,
 	mut builder: RoutinesConfigurator,

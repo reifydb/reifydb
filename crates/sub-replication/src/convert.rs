@@ -13,7 +13,6 @@ use crate::generated::{
 	CdcEntry, DeleteChange, InsertChange, SystemChangeProto, UpdateChange, system_change_proto::Change,
 };
 
-/// Convert a domain `Cdc` entry to a proto `CdcEntry`.
 pub fn cdc_to_proto(cdc: &Cdc) -> CdcEntry {
 	CdcEntry {
 		version: cdc.version.0,
@@ -22,7 +21,6 @@ pub fn cdc_to_proto(cdc: &Cdc) -> CdcEntry {
 	}
 }
 
-/// Convert a domain `SystemChange` to a proto `SystemChangeProto`.
 pub fn system_change_to_proto(sc: &SystemChange) -> SystemChangeProto {
 	let change = match sc {
 		SystemChange::Insert {
@@ -61,7 +59,6 @@ pub fn system_change_to_proto(sc: &SystemChange) -> SystemChangeProto {
 	}
 }
 
-/// Convert a proto `SystemChangeProto` to a domain `SystemChange`.
 pub fn proto_to_system_change(proto: &SystemChangeProto) -> Option<SystemChange> {
 	match proto.change.as_ref()? {
 		Change::Insert(ic) => Some(SystemChange::Insert {
@@ -87,7 +84,6 @@ pub fn proto_to_system_change(proto: &SystemChangeProto) -> Option<SystemChange>
 	}
 }
 
-/// Convert a `SystemChange` to a storage `Delta` for replica application.
 pub fn system_change_to_delta(sc: &SystemChange) -> Delta {
 	match sc {
 		SystemChange::Insert {
@@ -120,7 +116,6 @@ pub fn system_change_to_delta(sc: &SystemChange) -> Delta {
 	}
 }
 
-/// Convert a proto `CdcEntry` to a list of `Delta` values and the version.
 pub fn proto_entry_to_deltas(entry: &CdcEntry) -> (CommitVersion, Vec<Delta>) {
 	let version = CommitVersion(entry.version);
 	let deltas = entry
@@ -134,7 +129,6 @@ pub fn proto_entry_to_deltas(entry: &CdcEntry) -> (CommitVersion, Vec<Delta>) {
 	(version, deltas)
 }
 
-/// Convert a proto `CdcEntry` to domain `SystemChange` values and the version.
 pub fn proto_entry_to_system_changes(entry: &CdcEntry) -> (CommitVersion, Vec<SystemChange>) {
 	let version = CommitVersion(entry.version);
 	let changes = entry.system_changes.iter().filter_map(proto_to_system_change).collect();

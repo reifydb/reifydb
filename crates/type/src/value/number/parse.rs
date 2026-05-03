@@ -60,7 +60,6 @@ pub fn parse_float<T>(fragment: Fragment) -> Result<T, Error>
 where
 	T: IsFloat + 'static,
 {
-	// Fragment is already owned, no conversion needed
 	if fragment.text().to_lowercase().contains("nan") {
 		return Err(TypeError::NanNotAllowed.into());
 	}
@@ -103,7 +102,7 @@ fn cast_float_to_int<T: 'static>(f: f64) -> T {
 fn cast<T: 'static, U: 'static>(v: U) -> T {
 	// SAFETY: caller guarantees that T and U are the same type
 	assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
-	// Use ManuallyDrop to prevent double-free when T and U are non-Copy types
+
 	let v = mem::ManuallyDrop::new(v);
 	unsafe { ptr::read(&*v as *const U as *const T) }
 }
@@ -178,18 +177,15 @@ fn parse_signed_generic<T>(fragment: Fragment) -> Result<T, Error>
 where
 	T: FromStr<Err = num::ParseIntError> + TypeInfo + 'static,
 {
-	// Fragment is already owned, no conversion needed
 	let raw_value = fragment.text();
 
-	// Fast path: check if we need any string processing
 	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
 		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
-		(false, false) => Cow::Borrowed(raw_value), // Fast path -
-		// no processing
-		// needed
+		(false, false) => Cow::Borrowed(raw_value),
+
 		(true, false) => Cow::Borrowed(raw_value.trim()),
 		(false, true) => Cow::Owned(raw_value.replace('_', "")),
 		(true, true) => Cow::Owned(raw_value.trim().replace('_', "")),
@@ -278,18 +274,15 @@ fn parse_unsigned_generic<T>(fragment: Fragment) -> Result<T, Error>
 where
 	T: FromStr<Err = num::ParseIntError> + TypeInfo + 'static,
 {
-	// Fragment is already owned, no conversion needed
 	let raw_value = fragment.text();
 
-	// Fast path: check if we need any string processing
 	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
 		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
-		(false, false) => Cow::Borrowed(raw_value), // Fast path -
-		// no processing
-		// needed
+		(false, false) => Cow::Borrowed(raw_value),
+
 		(true, false) => Cow::Borrowed(raw_value.trim()),
 		(false, true) => Cow::Owned(raw_value.replace('_', "")),
 		(true, true) => Cow::Owned(raw_value.trim().replace('_', "")),
@@ -305,82 +298,76 @@ where
 
 	match value.parse::<T>() {
 		Ok(v) => Ok(v),
-		Err(err) => {
-			match err.kind() {
-				IntErrorKind::Empty => Err(TypeError::InvalidNumberFormat {
-					target: T::type_enum(),
-					fragment,
-				}
-				.into()),
-				IntErrorKind::InvalidDigit => {
-					if let Ok(f) = value.parse::<f64>() {
-						// For unsigned types, reject
-						// negative values
-						if f < 0.0 {
-							return Err(TypeError::NumberOutOfRange {
-								target: T::type_enum(),
-								fragment,
-								descriptor: None,
-							}
-							.into());
-						}
-						let truncated = f.trunc();
-						let type_enum = T::type_enum();
-						let in_range = match type_enum {
-							Type::Uint1 => truncated >= 0.0 && truncated <= u8::MAX as f64,
-							Type::Uint2 => truncated >= 0.0 && truncated <= u16::MAX as f64,
-							Type::Uint4 => truncated >= 0.0 && truncated <= u32::MAX as f64,
-							Type::Uint8 => truncated >= 0.0 && truncated <= u64::MAX as f64,
-							Type::Uint16 => {
-								truncated >= 0.0 && truncated <= u128::MAX as f64
-							}
-							_ => false,
-						};
-						if in_range {
-							Ok(cast_float_to_int::<T>(truncated))
-						} else {
-							Err(TypeError::NumberOutOfRange {
-								target: type_enum,
-								fragment,
-								descriptor: None,
-							}
-							.into())
-						}
-					} else if value.contains("-") {
-						Err(TypeError::NumberOutOfRange {
+		Err(err) => match err.kind() {
+			IntErrorKind::Empty => Err(TypeError::InvalidNumberFormat {
+				target: T::type_enum(),
+				fragment,
+			}
+			.into()),
+			IntErrorKind::InvalidDigit => {
+				if let Ok(f) = value.parse::<f64>() {
+					if f < 0.0 {
+						return Err(TypeError::NumberOutOfRange {
 							target: T::type_enum(),
 							fragment,
 							descriptor: None,
 						}
-						.into())
+						.into());
+					}
+					let truncated = f.trunc();
+					let type_enum = T::type_enum();
+					let in_range = match type_enum {
+						Type::Uint1 => truncated >= 0.0 && truncated <= u8::MAX as f64,
+						Type::Uint2 => truncated >= 0.0 && truncated <= u16::MAX as f64,
+						Type::Uint4 => truncated >= 0.0 && truncated <= u32::MAX as f64,
+						Type::Uint8 => truncated >= 0.0 && truncated <= u64::MAX as f64,
+						Type::Uint16 => truncated >= 0.0 && truncated <= u128::MAX as f64,
+						_ => false,
+					};
+					if in_range {
+						Ok(cast_float_to_int::<T>(truncated))
 					} else {
-						Err(TypeError::InvalidNumberFormat {
-							target: T::type_enum(),
+						Err(TypeError::NumberOutOfRange {
+							target: type_enum,
 							fragment,
+							descriptor: None,
 						}
 						.into())
 					}
+				} else if value.contains("-") {
+					Err(TypeError::NumberOutOfRange {
+						target: T::type_enum(),
+						fragment,
+						descriptor: None,
+					}
+					.into())
+				} else {
+					Err(TypeError::InvalidNumberFormat {
+						target: T::type_enum(),
+						fragment,
+					}
+					.into())
 				}
-				IntErrorKind::PosOverflow => Err(TypeError::NumberOutOfRange {
-					target: T::type_enum(),
-					fragment,
-					descriptor: None,
-				}
-				.into()),
-				IntErrorKind::NegOverflow => Err(TypeError::NumberOutOfRange {
-					target: T::type_enum(),
-					fragment,
-					descriptor: None,
-				}
-				.into()),
-				IntErrorKind::Zero => Err(TypeError::InvalidNumberFormat {
-					target: T::type_enum(),
-					fragment,
-				}
-				.into()),
-				&_ => unreachable!("{}", err),
 			}
-		}
+			IntErrorKind::PosOverflow => Err(TypeError::NumberOutOfRange {
+				target: T::type_enum(),
+				fragment,
+				descriptor: None,
+			}
+			.into()),
+			IntErrorKind::NegOverflow => Err(TypeError::NumberOutOfRange {
+				target: T::type_enum(),
+				fragment,
+				descriptor: None,
+			}
+			.into()),
+			IntErrorKind::Zero => Err(TypeError::InvalidNumberFormat {
+				target: T::type_enum(),
+				fragment,
+			}
+			.into()),
+			&_ => unreachable!("{}", err),
+		},
 	}
 }
 
@@ -389,18 +376,15 @@ fn parse_float_generic<T>(fragment: Fragment) -> Result<T, Error>
 where
 	T: FromStr<Err = num::ParseFloatError> + Copy + TypeInfo + PartialEq + 'static,
 {
-	// Fragment is already owned, no conversion needed
 	let raw_value = fragment.text();
 
-	// Fast path: check if we need any string processing
 	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
 		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
-		(false, false) => Cow::Borrowed(raw_value), // Fast path -
-		// no processing
-		// needed
+		(false, false) => Cow::Borrowed(raw_value),
+
 		(true, false) => Cow::Borrowed(raw_value.trim()),
 		(false, true) => Cow::Owned(raw_value.replace('_', "")),
 		(true, true) => Cow::Owned(raw_value.trim().replace('_', "")),

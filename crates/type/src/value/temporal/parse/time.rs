@@ -8,18 +8,15 @@ use crate::{
 };
 
 pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
-	// Parse time in format HH:MM:SS[.sss[sss[sss]]][Z]
 	let fragment_value = fragment.text();
 	let mut time_str = fragment_value;
 
-	// Check for lowercase 'z' (invalid - must be uppercase 'Z')
 	if time_str.ends_with('z') {
-		// Calculate position of second component to report error
 		let parts: Vec<&str> = time_str.split(':').collect();
 		if parts.len() == 3 {
 			let hours_len = parts[0].len();
 			let minutes_len = parts[1].len();
-			let offset = hours_len + 1 + minutes_len + 1; // +1 for each colon
+			let offset = hours_len + 1 + minutes_len + 1;
 			let second_len = parts[2].len();
 			let sub_frag = fragment.sub_fragment(offset, second_len);
 			return Err(TypeError::Temporal {
@@ -29,14 +26,12 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 			}
 			.into());
 		}
-		// If format is wrong, fall through to normal error handling
 	}
 
 	if time_str.ends_with('Z') {
 		time_str = &time_str[..time_str.len() - 1];
 	}
 
-	// Split the time string to check format
 	let time_fragment_parts: Vec<&str> = time_str.split(':').collect();
 
 	if time_fragment_parts.len() != 3 {
@@ -48,7 +43,6 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 		.into());
 	}
 
-	// Check for empty time parts first (before format validation)
 	let mut offset = 0;
 	if time_fragment_parts[0].trim().is_empty() {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
@@ -59,7 +53,7 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 		}
 		.into());
 	}
-	offset += time_fragment_parts[0].len() + 1; // +1 for the colon
+	offset += time_fragment_parts[0].len() + 1;
 
 	if time_fragment_parts[1].trim().is_empty() {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[1].len());
@@ -70,7 +64,7 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 		}
 		.into());
 	}
-	offset += time_fragment_parts[1].len() + 1; // +1 for the colon
+	offset += time_fragment_parts[1].len() + 1;
 
 	if time_fragment_parts[2].trim().is_empty() {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
@@ -82,10 +76,8 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 		.into());
 	}
 
-	// Validate exactly 2 digits for HH:MM:SS format
 	offset = 0;
 
-	// Validate hour part (exactly 2 digits)
 	if time_fragment_parts[0].len() != 2 {
 		let frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
 		return Err(TypeError::Temporal {
@@ -97,9 +89,8 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 		}
 		.into());
 	}
-	offset += time_fragment_parts[0].len() + 1; // +1 for the colon
+	offset += time_fragment_parts[0].len() + 1;
 
-	// Validate minute part (exactly 2 digits)
 	if time_fragment_parts[1].len() != 2 {
 		let frag = fragment.sub_fragment(offset, time_fragment_parts[1].len());
 		return Err(TypeError::Temporal {
@@ -111,9 +102,8 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 		}
 		.into());
 	}
-	offset += time_fragment_parts[1].len() + 1; // +1 for the colon
+	offset += time_fragment_parts[1].len() + 1;
 
-	// Validate second part (exactly 2 digits before any fractional part)
 	let second_base = time_fragment_parts[2].split('.').next().unwrap();
 	if second_base.len() != 2 {
 		let frag = fragment.sub_fragment(offset, second_base.len());
@@ -127,7 +117,6 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 		.into());
 	}
 
-	// Reset offset calculation for parsing components
 	offset = 0;
 	let hour = time_fragment_parts[0].trim().parse::<u32>().map_err(|_| {
 		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
@@ -153,7 +142,6 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	})?;
 	offset += time_fragment_parts[1].len() + 1;
 
-	// Parse seconds and optional fractional seconds
 	let seconds_with_fraction = time_fragment_parts[2].trim();
 	let (second, nanosecond) = if seconds_with_fraction.contains('.') {
 		let second_parts: Vec<&str> = seconds_with_fraction.split('.').collect();
@@ -179,7 +167,6 @@ pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 		})?;
 		let fraction_str = second_parts[1];
 
-		// Pad or truncate fractional seconds to 9 digits (nanoseconds)
 		let padded_fraction = if fraction_str.len() < 9 {
 			format!("{:0<9}", fraction_str)
 		} else {

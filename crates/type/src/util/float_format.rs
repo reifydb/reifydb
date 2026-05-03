@@ -15,7 +15,7 @@ pub fn format_f64(v: f64) -> String {
 		return "0".to_string();
 	}
 	let s = v.to_string();
-	// Integer representations are exact and don't differ across platforms
+
 	if !s.contains('.') || count_significant_digits(&s) <= 15 {
 		return s;
 	}
@@ -29,10 +29,6 @@ pub fn format_f64(v: f64) -> String {
 	}
 }
 
-/// Format f32 with at most 7 significant digits for cross-platform consistency.
-///
-/// f32 has ~7.22 decimal digits of precision. By limiting to 7 significant digits,
-/// we get identical output across platforms.
 pub fn format_f32(v: f32) -> String {
 	if !v.is_finite() {
 		return v.to_string();
@@ -41,7 +37,7 @@ pub fn format_f32(v: f32) -> String {
 		return "0".to_string();
 	}
 	let s = v.to_string();
-	// Integer representations are exact and don't differ across platforms
+
 	if !s.contains('.') || count_significant_digits(&s) <= 7 {
 		return s;
 	}
@@ -57,7 +53,7 @@ pub fn format_f32(v: f32) -> String {
 
 fn count_significant_digits(s: &str) -> usize {
 	let s = s.strip_prefix('-').unwrap_or(s);
-	// Remove exponent part if present
+
 	let s = if let Some(pos) = s.find(['e', 'E']) {
 		&s[..pos]
 	} else {

@@ -85,28 +85,23 @@ impl QueryNode for NaturalJoinNode {
 		let left_rows = left_columns.row_count();
 		let left_row_numbers = left_columns.row_numbers.to_vec();
 
-		// Find common columns between left and right columns
 		let common_columns = Self::find_common_columns(&left_columns, &right_columns);
 
 		if common_columns.is_empty() {
 			return Ok(None);
 		}
 
-		// Build set of right column indices to exclude (common columns)
 		let excluded_right_cols: HashSet<usize> =
 			common_columns.iter().map(|(_, _, right_idx)| *right_idx).collect();
 
-		// Convert to Vec for resolve_column_names
 		let excluded_indices: Vec<usize> = excluded_right_cols.iter().copied().collect();
 
-		// Resolve column names, excluding common columns from right
 		let resolved =
 			resolve_column_names(&left_columns, &right_columns, &self.alias, Some(&excluded_indices));
 
 		let mut result_rows = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
-		// Build hash table on right-side common column values
 		let right_col_indices: Vec<usize> = common_columns.iter().map(|(_, _, ri)| *ri).collect();
 		let mut hash_buf = Vec::with_capacity(256);
 		let mut hash_table: HashMap<Hash128, Vec<usize>> = HashMap::new();
@@ -130,13 +125,11 @@ impl QueryNode for NaturalJoinNode {
 				for &j in indices {
 					let right_row = right_columns.get_row(j);
 
-					// Verify actual equality (collision safety)
 					let all_match = common_columns.iter().all(|(_, left_idx, right_idx)| {
 						left_row[*left_idx] == right_row[*right_idx]
 					});
 
 					if all_match {
-						// Combine rows, excluding duplicate columns from right
 						let mut combined = left_row.clone();
 						for (idx, value) in right_row.iter().enumerate() {
 							if !excluded_right_cols.contains(&idx) {
@@ -152,10 +145,9 @@ impl QueryNode for NaturalJoinNode {
 				}
 			}
 
-			// Handle LEFT natural join - include unmatched left rows
 			if !matched && matches!(self.join_type, JoinType::Left) {
 				let mut combined = left_row.clone();
-				// Add undefined data for non-common right columns
+
 				let undefined_count = right_columns.len() - excluded_right_cols.len();
 				combined.extend(vec![Value::none(); undefined_count]);
 				result_rows.push(combined);
@@ -165,7 +157,6 @@ impl QueryNode for NaturalJoinNode {
 			}
 		}
 
-		// Create columns with conflict-resolved names
 		let names_refs: Vec<&str> = resolved.qualified_names.iter().map(|s| s.as_str()).collect();
 		let columns = if result_row_numbers.is_empty() {
 			Columns::from_rows(&names_refs, &result_rows)

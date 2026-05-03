@@ -18,8 +18,6 @@ use crate::{Result, error::CastError};
 pub(crate) struct NumberParser;
 
 impl NumberParser {
-	/// Parse a number to a specific target type with detailed error
-	/// handling and range checking
 	pub(crate) fn from_number(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
 		match &target {
 			Type::Boolean => Self::parse_bool(fragment, row_count),

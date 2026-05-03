@@ -16,7 +16,6 @@ use crate::{
 	system::{SystemCatalog, ids::vtable::*},
 };
 
-/// A batch of columnar data returned from virtual table queries
 #[derive(Debug)]
 pub struct Batch {
 	pub columns: Columns,
@@ -26,45 +25,31 @@ pub mod system;
 pub mod tables;
 pub mod user;
 
-/// Context passed to virtual table queries
-///
-/// Note: For pushdown optimization with expressions, use the extended context in the engine crate.
 pub enum VTableContext {
-	/// Basic query context with just parameters
 	Basic {
-		/// Query parameters
 		params: Params,
 	},
-	/// Pushdown optimization hints (without expression types to avoid circular deps)
+
 	PushDown {
-		/// Sort keys from order operations
 		order_by: Vec<SortKey>,
-		/// Limit from take operations
+
 		limit: Option<usize>,
-		/// Query parameters
+
 		params: Params,
 	},
 }
 
-/// Trait for virtual table instances that follow the volcano iterator pattern
 pub trait BaseVTable: Send + Sync {
-	/// Initialize the virtual table iterator with context
-	/// Called once before iteration begins
 	fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<()>;
 
-	/// Get the next batch of results (volcano iterator pattern)
 	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>>;
 
-	/// Get the table definition
 	fn vtable(&self) -> &VTable;
 }
 
-/// Registry for virtual tables (definitions only)
 pub struct VTableRegistry;
 
 impl VTableRegistry {
-	/// Find a virtual table by its ID
-	/// Returns None if the virtual table doesn't exist
 	pub fn find_vtable(_rx: &mut Transaction<'_>, id: VTableId) -> Result<Option<Arc<VTable>>> {
 		Ok(match id {
 			SEQUENCES => Some(SystemCatalog::get_system_sequences_table()),
@@ -141,9 +126,7 @@ impl VTableRegistry {
 		})
 	}
 
-	/// List all virtual tables
 	pub fn list_vtables(_rx: &mut Transaction<'_>) -> Result<Vec<Arc<VTable>>> {
-		// Return all registered virtual tables
 		Ok(vec![
 			SystemCatalog::get_system_sequences_table(),
 			SystemCatalog::get_system_namespaces_table(),

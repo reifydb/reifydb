@@ -44,7 +44,6 @@ impl<'bump> AstStatement<'bump> {
 		self.nodes.len()
 	}
 
-	/// Returns true if this statement contains any DDL nodes (CREATE, ALTER, DROP).
 	pub fn contains_ddl(&self) -> bool {
 		self.nodes.iter().any(|node| node.is_ddl())
 	}
@@ -269,7 +268,6 @@ macro_rules! ast_literal_accessor {
 }
 
 impl<'bump> Ast<'bump> {
-	/// Returns true if this AST node is a DDL statement (CREATE, ALTER, DROP).
 	pub fn is_ddl(&self) -> bool {
 		matches!(
 			self,
@@ -281,8 +279,6 @@ impl<'bump> Ast<'bump> {
 		)
 	}
 
-	/// Returns true if this AST node is a subscription DDL statement
-	/// (CREATE SUBSCRIPTION or DROP SUBSCRIPTION).
 	pub fn is_subscription_ddl(&self) -> bool {
 		matches!(self, Ast::Create(AstCreate::Subscription(_)) | Ast::Drop(AstDrop::Subscription(_)))
 	}
@@ -328,7 +324,6 @@ impl<'bump> Ast<'bump> {
 	ast_accessor!(Rownum, AstRownum<'bump>, is_rownum, as_rownum, "rownum");
 	ast_accessor!(Match, AstMatch<'bump>, is_match, as_match, "match");
 
-	// Keep is_block/as_block as aliases for Inline (backwards compat semantics)
 	pub fn is_block(&self) -> bool {
 		matches!(self, Ast::Inline(_))
 	}
@@ -892,11 +887,11 @@ pub struct AstVariant<'bump> {
 #[derive(Debug)]
 pub struct AstAssert<'bump> {
 	pub token: Token<'bump>,
-	/// Single expression for pipeline-compatible ASSERT (e.g. `FROM x | ASSERT { cond }`)
+
 	pub node: Option<BumpBox<'bump, Ast<'bump>>>,
-	/// RQL source text of the body for multi-statement or ASSERT ERROR blocks
+
 	pub body: Option<String>,
-	/// True when `ASSERT ERROR { ... }` syntax is used
+
 	pub expect_error: bool,
 	pub message: Option<Token<'bump>>,
 	pub rql: &'bump str,
@@ -987,8 +982,6 @@ pub struct AstPrimaryKey<'bump> {
 	pub columns: Vec<AstIndexColumn<'bump>>,
 }
 
-/// Generates a `fn token()` method for an enum where every variant contains
-/// a struct with a `token` field.
 macro_rules! impl_token_for_enum {
 	($enum_type:ident, $lt:lifetime, $( $variant:ident($inner:ty) ),+ $(,)?) => {
 		impl<$lt> $enum_type<$lt> {
@@ -1218,8 +1211,8 @@ pub struct AstInfix<'bump> {
 
 #[derive(Debug)]
 pub enum LetValue<'bump> {
-	Expression(BumpBox<'bump, Ast<'bump>>), // scalar/column expression
-	Statement(AstStatement<'bump>),         // FROM … | …
+	Expression(BumpBox<'bump, Ast<'bump>>),
+	Statement(AstStatement<'bump>),
 }
 
 #[derive(Debug)]
@@ -1256,7 +1249,6 @@ pub struct AstUpdate<'bump> {
 	pub returning: Option<Vec<Ast<'bump>>>,
 }
 
-/// Connector between join condition pairs
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum JoinConnector {
 	#[default]
@@ -1264,15 +1256,13 @@ pub enum JoinConnector {
 	Or,
 }
 
-/// A pair of expressions in a join using clause: (expr1, expr2)
 #[derive(Debug)]
 pub struct AstJoinExpressionPair<'bump> {
 	pub first: BumpBox<'bump, Ast<'bump>>,
 	pub second: BumpBox<'bump, Ast<'bump>>,
-	pub connector: Option<JoinConnector>, // None for last pair
+	pub connector: Option<JoinConnector>,
 }
 
-/// The using clause: using (a, b) and|or (c, d)
 #[derive(Debug)]
 pub struct AstUsingClause<'bump> {
 	pub token: Token<'bump>,
@@ -1301,7 +1291,7 @@ pub enum AstJoin<'bump> {
 		token: Token<'bump>,
 		with: AstSubQuery<'bump>,
 		join_type: Option<JoinType>,
-		alias: BumpFragment<'bump>, // Required alias (no 'as' keyword)
+		alias: BumpFragment<'bump>,
 		ttl: Option<AstTtl<'bump>>,
 		rql: &'bump str,
 	},
@@ -1681,11 +1671,10 @@ impl AstPolicyTargetType {
 
 #[derive(Debug)]
 pub enum AstPolicyScope<'bump> {
-	/// e.g. ON ns::object
 	Specific(Vec<BumpFragment<'bump>>),
-	/// e.g. ON ns (namespace-wide)
+
 	NamespaceWide(BumpFragment<'bump>),
-	/// SESSION POLICY (no ON clause)
+
 	Global,
 }
 
@@ -1729,7 +1718,6 @@ pub struct AstDropPolicy<'bump> {
 
 impl<'bump> AstVariable<'bump> {
 	pub fn name(&self) -> &str {
-		// Extract name from token value (skip the '$')
 		let text = self.token.value();
 		text.strip_prefix('$').unwrap_or(text)
 	}
@@ -1788,7 +1776,6 @@ pub struct AstElseIf<'bump> {
 	pub then_block: AstBlock<'bump>,
 }
 
-/// Window kind, parsed from the mandatory keyword after `window`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AstWindowKind {
 	Tumbling,
@@ -1818,7 +1805,6 @@ pub struct AstStatementExpression<'bump> {
 	pub expression: BumpBox<'bump, Ast<'bump>>,
 }
 
-/// Function parameter (always has $ prefix)
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstFunctionParameter<'bump> {
 	pub token: Token<'bump>,
@@ -1826,7 +1812,6 @@ pub struct AstFunctionParameter<'bump> {
 	pub type_annotation: Option<AstType<'bump>>,
 }
 
-/// Function definition
 #[derive(Debug)]
 pub struct AstDefFunction<'bump> {
 	pub token: Token<'bump>,
@@ -1836,23 +1821,20 @@ pub struct AstDefFunction<'bump> {
 	pub body: AstBlock<'bump>,
 }
 
-/// Return statement
 #[derive(Debug)]
 pub struct AstReturn<'bump> {
 	pub token: Token<'bump>,
 	pub value: Option<BumpBox<'bump, Ast<'bump>>>,
 }
 
-/// APPEND statement
 #[derive(Debug)]
 pub enum AstAppend<'bump> {
-	/// Imperative form: `APPEND $target FROM <source>`
 	IntoVariable {
 		token: Token<'bump>,
 		target: AstVariable<'bump>,
 		source: AstAppendSource<'bump>,
 	},
-	/// Query form: `APPEND { subquery }`
+
 	Query {
 		token: Token<'bump>,
 		with: AstSubQuery<'bump>,
@@ -1874,12 +1856,10 @@ impl<'bump> AstAppend<'bump> {
 	}
 }
 
-/// Source for an APPEND statement
 #[derive(Debug)]
 pub enum AstAppendSource<'bump> {
-	/// APPEND $x FROM table | FILTER ...
 	Statement(AstStatement<'bump>),
-	/// APPEND $x FROM [{...}]
+
 	Inline(AstList<'bump>),
 }
 
@@ -1890,13 +1870,12 @@ pub struct AstMatchArmDestructure<'bump> {
 
 #[derive(Debug)]
 pub enum AstMatchArm<'bump> {
-	/// Value arm: `value_expr [IF guard] => result_expr`
 	Value {
 		pattern: BumpBox<'bump, Ast<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
-	/// IS variant arm: `IS [ns.]Type::Variant [{ fields }] [IF guard] => result`
+
 	IsVariant {
 		namespace: Option<BumpFragment<'bump>>,
 		sumtype_name: BumpFragment<'bump>,
@@ -1905,21 +1884,20 @@ pub enum AstMatchArm<'bump> {
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
-	/// Simplified variant arm (no IS keyword, no type path):
-	///   VariantName [{ field1, field2, ... }] [IF guard] => result
+
 	Variant {
 		variant_name: BumpFragment<'bump>,
 		destructure: Option<AstMatchArmDestructure<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
-	/// Searched condition arm: `condition [IF guard] => result`
+
 	Condition {
 		condition: BumpBox<'bump, Ast<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
-	/// ELSE arm: `ELSE => result`
+
 	Else {
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
@@ -1932,7 +1910,6 @@ pub struct AstMatch<'bump> {
 	pub arms: Vec<AstMatchArm<'bump>>,
 }
 
-/// Closure expression: `($params) { body }`
 #[derive(Debug)]
 pub struct AstClosure<'bump> {
 	pub token: Token<'bump>,
@@ -1940,7 +1917,6 @@ pub struct AstClosure<'bump> {
 	pub body: AstBlock<'bump>,
 }
 
-/// CREATE EVENT - declares a typed event type (a sum type with is_event: true)
 #[derive(Debug)]
 pub struct AstCreateEvent<'bump> {
 	pub token: Token<'bump>,
@@ -1948,7 +1924,6 @@ pub struct AstCreateEvent<'bump> {
 	pub variants: Vec<AstVariant<'bump>>,
 }
 
-/// CREATE TAG - declares a tag type (a sum type with SumTypeKind::Tag)
 #[derive(Debug)]
 pub struct AstCreateTag<'bump> {
 	pub token: Token<'bump>,
@@ -1956,7 +1931,6 @@ pub struct AstCreateTag<'bump> {
 	pub variants: Vec<AstVariant<'bump>>,
 }
 
-/// CREATE HANDLER - registers a computation handler for a specific event variant
 #[derive(Debug)]
 pub struct AstCreateHandler<'bump> {
 	pub token: Token<'bump>,
@@ -1967,7 +1941,6 @@ pub struct AstCreateHandler<'bump> {
 	pub body_source: String,
 }
 
-/// CREATE MIGRATION - stores a named migration script in the database
 #[derive(Debug)]
 pub struct AstCreateMigration<'bump> {
 	pub token: Token<'bump>,
@@ -1976,21 +1949,18 @@ pub struct AstCreateMigration<'bump> {
 	pub rollback_body_source: Option<String>,
 }
 
-/// MIGRATE - applies pending migrations
 #[derive(Debug)]
 pub struct AstMigrate<'bump> {
 	pub token: Token<'bump>,
 	pub target: Option<String>,
 }
 
-/// ROLLBACK MIGRATION - rolls back applied migrations
 #[derive(Debug)]
 pub struct AstRollbackMigration<'bump> {
 	pub token: Token<'bump>,
 	pub target: Option<String>,
 }
 
-/// DISPATCH - fires all handlers registered for the specified event variant
 #[derive(Debug)]
 pub struct AstDispatch<'bump> {
 	pub token: Token<'bump>,

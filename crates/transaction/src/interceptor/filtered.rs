@@ -74,10 +74,6 @@ use super::{
 	},
 };
 
-/// Macro to generate filtered interceptor wrapper types.
-///
-/// The 4-arg form accesses the entity name via `ctx.$entity_field.name` (for struct types).
-/// The 5-arg form accesses it via `ctx.$entity_field.$name_method()` (for enum types like Namespace).
 macro_rules! define_filtered_interceptor {
 	(
 		$wrapper_name:ident,
@@ -85,7 +81,6 @@ macro_rules! define_filtered_interceptor {
 		$context_type:ident,
 		$entity_field:ident
 	) => {
-		/// Filtered interceptor wrapper that checks entity name before executing.
 		pub struct $wrapper_name<F>
 		where
 			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
@@ -141,7 +136,6 @@ macro_rules! define_filtered_interceptor {
 		$entity_field:ident,
 		$name_method:ident
 	) => {
-		/// Filtered interceptor wrapper that checks entity name before executing.
 		pub struct $wrapper_name<F>
 		where
 			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,

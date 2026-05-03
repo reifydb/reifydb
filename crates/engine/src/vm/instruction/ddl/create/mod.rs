@@ -35,10 +35,6 @@ pub mod tag;
 pub mod test;
 pub mod transactional;
 
-/// Creates a flow for a deferred view.
-///
-/// The flow entry is created first to obtain a FlowId, then the flow nodes
-/// and edges are compiled and persisted with that same FlowId.
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,

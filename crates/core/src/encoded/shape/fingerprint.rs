@@ -8,10 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::encoded::shape::RowShapeField;
 
-/// A fingerprint that uniquely identifies a shape layout.
-///
-/// This is an 8-byte hash stored in the header of every encoded row,
-/// allowing the shape to be identified without external metadata.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RowShapeFingerprint(pub Hash64);
@@ -25,31 +21,26 @@ impl Deref for RowShapeFingerprint {
 }
 
 impl RowShapeFingerprint {
-	/// Create a new shape fingerprint from a u64 value.
 	#[inline]
 	pub const fn new(value: u64) -> Self {
 		Self(Hash64(value))
 	}
 
-	/// Create a zero/empty fingerprint.
 	#[inline]
 	pub const fn zero() -> Self {
 		Self(Hash64(0))
 	}
 
-	/// Get the underlying u64 value.
 	#[inline]
 	pub const fn as_u64(&self) -> u64 {
 		self.0.0
 	}
 
-	/// Convert to little-endian bytes.
 	#[inline]
 	pub const fn to_le_bytes(&self) -> [u8; 8] {
 		self.0.0.to_le_bytes()
 	}
 
-	/// Create from little-endian bytes.
 	#[inline]
 	pub const fn from_le_bytes(bytes: [u8; 8]) -> Self {
 		Self(Hash64(u64::from_le_bytes(bytes)))
@@ -74,39 +65,19 @@ impl From<u64> for RowShapeFingerprint {
 	}
 }
 
-/// Compute a deterministic fingerprint for a shape based on its fields.
-///
-/// The fingerprint is computed by hashing a canonical binary representation
-/// of the fields. This ensures:
-/// - Same fields → same fingerprint (deterministic)
-/// - Different fields → different fingerprint (collision-resistant)
-///
-/// The canonical representation includes:
-/// - Number of fields (u16)
-/// - For each field:
-///   - Field name length (u16) + name bytes (UTF-8)
-///   - Base type (u8)
-///   - Constraint type (u8)
-///   - Constraint param1 (u32)
-///   - Constraint param2 (u32)
 pub fn compute_fingerprint(fields: &[RowShapeField]) -> RowShapeFingerprint {
-	// Estimate buffer size: 2 bytes for count + ~42 bytes per field average
 	let estimated_size = 2 + fields.len() * 42;
 	let mut buffer = Vec::with_capacity(estimated_size);
 
-	// Write field count as u16 (max 65535 fields)
 	let field_count = fields.len() as u16;
 	buffer.extend_from_slice(&field_count.to_le_bytes());
 
-	// Write each field in canonical order
 	for field in fields {
-		// Write name length and bytes
 		let name_bytes = field.name.as_bytes();
 		let name_len = name_bytes.len() as u16;
 		buffer.extend_from_slice(&name_len.to_le_bytes());
 		buffer.extend_from_slice(name_bytes);
 
-		// Write constraint info (base type + constraint type + params)
 		let ffi = field.constraint.to_ffi();
 		buffer.push(ffi.base_type);
 		buffer.push(ffi.constraint_type);

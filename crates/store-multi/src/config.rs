@@ -27,9 +27,6 @@ pub struct HotConfig {
 	pub storage: HotStorage,
 }
 
-/// Warm tier configuration.
-///
-/// Phase 1: SQLite-backed warm tier with periodic flush from hot.
 #[derive(Clone)]
 pub struct WarmConfig {
 	pub storage: WarmStorage,
@@ -59,9 +56,6 @@ impl WarmConfig {
 	}
 }
 
-/// Cold tier configuration.
-///
-/// Placeholder for future cold tier configuration.
 #[derive(Clone, Default)]
 pub struct ColdConfig;
 
@@ -69,7 +63,6 @@ pub struct ColdConfig;
 pub struct RetentionConfig {
 	pub hot: Duration,
 	pub warm: Duration,
-	// cold is forever (no eviction)
 }
 
 #[derive(Clone, Debug)]
@@ -82,8 +75,8 @@ pub struct MergeConfig {
 impl Default for RetentionConfig {
 	fn default() -> Self {
 		Self {
-			hot: Duration::from_secs(300),   // 5 minutes
-			warm: Duration::from_secs(3600), // 1 hour
+			hot: Duration::from_secs(300),
+			warm: Duration::from_secs(3600),
 		}
 	}
 }

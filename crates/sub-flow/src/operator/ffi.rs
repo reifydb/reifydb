@@ -39,57 +39,34 @@ use crate::{
 	transaction::{FlowTransaction, slot::PersistFn},
 };
 
-// One scratch arena per OS thread. Rayon worker threads each have their own,
-// so there is no cross-thread sharing even on the transactional par_iter path.
-// The arena is reset at the start of each new txn (in `ensure_txn_setup`)
-// rather than at txn end, which is equivalent because `apply` always returns
-// before the next txn begins.
 thread_local! {
 	static FFI_MARSHAL_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
 }
 
-/// Send-safe wrapper around `*mut c_void` for the guest instance pointer.
-/// The pointer is opaque to Rust but the FFI ops it backs are guaranteed
-/// thread-safe by the FFI ABI contract (operators are accessed serially
-/// per their FFIOperator host wrapper).
 #[derive(Clone, Copy)]
 struct SendableInstance(*mut c_void);
 unsafe impl Send for SendableInstance {}
 unsafe impl Sync for SendableInstance {}
 
-/// FFI operator that wraps an external operator implementation
 pub struct FFIOperator {
-	/// Operator descriptor from the FFI library
 	descriptor: OperatorDescriptorFFI,
-	/// Virtual function table for calling FFI functions
+
 	vtable: OperatorVTableFFI,
-	/// Pointer to the FFI operator instance
+
 	instance: *mut c_void,
-	/// ID for this operator
+
 	operator_id: FlowNodeId,
-	/// Executor for RQL execution via FFI callbacks
+
 	executor: Executor,
-	/// Per-instance output builder registry. The guest builds output
-	/// columns via `BuilderCallbacks` (acquire/data_ptr/commit/emit_diff);
-	/// after the vtable call returns the host drains accumulated diffs
-	/// from this registry to assemble the output `Change`. See
-	/// `crates/sub-flow/src/ffi/callbacks/builder.rs`.
+
 	builder_registry: BuilderRegistry,
-	/// Version of the last `FlowTransaction` for which the flush slot and
-	/// FFI arena were registered. Compared on every `apply`/`pull`/`tick`
-	/// so the idempotent registration calls are skipped after the first
-	/// invocation per txn. `u64::MAX` as sentinel (no txn yet).
+
 	last_registered_txn: Cell<u64>,
-	/// Pre-built FFI context. `operator_id` and `callbacks` (all static
-	/// function pointers) are written once in `new` and never change.
-	/// `txn_ptr` and `executor_ptr` are updated once per txn in
-	/// `ensure_txn_setup` and reused for every `apply`/`pull`/`tick` call
-	/// in that txn, avoiding a full struct rebuild on each invocation.
+
 	cached_ctx: UnsafeCell<ContextFFI>,
 }
 
 impl FFIOperator {
-	/// Create a new FFI operator
 	pub fn new(
 		descriptor: OperatorDescriptorFFI,
 		instance: *mut c_void,
@@ -116,7 +93,6 @@ impl FFIOperator {
 		}
 	}
 
-	/// Get the operator descriptor
 	pub(crate) fn descriptor(&self) -> &OperatorDescriptorFFI {
 		&self.descriptor
 	}
@@ -127,7 +103,7 @@ impl FFIOperator {
 			ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance, self.executor.clone())?;
 			self.last_registered_txn.set(txn_version);
 			// SAFETY: single-threaded actor; no aliasing with guest (vtable not
-			// yet called this txn).
+
 			let ctx = unsafe { &mut *self.cached_ctx.get() };
 			ctx.txn_ptr = txn as *mut _ as *mut c_void;
 			ctx.executor_ptr = &self.executor as *const _ as *const c_void;
@@ -138,27 +114,24 @@ impl FFIOperator {
 }
 
 // SAFETY: FFIOperator is only accessed from a single actor at a time.
-// The raw pointer and RefCell<Arena> are not shared across threads.
+
 unsafe impl Send for FFIOperator {}
 unsafe impl Sync for FFIOperator {}
 
 impl Drop for FFIOperator {
 	fn drop(&mut self) {
-		// Call the destroy function from the vtable to clean up the FFI operator instance
 		if !self.instance.is_null() {
 			unsafe { (self.vtable.destroy)(self.instance) };
 		}
 	}
 }
 
-/// Marshal a flow change to FFI format
 #[inline]
 #[instrument(name = "flow::ffi::marshal", level = "trace", skip_all)]
 fn marshal_input(arena: &mut Arena, change: &Change) -> ChangeFFI {
 	arena.marshal_change(change)
 }
 
-/// Call the FFI vtable apply function
 #[inline]
 #[instrument(name = "flow::ffi::vtable_call", level = "trace", skip_all, fields(operator_id = operator_id.0))]
 fn call_vtable(
@@ -186,16 +159,6 @@ fn call_vtable(
 	}
 }
 
-/// Ensure this FFI op has a state-flush slot registered in the txn cache.
-///
-/// Called at the top of every `apply`/`pull`/`tick`. Idempotent within a
-/// txn: the slot is only created on first access. The slot's persist
-/// closure (run at `flush_operator_states` time) constructs a fresh
-/// `ContextFFI` and invokes `vtable.flush_state` on the guest instance.
-///
-/// Marks the slot dirty unconditionally so commit always calls
-/// `flush_state`. Most FFI ops have a default no-op `flush_state` so this
-/// is cheap; stateful ops drain their `StateCache` dirty list there.
 fn ensure_flush_slot(
 	txn: &mut FlowTransaction,
 	operator_id: FlowNodeId,
@@ -229,7 +192,7 @@ fn ensure_flush_slot(
 				}
 			}
 		});
-		// Slot value is unused for FFI ops; we only need the persist hook.
+
 		Ok(((), persist))
 	})?;
 	txn.mark_state_dirty(operator_id);
@@ -249,12 +212,8 @@ impl Operator for FFIOperator {
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		self.ensure_txn_setup(txn)?;
 
-		// Reset the arena before each call so scaffolding memory is bounded
-		// to one call's worth regardless of how many changes flow through
-		// this txn. Bumpalo keeps the chunk after reset, so after the first
-		// call this is a single pointer write with no system allocation.
 		// SAFETY: single-threaded per operator; no live pointers from a prior
-		// call exist at this point (apply() returns before the next call).
+
 		FFI_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 		let ffi_input = FFI_MARSHAL_ARENA.with(|cell| marshal_input(unsafe { &mut *cell.get() }, &change));
 
@@ -268,7 +227,6 @@ impl Operator for FFIOperator {
 		});
 
 		if result_code != 0 {
-			// Drop any orphaned builder slots.
 			let _ = self.builder_registry.drain();
 			return Err(
 				FFIError::Other(format!("FFI operator apply failed with code: {}", result_code)).into()
@@ -299,9 +257,6 @@ impl Operator for FFIOperator {
 			);
 		}
 
-		// `pull` emits a single Insert-shaped diff whose `post` columns are the
-		// rows the guest fetched. Use the first emitted diff's `post` (or `pre`
-		// for Remove) as the result.
 		let mut diffs = self.builder_registry.drain();
 		let columns = if let Some(first) = diffs.drain(..).next() {
 			first.post.or(first.pre).unwrap_or_else(Columns::empty)
@@ -334,14 +289,10 @@ impl Operator for FFIOperator {
 		}
 
 		if result_code == 1 {
-			// No output: drain in case the guest acquired without emitting.
 			let _ = self.builder_registry.drain();
 			return Ok(None);
 		}
 
-		// Tick has no carried txn version; use timestamp nanos as the version
-		// surrogate (consistent with other tick-driven flows in this codebase).
-		// Ordering-sensitive callers rely on `changed_at` instead.
 		let version = CommitVersion(timestamp_nanos);
 		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, tick.now);
 		Span::current().record("output_diff_count", output_change.diffs.len());
@@ -378,8 +329,6 @@ impl FFIOperator {
 	}
 }
 
-/// Collect emitted diffs from the registry into a `Change` originating from
-/// this operator's flow node.
 fn drain_emitted_diffs(
 	registry: &BuilderRegistry,
 	operator_id: FlowNodeId,

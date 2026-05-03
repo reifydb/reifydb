@@ -4,8 +4,6 @@
 use reifydb_type::value::r#type::Type;
 use serde::{Deserialize, Serialize};
 
-/// A response frame containing query/command results, in the JSON wire shape
-/// consumed by both server responses and client deserialization.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseFrame {
 	#[serde(default)]
@@ -17,7 +15,6 @@ pub struct ResponseFrame {
 	pub columns: Vec<ResponseColumn>,
 }
 
-/// A column in a response frame.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseColumn {
 	pub name: String,

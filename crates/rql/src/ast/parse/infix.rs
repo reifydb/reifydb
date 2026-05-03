@@ -17,7 +17,6 @@ impl<'bump> Parser<'bump> {
 		let precedence = self.current_precedence()?;
 		let operator = self.parse_infix_operator()?;
 
-		// Determine the right side based on operator type
 		let right = match &operator {
 			InfixOperator::Call(token) => Ast::Tuple(self.parse_tuple_call(*token)?),
 			InfixOperator::As(_) => self.parse_node(Precedence::None)?,

@@ -7,7 +7,6 @@ use reifydb_type::{error::Diagnostic, fragment::Fragment};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string};
 
-/// WebSocket response envelope (matches client's `Response`)
 #[derive(Debug, Serialize)]
 pub struct Response {
 	pub id: String,
@@ -15,7 +14,6 @@ pub struct Response {
 	pub payload: ResponsePayload,
 }
 
-/// Response payload variants (matches client's `ResponsePayload`)
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum ResponsePayload {
@@ -34,19 +32,18 @@ pub enum ResponsePayload {
 
 #[derive(Debug, Serialize)]
 pub struct AuthResponse {
-	/// Authentication status: "ok" for token validation, "authenticated" for login, "challenge" for multi-step.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub status: Option<String>,
-	/// Session token (present when login succeeds).
+
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub token: Option<String>,
-	/// Identity ID (present when login succeeds).
+
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub identity: Option<String>,
-	/// Challenge ID (present for multi-step auth).
+
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub challenge_id: Option<String>,
-	/// Challenge payload (present for multi-step auth).
+
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub payload: Option<HashMap<String, String>>,
 }
@@ -122,7 +119,6 @@ pub struct LogoutResponse {
 	pub status: String,
 }
 
-/// Server-initiated push message (matches client's `ServerPush`)
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum ServerPush {
@@ -132,7 +128,6 @@ pub enum ServerPush {
 	BatchClosed(BatchClosedPayload),
 }
 
-/// Change notification payload
 #[derive(Debug, Serialize)]
 pub struct ChangePayload {
 	pub subscription_id: String,
@@ -140,14 +135,12 @@ pub struct ChangePayload {
 	pub body: JsonValue,
 }
 
-/// Batch-change push payload - one envelope containing deltas from N members.
 #[derive(Debug, Serialize)]
 pub struct BatchChangePayload {
 	pub batch_id: String,
 	pub entries: Vec<BatchChangeEntry>,
 }
 
-/// Per-source entry inside a BatchChange envelope.
 #[derive(Debug, Serialize)]
 pub struct BatchChangeEntry {
 	pub subscription_id: String,
@@ -155,14 +148,12 @@ pub struct BatchChangeEntry {
 	pub body: JsonValue,
 }
 
-/// One batch member has been closed (upstream ended); remaining members stay alive.
 #[derive(Debug, Serialize)]
 pub struct BatchMemberClosedPayload {
 	pub batch_id: String,
 	pub subscription_id: String,
 }
 
-/// The entire batch has been closed.
 #[derive(Debug, Serialize)]
 pub struct BatchClosedPayload {
 	pub batch_id: String,
@@ -342,7 +333,6 @@ impl Response {
 		}
 	}
 
-	/// Create an error response for a rejected request (auth failure, rate limit, etc.).
 	pub fn rejected(id: impl Into<String>, code: impl Into<String>, message: impl Into<String>) -> Self {
 		Self::internal_error(id, code, message)
 	}

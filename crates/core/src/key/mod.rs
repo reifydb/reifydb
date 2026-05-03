@@ -318,10 +318,7 @@ impl Key {
 			| KeyKind::FlowNodeByFlow
 			| KeyKind::FlowEdge
 			| KeyKind::FlowEdgeByFlow
-			| KeyKind::FlowVersion => {
-				// These keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			| KeyKind::FlowVersion => None,
 			KeyKind::Dictionary => DictionaryKey::decode(key).map(Self::Dictionary),
 			KeyKind::DictionaryEntry => DictionaryEntryKey::decode(key).map(Self::DictionaryEntry),
 			KeyKind::DictionaryEntryIndex => {
@@ -335,22 +332,10 @@ impl Key {
 			KeyKind::NamespaceSumType => NamespaceSumTypeKey::decode(key).map(Self::NamespaceSumType),
 			KeyKind::Handler => HandlerKey::decode(key).map(Self::Handler),
 			KeyKind::NamespaceHandler => NamespaceHandlerKey::decode(key).map(Self::NamespaceHandler),
-			KeyKind::VariantHandler => {
-				// VariantHandler keys used directly via EncodableKey trait
-				None
-			}
-			KeyKind::Metric => {
-				// Storage tracker keys are used for internal persistence, not through Key enum
-				None
-			}
-			KeyKind::Subscription | KeyKind::SubscriptionColumn | KeyKind::SubscriptionRow => {
-				// Subscription storage keys have been removed (ephemeral subscriptions only)
-				None
-			}
-			KeyKind::Shape | KeyKind::RowShapeField => {
-				// Shape keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			KeyKind::VariantHandler => None,
+			KeyKind::Metric => None,
+			KeyKind::Subscription | KeyKind::SubscriptionColumn | KeyKind::SubscriptionRow => None,
+			KeyKind::Shape | KeyKind::RowShapeField => None,
 			KeyKind::Series => SeriesKey::decode(key).map(Self::Series),
 			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(key).map(Self::NamespaceSeries),
 			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(key).map(Self::SeriesMetadata),
@@ -360,39 +345,21 @@ impl Key {
 			KeyKind::GrantedRole => GrantedRoleKey::decode(key).map(Self::GrantedRole),
 			KeyKind::Policy => PolicyKey::decode(key).map(Self::Policy),
 			KeyKind::PolicyOp => PolicyOpKey::decode(key).map(Self::PolicyOp),
-			KeyKind::Migration | KeyKind::MigrationEvent => {
-				// Migration keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			KeyKind::Migration | KeyKind::MigrationEvent => None,
 			KeyKind::Token => TokenKey::decode(key).map(Self::Token),
-			KeyKind::ConfigStorage => {
-				// Config keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			KeyKind::ConfigStorage => None,
 			KeyKind::Source
 			| KeyKind::NamespaceSource
 			| KeyKind::Sink
 			| KeyKind::NamespaceSink
-			| KeyKind::SourceCheckpoint => {
-				// Source/Sink keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
-			KeyKind::RowTtl => {
-				// Ttl keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
-			KeyKind::OperatorTtl => {
-				// OperatorTtl keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			| KeyKind::SourceCheckpoint => None,
+			KeyKind::RowTtl => None,
+			KeyKind::OperatorTtl => None,
 			KeyKind::Procedure => ProcedureKey::decode(key).map(Self::Procedure),
 			KeyKind::NamespaceProcedure => NamespaceProcedureKey::decode(key).map(Self::NamespaceProcedure),
 			KeyKind::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
 			KeyKind::Binding => BindingKey::decode(key).map(Self::Binding),
-			KeyKind::NamespaceBinding => {
-				// NamespaceBinding keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			KeyKind::NamespaceBinding => None,
 		}
 	}
 }

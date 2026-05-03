@@ -8,35 +8,29 @@ use reifydb_type::{
 	value::frame::{column::FrameColumn, frame::Frame},
 };
 
-/// Frame renderer with various rendering options
 pub struct FrameRenderer;
 
 impl FrameRenderer {
-	/// Render the frame with all features enabled (including encoded numbers if present)
 	pub fn render_full(frame: &Frame) -> Result<String, fmt::Error> {
 		let mut output = String::new();
 		Self::render_full_to(frame, &mut output)?;
 		Ok(output)
 	}
 
-	/// Render the frame without encoded numbers
 	pub fn render_without_row_numbers(frame: &Frame) -> Result<String, fmt::Error> {
 		let mut output = String::new();
 		Self::render_without_row_numbers_to(frame, &mut output)?;
 		Ok(output)
 	}
 
-	/// Render the frame with all features to the given formatter
 	pub fn render_full_to(frame: &Frame, f: &mut dyn Write) -> fmt::Result {
 		Self::render_internal(frame, f, true)
 	}
 
-	/// Render the frame without encoded numbers to the given formatter
 	pub fn render_without_row_numbers_to(frame: &Frame, f: &mut dyn Write) -> fmt::Result {
 		Self::render_internal(frame, f, false)
 	}
 
-	/// Internal rendering implementation
 	fn render_internal(frame: &Frame, f: &mut dyn Write, include_row_numbers: bool) -> fmt::Result {
 		let row_count = frame.first().map_or(0, |c| c.data.len());
 		let has_row_numbers = include_row_numbers && !frame.row_numbers.is_empty();
@@ -57,12 +51,10 @@ impl FrameRenderer {
 			0
 		};
 
-		// Get the display order for regular columns
 		let column_order = Self::get_column_display_order(frame);
 
 		let mut col_widths = vec![0; col_count];
 
-		// Calculate widths for system columns
 		let mut sys_col_idx = 0;
 		if has_row_numbers {
 			col_widths[sys_col_idx] = Self::display_width("#rownum");
@@ -105,7 +97,6 @@ impl FrameRenderer {
 			}
 		}
 
-		// Add padding
 		for w in &mut col_widths {
 			*w += 2;
 		}
@@ -115,7 +106,6 @@ impl FrameRenderer {
 
 		let mut header = Vec::new();
 
-		// Add system column headers
 		let mut sys_idx = 0;
 		if has_row_numbers {
 			let w = col_widths[sys_idx];
@@ -146,7 +136,6 @@ impl FrameRenderer {
 		}
 		let _ = sys_idx;
 
-		// Add regular column headers
 		for (display_idx, &col_idx) in column_order.iter().enumerate() {
 			let col = &frame[col_idx];
 			let w = col_widths[row_num_col_idx + display_idx];
@@ -164,7 +153,6 @@ impl FrameRenderer {
 		for row_numberx in 0..row_count {
 			let mut row = Vec::new();
 
-			// Add system column values
 			let mut sys_idx = 0;
 			if has_row_numbers {
 				let w = col_widths[sys_idx];
@@ -195,7 +183,6 @@ impl FrameRenderer {
 			}
 			let _ = sys_idx;
 
-			// Add regular column values
 			for (display_idx, &col_idx) in column_order.iter().enumerate() {
 				let col = &frame[col_idx];
 				let w = col_widths[row_num_col_idx + display_idx];
@@ -212,9 +199,6 @@ impl FrameRenderer {
 		writeln!(f, "{}", sep)
 	}
 
-	/// Calculate the display width of a string, handling newlines properly.
-	/// For strings with newlines, returns the width of the longest line.
-	/// For strings without newlines, returns the unicode display width.
 	fn display_width(s: &str) -> usize {
 		if s.contains('\n') {
 			s.lines().map(|line| line.width()).max().unwrap_or(0)
@@ -223,18 +207,14 @@ impl FrameRenderer {
 		}
 	}
 
-	/// Escape newlines and tabs in a string for single-line display.
-	/// Replaces '\n' with "\\n" and '\t' with "\\t".
 	fn escape_control_chars(s: &str) -> String {
 		s.replace('\n', "\\n").replace('\t', "\\t")
 	}
 
-	/// Create a column display order (no special handling needed since encoded numbers are separate)
 	fn get_column_display_order(frame: &Frame) -> Vec<usize> {
 		(0..frame.len()).collect()
 	}
 
-	/// Extract string value from column at given encoded index, with proper escaping
 	fn extract_string_value(col: &FrameColumn, row_numberx: usize) -> String {
 		let s = col.data.as_string(row_numberx);
 		Self::escape_control_chars(&s)

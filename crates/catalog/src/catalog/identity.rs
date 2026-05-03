@@ -29,22 +29,18 @@ impl Catalog {
 	pub fn find_identity_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Identity>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(ident) = TransactionalIdentityChanges::find_identity_by_name(admin, name) {
 					return Ok(Some(ident.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalIdentityChanges::is_identity_deleted_by_name(admin, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(ident) = self.materialized.find_identity_by_name_at(name, admin.version()) {
 					return Ok(Some(ident));
 				}
 
-				// 4. Fall back to storage
 				if let Some(ident) =
 					CatalogStore::find_identity_by_name(&mut Transaction::Admin(&mut *admin), name)?
 				{
@@ -83,24 +79,20 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Test(t) => {
-				// 1. Check transactional changes first
 				if let Some(ident) = TransactionalIdentityChanges::find_identity_by_name(t.inner, name)
 				{
 					return Ok(Some(ident.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalIdentityChanges::is_identity_deleted_by_name(t.inner, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(ident) = self.materialized.find_identity_by_name_at(name, t.inner.version())
 				{
 					return Ok(Some(ident));
 				}
 
-				// 4. Fall back to storage
 				if let Some(ident) = CatalogStore::find_identity_by_name(
 					&mut Transaction::Admin(&mut *t.inner),
 					name,
@@ -132,22 +124,18 @@ impl Catalog {
 	pub fn find_identity(&self, txn: &mut Transaction<'_>, identity: IdentityId) -> Result<Option<Identity>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(ident) = TransactionalIdentityChanges::find_identity(admin, identity) {
 					return Ok(Some(ident.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalIdentityChanges::is_identity_deleted(admin, identity) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(ident) = self.materialized.find_identity_at(identity, admin.version()) {
 					return Ok(Some(ident));
 				}
 
-				// 4. Fall back to storage
 				if let Some(ident) =
 					CatalogStore::find_identity(&mut Transaction::Admin(&mut *admin), identity)?
 				{
@@ -195,22 +183,18 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Test(t) => {
-				// 1. Check transactional changes first
 				if let Some(ident) = TransactionalIdentityChanges::find_identity(t.inner, identity) {
 					return Ok(Some(ident.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalIdentityChanges::is_identity_deleted(t.inner, identity) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(ident) = self.materialized.find_identity_at(identity, t.inner.version()) {
 					return Ok(Some(ident));
 				}
 
-				// 4. Fall back to storage
 				if let Some(ident) =
 					CatalogStore::find_identity(&mut Transaction::Admin(&mut *t.inner), identity)?
 				{
@@ -258,7 +242,6 @@ impl Catalog {
 
 	#[instrument(name = "catalog::identity::drop", level = "debug", skip(self, txn))]
 	pub fn drop_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
-		// Get the identity def before dropping for change tracking
 		if let Some(ident) = CatalogStore::find_identity(&mut Transaction::Admin(&mut *txn), identity)? {
 			CatalogStore::drop_identity(txn, identity)?;
 			txn.track_identity_deleted(ident)?;
@@ -397,22 +380,18 @@ impl Catalog {
 	pub fn find_role(&self, txn: &mut Transaction<'_>, role_id: RoleId) -> Result<Option<Role>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(role) = TransactionalRoleChanges::find_role(admin, role_id) {
 					return Ok(Some(role.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalRoleChanges::is_role_deleted(admin, role_id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(role) = self.materialized.find_role_at(role_id, admin.version()) {
 					return Ok(Some(role));
 				}
 
-				// 4. Fall back to storage
 				if let Some(role) =
 					CatalogStore::find_role(&mut Transaction::Admin(&mut *admin), role_id)?
 				{
@@ -451,22 +430,18 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Test(t) => {
-				// 1. Check transactional changes first
 				if let Some(role) = TransactionalRoleChanges::find_role(t.inner, role_id) {
 					return Ok(Some(role.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalRoleChanges::is_role_deleted(t.inner, role_id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(role) = self.materialized.find_role_at(role_id, t.inner.version()) {
 					return Ok(Some(role));
 				}
 
-				// 4. Fall back to storage
 				if let Some(role) =
 					CatalogStore::find_role(&mut Transaction::Admin(&mut *t.inner), role_id)?
 				{
@@ -546,7 +521,6 @@ impl Catalog {
 				let mut names = Vec::new();
 				let mut seen_roles = HashSet::new();
 
-				// 1. Check transactional granted-role changes first
 				for ir in TransactionalGrantedRoleChanges::find_granted_roles_for_identity(
 					admin, identity,
 				) {
@@ -565,7 +539,6 @@ impl Catalog {
 					}
 				}
 
-				// 2. Check materialized granted-roles
 				for ir in self.materialized.find_granted_roles_at(identity, version) {
 					if !seen_roles.contains(&ir.role_id)
 						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
@@ -583,7 +556,6 @@ impl Catalog {
 				let mut names = Vec::new();
 				let mut seen_roles = HashSet::new();
 
-				// 1. Check transactional granted-role changes first
 				for ir in TransactionalGrantedRoleChanges::find_granted_roles_for_identity(
 					t.inner, identity,
 				) {
@@ -602,7 +574,6 @@ impl Catalog {
 					}
 				}
 
-				// 2. Check materialized granted-roles
 				for ir in self.materialized.find_granted_roles_at(identity, version) {
 					if !seen_roles.contains(&ir.role_id)
 						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(

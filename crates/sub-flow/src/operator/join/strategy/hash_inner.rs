@@ -17,7 +17,6 @@ use crate::{operator::join::state::JoinSide, transaction::FlowTransaction};
 pub(crate) struct InnerHashJoin;
 
 impl InnerHashJoin {
-	/// Handle insert for rows with undefined join keys (no output for inner join)
 	pub(crate) fn handle_insert_undefined(
 		&self,
 		_txn: &mut FlowTransaction,
@@ -25,11 +24,9 @@ impl InnerHashJoin {
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		// Undefined keys produce no output in inner join
 		Ok(Vec::new())
 	}
 
-	/// Handle remove for rows with undefined join keys (no output for inner join)
 	pub(crate) fn handle_remove_undefined(
 		&self,
 		_txn: &mut FlowTransaction,
@@ -37,11 +34,9 @@ impl InnerHashJoin {
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		// Undefined keys produce no output in inner join
 		Ok(Vec::new())
 	}
 
-	/// Handle update for rows with undefined join keys (no output for inner join)
 	pub(crate) fn handle_update_undefined(
 		&self,
 		_txn: &mut FlowTransaction,
@@ -50,11 +45,9 @@ impl InnerHashJoin {
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		// Undefined keys produce no output in inner join
 		Ok(Vec::new())
 	}
 
-	/// Handle insert for rows with defined join keys (batched by key)
 	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -69,7 +62,6 @@ impl InnerHashJoin {
 
 		let mut result = Vec::new();
 
-		// Add all rows to state first
 		match ctx.side {
 			JoinSide::Left => {
 				add_to_state_entry_batch(txn, &mut ctx.state.left, key_hash, post, indices)?;
@@ -79,7 +71,6 @@ impl InnerHashJoin {
 			}
 		}
 
-		// Then emit all joined rows in one batch
 		let emit_ctx = JoinEmitContext {
 			opposite_store: match ctx.side {
 				JoinSide::Left => &ctx.state.right,
@@ -100,7 +91,6 @@ impl InnerHashJoin {
 		Ok(result)
 	}
 
-	/// Handle remove for rows with defined join keys (batched by key)
 	pub(crate) fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
@@ -115,7 +105,6 @@ impl InnerHashJoin {
 
 		let mut result = Vec::new();
 
-		// Clean up row number mappings for left rows
 		if matches!(ctx.side, JoinSide::Left) {
 			for &idx in indices {
 				let row_number = pre.row_numbers[idx];
@@ -123,7 +112,6 @@ impl InnerHashJoin {
 			}
 		}
 
-		// First emit all remove diffs in one batch
 		let emit_ctx = JoinEmitContext {
 			opposite_store: match ctx.side {
 				JoinSide::Left => &ctx.state.right,
@@ -141,7 +129,6 @@ impl InnerHashJoin {
 			result.push(diff);
 		}
 
-		// Then remove all rows from state
 		for &idx in indices {
 			let row_number = pre.row_numbers[idx];
 			match ctx.side {
@@ -170,7 +157,6 @@ impl InnerHashJoin {
 			return Ok(Vec::new());
 		}
 
-		// Key changed: treat as remove + insert.
 		if keys.pre != keys.post {
 			let mut result = self.handle_remove(txn, pre, indices, keys.pre, ctx)?;
 			result.extend(self.handle_insert(txn, post, indices, keys.post, ctx)?);

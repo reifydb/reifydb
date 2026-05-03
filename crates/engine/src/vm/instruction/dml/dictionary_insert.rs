@@ -53,7 +53,6 @@ pub(crate) fn insert_dictionary(
 		return_error!(dictionary_not_found(fragment.clone(), namespace_name, dictionary_name,));
 	};
 
-	// No resolved source needed for dictionary insert - dictionary has fixed (id, value) shape
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,
@@ -65,16 +64,13 @@ pub(crate) fn insert_dictionary(
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
-	// Initialize the operator before execution
 	input_node.initialize(txn, &execution_context)?;
 
-	// Collect all inserted (id, value) pairs
 	let mut ids: Vec<Value> = Vec::new();
 	let mut values: Vec<Value> = Vec::new();
 	let mut mutable_context = (*execution_context).clone();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-		// Enforce write policies before processing rows
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
 			namespace_name,
@@ -87,26 +83,20 @@ pub(crate) fn insert_dictionary(
 		let row_count = columns.row_count();
 
 		for row_idx in 0..row_count {
-			// Dictionary expects a single value column - find it
-			// The input could have columns like "value" or just the first column
 			let value = if let Some(value_column) = columns.iter().find(|col| col.name() == "value") {
 				value_column.data().get_value(row_idx)
 			} else if let Some(first_column) = columns.iter().next() {
-				// Use first column if no explicit "value" column
 				first_column.data().get_value(row_idx)
 			} else {
 				Value::none()
 			};
 
-			// Skip undefined values
 			if matches!(value, Value::None { .. }) {
 				continue;
 			}
 
-			// Coerce value to dictionary's value_type
 			let coerced_value = coerce_value_to_dictionary_type(value, dictionary.value_type.clone())?;
 
-			// Insert into dictionary
 			let entry_id = txn.insert_into_dictionary(&dictionary, &coerced_value)?;
 
 			let id_value = match entry_id {
@@ -122,7 +112,6 @@ pub(crate) fn insert_dictionary(
 		}
 	}
 
-	// If RETURNING clause is present, evaluate expressions against inserted rows
 	if let Some(returning_exprs) = &plan.returning {
 		if ids.is_empty() {
 			return evaluate_returning(services, symbols, returning_exprs, Columns::empty());
@@ -133,9 +122,7 @@ pub(crate) fn insert_dictionary(
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
-	// Return result with inserted entries
 	if ids.is_empty() {
-		// No entries inserted - return empty result
 		return Ok(Columns::new(vec![
 			ColumnWithName::new(
 				Fragment::internal("namespace"),
@@ -149,10 +136,8 @@ pub(crate) fn insert_dictionary(
 		]));
 	}
 
-	// Build id column based on dictionary's id_type
 	let id_column = build_id_column(&ids, dictionary.id_type)?;
 
-	// Build value column based on dictionary's value_type
 	let value_column = build_value_column(&values, dictionary.value_type)?;
 
 	Ok(Columns::new(vec![
@@ -169,11 +154,8 @@ pub(crate) fn insert_dictionary(
 	]))
 }
 
-/// Coerce a value to the dictionary's value_type
 fn coerce_value_to_dictionary_type(value: Value, target_type: Type) -> Result<Value> {
-	// Simple coercion - for now just validate type matches or do basic conversions
 	match (&value, target_type) {
-		// Exact type match
 		(Value::Utf8(_), Type::Utf8) => Ok(value),
 		(Value::Int1(_), Type::Int1) => Ok(value),
 		(Value::Int2(_), Type::Int2) => Ok(value),
@@ -197,14 +179,10 @@ fn coerce_value_to_dictionary_type(value: Value, target_type: Type) -> Result<Va
 		(Value::Blob(_), Type::Blob) => Ok(value),
 		(Value::Decimal(_), Type::Decimal) => Ok(value),
 		// TODO: Add more coercion cases as needed
-		_ => {
-			// For now, return the value as-is and let the storage handle it
-			Ok(value)
-		}
+		_ => Ok(value),
 	}
 }
 
-/// Build the ID column based on the dictionary's id_type
 fn build_id_column(ids: &[Value], id_type: Type) -> Result<ColumnWithName> {
 	let data = match id_type {
 		Type::Uint1 => {
@@ -258,7 +236,6 @@ fn build_id_column(ids: &[Value], id_type: Type) -> Result<ColumnWithName> {
 			ColumnBuffer::uint16(vals)
 		}
 		_ => {
-			// Fallback to uint8
 			let vals: Vec<u64> = ids
 				.iter()
 				.map(|v| match v {
@@ -276,7 +253,6 @@ fn build_id_column(ids: &[Value], id_type: Type) -> Result<ColumnWithName> {
 	})
 }
 
-/// Build the value column based on the dictionary's value_type
 fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithName> {
 	let data = match value_type {
 		Type::Utf8 => {
@@ -370,7 +346,6 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 			ColumnBuffer::uint8(vals)
 		}
 		_ => {
-			// Fallback to string representation
 			let vals: Vec<String> = values.iter().map(|v| format!("{:?}", v)).collect();
 			ColumnBuffer::utf8(vals)
 		}

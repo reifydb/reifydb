@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system flow edge information
 pub struct SystemFlowEdges {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

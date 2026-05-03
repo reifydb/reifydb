@@ -21,8 +21,6 @@ use tracing::instrument;
 
 use crate::{CatalogStore, Result, catalog::Catalog, error::CatalogError, materialized::MaterializedCatalog};
 
-/// Result of resolving a qualified procedure name.
-/// Distinguishes between locally-defined procedures and those in remote namespaces.
 #[derive(Debug, Clone)]
 pub enum ResolvedProcedure {
 	Local(Procedure),
@@ -30,14 +28,10 @@ pub enum ResolvedProcedure {
 		address: String,
 		token: Option<String>,
 	},
-	/// Test procedure - always local, only callable from test context
+
 	Test(Procedure),
 }
 
-/// Procedure creation specification for the Catalog API.
-/// Only persistent variants (Rql, Test) can be created via DDL. Native/Ffi/Wasm
-/// procedures enter the catalog through `Catalog::register_ephemeral_procedure`,
-/// driven by the runtime registry on every boot.
 #[derive(Debug, Clone)]
 pub enum ProcedureToCreate {
 	Rql {
@@ -96,17 +90,14 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(procedure) = TransactionalProcedureChanges::find_procedure(admin, id) {
 					return Ok(Some(procedure.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalProcedureChanges::is_procedure_deleted(admin, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(procedure) = self.materialized.find_procedure_at(id, admin.version()) {
 					return Ok(Some(procedure));
 				}
@@ -120,17 +111,14 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Test(t) => {
-				// 1. Check transactional changes first
 				if let Some(procedure) = TransactionalProcedureChanges::find_procedure(t.inner, id) {
 					return Ok(Some(procedure.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalProcedureChanges::is_procedure_deleted(t.inner, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(procedure) = self.materialized.find_procedure_at(id, t.inner.version()) {
 					return Ok(Some(procedure));
 				}
@@ -163,19 +151,16 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(procedure) =
 					TransactionalProcedureChanges::find_procedure_by_name(admin, namespace, name)
 				{
 					return Ok(Some(procedure.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalProcedureChanges::is_procedure_deleted_by_name(admin, namespace, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(procedure) =
 					self.materialized.find_procedure_by_name_at(namespace, name, admin.version())
 				{
@@ -193,20 +178,17 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Test(t) => {
-				// 1. Check transactional changes first
 				if let Some(procedure) =
 					TransactionalProcedureChanges::find_procedure_by_name(t.inner, namespace, name)
 				{
 					return Ok(Some(procedure.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalProcedureChanges::is_procedure_deleted_by_name(t.inner, namespace, name)
 				{
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(procedure) =
 					self.materialized.find_procedure_by_name_at(namespace, name, t.inner.version())
 				{
@@ -226,15 +208,10 @@ impl Catalog {
 		}
 	}
 
-	/// Splits a `::` qualified name (e.g., `"ns::proc"` or `"a::b::proc"`) into (namespace_path, entity_name).
-	/// Returns `None` if there's no `::` separator (unqualified name).
 	pub fn split_qualified_name(qualified_name: &str) -> Option<(String, &str)> {
 		qualified_name.rsplit_once("::").map(|(ns_part, entity_name)| (ns_part.to_string(), entity_name))
 	}
 
-	/// Convenience: splits "ns::name" into namespace + name, resolves namespace, then calls find_procedure_by_name.
-	/// Returns `ResolvedProcedure::Remote` when the namespace has a `grpc` address, without looking up the
-	/// procedure locally.
 	#[instrument(name = "catalog::procedure::find_by_qualified_name", level = "trace", skip(self, txn))]
 	pub fn find_procedure_by_qualified_name(
 		&self,
@@ -280,11 +257,9 @@ impl Catalog {
 				Ok(self.materialized.list_procedures_for_variant_at(variant, cmd.version()))
 			}
 			Transaction::Admin(admin) => {
-				// Check materialized catalog + transactional additions
 				let mut procedures =
 					self.materialized.list_procedures_for_variant_at(variant, admin.version());
 
-				// Also check transactional changes for newly created procedures with event binding
 				for change in &admin.changes.procedure {
 					if let Some(p) = &change.post
 						&& p.event_variant() == Some(variant) && !procedures
@@ -295,7 +270,6 @@ impl Catalog {
 					}
 				}
 
-				// Remove procedures deleted in this transaction
 				procedures.retain(|p| !admin.is_procedure_deleted(p.id()));
 
 				Ok(procedures)
@@ -304,11 +278,9 @@ impl Catalog {
 				Ok(self.materialized.list_procedures_for_variant_at(variant, qry.version()))
 			}
 			Transaction::Test(t) => {
-				// Check materialized catalog + transactional additions
 				let mut procedures =
 					self.materialized.list_procedures_for_variant_at(variant, t.inner.version());
 
-				// Also check transactional changes for newly created procedures with event binding
 				for change in &t.inner.changes.procedure {
 					if let Some(p) = &change.post
 						&& p.event_variant() == Some(variant) && !procedures
@@ -319,7 +291,6 @@ impl Catalog {
 					}
 				}
 
-				// Remove procedures deleted in this transaction
 				procedures.retain(|p| !t.inner.is_procedure_deleted(p.id()));
 
 				Ok(procedures)
@@ -337,8 +308,6 @@ impl Catalog {
 		Ok(procedure)
 	}
 
-	/// Create a procedure with a specific ID. Used for bootstrapping system procedures
-	/// that need a stable, predetermined id.
 	pub fn create_procedure_with_id(
 		&self,
 		txn: &mut AdminTransaction,
@@ -350,8 +319,6 @@ impl Catalog {
 		Ok(procedure)
 	}
 
-	/// Drop a persistent (Rql or Test) procedure. Refuses to drop ephemeral
-	/// (Native/Ffi/Wasm) procedures since those are owned by the runtime registry.
 	#[instrument(name = "catalog::procedure::drop", level = "debug", skip(self, txn))]
 	pub fn drop_procedure(&self, txn: &mut AdminTransaction, id: ProcedureId) -> Result<()> {
 		let pre = CatalogStore::get_procedure(&mut Transaction::Admin(&mut *txn), id)?;
@@ -368,10 +335,6 @@ impl Catalog {
 		Ok(())
 	}
 
-	/// Register an ephemeral (Native/Ffi/Wasm) procedure directly into the materialized
-	/// catalog. Bypasses transaction and storage - used by the bootstrap registrar to
-	/// repopulate the runtime-bound procedure tier on every boot. Refuses persistent
-	/// (Rql/Test) variants since those must go through `create_procedure`.
 	pub fn register_ephemeral_procedure(
 		catalog: &MaterializedCatalog,
 		version: CommitVersion,

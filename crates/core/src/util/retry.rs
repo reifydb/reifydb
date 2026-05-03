@@ -6,12 +6,10 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 };
 
-/// Error type that can represent both regular errors and panics
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RetryError<E> {
-	/// The original error from the function
 	Error(E),
-	/// A panic occurred during execution
+
 	Panic(String),
 }
 

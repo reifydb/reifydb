@@ -465,7 +465,6 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 							}
 						}
 					} else {
-						// Write zero bytes for the width
 						buf.extend(iter::repeat_n(0u8, disc as usize));
 					}
 				}

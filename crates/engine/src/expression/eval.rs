@@ -20,7 +20,6 @@ pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<ColumnWithName> 
 	let compiled = compile_expression(&compile_ctx, expr)?;
 	let column = compiled.execute(ctx)?;
 
-	// Ensures that result column data type matches the expected target column type
 	if let Some(ty) = ctx.target.as_ref().map(|c| c.column_type()) {
 		let data = cast_column_data(ctx, column.data(), ty, &expr.lazy_fragment())?;
 		Ok(ColumnWithName {

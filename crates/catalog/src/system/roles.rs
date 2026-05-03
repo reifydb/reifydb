@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::roles::*, vtable::ROLES};
 
-/// Returns the static definition for the system.roles virtual table
-/// This table exposes information about all roles in the database
 pub fn roles() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

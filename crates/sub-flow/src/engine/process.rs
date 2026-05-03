@@ -34,7 +34,6 @@ impl FlowEngine {
 
 				if let Some(node_registrations) = node_registrations {
 					for (registered_flow_id, node_id) in node_registrations {
-						// Only process the flow that was passed as parameter
 						if registered_flow_id != flow_id {
 							continue;
 						}
@@ -63,9 +62,6 @@ impl FlowEngine {
 				}
 			}
 			ChangeOrigin::Flow(node_id) => {
-				// Internal changes are already scoped to a specific node
-				// This path is used by the partition logic to directly process a node's changes
-				// Use the flow_id parameter for direct lookup instead of iterating all flows
 				let flow_and_node = self.flows.get(&flow_id).and_then(|flow| {
 					flow.get_node(&node_id).map(|node| (flow.clone(), node.clone()))
 				});
@@ -94,8 +90,6 @@ impl FlowEngine {
 		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
-		// Single-consumer path: try to take ownership of the Change without cloning.
-		// If another consumer still holds the Arc, fall back to a deep clone.
 		let owned = Arc::try_unwrap(change).unwrap_or_else(|arc| (*arc).clone());
 
 		let apply_start = self.runtime_context.clock.instant();
@@ -140,11 +134,9 @@ impl FlowEngine {
 		} else {
 			let (last, rest) = changes.split_last().unwrap();
 			for output_id in rest {
-				// Fan-out: cheap Arc::clone (refcount bump) rather than deep Vec<Diff>::clone.
 				self.process_change(txn, flow, flow.get_node(output_id).unwrap(), Arc::clone(&change))?;
 			}
-			// Last consumer takes the original Arc; if no one else retained it,
-			// `apply`'s `try_unwrap` succeeds and avoids the deep clone entirely.
+
 			self.process_change(txn, flow, flow.get_node(last).unwrap(), change)?;
 		}
 		Span::current().record("propagation_time_us", propagation_start.elapsed().as_micros() as u64);

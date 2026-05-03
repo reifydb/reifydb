@@ -9,15 +9,6 @@ use reifydb_type::{fragment::Fragment, params::Params, value::identity::Identity
 
 use super::{Context, sealed};
 
-/// Execution context for a function.
-///
-/// A function impl writes `impl Routine<FunctionContext> for Foo`. The trait's
-/// `execute` signature has no way to receive `&mut Transaction`, so a function
-/// is guaranteed at the type level to be unable to mutate transactional state.
-///
-/// Functions don't get `catalog`/`ioc`  - they're pure operations on column
-/// data. If a future "function" needs catalog access, it should be a
-/// procedure instead.
 pub struct FunctionContext<'a> {
 	pub fragment: Fragment,
 	pub identity: IdentityId,
@@ -28,12 +19,6 @@ pub struct FunctionContext<'a> {
 impl sealed::Sealed for FunctionContext<'_> {}
 impl Context for FunctionContext<'_> {}
 
-/// Execution context for a procedure.
-///
-/// A procedure impl writes `impl Routine<ProcedureContext> for Foo`. The
-/// transaction is reachable via `ctx.tx`. Procedures get the catalog and the
-/// IOC container in addition to the shared facets, plus access to user-supplied
-/// parameters as the legacy `Params` view.
 pub struct ProcedureContext<'a, 'tx> {
 	pub fragment: Fragment,
 	pub identity: IdentityId,

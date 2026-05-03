@@ -21,7 +21,6 @@ fn emit_select_top(sel: &SelectStatement) -> Result<String, Error> {
 	let mut cte_names = HashSet::new();
 	let mut parts = Vec::new();
 
-	// Emit each CTE as a LET $name = <pipeline>
 	for cte in &sel.ctes {
 		let name_lower = cte.name.to_ascii_lowercase();
 		let pipeline = emit_select_inner(&cte.query, &cte_names)?;
@@ -29,7 +28,6 @@ fn emit_select_top(sel: &SelectStatement) -> Result<String, Error> {
 		cte_names.insert(name_lower);
 	}
 
-	// Emit the main SELECT
 	parts.push(emit_select_inner(sel, &cte_names)?);
 
 	Ok(parts.join("; "))
@@ -40,10 +38,9 @@ fn emit_select(sel: &SelectStatement) -> Result<String, Error> {
 }
 
 fn emit_select_inner(sel: &SelectStatement, cte_names: &HashSet<String>) -> Result<String, Error> {
-	// If there is no FROM clause, this is a computed-only SELECT
 	if sel.from.is_none() {
 		let base = emit_select_no_from(sel)?;
-		// Handle set operations even without FROM
+
 		if let Some((op, right)) = &sel.set_op {
 			let right_rql = emit_select_inner(right, cte_names)?;
 			let op_str = match op {
@@ -59,21 +56,17 @@ fn emit_select_inner(sel: &SelectStatement, cte_names: &HashSet<String>) -> Resu
 
 	let mut parts = Vec::new();
 
-	// FROM
 	let from = sel.from.as_ref().unwrap();
 	parts.push(emit_from_clause(from, cte_names)?);
 
-	// JOINs
 	for join in &sel.joins {
 		parts.push(emit_join(join, cte_names)?);
 	}
 
-	// FILTER (WHERE)
 	if let Some(ref where_clause) = sel.where_clause {
 		parts.push(format!("FILTER {{{}}}", emit_expr(where_clause)?));
 	}
 
-	// AGGREGATE (GROUP BY with aggregate functions)
 	let has_aggregates = has_aggregate_functions(&sel.columns);
 	if has_aggregates || !sel.group_by.is_empty() {
 		let agg_exprs = collect_aggregate_columns(&sel.columns)?;
@@ -87,18 +80,15 @@ fn emit_select_inner(sel: &SelectStatement, cte_names: &HashSet<String>) -> Resu
 			parts.push(agg_str);
 		}
 
-		// HAVING
 		if let Some(ref having) = sel.having {
 			parts.push(format!("FILTER {{{}}}", emit_expr(having)?));
 		}
 
-		// MAP only non-aggregate columns that aren't already in GROUP BY
 		let map_exprs = collect_non_aggregate_map_columns(sel)?;
 		if !map_exprs.is_empty() {
 			parts.push(format!("MAP {{{map_exprs}}}"));
 		}
 	} else {
-		// DISTINCT
 		if sel.distinct {
 			if is_all_columns(&sel.columns) {
 				parts.push("DISTINCT {}".into());
@@ -106,33 +96,27 @@ fn emit_select_inner(sel: &SelectStatement, cte_names: &HashSet<String>) -> Resu
 				let cols = emit_select_columns_plain(&sel.columns)?;
 				parts.push(format!("DISTINCT {{{cols}}}"));
 			}
-		}
-		// MAP (column projection) - only if not SELECT *
-		else if !is_all_columns(&sel.columns) {
+		} else if !is_all_columns(&sel.columns) {
 			let cols = emit_select_columns(&sel.columns)?;
 			parts.push(format!("MAP {{{cols}}}"));
 		}
 	}
 
-	// SORT (ORDER BY)
 	if !sel.order_by.is_empty() {
 		let sort = emit_order_by(&sel.order_by)?;
 		parts.push(format!("SORT {{{sort}}}"));
 	}
 
-	// TAKE (LIMIT)
 	if let Some(limit) = sel.limit {
 		parts.push(format!("TAKE {limit}"));
 	}
 
-	// OFFSET
 	if let Some(offset) = sel.offset {
 		parts.push(format!("OFFSET {offset}"));
 	}
 
 	let base = parts.join(" ");
 
-	// Handle set operations: UNION / INTERSECT / EXCEPT
 	if let Some((op, right)) = &sel.set_op {
 		let right_rql = emit_select_inner(right, cte_names)?;
 		let op_str = match op {
@@ -225,18 +209,15 @@ fn emit_join(join: &JoinClause, cte_names: &HashSet<String>) -> Result<String, E
 		})
 		.unwrap_or("_");
 
-	// For CROSS JOIN, no USING clause
 	if matches!(join.join_type, JoinType::Cross) {
 		return Ok(format!("{join_kw} {{FROM {table_name}}} AS {alias}"));
 	}
 
-	// Extract USING columns from the ON condition
 	let using = emit_join_using(&join.on, alias)?;
 
 	Ok(format!("{join_kw} {{FROM {table_name}}} AS {alias} USING ({using})"))
 }
 
-/// Convert a JOIN ON condition like `t1.a = t2.b` to USING `(a, t2.b)` format.
 fn emit_join_using(on_expr: &Expr, right_alias: &str) -> Result<String, Error> {
 	match on_expr {
 		Expr::BinaryOp {
@@ -256,10 +237,7 @@ fn emit_join_using(on_expr: &Expr, right_alias: &str) -> Result<String, Error> {
 			let r = emit_join_using(right, right_alias)?;
 			Ok(format!("{l}, {r}"))
 		}
-		_ => {
-			// Fallback: emit as a filter-like expression
-			emit_expr(on_expr)
-		}
+		_ => emit_expr(on_expr),
 	}
 }
 
@@ -289,11 +267,9 @@ fn emit_insert(ins: &InsertStatement) -> Result<String, Error> {
 			let mut rows = Vec::new();
 			for row_values in values {
 				if ins.columns.is_empty() {
-					// No column names - emit positional tuple
 					let vals: Result<Vec<_>, _> = row_values.iter().map(emit_expr).collect();
 					rows.push(format!("({})", vals?.join(", ")));
 				} else {
-					// Named columns - emit record
 					let mut fields = Vec::new();
 					for (i, val) in row_values.iter().enumerate() {
 						let col_name = if i < ins.columns.len() {
@@ -659,7 +635,7 @@ fn expr_has_aggregate(expr: &Expr) -> bool {
 			..
 		} => {
 			let upper = name.to_uppercase();
-			// Check for aggregate function names (with or without _DISTINCT suffix)
+
 			let base = upper.strip_suffix("_DISTINCT").unwrap_or(&upper);
 			matches!(
 				sql_to_rql_function(base),
@@ -715,7 +691,6 @@ fn collect_non_aggregate_map_columns(sel: &SelectStatement) -> Result<String, Er
 			alias,
 		} = col && !expr_has_aggregate(expr)
 		{
-			// Check if this column is already in GROUP BY
 			let is_in_group_by = sel.group_by.iter().any(|gb| expr_eq(gb, expr));
 			if !is_in_group_by {
 				let e = emit_expr(expr)?;
@@ -769,14 +744,13 @@ fn emit_select_columns_plain(cols: &[SelectColumn]) -> Result<String, Error> {
 
 fn sql_to_rql_function(name: &str) -> Result<&'static str, Error> {
 	match name.to_uppercase().as_str() {
-		// Aggregates
 		"COUNT" | "COUNT_DISTINCT" => Ok("math::count"),
 		"SUM" | "SUM_DISTINCT" => Ok("math::sum"),
 		"AVG" | "AVG_DISTINCT" => Ok("math::avg"),
 		"MIN" | "MIN_DISTINCT" => Ok("math::min"),
 		"MAX" | "MAX_DISTINCT" => Ok("math::max"),
 		"TOTAL" => Ok("math::sum"),
-		// Math scalar
+
 		"ABS" => Ok("math::abs"),
 		"ACOS" => Ok("math::acos"),
 		"ASIN" => Ok("math::asin"),
@@ -801,7 +775,7 @@ fn sql_to_rql_function(name: &str) -> Result<&'static str, Error> {
 		"TAN" => Ok("math::tan"),
 		"TRUNCATE" | "TRUNC" => Ok("math::truncate"),
 		"RANDOM" => Ok("math::random"),
-		// Text
+
 		"ASCII" => Ok("text::ascii"),
 		"CHAR" | "CHR" => Ok("text::char"),
 		"CONCAT" => Ok("text::concat"),
@@ -824,7 +798,7 @@ fn sql_to_rql_function(name: &str) -> Result<&'static str, Error> {
 		"QUOTE" => Ok("text::quote"),
 		"ZEROBLOB" => Ok("blob::zeroblob"),
 		"GROUP_CONCAT" => Ok("text::group_concat"),
-		// COALESCE and NULLIF handled as regular function calls
+
 		"COALESCE" => Ok("coalesce"),
 		"NULLIF" => Ok("nullif"),
 		"IIF" => Ok("iif"),
@@ -851,7 +825,6 @@ fn emit_expr_comma_list(exprs: &[Expr]) -> Result<String, Error> {
 	Ok(parts?.join(", "))
 }
 
-/// Simple structural equality check for expressions (for GROUP BY dedup).
 fn expr_eq(a: &Expr, b: &Expr) -> bool {
 	match (a, b) {
 		(Expr::Identifier(a), Expr::Identifier(b)) => a == b,

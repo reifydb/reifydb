@@ -5,9 +5,6 @@ use reifydb_type::value::Value;
 
 use crate::error::EncodeError;
 
-/// Encode a single Value with a type tag prefix.
-///
-/// Returns an error for unsupported types (List, Record, Tuple).
 pub(crate) fn encode_any_value(val: &Value, buf: &mut Vec<u8>) -> Result<(), EncodeError> {
 	let type_tag = val.get_type().to_u8();
 	buf.push(type_tag);

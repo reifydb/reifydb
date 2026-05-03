@@ -7,13 +7,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::storage::DataBitVec;
 
-/// Compact bit vector backed by a packed `Vec<u8>`.
-///
-/// Bit ordering (LOAD-BEARING - this is part of the FFI wire format):
-/// bit `i` lives in byte `i / 8`, position `i % 8`, **LSB-first** within the
-/// byte. Setting bit 0 of an empty 8-bit byte yields `0b0000_0001`. The FFI
-/// ABI's `defined_bitvec` and any borrowed Bool column data depend on this
-/// exact layout. Do not change.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BitVec {
 	inner: Arc<BitVecInner>,
@@ -166,7 +159,6 @@ impl BitVec {
 		inner.len = total_len;
 	}
 
-	/// Clear all bits, retaining the allocated capacity when solely owned.
 	pub fn clear(&mut self) {
 		let inner = self.make_mut();
 		inner.bits.clear();
@@ -201,11 +193,6 @@ impl BitVec {
 		self.inner.bits.capacity() * 8
 	}
 
-	/// Borrow the packed byte representation.
-	///
-	/// Length is `len.div_ceil(8)` bytes. Bit ordering is LSB-first within
-	/// each byte (see type-level doc). Used by the FFI marshal path to hand
-	/// guests a zero-copy view of bool columns and option-defined bitmaps.
 	pub fn as_packed_bytes(&self) -> &[u8] {
 		&self.inner.bits
 	}
@@ -242,7 +229,6 @@ impl BitVec {
 		let byte_count = len.div_ceil(8);
 		let mut result_bits = vec![0u8; byte_count];
 
-		// Process 64-bit chunks
 		let full_chunks = byte_count / 8 * 8;
 		for ((a_chunk, b_chunk), out_chunk) in self.inner.bits[..full_chunks]
 			.chunks_exact(8)
@@ -254,7 +240,6 @@ impl BitVec {
 			out_chunk.copy_from_slice(&(a & b).to_le_bytes());
 		}
 
-		// Process remaining bytes
 		for ((out, a), b) in result_bits[full_chunks..byte_count]
 			.iter_mut()
 			.zip(&self.inner.bits[full_chunks..byte_count])
@@ -276,18 +261,16 @@ impl BitVec {
 	}
 
 	pub fn count_ones(&self) -> usize {
-		// Count complete bytes using built-in popcount
 		let mut count = self.inner.bits.iter().map(|&byte| byte.count_ones() as usize).sum();
 
-		// Adjust for partial last byte if needed
 		let full_bytes = self.inner.len / 8;
 		let remainder_bits = self.inner.len % 8;
 
 		if remainder_bits > 0 && full_bytes < self.inner.bits.len() {
 			let last_byte = self.inner.bits[full_bytes];
-			// Mask out bits beyond our length
+
 			let mask = (1u8 << remainder_bits) - 1;
-			// Subtract the invalid bits we counted
+
 			count -= (last_byte & !mask).count_ones() as usize;
 		}
 
@@ -303,7 +286,6 @@ impl BitVec {
 	}
 
 	pub fn any(&self) -> bool {
-		// Fast path: check if any complete bytes are non-zero
 		let full_bytes = self.inner.len / 8;
 		for i in 0..full_bytes {
 			if self.inner.bits[i] != 0 {
@@ -311,7 +293,6 @@ impl BitVec {
 			}
 		}
 
-		// Check remaining bits in last partial byte
 		let remainder_bits = self.inner.len % 8;
 		if remainder_bits > 0 && full_bytes < self.inner.bits.len() {
 			let last_byte = self.inner.bits[full_bytes];
@@ -331,7 +312,6 @@ impl BitVec {
 		let byte_count = len.div_ceil(8);
 		let mut result_bits = vec![0u8; byte_count];
 
-		// Process 64-bit chunks
 		let full_chunks = byte_count / 8 * 8;
 		for (chunk, out_chunk) in self.inner.bits[..full_chunks]
 			.chunks_exact(8)
@@ -341,14 +321,12 @@ impl BitVec {
 			out_chunk.copy_from_slice(&(!a).to_le_bytes());
 		}
 
-		// Process remaining bytes
 		for (out, a) in
 			result_bits[full_chunks..byte_count].iter_mut().zip(&self.inner.bits[full_chunks..byte_count])
 		{
 			*out = !a;
 		}
 
-		// Mask out bits beyond len in the final partial byte
 		let remainder_bits = len % 8;
 		if remainder_bits > 0 && !result_bits.is_empty() {
 			let mask = (1u8 << remainder_bits) - 1;
@@ -370,7 +348,6 @@ impl BitVec {
 		let byte_count = len.div_ceil(8);
 		let mut result_bits = vec![0u8; byte_count];
 
-		// Process 64-bit chunks
 		let full_chunks = byte_count / 8 * 8;
 		for ((a_chunk, b_chunk), out_chunk) in self.inner.bits[..full_chunks]
 			.chunks_exact(8)
@@ -382,7 +359,6 @@ impl BitVec {
 			out_chunk.copy_from_slice(&(a | b).to_le_bytes());
 		}
 
-		// Process remaining bytes
 		for ((out, a), b) in result_bits[full_chunks..byte_count]
 			.iter_mut()
 			.zip(&self.inner.bits[full_chunks..byte_count])
@@ -417,8 +393,6 @@ impl BitVec {
 		}
 	}
 
-	/// Try to extract the underlying bytes `Vec` without cloning.
-	/// Returns `Ok((Vec<u8>, len))` if this is the sole owner, `Err(self)` otherwise.
 	pub fn try_into_raw(self) -> Result<(Vec<u8>, usize), Self> {
 		match Arc::try_unwrap(self.inner) {
 			Ok(inner) => Ok((inner.bits, inner.len)),
@@ -428,7 +402,6 @@ impl BitVec {
 		}
 	}
 
-	/// Reconstruct a `BitVec` from raw parts previously obtained via `try_into_raw`.
 	pub fn from_raw(bits: Vec<u8>, len: usize) -> Self {
 		BitVec {
 			inner: Arc::new(BitVecInner {
@@ -444,7 +417,6 @@ impl BitVec {
 		let byte_count = len.div_ceil(8);
 		let mut new_bits = vec![0u8; byte_count];
 
-		// Collect old bit values before mutating
 		for (new_idx, &old_idx) in indices.iter().enumerate() {
 			if self.get(old_idx) {
 				let byte_idx = new_idx / 8;
@@ -453,7 +425,6 @@ impl BitVec {
 			}
 		}
 
-		// Now mutate
 		let inner = self.make_mut();
 		inner.bits = new_bits;
 	}

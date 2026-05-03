@@ -5,19 +5,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::snapshot::GaugeSnapshot;
 
-/// A value that can go up and down, stored as f64.
-///
-/// Safe to use from any thread - backed by a single `AtomicU64` storing
-/// `f64` bits. Constructable in `const` context so it can live in a `static`.
 pub struct Gauge {
 	pub name: &'static str,
 	pub help: &'static str,
-	value: AtomicU64, // stores f64::to_bits()
+	value: AtomicU64,
 }
 
 impl Gauge {
 	pub const fn new(name: &'static str, help: &'static str) -> Self {
-		// 0u64 == f64::to_bits(0.0)
 		Self {
 			name,
 			help,

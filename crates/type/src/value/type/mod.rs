@@ -17,70 +17,68 @@ use std::fmt;
 
 use crate::value::Value;
 
-/// All possible RQL data types
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Type {
-	/// A boolean: true or false.
 	Boolean,
-	/// A 4-byte floating point
+
 	Float4,
-	/// An 8-byte floating point
+
 	Float8,
-	/// A 1-byte signed integer
+
 	Int1,
-	/// A 2-byte signed integer
+
 	Int2,
-	/// A 4-byte signed integer
+
 	Int4,
-	/// An 8-byte signed integer
+
 	Int8,
-	/// A 16-byte signed integer
+
 	Int16,
-	/// A UTF-8 encoded text.
+
 	Utf8,
-	/// A 1-byte unsigned integer
+
 	Uint1,
-	/// A 2-byte unsigned integer
+
 	Uint2,
-	/// A 4-byte unsigned integer
+
 	Uint4,
-	/// A 8-byte unsigned integer
+
 	Uint8,
-	/// A 16-byte unsigned integer
+
 	Uint16,
-	/// A date value (year, month, day)
+
 	Date,
-	/// A date and time value with nanosecond precision in SVTC
+
 	DateTime,
-	/// A time value (hour, minute, second, nanosecond)
+
 	Time,
-	/// A duration representing a duration
+
 	Duration,
-	/// An identity identifier (UUID v7)
+
 	IdentityId,
-	/// A UUID version 4 (random)
+
 	Uuid4,
-	/// A UUID version 7 (timestamp-based)
+
 	Uuid7,
-	/// A binary large object (BLOB)
+
 	Blob,
-	/// An arbitrary-precision signed integer
+
 	Int,
-	/// An arbitrary-precision unsigned integer
+
 	Uint,
-	/// An arbitrary-precision decimal with precision and scale
+
 	Decimal,
-	/// An optional type that can hold None or a value of the inner type
+
 	Option(Box<Type>),
-	/// A container that can hold any value type
+
 	Any,
-	/// A dictionary entry identifier
+
 	DictionaryId,
-	/// An ordered list of values of a given element type
+
 	List(Box<Type>),
-	/// A record type with named fields
+
 	Record(Vec<(String, Type)>),
-	/// A tuple of heterogeneous types
+
 	Tuple(Vec<Type>),
 }
 
@@ -174,7 +172,6 @@ impl Type {
 		matches!(self, Type::Option(_))
 	}
 
-	/// Returns the inner type if this is an Option type, otherwise returns self
 	pub fn inner_type(&self) -> &Type {
 		match self {
 			Type::Option(inner) => inner,
@@ -273,33 +270,32 @@ impl Type {
 			Type::Int4 => 4,
 			Type::Int8 => 8,
 			Type::Int16 => 16,
-			Type::Utf8 => 8, // offset: u32 + length: u32
+			Type::Utf8 => 8,
 			Type::Uint1 => 1,
 			Type::Uint2 => 2,
 			Type::Uint4 => 4,
 			Type::Uint8 => 8,
 			Type::Uint16 => 16,
 			Type::Date => 4,
-			Type::DateTime => 8, // nanos: u64
+			Type::DateTime => 8,
 			Type::Time => 8,
-			Type::Duration => 16,   // months: i32 + days: i32 + nanos: i64
-			Type::IdentityId => 16, // UUID v7 is 16 bytes
+			Type::Duration => 16,
+			Type::IdentityId => 16,
 			Type::Uuid4 => 16,
 			Type::Uuid7 => 16,
-			Type::Blob => 8, // offset: u32 + length: u32
-			Type::Int => 16, // i128 inline or dynamic
-			// storage with offset + length
-			Type::Uint => 16, // u128 inline or dynamic
-			// storage with offset + length
-			Type::Decimal => 16, // i128 inline or dynamic
-			// storage with offset + length
-			Type::Option(inner) => inner.size(), // size determined by inner type
-			Type::Any => 8,                      // pointer size on 64-bit systems
-			Type::List(_) => 8,                  // pointer size (Vec is heap-allocated)
-			Type::Record(_) => 8,                // pointer size (Vec is heap-allocated)
-			Type::Tuple(_) => 8,                 // pointer size (Vec is heap-allocated)
-			Type::DictionaryId => 16,            /* max possible; actual size determined by constraint's
-			                                       * id_type */
+			Type::Blob => 8,
+			Type::Int => 16,
+
+			Type::Uint => 16,
+
+			Type::Decimal => 16,
+
+			Type::Option(inner) => inner.size(),
+			Type::Any => 8,
+			Type::List(_) => 8,
+			Type::Record(_) => 8,
+			Type::Tuple(_) => 8,
+			Type::DictionaryId => 16,
 		}
 	}
 
@@ -313,7 +309,7 @@ impl Type {
 			Type::Int4 => 4,
 			Type::Int8 => 8,
 			Type::Int16 => 16,
-			Type::Utf8 => 4, // u32 alignment
+			Type::Utf8 => 4,
 			Type::Uint1 => 1,
 			Type::Uint2 => 2,
 			Type::Uint4 => 4,
@@ -323,22 +319,22 @@ impl Type {
 			Type::DateTime => 8,
 			Type::Time => 8,
 			Type::Duration => 8,
-			Type::IdentityId => 8, // Same alignment as UUID
+			Type::IdentityId => 8,
 			Type::Uuid4 => 8,
 			Type::Uuid7 => 8,
-			Type::Blob => 4, // u32 alignment
-			Type::Int => 16, // i128 alignment for
-			// inline storage
-			Type::Uint => 16, // u128 alignment for
-			// inline storage
-			Type::Decimal => 16, // i128 alignment for
-			// inline storage
+			Type::Blob => 4,
+			Type::Int => 16,
+
+			Type::Uint => 16,
+
+			Type::Decimal => 16,
+
 			Type::Option(inner) => inner.alignment(),
-			Type::Any => 8, // pointer alignment
+			Type::Any => 8,
 			Type::DictionaryId => 16,
-			Type::List(_) => 8,   // pointer alignment
-			Type::Record(_) => 8, // pointer alignment
-			Type::Tuple(_) => 8,  // pointer alignment
+			Type::List(_) => 8,
+			Type::Record(_) => 8,
+			Type::Tuple(_) => 8,
 		}
 	}
 }
@@ -450,9 +446,9 @@ impl FromStr for Type {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let upper = s.to_uppercase();
-		// Handle Option<T> syntax
+
 		if upper.starts_with("OPTION<") && upper.ends_with('>') {
-			let inner_str = &s[7..s.len() - 1]; // extract between "OPTION<" and ">"
+			let inner_str = &s[7..s.len() - 1];
 			let inner = Type::from_str(inner_str)?;
 			return Ok(Type::Option(Box::new(inner)));
 		}

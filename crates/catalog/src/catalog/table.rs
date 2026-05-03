@@ -36,7 +36,6 @@ use crate::{
 	},
 };
 
-/// Column specification for table creation via Catalog API.
 #[derive(Debug, Clone)]
 pub struct TableColumnToCreate {
 	pub name: Fragment,
@@ -47,19 +46,13 @@ pub struct TableColumnToCreate {
 	pub dictionary_id: Option<DictionaryId>,
 }
 
-/// Table creation specification for the Catalog API.
-///
-/// This struct includes `primary_key_columns` which allows specifying primary key
-/// column names at creation time. The Catalog will handle resolving column names
-/// to IDs and creating the primary key record.
 #[derive(Debug, Clone)]
 pub struct TableToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
 	pub retention_strategy: Option<RetentionStrategy>,
-	/// Optional primary key columns specified by name.
-	/// If provided, the Catalog will create a primary key after creating the table.
+
 	pub primary_key_columns: Option<Vec<String>>,
 	pub underlying: bool,
 }
@@ -94,12 +87,10 @@ impl Catalog {
 	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Option<Table>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
 				if let Some(table) = self.materialized.find_table_at(id, cmd.version()) {
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Command(&mut *cmd), id)?
 				{
 					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
@@ -109,22 +100,18 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(table) = TransactionalTableChanges::find_table(admin, id) {
 					return Ok(Some(table.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalTableChanges::is_table_deleted(admin, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(table) = self.materialized.find_table_at(id, admin.version()) {
 					return Ok(Some(table));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Admin(&mut *admin), id)?
 				{
 					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
@@ -134,12 +121,10 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(table) = self.materialized.find_table_at(id, qry.version()) {
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Query(&mut *qry), id)? {
 					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
 					return Ok(Some(table));
@@ -162,12 +147,10 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
 				if let Some(table) = self.materialized.find_table_at(id, rep.version()) {
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Replica(&mut *rep), id)?
 				{
 					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
@@ -188,14 +171,12 @@ impl Catalog {
 	) -> Result<Option<Table>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
 				if let Some(table) =
 					self.materialized.find_table_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(
 					&mut Transaction::Command(&mut *cmd),
 					namespace,
@@ -211,26 +192,22 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(table) =
 					TransactionalTableChanges::find_table_by_name(admin, namespace, name)
 				{
 					return Ok(Some(table.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalTableChanges::is_table_deleted_by_name(admin, namespace, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(table) =
 					self.materialized.find_table_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(table));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(
 					&mut Transaction::Admin(&mut *admin),
 					namespace,
@@ -246,14 +223,12 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(table) =
 					self.materialized.find_table_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(
 					&mut Transaction::Query(&mut *qry),
 					namespace,
@@ -287,14 +262,12 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
 				if let Some(table) =
 					self.materialized.find_table_by_name_at(namespace, name, rep.version())
 				{
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(
 					&mut Transaction::Replica(&mut *rep),
 					namespace,
@@ -331,7 +304,6 @@ impl Catalog {
 	) -> Result<Table> {
 		let name = name.into();
 
-		// Try to get the namespace name for the error message
 		let namespace_name = self
 			.find_namespace(txn, namespace)?
 			.map(|ns| ns.name().to_string())
@@ -355,7 +327,6 @@ impl Catalog {
 		self.finalize_created_table(txn, table, pk_columns)
 	}
 
-	/// Create a table with a specific ID and column IDs. Used for bootstrapping system shapes.
 	pub fn create_table_with_id(
 		&self,
 		txn: &mut AdminTransaction,
@@ -368,10 +339,6 @@ impl Catalog {
 		self.finalize_created_table(txn, table, pk_columns)
 	}
 
-	/// Shared post-create work: emit the catalog-change event, register the
-	/// row shape, and (if `pk_columns` is set) create the primary key and
-	/// re-fetch the table. Returns the table either as freshly created or
-	/// re-fetched after PK creation.
 	#[inline]
 	fn finalize_created_table(
 		&self,
@@ -404,19 +371,16 @@ impl Catalog {
 		Ok(())
 	}
 
-	/// Lists all tables in the catalog.
 	#[instrument(name = "catalog::table::list_all", level = "debug", skip(self, txn))]
 	pub fn list_tables_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Table>> {
 		CatalogStore::list_tables_all(txn)
 	}
 
-	/// Lists all columns for a given table.
 	#[instrument(name = "catalog::table::list_columns", level = "debug", skip(self, txn))]
 	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<Column>> {
 		CatalogStore::list_columns(txn, table_id)
 	}
 
-	/// Sets the primary key ID for a table.
 	#[instrument(name = "catalog::table::set_primary_key", level = "debug", skip(self, txn))]
 	pub fn set_table_primary_key(
 		&self,
@@ -427,7 +391,6 @@ impl Catalog {
 		CatalogStore::set_table_primary_key(txn, table_id, primary_key_id)
 	}
 
-	/// Gets the primary key ID for a table.
 	#[instrument(name = "catalog::table::get_pk_id", level = "trace", skip(self, txn))]
 	pub fn get_table_pk_id(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Option<PrimaryKeyId>> {
 		CatalogStore::get_table_pk_id(txn, table_id)
@@ -494,9 +457,6 @@ impl Catalog {
 	}
 }
 
-/// Run `mutate` on the table identified by `table_id`, sandwiched between pre
-/// and post snapshots, and emit a `track_table_updated` event for the change.
-/// Returns the post-mutation table.
 #[inline]
 fn alter_table_with_tracking<F>(txn: &mut AdminTransaction, table_id: TableId, mutate: F) -> Result<Table>
 where

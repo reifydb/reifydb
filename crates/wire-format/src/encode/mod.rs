@@ -19,7 +19,6 @@ use crate::{
 	options::EncodeOptions,
 };
 
-/// Intermediate representation of an encoded column ready to be written.
 pub(crate) struct EncodedColumn {
 	pub(crate) type_code: u8,
 	pub(crate) encoding: Encoding,
@@ -31,7 +30,6 @@ pub(crate) struct EncodedColumn {
 	pub(crate) row_count: u32,
 }
 
-/// Encode multiple frames into RBCF binary format.
 #[instrument(
 	name = "wire::encode_frames",
 	level = "debug",
@@ -63,7 +61,7 @@ fn write_message_header(buf: &mut [u8], frame_count: u32) {
 	let total_size = buf.len() as u32;
 	buf[0..4].copy_from_slice(&RBCF_MAGIC.to_le_bytes());
 	buf[4..6].copy_from_slice(&RBCF_VERSION.to_le_bytes());
-	buf[6..8].copy_from_slice(&0u16.to_le_bytes()); // flags
+	buf[6..8].copy_from_slice(&0u16.to_le_bytes());
 	buf[8..12].copy_from_slice(&frame_count.to_le_bytes());
 	buf[12..16].copy_from_slice(&total_size.to_le_bytes());
 }
@@ -143,7 +141,7 @@ fn write_frame_header(
 	buf[h..h + 4].copy_from_slice(&row_count.to_le_bytes());
 	buf[h + 4..h + 6].copy_from_slice(&column_count.to_le_bytes());
 	buf[h + 6] = meta_flags;
-	buf[h + 7] = 0; // reserved
+	buf[h + 7] = 0;
 	buf[h + 8..h + 12].copy_from_slice(&frame_size.to_le_bytes());
 }
 
@@ -159,10 +157,7 @@ fn encode_column(
 	Ok(())
 }
 
-/// Try to encode a column with the desired encoding, falling back to Plain if
-/// the compressed encoding doesn't save space.
 fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<EncodedColumn, EncodeError> {
-	// Handle Option wrapper: extract nones bitmap, encode inner
 	let (inner, nones, has_nones) = match col_data {
 		FrameColumnData::Option {
 			inner,
@@ -176,7 +171,6 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 
 	let row_count = inner.len() as u32;
 
-	// Attempt compressed encoding on the inner data
 	let result = match desired {
 		Encoding::Dict => varlen::try_dict_varlen(inner),
 		Encoding::Rle => fixed::try_rle_fixed(inner).or_else(|| varlen::try_rle_varlen(inner)),
@@ -185,7 +179,6 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 		_ => None,
 	};
 
-	// If compressed encoding succeeded, use it; otherwise fall back to Plain
 	let mut enc = match result {
 		Some(enc) => enc,
 		None => {
@@ -203,11 +196,10 @@ fn try_encode_with(col_data: &FrameColumnData, desired: Encoding) -> Result<Enco
 		}
 	};
 
-	// For compressed encodings, overlay the nones bitmap from the Option wrapper
 	if has_nones {
 		enc.nones = nones;
 		enc.flags |= COL_FLAG_HAS_NONES;
-		// Set the option bit on the type code so the decoder reconstructs `Type::Option(inner)`.
+
 		enc.type_code |= 0x80;
 	}
 	enc.row_count = row_count;
@@ -219,34 +211,28 @@ fn write_column(name: &str, enc: &EncodedColumn, buf: &mut Vec<u8>) {
 	let name_len = name_bytes.len() as u16;
 	let name_pad = (4 - (name_bytes.len() % 4)) % 4;
 
-	// Write column descriptor (28 bytes)
 	buf.push(enc.type_code);
 	buf.push(enc.encoding as u8);
 	buf.push(enc.flags);
-	buf.push(0); // reserved
+	buf.push(0);
 	buf.extend_from_slice(&name_len.to_le_bytes());
-	buf.extend_from_slice(&0u16.to_le_bytes()); // reserved2
+	buf.extend_from_slice(&0u16.to_le_bytes());
 	buf.extend_from_slice(&enc.row_count.to_le_bytes());
 	buf.extend_from_slice(&(enc.nones.len() as u32).to_le_bytes());
 	buf.extend_from_slice(&(enc.data.len() as u32).to_le_bytes());
 	buf.extend_from_slice(&(enc.offsets.len() as u32).to_le_bytes());
 	buf.extend_from_slice(&(enc.extra.len() as u32).to_le_bytes());
 
-	// Write column name + padding
 	buf.extend_from_slice(name_bytes);
 	for _ in 0..name_pad {
 		buf.push(0);
 	}
 
-	// Write nones bitmap
 	buf.extend_from_slice(&enc.nones);
 
-	// Write encoded data
 	buf.extend_from_slice(&enc.data);
 
-	// Write offsets
 	buf.extend_from_slice(&enc.offsets);
 
-	// Write extra (dict table)
 	buf.extend_from_slice(&enc.extra);
 }

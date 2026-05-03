@@ -17,11 +17,8 @@ use tracing::{debug, error, trace};
 use crate::{produce::watermark::CdcProducerWatermark, storage::sqlite::storage::SqliteCdcStorage};
 
 pub enum CompactMessage {
-	/// Periodic compaction: pack up to `CdcCompactMaxBlocksPerTick` blocks
-	/// respecting `CdcCompactSafetyLag`. Reschedules itself.
 	Tick,
-	/// Drain everything compactable, ignoring safety lag and allowing a
-	/// partial final block. Admin/test trigger. Fire-and-forget.
+
 	CompactAll,
 }
 

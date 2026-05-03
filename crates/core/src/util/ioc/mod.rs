@@ -30,7 +30,6 @@ impl BoxedValue {
 	}
 }
 
-/// Lightweight IoC container for dependency injection
 pub struct IocContainer {
 	dependencies: Arc<RwLock<HashMap<TypeId, BoxedValue>>>,
 }
@@ -47,7 +46,6 @@ impl IocContainer {
 		self
 	}
 
-	/// Register a service from a reference (for late registration after construction)
 	pub fn register_service<T: Clone + Any + Send + Sync + 'static>(&self, service: T) {
 		self.dependencies.write().unwrap().insert(TypeId::of::<T>(), BoxedValue::new(service));
 	}
@@ -65,9 +63,6 @@ impl IocContainer {
 			.ok_or_else(|| internal_error!("Type {} not registered in IoC container", type_name::<T>()))
 	}
 
-	/// Resolve a registered service if present. Unlike `resolve`, returns
-	/// `None` when the type is absent without producing a diagnostic - for
-	/// callers that treat absence as a normal outcome.
 	pub fn try_resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Option<T> {
 		self.dependencies.read().unwrap().get(&TypeId::of::<T>()).and_then(|boxed| boxed.value::<T>())
 	}

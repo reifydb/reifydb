@@ -22,8 +22,6 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `CREATE <PROTO> BINDING ns::name FOR ns::procedure WITH { ... }`. The
-	/// `<PROTO>` and `BINDING` keywords have already been consumed by the dispatcher.
 	pub(crate) fn parse_create_binding(
 		&mut self,
 		token: Token<'bump>,
@@ -85,7 +83,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse DROP BINDING [IF EXISTS] ns::name
 	pub(crate) fn parse_drop_binding(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.consume_if(TokenKind::Keyword(Keyword::If))?.is_some();
 		if if_exists {

@@ -20,20 +20,15 @@ use reifydb_type::value::constraint::{FFITypeConstraint, TypeConstraint};
 
 use crate::loader::ffi::{LibraryCache, buffer_to_string, validate_api_version};
 
-/// Global singleton FFI operator loader
-/// Ensures libraries stay loaded for the entire process lifetime
 static GLOBAL_FFI_OPERATOR_LOADER: OnceLock<RwLock<FFIOperatorLoader>> = OnceLock::new();
 
-/// Get the global FFI operator loader
 pub fn ffi_operator_loader() -> &'static RwLock<FFIOperatorLoader> {
 	GLOBAL_FFI_OPERATOR_LOADER.get_or_init(|| RwLock::new(FFIOperatorLoader::new()))
 }
 
-/// FFI operator loader for dynamic libraries
-/// This is meant to be used as a singleton via ffi_operator_loader()
 pub struct FFIOperatorLoader {
 	cache: LibraryCache,
-	/// Map of operator names to library paths for quick lookup
+
 	operator_paths: HashMap<String, PathBuf>,
 }
 
@@ -51,7 +46,6 @@ impl FFIOperatorLoader {
 			.map_err(|e| FFIError::Other(e.to_string()))
 	}
 
-	/// Get the operator descriptor from a loaded library
 	fn get_descriptor(&self, path: &Path) -> FFIResult<OperatorDescriptorFFI> {
 		let library = self
 			.cache
@@ -81,7 +75,6 @@ impl FFIOperatorLoader {
 		}
 	}
 
-	/// Validate descriptor and register operator name mapping
 	fn validate_and_register(
 		&mut self,
 		descriptor: &OperatorDescriptorFFI,
@@ -95,7 +88,6 @@ impl FFIOperatorLoader {
 		Ok((operator, descriptor.api))
 	}
 
-	/// Register an operator library without instantiating it
 	pub fn register_operator(&mut self, path: &Path) -> FFIResult<Option<LoadedOperatorInfo>> {
 		if !self.load_operator_library(path)? {
 			return Ok(None);
@@ -120,9 +112,6 @@ impl FFIOperatorLoader {
 		Ok(Some(info))
 	}
 
-	/// Load an operator from a dynamic library, returning raw descriptor + instance pointer.
-	///
-	/// The caller is responsible for wrapping these into the appropriate operator type.
 	pub fn load_operator(
 		&mut self,
 		path: &Path,
@@ -153,8 +142,6 @@ impl FFIOperatorLoader {
 		Ok(Some((descriptor, instance)))
 	}
 
-	/// Create an operator instance from an already loaded library by name,
-	/// returning raw descriptor + instance pointer.
 	pub fn create_operator_by_name(
 		&mut self,
 		operator: &str,
@@ -171,12 +158,10 @@ impl FFIOperatorLoader {
 			.ok_or_else(|| FFIError::Other(format!("Operator library no longer valid: {}", operator)))
 	}
 
-	/// Check if an operator name is registered
 	pub fn has_operator(&self, operator: &str) -> bool {
 		self.operator_paths.contains_key(operator)
 	}
 
-	/// List all loaded operators with their metadata
 	pub fn list_loaded_operators(&self) -> Vec<LoadedOperatorInfo> {
 		let mut operators = Vec::new();
 
@@ -201,7 +186,6 @@ impl FFIOperatorLoader {
 	}
 }
 
-/// Information about a loaded FFI operator
 #[derive(Debug, Clone)]
 pub struct LoadedOperatorInfo {
 	pub operator: String,
@@ -214,7 +198,6 @@ pub struct LoadedOperatorInfo {
 	pub capabilities: u32,
 }
 
-/// Information about a single column definition in an operator
 #[derive(Debug, Clone)]
 pub struct ColumnInfo {
 	pub name: String,
@@ -222,10 +205,6 @@ pub struct ColumnInfo {
 	pub description: String,
 }
 
-/// Extract column definitions from an OperatorColumnsFFI
-///
-/// # Safety
-/// The column_defs must have valid columns pointer for column_count elements
 unsafe fn extract_column_defs(column_defs: &OperatorColumnsFFI) -> Vec<ColumnInfo> {
 	if column_defs.columns.is_null() || column_defs.column_count == 0 {
 		return Vec::new();

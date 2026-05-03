@@ -3,24 +3,20 @@
 
 use crate::format::Encoding;
 
-/// Controls the tradeoff between encode speed and compression ratio.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CompressionLevel {
-	/// No compression: all columns use Plain encoding.
 	None,
-	/// Balanced: attempt dictionary, RLE, or delta if beneficial.
+
 	#[default]
 	Fast,
-	/// Maximum compression: aggressively attempt all strategies.
+
 	Max,
 }
 
-/// Options controlling how frames are encoded.
 #[derive(Debug, Clone)]
 pub struct EncodeOptions {
-	/// Compression level for column encoding selection.
 	pub compression: CompressionLevel,
-	/// If set, forces all columns to use this encoding (if supported).
+
 	pub force_encoding: Option<Encoding>,
 }
 

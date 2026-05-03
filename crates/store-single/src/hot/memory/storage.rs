@@ -11,16 +11,12 @@ use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
 type MemoryStore = Arc<RwLock<BTreeMap<CowVec<u8>, Option<CowVec<u8>>>>>;
 
-/// Memory-based single-version storage implementation.
-///
-/// Uses a single BTreeMap with RwLock for concurrent access.
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
 	inner: Arc<MemoryPrimitiveStorageInner>,
 }
 
 struct MemoryPrimitiveStorageInner {
-	/// Single storage map for all keys
 	data: MemoryStore,
 }
 
@@ -84,14 +80,12 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		let map = self.inner.data.read();
 
-		// Adjust start bound based on cursor
 		let actual_start = if let Some(ref last_key) = cursor.last_key {
 			Bound::Excluded(last_key.as_slice())
 		} else {
 			start
 		};
 
-		// Collect entries in range
 		let entries: Vec<RawEntry> = map
 			.range::<[u8], _>((actual_start, end))
 			.take(batch_size)
@@ -101,7 +95,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			})
 			.collect();
 
-		// Update cursor
 		if let Some(last_entry) = entries.last() {
 			cursor.last_key = Some(last_entry.key.clone());
 			cursor.exhausted = entries.len() < batch_size;
@@ -129,14 +122,12 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		let map = self.inner.data.read();
 
-		// Adjust end bound based on cursor (reverse iteration)
 		let actual_end = if let Some(ref last_key) = cursor.last_key {
 			Bound::Excluded(last_key.as_slice())
 		} else {
 			end
 		};
 
-		// Collect entries in reverse
 		let entries: Vec<RawEntry> = map
 			.range::<[u8], _>((start, actual_end))
 			.rev()
@@ -147,7 +138,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			})
 			.collect();
 
-		// Update cursor
 		if let Some(last_entry) = entries.last() {
 			cursor.last_key = Some(last_entry.key.clone());
 			cursor.exhausted = entries.len() < batch_size;
@@ -163,7 +153,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::single::memory::ensure_table", level = "trace", skip(self))]
 	fn ensure_table(&self) -> Result<()> {
-		// No-op for memory storage
 		Ok(())
 	}
 

@@ -9,38 +9,25 @@ use reifydb_type::value::{r#type::Type, uint::Uint};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-/// Uint storage modes using MSB of u128 as indicator
-/// MSB = 0: Value stored inline in lower 127 bits
-/// MSB = 1: Dynamic storage, lower 127 bits contain offset+length
 const MODE_INLINE: u128 = 0x00000000000000000000000000000000;
 const MODE_MASK: u128 = 0x80000000000000000000000000000000;
 
-/// Bit masks for inline mode (127 bits for value)
 const INLINE_VALUE_MASK: u128 = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
-/// Bit masks for dynamic mode (lower 127 bits contain offset+length)
-const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits for offset
-const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
+const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
+const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
-	/// Set a Uint value with 2-tier storage optimization
-	/// - Values fitting in 127 bits: stored inline with MSB=0
-	/// - Large values: stored in dynamic section with MSB=1
 	pub fn set_uint(&self, row: &mut EncodedRow, index: usize, value: &Uint) {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint);
 
-		// Uint should already be non-negative, but let's ensure it
 		let unsigned_value = value.0.to_biguint().unwrap_or(BigUint::from(0u32));
 
-		// Try u128 inline storage first (fits in 127 bits)
 		if let Some(u128_val) = unsigned_value.to_u128() {
-			// Check if value fits in 127 bits (MSB must be 0)
 			if u128_val < (1u128 << 127) {
-				// Clean up old dynamic data if transitioning from dynamic→inline
 				self.remove_dynamic_data(row, index);
 
-				// Mode 0: Store inline in lower 127 bits
 				let packed = MODE_INLINE | (u128_val & INLINE_VALUE_MASK);
 				unsafe {
 					ptr::write_unaligned(
@@ -53,12 +40,10 @@ impl RowShape {
 			}
 		}
 
-		// Mode 1: Dynamic storage for arbitrary precision
 		let bytes = unsigned_value.to_bytes_le();
 		self.replace_dynamic_data(row, index, &bytes);
 	}
 
-	/// Get a Uint value, detecting storage mode from MSB
 	pub fn get_uint(&self, row: &EncodedRow, index: usize) -> Uint {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint);
@@ -69,27 +54,22 @@ impl RowShape {
 		let mode = packed & MODE_MASK;
 
 		if mode == MODE_INLINE {
-			// Extract value from lower 127 bits
 			let value = packed & INLINE_VALUE_MASK;
-			// Convert to BigUint then to Uint
+
 			let unsigned = BigUint::from(value);
 			Uint::from(BigInt::from(unsigned))
 		} else {
-			// MODE_DYNAMIC: Extract offset and length for dynamic
-			// storage
 			let offset = (packed & DYNAMIC_OFFSET_MASK) as usize;
 			let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
 
 			let dynamic_start = self.dynamic_section_start();
 			let data_bytes = &row.as_slice()[dynamic_start + offset..dynamic_start + offset + length];
 
-			// Parse as unsigned bytes
 			let unsigned = BigUint::from_bytes_le(data_bytes);
 			Uint::from(BigInt::from(unsigned))
 		}
 	}
 
-	/// Try to get a Uint value, returning None if undefined
 	pub fn try_get_uint(&self, row: &EncodedRow, index: usize) -> Option<Uint> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uint {
 			Some(self.get_uint(row, index))

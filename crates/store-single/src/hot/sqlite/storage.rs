@@ -19,26 +19,18 @@ use tracing::instrument;
 use super::query::build_range_query;
 use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
-/// Single table name for all storage
 const TABLE_NAME: &str = "entries";
 
-/// SQLite-based primitive storage implementation.
-///
-/// Uses a single table for persistent storage with a connection protected by Mutex.
 #[derive(Clone)]
 pub struct SqlitePrimitiveStorage {
 	inner: Arc<SqlitePrimitiveStorageInner>,
 }
 
 struct SqlitePrimitiveStorageInner {
-	/// Single connection protected by Mutex for thread-safe access.
-	/// Note: We use Mutex instead of RwLock because rusqlite::Connection
-	/// is Send but not Sync (contains RefCell).
 	conn: Mutex<Connection>,
 }
 
 impl SqlitePrimitiveStorage {
-	/// Create a new SQLite primitive storage with the given configuration.
 	#[instrument(name = "store::single::sqlite::new", level = "debug", skip(config), fields(
 		db_path = ?config.path,
 		page_size = config.page_size,
@@ -58,7 +50,6 @@ impl SqlitePrimitiveStorage {
 		}
 	}
 
-	/// Create an in-memory SQLite storage for testing.
 	pub fn in_memory() -> Self {
 		Self::new(SqliteConfig::in_memory())
 	}
@@ -149,7 +140,6 @@ impl TierStorage for SqlitePrimitiveStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		// Determine effective start bound based on cursor state
 		let effective_start: Bound<Vec<u8>> = match &cursor.last_key {
 			Some(last) => Bound::Excluded(last.as_slice().to_vec()),
 			None => bound_to_owned(start),
@@ -198,7 +188,6 @@ impl TierStorage for SqlitePrimitiveStorage {
 			has_more,
 		};
 
-		// Update cursor
 		if let Some(last_entry) = batch.entries.last() {
 			cursor.last_key = Some(last_entry.key.clone());
 		}
@@ -221,7 +210,6 @@ impl TierStorage for SqlitePrimitiveStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		// For reverse iteration, effective end bound based on cursor
 		let start_owned = bound_to_owned(start);
 		let effective_end: Bound<Vec<u8>> = match &cursor.last_key {
 			Some(last) => Bound::Excluded(last.as_slice().to_vec()),
@@ -270,7 +258,6 @@ impl TierStorage for SqlitePrimitiveStorage {
 			has_more,
 		};
 
-		// Update cursor
 		if let Some(last_entry) = batch.entries.last() {
 			cursor.last_key = Some(last_entry.key.clone());
 		}
@@ -315,7 +302,6 @@ impl TierStorage for SqlitePrimitiveStorage {
 
 impl TierBackend for SqlitePrimitiveStorage {}
 
-/// Convert owned Bound to Bound<&[u8]>
 fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	match bound {
 		Bound::Included(v) => Bound::Included(v.as_slice()),
@@ -324,7 +310,6 @@ fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	}
 }
 
-/// Convert Bound<&[u8]> to Bound<Vec<u8>>
 fn bound_to_owned(bound: Bound<&[u8]>) -> Bound<Vec<u8>> {
 	match bound {
 		Bound::Included(v) => Bound::Included(v.to_vec()),
@@ -333,7 +318,6 @@ fn bound_to_owned(bound: Bound<&[u8]>) -> Bound<Vec<u8>> {
 	}
 }
 
-/// Insert entries into a table within an existing transaction
 fn insert_entries_in_tx(
 	tx: &SqliteTransaction,
 	table_name: &str,

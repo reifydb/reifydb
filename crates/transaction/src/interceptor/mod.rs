@@ -76,9 +76,7 @@ use view_row::{
 
 pub type Chain<I> = InterceptorChain<I>;
 
-/// Trait for accessing interceptor chains from transaction types
 pub trait WithInterceptors {
-	// Table row (DML) interceptors
 	fn table_row_pre_insert_interceptors(&mut self) -> &mut Chain<dyn TableRowPreInsertInterceptor + Send + Sync>;
 	fn table_row_post_insert_interceptors(&mut self)
 	-> &mut Chain<dyn TableRowPostInsertInterceptor + Send + Sync>;
@@ -89,7 +87,6 @@ pub trait WithInterceptors {
 	fn table_row_post_delete_interceptors(&mut self)
 	-> &mut Chain<dyn TableRowPostDeleteInterceptor + Send + Sync>;
 
-	// Ring buffer row (DML) interceptors
 	fn ringbuffer_row_pre_insert_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn RingBufferRowPreInsertInterceptor + Send + Sync>;
@@ -109,11 +106,9 @@ pub trait WithInterceptors {
 		&mut self,
 	) -> &mut Chain<dyn RingBufferRowPostDeleteInterceptor + Send + Sync>;
 
-	// Transaction interceptors
 	fn pre_commit_interceptors(&mut self) -> &mut Chain<dyn PreCommitInterceptor + Send + Sync>;
 	fn post_commit_interceptors(&mut self) -> &mut Chain<dyn PostCommitInterceptor + Send + Sync>;
 
-	// Namespace (DDL) interceptors
 	fn namespace_post_create_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn NamespacePostCreateInterceptor + Send + Sync>;
@@ -123,13 +118,11 @@ pub trait WithInterceptors {
 	) -> &mut Chain<dyn NamespacePostUpdateInterceptor + Send + Sync>;
 	fn namespace_pre_delete_interceptors(&mut self) -> &mut Chain<dyn NamespacePreDeleteInterceptor + Send + Sync>;
 
-	// Table (DDL) interceptors
 	fn table_post_create_interceptors(&mut self) -> &mut Chain<dyn TablePostCreateInterceptor + Send + Sync>;
 	fn table_pre_update_interceptors(&mut self) -> &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync>;
 	fn table_post_update_interceptors(&mut self) -> &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync>;
 	fn table_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync>;
 
-	// View row (DML) interceptors
 	fn view_row_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreInsertInterceptor + Send + Sync>;
 	fn view_row_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostInsertInterceptor + Send + Sync>;
 	fn view_row_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreUpdateInterceptor + Send + Sync>;
@@ -137,13 +130,11 @@ pub trait WithInterceptors {
 	fn view_row_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreDeleteInterceptor + Send + Sync>;
 	fn view_row_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostDeleteInterceptor + Send + Sync>;
 
-	// View (DDL) interceptors
 	fn view_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewPostCreateInterceptor + Send + Sync>;
 	fn view_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync>;
 	fn view_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewPostUpdateInterceptor + Send + Sync>;
 	fn view_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPreDeleteInterceptor + Send + Sync>;
 
-	// Ring buffer (DDL) interceptors
 	fn ringbuffer_post_create_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn RingBufferPostCreateInterceptor + Send + Sync>;
@@ -157,7 +148,6 @@ pub trait WithInterceptors {
 		&mut self,
 	) -> &mut Chain<dyn RingBufferPreDeleteInterceptor + Send + Sync>;
 
-	// Dictionary row (DML) interceptors
 	fn dictionary_row_pre_insert_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn DictionaryRowPreInsertInterceptor + Send + Sync>;
@@ -177,7 +167,6 @@ pub trait WithInterceptors {
 		&mut self,
 	) -> &mut Chain<dyn DictionaryRowPostDeleteInterceptor + Send + Sync>;
 
-	// Dictionary (DDL) interceptors
 	fn dictionary_post_create_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn DictionaryPostCreateInterceptor + Send + Sync>;
@@ -191,7 +180,6 @@ pub trait WithInterceptors {
 		&mut self,
 	) -> &mut Chain<dyn DictionaryPreDeleteInterceptor + Send + Sync>;
 
-	// Series row (DML) interceptors
 	fn series_row_pre_insert_interceptors(&mut self)
 	-> &mut Chain<dyn SeriesRowPreInsertInterceptor + Send + Sync>;
 	fn series_row_post_insert_interceptors(
@@ -208,25 +196,21 @@ pub trait WithInterceptors {
 		&mut self,
 	) -> &mut Chain<dyn SeriesRowPostDeleteInterceptor + Send + Sync>;
 
-	// Series (DDL) interceptors
 	fn series_post_create_interceptors(&mut self) -> &mut Chain<dyn SeriesPostCreateInterceptor + Send + Sync>;
 	fn series_pre_update_interceptors(&mut self) -> &mut Chain<dyn SeriesPreUpdateInterceptor + Send + Sync>;
 	fn series_post_update_interceptors(&mut self) -> &mut Chain<dyn SeriesPostUpdateInterceptor + Send + Sync>;
 	fn series_pre_delete_interceptors(&mut self) -> &mut Chain<dyn SeriesPreDeleteInterceptor + Send + Sync>;
 
-	// Identity (DDL) interceptors
 	fn identity_post_create_interceptors(&mut self) -> &mut Chain<dyn IdentityPostCreateInterceptor + Send + Sync>;
 	fn identity_pre_update_interceptors(&mut self) -> &mut Chain<dyn IdentityPreUpdateInterceptor + Send + Sync>;
 	fn identity_post_update_interceptors(&mut self) -> &mut Chain<dyn IdentityPostUpdateInterceptor + Send + Sync>;
 	fn identity_pre_delete_interceptors(&mut self) -> &mut Chain<dyn IdentityPreDeleteInterceptor + Send + Sync>;
 
-	// Role (DDL) interceptors
 	fn role_post_create_interceptors(&mut self) -> &mut Chain<dyn RolePostCreateInterceptor + Send + Sync>;
 	fn role_pre_update_interceptors(&mut self) -> &mut Chain<dyn RolePreUpdateInterceptor + Send + Sync>;
 	fn role_post_update_interceptors(&mut self) -> &mut Chain<dyn RolePostUpdateInterceptor + Send + Sync>;
 	fn role_pre_delete_interceptors(&mut self) -> &mut Chain<dyn RolePreDeleteInterceptor + Send + Sync>;
 
-	// Granted role (DDL) interceptors
 	fn granted_role_post_create_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn GrantedRolePostCreateInterceptor + Send + Sync>;
@@ -234,7 +218,6 @@ pub trait WithInterceptors {
 		&mut self,
 	) -> &mut Chain<dyn GrantedRolePreDeleteInterceptor + Send + Sync>;
 
-	// Authentication (DDL) interceptors
 	fn authentication_post_create_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn AuthenticationPostCreateInterceptor + Send + Sync>;

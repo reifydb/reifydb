@@ -21,7 +21,6 @@ pub(crate) fn drop_sumtype(services: &Services, txn: &mut AdminTransaction, plan
 
 	let def = services.catalog.get_sumtype(&mut Transaction::Admin(txn), sumtype_id)?;
 
-	// Check for dependent columns across all entity types
 	let columns = services.catalog.list_columns_all(&mut Transaction::Admin(txn))?;
 	let dependents = find_column_dependents(&services.catalog, txn, &columns, |info| {
 		if let Some(Constraint::SumType(id)) = info.column.constraint.constraint()

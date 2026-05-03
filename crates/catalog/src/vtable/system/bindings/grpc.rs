@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes gRPC bindings.
 pub struct SystemBindingsGrpc {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

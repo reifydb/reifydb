@@ -7,7 +7,6 @@ use super::{
 	token::{Token, TokenKind},
 };
 
-/// Scan for a variable token ($variable_name)
 pub fn scan_variable<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek() != Some('$') {
 		return None;
@@ -18,11 +17,9 @@ pub fn scan_variable<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
-	cursor.consume(); // consume '$'
+	cursor.consume();
 
-	// Check for variable name ($variable_name)
 	if let Some(ch) = cursor.peek() {
-		// Variables can start with letter, underscore, or digit
 		if is_identifier_start(ch) || ch.is_ascii_digit() {
 			cursor.consume_while(is_identifier_char);
 			return Some(Token {
@@ -32,7 +29,6 @@ pub fn scan_variable<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		}
 	}
 
-	// Not a variable, restore state
 	cursor.restore_state(state);
 	None
 }

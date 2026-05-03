@@ -20,25 +20,21 @@ use reifydb_type::Result;
 
 use crate::subsystem::WsSubsystem;
 
-/// Configurator for the WebSocket server subsystem.
 pub struct WsConfigurator {
-	/// Address to bind the WebSocket server to (e.g., "0.0.0.0:8090").
 	bind_addr: Option<String>,
-	/// Address to bind the admin WebSocket server to (e.g., "127.0.0.1:9090").
-	/// When set, admin operations are only available on this port.
-	/// When not set, admin operations are not available.
+
 	admin_bind_addr: Option<String>,
-	/// Maximum number of concurrent connections.
+
 	max_connections: usize,
-	/// Timeout for query execution.
+
 	query_timeout: Duration,
-	/// Maximum WebSocket frame size in bytes.
+
 	max_frame_size: usize,
-	/// Optional shared runtime.
+
 	runtime: Option<SharedRuntime>,
-	/// Subscription polling interval (how often to check for new data).
+
 	poll_interval: Duration,
-	/// Maximum rows to read per subscription per poll cycle.
+
 	poll_batch_size: usize,
 }
 
@@ -49,70 +45,59 @@ impl Default for WsConfigurator {
 			admin_bind_addr: None,
 			max_connections: 10_000,
 			query_timeout: Duration::from_secs(30),
-			max_frame_size: 16 << 20, // 16MB
+			max_frame_size: 16 << 20,
 			runtime: None,
-			poll_interval: Duration::from_millis(10), // Poll every 10ms
-			poll_batch_size: 100,                     // Read up to 100 rows per poll
+			poll_interval: Duration::from_millis(10),
+			poll_batch_size: 100,
 		}
 	}
 }
 
 impl WsConfigurator {
-	/// Create a new WebSocket configurator with default values.
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	/// Set the bind address.
 	pub fn bind_addr(mut self, addr: impl Into<String>) -> Self {
 		self.bind_addr = Some(addr.into());
 		self
 	}
 
-	/// Set the admin bind address.
-	/// When set, admin operations are served on this separate port.
 	pub fn admin_bind_addr(mut self, addr: impl Into<String>) -> Self {
 		self.admin_bind_addr = Some(addr.into());
 		self
 	}
 
-	/// Set the maximum number of connections.
 	pub fn max_connections(mut self, max: usize) -> Self {
 		self.max_connections = max;
 		self
 	}
 
-	/// Set the query timeout.
 	pub fn query_timeout(mut self, timeout: Duration) -> Self {
 		self.query_timeout = timeout;
 		self
 	}
 
-	/// Set the maximum frame size.
 	pub fn max_frame_size(mut self, size: usize) -> Self {
 		self.max_frame_size = size;
 		self
 	}
 
-	/// Set the shared runtime.
 	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
 		self.runtime = Some(runtime);
 		self
 	}
 
-	/// Set the subscription polling interval.
 	pub fn poll_interval(mut self, interval: Duration) -> Self {
 		self.poll_interval = interval;
 		self
 	}
 
-	/// Set the subscription polling batch size.
 	pub fn poll_batch_size(mut self, size: usize) -> Self {
 		self.poll_batch_size = size;
 		self
 	}
 
-	/// Consume the configurator and produce an immutable config.
 	pub(crate) fn configure(self) -> WsConfig {
 		WsConfig {
 			bind_addr: self.bind_addr,
@@ -127,26 +112,22 @@ impl WsConfigurator {
 	}
 }
 
-/// Configuration for the WebSocket server subsystem.
 #[derive(Clone, Debug)]
 pub struct WsConfig {
-	/// Address to bind the WebSocket server to (e.g., "0.0.0.0:8090").
 	pub bind_addr: Option<String>,
-	/// Address to bind the admin WebSocket server to (e.g., "127.0.0.1:9090").
-	/// When set, admin operations are only available on this port.
-	/// When not set, admin operations are not available.
+
 	pub admin_bind_addr: Option<String>,
-	/// Maximum number of concurrent connections.
+
 	pub max_connections: usize,
-	/// Timeout for query execution.
+
 	pub query_timeout: Duration,
-	/// Maximum WebSocket frame size in bytes.
+
 	pub max_frame_size: usize,
-	/// Optional shared runtime.
+
 	pub runtime: Option<SharedRuntime>,
-	/// Subscription polling interval (how often to check for new data).
+
 	pub poll_interval: Duration,
-	/// Maximum rows to read per subscription per poll cycle.
+
 	pub poll_batch_size: usize,
 }
 
@@ -156,13 +137,11 @@ impl Default for WsConfig {
 	}
 }
 
-/// Factory for creating WebSocket subsystem instances.
 pub struct WsSubsystemFactory {
 	config_fn: Box<dyn FnOnce() -> WsConfig + Send>,
 }
 
 impl WsSubsystemFactory {
-	/// Create a new WebSocket subsystem factory with a configurator closure.
 	pub fn new<F>(configurator: F) -> Self
 	where
 		F: FnOnce(WsConfigurator) -> WsConfigurator + Send + 'static,

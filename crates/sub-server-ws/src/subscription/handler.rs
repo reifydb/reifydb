@@ -29,17 +29,6 @@ use crate::{
 	subscription::{PushMessage, registry::SubscriptionRegistry},
 };
 
-/// Handle a subscription request.
-///
-/// # Arguments
-///
-/// * `request_id` - The WebSocket request ID for response correlation
-/// * `sub` - The subscription request containing the query
-/// * `conn` - The connection context with shared state
-///
-/// # Returns
-///
-/// `Option<String>` - JSON response string, or None if no response needed
 pub(crate) async fn handle_subscribe(
 	request_id: &str,
 	sub: SubscribeRequest,
@@ -183,7 +172,6 @@ pub(crate) async fn handle_subscribe(
 	}
 }
 
-/// One resolved batch member, classified by source.
 enum ResolvedBatchMember {
 	Local {
 		index: usize,
@@ -225,10 +213,6 @@ impl ResolvedBatchMember {
 	}
 }
 
-/// Handle a batch-subscribe request: create N member subscriptions and group them under one BatchId.
-///
-/// The batch delivers coalesced deltas per poller tick as a single `BatchChange` push.
-/// All-or-nothing: if any member fails to create, previously-created members are rolled back.
 pub(crate) async fn handle_batch_subscribe(
 	request_id: &str,
 	req: BatchSubscribeRequest,
@@ -321,7 +305,6 @@ pub(crate) async fn handle_batch_subscribe(
 		}
 	}
 
-	// Register local members with the registry so the poller finds them.
 	for member in &resolved {
 		if let ResolvedBatchMember::Local {
 			subscription_id,
@@ -349,7 +332,6 @@ pub(crate) async fn handle_batch_subscribe(
 		conn.state.rng(),
 	);
 
-	// Spawn proxy tasks for remote members, routing frames into the batch's pending envelope.
 	let mut remote_members_taken: Vec<(SubscriptionId, RemoteSubscription)> = Vec::new();
 	let mut members_for_ack: Vec<BatchMemberInfo> = Vec::with_capacity(resolved.len());
 	for member in resolved {
@@ -388,8 +370,6 @@ pub(crate) async fn handle_batch_subscribe(
 	Some(Response::batch_subscribed(request_id, batch_id.to_string(), members_for_ack).to_json())
 }
 
-/// Drive a remote subscription into a batch's pending envelope, emitting
-/// `BatchMemberClosed` when the upstream stream ends.
 async fn run_batch_remote_proxy(
 	registry: Arc<SubscriptionRegistry>,
 	batch_id: BatchId,
@@ -406,7 +386,6 @@ async fn run_batch_remote_proxy(
 	let _ = registry.emit_batch_member_closed(batch_id, subscription_id);
 }
 
-/// Handle a batch-unsubscribe request: cascade-cancels every member.
 pub(crate) async fn handle_batch_unsubscribe(
 	request_id: &str,
 	req: BatchUnsubscribeRequest,
@@ -444,7 +423,6 @@ pub(crate) async fn handle_batch_unsubscribe(
 	Some(Response::batch_unsubscribed(request_id, batch_id.to_string()).to_json())
 }
 
-/// Drop any members already resolved during a batch build that subsequently errored.
 async fn rollback_batch_members(conn: &ConnectionContext<'_>, resolved: &[ResolvedBatchMember]) {
 	for member in resolved {
 		if let ResolvedBatchMember::Local {
@@ -454,7 +432,5 @@ async fn rollback_batch_members(conn: &ConnectionContext<'_>, resolved: &[Resolv
 		{
 			warn!("Failed to cleanup partial batch member {} during rollback: {:?}", subscription_id, e);
 		}
-		// Remote members: dropping the RemoteSubscription closes its gRPC stream,
-		// which the remote server treats as an unsubscribe.
 	}
 }

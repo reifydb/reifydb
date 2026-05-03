@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system granted-role assignment information
 pub struct SystemGrantedRoles {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

@@ -48,17 +48,11 @@ use crate::{
 	},
 };
 
-/// A WebSocket response that can be either text (JSON) or binary (RBCF).
 enum WsResponse {
 	Text(String),
 	Binary(Vec<u8>),
 }
 
-/// Kind byte for binary WebSocket frames.
-///
-/// The server prefixes every binary frame with a single byte so clients can
-/// distinguish between one-shot responses and subscription pushes. The rest of
-/// the envelope is identical: `[u32 LE id_len][id bytes][RBCF payload]`.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum BinaryKind {
@@ -67,8 +61,6 @@ pub(crate) enum BinaryKind {
 	BatchChange = 0x02,
 }
 
-/// Build a binary envelope for RBCF-encoded frames:
-/// `[u8 kind][u32 LE id_len][id bytes][u32 LE meta_len][meta bytes][RBCF payload]`.
 pub(crate) fn encode_rbcf_envelope(
 	kind: BinaryKind,
 	id: &str,
@@ -89,7 +81,6 @@ pub(crate) fn encode_rbcf_envelope(
 	envelope
 }
 
-/// Handle a single WebSocket connection.
 pub async fn handle_connection(
 	stream: TcpStream,
 	state: AppState,
@@ -109,23 +100,20 @@ pub async fn handle_connection(
 
 	let (actor_handle, actor_ref) = spawn_connection_actor(&state, connection_id);
 
-	// Channel for receiving push messages from the registry
 	let (push_tx, mut push_rx) = mpsc::unbounded_channel::<PushMessage>();
 
-	// Connection starts with anonymous identity; Auth message upgrades it
 	let mut identity: Option<IdentityId> = Some(IdentityId::anonymous());
 	let mut auth_token: Option<String> = None;
 
-	// Track remote subscription proxy tasks (not registered in registry/poller)
 	let mut remote_tasks: HashMap<String, JoinHandle<()>> = HashMap::new();
-	// Track remote-proxy tasks belonging to batch subscriptions, keyed by batch id.
+
 	let mut batch_remote_tasks: HashMap<BatchId, Vec<JoinHandle<()>>> = HashMap::new();
 
 	loop {
 		select! {
 			biased;
 
-			// Check shutdown first
+
 			result = shutdown.changed() => {
 				if result.is_err() || *shutdown.borrow() {
 					debug!("WebSocket connection {:?} shutting down", peer);
@@ -134,7 +122,7 @@ pub async fn handle_connection(
 				}
 			}
 
-			// Handle push messages from the subscription registry
+
 			Some(push) = push_rx.recv() => {
 				match push {
 					PushMessage::ChangeJson { subscription_id, content_type, body } => {
@@ -190,7 +178,7 @@ pub async fn handle_connection(
 				}
 			}
 
-			// Handle incoming messages
+
 			msg = receiver.next() => {
 				match msg {
 					Some(Ok(Message::Text(text))) => {
@@ -226,19 +214,19 @@ pub async fn handle_connection(
 						}
 					}
 					Some(Ok(Message::Pong(_))) => {
-						// Client responded to our ping, connection is alive
+
 					}
 					Some(Ok(Message::Close(frame))) => {
 						debug!("Client {:?} closed connection: {:?}", peer, frame);
 						break;
 					}
 					Some(Ok(Message::Binary(_))) => {
-						// Binary incoming messages not supported; outgoing binary (RBCF) is fine
+
 						let err = build_error("0", "UNSUPPORTED", "Binary messages not supported");
 						let _ = sender.send(Message::Text(err.into())).await;
 					}
 					Some(Ok(Message::Frame(_))) => {
-						// Raw frame, ignore
+
 					}
 					Some(Err(e)) => {
 						warn!("WebSocket error from {:?}: {}", peer, e);
@@ -322,10 +310,8 @@ async fn cleanup_connection_subscriptions(
 	}
 }
 
-/// Connection ID type alias for clarity.
 type ConnectionId = Uuid7;
 
-/// Groups the shared connection state passed to message processing and subscription handlers.
 pub(crate) struct ConnectionContext<'a> {
 	pub state: &'a AppState,
 	pub actor_ref: &'a ActorRef<ServerMessage>,
@@ -339,7 +325,6 @@ pub(crate) struct ConnectionContext<'a> {
 	pub shutdown: watch::Receiver<bool>,
 }
 
-/// Process a single WebSocket message.
 async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option<WsResponse> {
 	let request: Request = match from_str(text) {
 		Ok(r) => r,
@@ -357,7 +342,6 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 			if let Some(method) = auth.method.as_deref() {
 				let credentials = auth.credentials.unwrap_or_default();
 
-				// Dispatch auth through actor
 				let (reply, receiver) = reply_channel();
 				conn.actor_ref
 					.send(ServerMessage::Authenticate {
@@ -403,7 +387,6 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 					))),
 				}
 			} else {
-				// Token validation flow (existing behavior - stays outside actor)
 				match extract_identity_from_ws_auth(conn.state.auth_service(), auth.token.as_deref()) {
 					Ok(id) => {
 						*conn.identity = Some(id);
@@ -615,7 +598,6 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 		}
 
 		RequestPayload::Unsubscribe(unsub) => {
-			// Check remote tasks first (not registered in registry/poller)
 			if let Some(handle) = conn.remote_tasks.remove(&unsub.subscription_id) {
 				handle.abort();
 				info!(
@@ -638,7 +620,6 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				}
 			};
 
-			// Unsubscribe from registry
 			let removed = conn.registry.unsubscribe(subscription_id);
 
 			if removed {
@@ -666,7 +647,6 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 	}
 }
 
-/// Execute a query/command/admin via the shared dispatch layer with response formatting.
 #[allow(clippy::too_many_arguments)]
 async fn execute_via_dispatch(
 	conn: &mut ConnectionContext<'_>,
@@ -719,7 +699,6 @@ async fn execute_via_dispatch(
 	}
 }
 
-/// Build `RequestMetadata` for a WebSocket request, injecting the stored auth token if present.
 fn build_ws_metadata(auth_token: &Option<String>) -> RequestMetadata {
 	let mut metadata = RequestMetadata::new(Protocol::WebSocket);
 	if let Some(token) = auth_token {
@@ -728,7 +707,6 @@ fn build_ws_metadata(auth_token: &Option<String>) -> RequestMetadata {
 	metadata
 }
 
-/// Convert an ExecuteError to a JSON response string.
 pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 	match e {
 		ExecuteError::Timeout => {
@@ -758,14 +736,10 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 	}
 }
 
-/// Build an error response JSON string.
 pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
 	Response::internal_error(id, code, message).to_json()
 }
 
-/// Dispatch a WebSocket `Call` request through the binding layer.
-/// Mirrors the HTTP and gRPC call paths: resolves the binding via
-/// `list_bindings`, validates params, calls `dispatch_binding`, wraps per format.
 async fn handle_call(
 	request_id: &str,
 	identity: IdentityId,
@@ -857,8 +831,6 @@ async fn handle_call(
 	}
 }
 
-/// Build response body with content_type based on format parameter.
-/// Only called for `WireFormat::Json` and `WireFormat::Frames` - `Rbcf` is handled separately.
 fn build_response_body(frames: Vec<Frame>, format: WireFormat, unwrap: bool) -> (String, JsonValue) {
 	match format {
 		WireFormat::Json => match resolve_response_json(frames, unwrap) {

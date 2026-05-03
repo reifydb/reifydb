@@ -14,7 +14,6 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn create_flow_node(txn: &mut AdminTransaction, node_def: &FlowNode) -> Result<()> {
-		// Write to main flow_node table
 		let mut row = flow_node::SHAPE.allocate();
 		flow_node::SHAPE.set_u64(&mut row, flow_node::ID, node_def.id);
 		flow_node::SHAPE.set_u64(&mut row, flow_node::FLOW, node_def.flow);
@@ -23,7 +22,6 @@ impl CatalogStore {
 
 		txn.set(&FlowNodeKey::encoded(node_def.id), row)?;
 
-		// Write to flow_node_by_flow index
 		let mut index_row = flow_node_by_flow::SHAPE.allocate();
 		flow_node_by_flow::SHAPE.set_u64(&mut index_row, flow_node_by_flow::FLOW, node_def.flow);
 		flow_node_by_flow::SHAPE.set_u64(&mut index_row, flow_node_by_flow::ID, node_def.id);

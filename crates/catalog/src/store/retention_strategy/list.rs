@@ -17,14 +17,12 @@ use reifydb_transaction::transaction::Transaction;
 use super::decode_retention_strategy;
 use crate::{CatalogStore, Result};
 
-/// A object retention strategy entry
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShapeRetentionStrategyEntry {
 	pub shape: ShapeId,
 	pub strategy: RetentionStrategy,
 }
 
-/// An operator retention strategy entry
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorRetentionStrategyEntry {
 	pub operator: FlowNodeId,
@@ -32,7 +30,6 @@ pub struct OperatorRetentionStrategyEntry {
 }
 
 impl CatalogStore {
-	/// List all retention strategies for primitives (tables, views, ring buffers)
 	pub(crate) fn list_shape_retention_strategies(
 		rx: &mut Transaction<'_>,
 	) -> Result<Vec<ShapeRetentionStrategyEntry>> {
@@ -55,7 +52,6 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	/// List all retention strategies for operators
 	pub(crate) fn list_operator_retention_strategies(
 		rx: &mut Transaction<'_>,
 	) -> Result<Vec<OperatorRetentionStrategyEntry>> {

@@ -48,7 +48,6 @@ impl HasVersion for SingleStoreVersion {
 #[derive(Clone)]
 pub enum SingleStore {
 	Standard(StandardSingleStore) = 0,
-	// Other(Box<dyn SingleVersionStore>) = 254,
 }
 
 impl SingleStore {
@@ -66,17 +65,12 @@ impl SingleStore {
 		SingleStore::Standard(StandardSingleStore::testing_memory_with_eventbus(event_bus))
 	}
 
-	/// Get access to the hot storage tier.
-	///
-	/// Returns `None` if the hot tier is not configured.
 	pub fn hot(&self) -> Option<&hot::tier::HotTier> {
 		match self {
 			SingleStore::Standard(store) => store.hot(),
 		}
 	}
 }
-
-// SingleVersion trait implementations
 
 impl SingleVersionGet for SingleStore {
 	#[inline]

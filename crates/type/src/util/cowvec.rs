@@ -20,20 +20,13 @@ where
 	T: Clone + PartialEq,
 {
 	pub fn with_capacity(capacity: usize) -> Self {
-		// Allocate with extra capacity to ensure alignment for SIMD
-		// operations Round up capacity to next multiple of 8 for
-		// better cache performance
 		let aligned_capacity = (capacity + 7) & !7;
 		Self {
 			inner: Arc::new(Vec::with_capacity(aligned_capacity)),
 		}
 	}
 
-	/// Create a new CowVec with aligned capacity for SIMD operations
 	pub fn with_aligned_capacity(capacity: usize) -> Self {
-		// For SIMD, we want capacity aligned to at least 32 bytes
-		// (256-bit SIMD) This ensures we can engine data in chunks
-		// without bounds checking
 		let simd_alignment = 32 / mem::size_of::<T>().max(1);
 		let aligned_capacity = capacity.div_ceil(simd_alignment) * simd_alignment;
 		Self {
@@ -114,8 +107,6 @@ impl<T: Clone + PartialEq> CowVec<T> {
 		}
 	}
 
-	/// Try to extract the inner Vec without cloning.
-	/// Returns `Ok(Vec<T>)` if this is the sole owner, `Err(self)` otherwise.
 	pub fn try_into_vec(self) -> Result<Vec<T>, Self> {
 		match Arc::try_unwrap(self.inner) {
 			Ok(vec) => Ok(vec),
@@ -125,7 +116,6 @@ impl<T: Clone + PartialEq> CowVec<T> {
 		}
 	}
 
-	/// Extract the inner Vec, cloning if shared.
 	pub fn into_inner(self) -> Vec<T> {
 		match Arc::try_unwrap(self.inner) {
 			Ok(vec) => vec,
@@ -161,7 +151,6 @@ impl<T: Clone + PartialEq> CowVec<T> {
 		self.make_mut().push(value);
 	}
 
-	/// Clear all elements, retaining the allocated capacity when solely owned.
 	pub fn clear(&mut self) {
 		self.make_mut().clear();
 	}
@@ -197,21 +186,16 @@ impl<T: Clone + PartialEq> CowVec<T> {
 		}
 	}
 
-	/// Get aligned chunks for SIMD processing
-	/// Returns slices that are guaranteed to be aligned and sized for SIMD
-	/// operations
 	pub fn aligned_chunks(&self, chunk_size: usize) -> impl Iterator<Item = &[T]> {
 		self.inner.chunks(chunk_size)
 	}
 
-	/// Get mutable aligned chunks for SIMD processing
 	pub fn aligned_chunks_mut(&mut self, chunk_size: usize) -> impl Iterator<Item = &mut [T]> {
 		self.make_mut().chunks_mut(chunk_size)
 	}
 
-	/// Returns true if the data is suitably aligned for SIMD operations
 	pub fn is_simd_aligned(&self) -> bool {
-		let alignment = 32; // 256-bit SIMD alignment
+		let alignment = 32;
 		let ptr = self.inner.as_ptr() as usize;
 		ptr.is_multiple_of(alignment)
 	}

@@ -3,10 +3,8 @@
 
 use std::{error, fmt};
 
-/// Errors that can occur during encoding.
 #[derive(Debug)]
 pub enum EncodeError {
-	/// A type that cannot be encoded in RBCF (e.g. List, Record, Tuple).
 	UnsupportedType(String),
 }
 
@@ -20,27 +18,25 @@ impl fmt::Display for EncodeError {
 
 impl error::Error for EncodeError {}
 
-/// Errors that can occur during decoding.
 #[derive(Debug)]
 pub enum DecodeError {
-	/// Not enough bytes to read the expected data.
 	UnexpectedEof {
 		expected: usize,
 		available: usize,
 	},
-	/// Invalid magic bytes.
+
 	InvalidMagic(u32),
-	/// Unsupported format version.
+
 	UnsupportedVersion(u16),
-	/// Unknown type code.
+
 	UnknownTypeCode(u8),
-	/// Unknown encoding.
+
 	UnknownEncoding(u8),
-	/// Invalid data (e.g., invalid UTF-8, invalid date).
+
 	InvalidData(String),
-	/// A type that cannot be decoded from RBCF (e.g. List, Record, Tuple).
+
 	UnsupportedType(String),
-	/// Wraps an inner error with column context.
+
 	ColumnDecodeFailed {
 		column_name: String,
 		row_index: Option<usize>,

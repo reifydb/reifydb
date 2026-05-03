@@ -29,8 +29,6 @@ use reifydb_type::{Result, util::cowvec::CowVec, value::identity::IdentityId};
 
 use crate::consume::host::CdcHost;
 
-/// In-memory `CdcHost` for tests. Owns its own `MaterializedCatalog`, `EventBus` and a
-/// `Clock::Mock` (cloned `MockClock` accessible via the public `mock` field).
 #[derive(Clone)]
 pub struct TestCdcHost {
 	multi: MultiTransaction,
@@ -42,7 +40,6 @@ pub struct TestCdcHost {
 }
 
 impl TestCdcHost {
-	/// Build a fresh host with the mock clock initialised to `initial_nanos`.
 	pub fn with_clock(initial_nanos: u64) -> Self {
 		let multi_store = MultiStore::testing_memory();
 		let single_store = SingleStore::testing_memory();
@@ -72,7 +69,6 @@ impl TestCdcHost {
 		}
 	}
 
-	/// Build a host with the mock clock initialized to 1 s past the epoch.
 	pub fn new() -> Self {
 		Self::with_clock(1_000_000_000)
 	}
@@ -117,12 +113,10 @@ impl CdcHost for TestCdcHost {
 	}
 }
 
-/// Convenience: build an `EncodedKey` from a string.
 pub fn make_key(s: &str) -> EncodedKey {
 	EncodedKey(CowVec::new(s.as_bytes().to_vec()))
 }
 
-/// Convenience: build an `EncodedRow` from a string.
 pub fn make_row(s: &str) -> EncodedRow {
 	EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 }

@@ -10,17 +10,6 @@ use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 use crate::loader::wasm::invoke_wasm_module;
 
-/// WASM scalar function that loads and executes a `.wasm` module.
-///
-/// Each WASM module must export:
-/// - `alloc(size: i32) -> i32` - allocate `size` bytes, return pointer
-/// - `dealloc(ptr: i32, size: i32)` - free memory
-/// - `scalar(input_ptr: i32, input_len: i32) -> i32` - pointer to output (first 4 bytes at output pointer = output
-///   length as LE u32)
-///
-/// Input: the context's `columns` marshalled as flat binary.
-/// Output: flat binary representing a single-column `Columns`, from which
-///   the first column's `ColumnBuffer` is extracted.
 pub struct WasmScalarFunction {
 	info: RoutineInfo,
 	wasm_bytes: Vec<u8>,
@@ -48,7 +37,7 @@ impl WasmScalarFunction {
 }
 
 // SAFETY: WasmScalarFunction only holds inert data (name + bytes).
-// A fresh Engine is created per invocation, so no shared mutable state.
+
 unsafe impl Send for WasmScalarFunction {}
 unsafe impl Sync for WasmScalarFunction {}
 
@@ -68,7 +57,6 @@ impl<'a> Routine<FunctionContext<'a>> for WasmScalarFunction {
 		let output_bytes = invoke_wasm_module(&self.wasm_bytes, "scalar", &input_bytes, &label)
 			.map_err(|e| self.err(e.to_string()))?;
 
-		// Unmarshal as Columns and extract the first column's data
 		let output_columns = unmarshal_columns_from_bytes(&output_bytes);
 
 		match output_columns.first() {

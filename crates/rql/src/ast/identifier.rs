@@ -6,8 +6,6 @@ use crate::{
 	token::token::{Token, TokenKind},
 };
 
-/// Represents a source identifier that hasn't been resolved to a specific type yet
-/// Used in AST parsing before we know whether it's a table, view, or ring buffer
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnresolvedShapeIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -34,9 +32,6 @@ impl<'bump> UnresolvedShapeIdentifier<'bump> {
 	}
 }
 
-/// An unqualified identifier that hasn't been parsed for qualification yet.
-/// This is used in the AST for simple identifiers before they're resolved
-/// to specific types (column, table, namespace, etc.)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct UnqualifiedIdentifier<'bump> {
 	pub token: Token<'bump>,
@@ -71,7 +66,6 @@ impl<'bump> UnqualifiedIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified namespace identifier - segments of a dot-separated path
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedNamespaceIdentifier<'bump> {
 	pub segments: Vec<BumpFragment<'bump>>,
@@ -85,7 +79,6 @@ impl<'bump> MaybeQualifiedNamespaceIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified table identifier for tables - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedTableIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -113,7 +106,6 @@ impl<'bump> MaybeQualifiedTableIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified deferred view identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedDeferredViewIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -141,7 +133,6 @@ impl<'bump> MaybeQualifiedDeferredViewIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified transactional view identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedTransactionalViewIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -169,7 +160,6 @@ impl<'bump> MaybeQualifiedTransactionalViewIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified view identifier (generic) - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedViewIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -197,7 +187,6 @@ impl<'bump> MaybeQualifiedViewIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified ring buffer identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedRingBufferIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -225,7 +214,6 @@ impl<'bump> MaybeQualifiedRingBufferIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified dictionary identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedDictionaryIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -246,7 +234,6 @@ impl<'bump> MaybeQualifiedDictionaryIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified sum type identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSumTypeIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -267,7 +254,6 @@ impl<'bump> MaybeQualifiedSumTypeIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified series identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSeriesIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -288,7 +274,6 @@ impl<'bump> MaybeQualifiedSeriesIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified sequence identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSequenceIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -309,7 +294,6 @@ impl<'bump> MaybeQualifiedSequenceIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified index identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedIndexIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -332,21 +316,18 @@ impl<'bump> MaybeQualifiedIndexIdentifier<'bump> {
 	}
 }
 
-/// How a maybe-qualified column is referenced
 #[derive(Debug, Clone, PartialEq)]
 pub enum MaybeQualifiedColumnShape<'bump> {
-	/// Qualified by shape name (table/view) - namespace still optional
 	Qualified {
 		namespace: Vec<BumpFragment<'bump>>,
 		name: BumpFragment<'bump>,
 	},
-	/// Qualified by alias
+
 	Alias(BumpFragment<'bump>),
-	/// Not qualified (needs resolution based on context)
+
 	Unqualified,
 }
 
-/// Maybe-qualified column identifier - shape qualification is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedColumnIdentifier<'bump> {
 	pub shape: MaybeQualifiedColumnShape<'bump>,
@@ -383,12 +364,10 @@ impl<'bump> MaybeQualifiedColumnIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified function identifier - namespaces can be partial
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedFunctionIdentifier<'bump> {
-	/// Namespace chain (may be empty or partial)
 	pub namespaces: Vec<BumpFragment<'bump>>,
-	/// Function name
+
 	pub name: BumpFragment<'bump>,
 }
 
@@ -406,12 +385,10 @@ impl<'bump> MaybeQualifiedFunctionIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified procedure identifier
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedProcedureIdentifier<'bump> {
-	/// Namespace chain (may be empty or partial)
 	pub namespace: Vec<BumpFragment<'bump>>,
-	/// Procedure name
+
 	pub name: BumpFragment<'bump>,
 }
 
@@ -429,12 +406,10 @@ impl<'bump> MaybeQualifiedProcedureIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified test identifier
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedTestIdentifier<'bump> {
-	/// Namespace chain (may be empty or partial)
 	pub namespace: Vec<BumpFragment<'bump>>,
-	/// Test name
+
 	pub name: BumpFragment<'bump>,
 }
 
@@ -452,8 +427,6 @@ impl<'bump> MaybeQualifiedTestIdentifier<'bump> {
 	}
 }
 
-/// Generic maybe-qualified identifier - namespace is optional.
-/// Used for targets/sources in CREATE SOURCE/SINK where the entity type is not known at parse time.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -474,7 +447,6 @@ impl<'bump> MaybeQualifiedIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified source identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSourceIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -495,12 +467,10 @@ impl<'bump> MaybeQualifiedSourceIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified handler identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedHandlerIdentifier<'bump> {
-	/// Namespace chain (may be empty or partial)
 	pub namespace: Vec<BumpFragment<'bump>>,
-	/// Handler name
+
 	pub name: BumpFragment<'bump>,
 }
 
@@ -518,7 +488,6 @@ impl<'bump> MaybeQualifiedHandlerIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified sink identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSinkIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
@@ -539,7 +508,6 @@ impl<'bump> MaybeQualifiedSinkIdentifier<'bump> {
 	}
 }
 
-/// Maybe-qualified binding identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedBindingIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,

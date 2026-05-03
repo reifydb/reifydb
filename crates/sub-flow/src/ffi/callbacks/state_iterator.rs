@@ -8,31 +8,23 @@ use reifydb_core::{
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
 
-/// Handle to a state iterator
 pub type StateIteratorHandle = u64;
 
-// Thread-local registry of active state iterators
 thread_local! {
 	static ITERATOR_REGISTRY: RefCell<IteratorRegistry> = RefCell::new(IteratorRegistry::new());
 }
 
-/// Batch-based iterator for FFI boundary
-///
-/// Pre-decodes all items from a MultiVersionBatch for efficient iteration.
-/// This eliminates the need for unsafe lifetime transmutation.
 struct BatchIterator {
-	items: Vec<(Vec<u8>, Vec<u8>)>, // Pre-decoded (user_key, value) pairs
+	items: Vec<(Vec<u8>, Vec<u8>)>,
 	position: usize,
 }
 
 impl BatchIterator {
-	/// Create a new batch iterator from a MultiVersionBatch
 	fn new(batch: MultiVersionBatch) -> Self {
 		let items = batch
 			.items
 			.into_iter()
 			.filter_map(|multi| {
-				// Decode the FlowNodeStateKey to extract the user key
 				let state_key = FlowNodeStateKey::decode(&multi.key)?;
 				Some((state_key.key, multi.row.to_vec()))
 			})
@@ -44,7 +36,6 @@ impl BatchIterator {
 		}
 	}
 
-	/// Get the next key-value pair
 	fn next(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
 		if self.position < self.items.len() {
 			let item = self.items[self.position].clone();
@@ -56,7 +47,6 @@ impl BatchIterator {
 	}
 }
 
-/// Registry for managing state iterators
 struct IteratorRegistry {
 	next_handle: StateIteratorHandle,
 	iterators: HashMap<StateIteratorHandle, BatchIterator>,
@@ -86,17 +76,11 @@ impl IteratorRegistry {
 	}
 }
 
-/// Create a new iterator from a batch and return its handle
 pub(crate) fn create_iterator(batch: MultiVersionBatch) -> StateIteratorHandle {
 	let iter = BatchIterator::new(batch);
 	ITERATOR_REGISTRY.with(|r| r.borrow_mut().insert(iter))
 }
 
-/// Get the next key-value pair from an iterator
-///
-/// Returns:
-/// - Some((user_key, value)) if there's a next item
-/// - None if iterator is exhausted or handle is invalid
 pub(crate) fn next_iterator(handle: StateIteratorHandle) -> Option<(Vec<u8>, Vec<u8>)> {
 	ITERATOR_REGISTRY.with(|r| {
 		let mut registry = r.borrow_mut();
@@ -104,7 +88,6 @@ pub(crate) fn next_iterator(handle: StateIteratorHandle) -> Option<(Vec<u8>, Vec
 	})
 }
 
-/// Free an iterator by its handle
 pub(crate) fn free_iterator(handle: StateIteratorHandle) -> bool {
 	ITERATOR_REGISTRY.with(|r| r.borrow_mut().remove(handle).is_some())
 }

@@ -23,12 +23,6 @@ use reifydb_type::{
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
-/// Evaluate a list of expressions into operator configuration
-///
-/// Only processes `Expression::Alias` variants:
-/// - The alias name becomes the BTreeMap key
-/// - The inner expression is evaluated to become the value
-/// - Non-Alias expressions are skipped
 pub fn evaluate_operator_config(
 	expressions: &[Expression],
 	routines: &Routines,

@@ -23,11 +23,9 @@ use crate::actor::{SeriesMessage, TableMessage};
 pub struct StorageConfig {
 	pub table_tick_interval: Duration,
 	pub series_tick_interval: Duration,
-	// Default bucket width for series (in key units: ms/us/ns/s depending on
-	// the series' `TimestampPrecision`, or plain u64 for integer keys).
+
 	pub series_bucket_width: u64,
-	// Wall-clock grace before a DateTime series bucket is considered closed.
-	// Ignored for integer-keyed series.
+
 	pub series_grace: Duration,
 }
 
@@ -36,18 +34,13 @@ impl Default for StorageConfig {
 		Self {
 			table_tick_interval: Duration::from_secs(1),
 			series_tick_interval: Duration::from_secs(1),
-			// 1 hour in nanoseconds - reasonable default for a DateTime series.
+
 			series_bucket_width: 3_600 * 1_000_000_000,
 			series_grace: Duration::from_secs(5),
 		}
 	}
 }
 
-// `StorageSubsystem` is a thin lifecycle marker: the factory spawns both actors
-// during `create()`, and this struct just holds clones of their refs so
-// `shutdown()` can deliver an explicit stop signal. Joining actually happens
-// via actor-system shutdown on `Database::stop()` - same pattern as
-// `MetricSubsystem`.
 pub struct StorageSubsystem {
 	registry: SnapshotRegistry,
 	table_ref: ActorRef<TableMessage>,
@@ -102,9 +95,7 @@ impl Subsystem for StorageSubsystem {
 		if !self.running.swap(false, Ordering::SeqCst) {
 			return Ok(());
 		}
-		// Best-effort stop messages; actor-system shutdown is the authoritative
-		// join point. A closed mailbox (`SendError::Closed`) means the actor has
-		// already stopped, which is fine.
+
 		let _ = self.table_ref.send(TableMessage::Shutdown);
 		let _ = self.series_ref.send(SeriesMessage::Shutdown);
 		debug!("Storage subsystem shutdown signalled");

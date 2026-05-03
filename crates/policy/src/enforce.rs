@@ -17,7 +17,6 @@ use reifydb_type::{Result, error::Error};
 
 use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policies};
 
-/// Identifies the target of a policy enforcement check.
 pub struct PolicyTarget<'a> {
 	pub namespace: &'a str,
 	pub shape: &'a str,
@@ -25,12 +24,6 @@ pub struct PolicyTarget<'a> {
 	pub target_type: PolicyTargetType,
 }
 
-/// Enforce write policies for a DML operation (insert, update, delete).
-///
-/// - Root bypasses all policies.
-/// - If no write policies match, the write is denied (default-deny).
-/// - For each matching policy, the `require` condition is evaluated against each row.
-/// - If any row fails any policy condition, the operation is denied with an error.
 pub fn enforce_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
@@ -67,14 +60,6 @@ pub fn enforce_write_policies(
 	})
 }
 
-/// Enforce session-level access control for admin/command/query operations.
-///
-/// - Root bypasses all policies.
-/// - If no session policies match, uses `default_deny` to decide:
-///   - `true` -> deny (e.g., admin for non-root)
-///   - `false` -> allow (e.g., command/query for non-root)
-/// - If policies found, evaluates filter/require conditions against identity.
-/// - If any condition denies, returns `SessionDenied` error.
 pub fn enforce_session_policy(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
@@ -112,13 +97,6 @@ pub fn enforce_session_policy(
 	})
 }
 
-/// Enforce identity-only policies (no row data) for operations like procedure calls.
-///
-/// - Root bypasses all policies.
-/// - If no policies match, the operation is denied (default-deny).
-/// - For each matching policy, the `require` condition is evaluated with identity in scope but no row data
-///   (row_count=1, empty columns).
-/// - If the condition evaluates to false, the operation is denied.
 pub fn enforce_identity_policy(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
@@ -170,8 +148,6 @@ fn no_policy_error(target: &PolicyTarget<'_>) -> Error {
 	.into()
 }
 
-/// Walk every `Require`/`Filter` condition in every policy body and invoke `on_condition`.
-/// The closure may return an error to abort enforcement.
 fn for_each_policy_condition<F>(policies: &[(Policy, PolicyOperation)], bump: &Bump, mut on_condition: F) -> Result<()>
 where
 	F: FnMut(&Policy, &Expression) -> Result<()>,

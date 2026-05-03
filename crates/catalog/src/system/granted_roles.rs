@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::granted_roles::*, vtable::GRANTED_ROLES};
 
-/// Returns the static definition for the system.granted_roles virtual table
-/// This table exposes the mapping between identities and roles in the database
 pub fn granted_roles() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

@@ -6,7 +6,6 @@ use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId, 
 use crate::materialized::{MaterializedCatalog, MultiVersionRetentionStrategy};
 
 impl MaterializedCatalog {
-	/// Find a retention strategy for an operator at a specific version
 	pub fn find_operator_retention_strategy_at(
 		&self,
 		operator: FlowNodeId,
@@ -18,7 +17,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a retention strategy for an operator (returns latest version)
 	pub fn find_operator_retention_strategy(&self, operator: FlowNodeId) -> Option<RetentionStrategy> {
 		self.operator_retention_strategies.get(&operator).and_then(|entry| {
 			let multi = entry.value();
@@ -26,7 +24,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Set a retention strategy for an operator at a specific version
 	pub fn set_operator_retention_strategy(
 		&self,
 		operator: FlowNodeId,

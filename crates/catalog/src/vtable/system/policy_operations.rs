@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system policy operation information
 pub struct SystemPolicyOperations {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

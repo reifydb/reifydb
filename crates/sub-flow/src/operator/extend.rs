@@ -36,7 +36,7 @@ impl Operator for ExtendOperator {
 
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		// TODO: Implement single-encoded extend processing
-		// For now, just pass through all changes with updated from
+
 		Ok(Change::from_flow(self.node, change.version, change.diffs, change.changed_at))
 	}
 

@@ -12,15 +12,6 @@ use super::{AuthResponse, AuthService, generate_session_token};
 use crate::error::AuthError;
 
 impl AuthService {
-	/// Authenticate an identity with the given method and credentials.
-	///
-	/// For single-step methods (password, token), returns `Authenticated` or `Failed`.
-	/// For challenge-response methods, may return `Challenge` first, then `Authenticated`
-	/// on the second call with the challenge response.
-	///
-	/// For Solana authentication, if the identity does not exist and the credentials contain
-	/// a `public_key`, the identity and authentication method are auto-provisioned before
-	/// proceeding with the challenge-response flow.
 	#[instrument(name = "auth::authenticate", level = "debug", skip(self, credentials))]
 	pub fn authenticate(&self, method: &str, credentials: HashMap<String, String>) -> Result<AuthResponse, Error> {
 		if let Some(challenge_id) = credentials.get("challenge_id").cloned() {
@@ -146,7 +137,6 @@ impl AuthService {
 		}
 	}
 
-	/// Complete a challenge-response authentication flow.
 	fn authenticate_challenge_response(
 		&self,
 		challenge_id: &str,

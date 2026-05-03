@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system event (sumtype) information
 pub struct SystemEvents {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

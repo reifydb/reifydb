@@ -6,10 +6,6 @@ use reifydb_type::{Result, value::Value};
 
 use crate::{compute::SearchResult, error::ColumnError};
 
-// Binary search over a sorted canonical array. Returns `Found(index)` if the
-// needle matches a row exactly, or `NotFound(insertion_point)` otherwise. The
-// caller is responsible for ensuring the array is sorted; no validation is
-// performed.
 pub fn search_sorted(array: &Canonical, needle: &Value) -> Result<SearchResult> {
 	let result = match (&array.buffer, needle) {
 		(ColumnBuffer::Int1(_), Value::Int1(n)) => array.buffer.as_slice::<i8>().binary_search(n),

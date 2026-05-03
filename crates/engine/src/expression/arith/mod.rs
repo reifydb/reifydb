@@ -7,7 +7,7 @@
 /// Fixed-width pairs (12×12=144 arms) use `$fh`, while any pair involving arbitrary-precision
 /// types (81 arms) uses `$ah`. Additional match arms are appended via `$($extra:tt)*`.
 macro_rules! dispatch_arith {
-	// Entry point
+
 	(
 		$left:expr, $right:expr;
 		fixed: $fh:ident, arb: $ah:ident ($ctx:expr, $target:expr, $fragment:expr);
@@ -21,7 +21,7 @@ macro_rules! dispatch_arith {
 		)
 	};
 
-	// Recursive: process one fixed-left type, generating all 15 right-side arms
+
 	(@rows
 		($left:expr, $right:expr) $fh:ident $ah:ident ($ctx:expr, $target:expr, $fragment:expr)
 		[$L:ident $($rest:ident)*]
@@ -53,7 +53,7 @@ macro_rules! dispatch_arith {
 		)
 	};
 
-	// Base case: all fixed-left types processed, emit the match with arb-left arms
+
 	(@rows
 		($left:expr, $right:expr) $fh:ident $ah:ident ($ctx:expr, $target:expr, $fragment:expr)
 		[]
@@ -61,10 +61,10 @@ macro_rules! dispatch_arith {
 		{$($acc:tt)*}
 	) => {
 		match ($left, $right) {
-			// Fixed × Fixed + Fixed × Arb (12 × 15 = 180 arms)
+
 			$($acc)*
 
-			// Arb × all (3 × 15 = 45 arms)
+
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Float4(r)) => $ah($ctx, l, r, $target, $fragment),
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Float8(r)) => $ah($ctx, l, r, $target, $fragment),
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int1(r)) => $ah($ctx, l, r, $target, $fragment),
@@ -113,7 +113,7 @@ macro_rules! dispatch_arith {
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
 
-			// Additional arms (special cases, undefined handling, error fallback)
+
 			$($extra)*
 		}
 	};

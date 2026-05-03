@@ -66,7 +66,6 @@ impl<'a> Catalog<'a> {
 }
 
 pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, FFIError> {
-	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_col.name.ptr.is_null() && ffi_col.name.len > 0 {
 		unsafe { from_raw_parts(ffi_col.name.ptr, ffi_col.name.len) }
 	} else {
@@ -77,7 +76,6 @@ pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, FFI
 		.map_err(|_| FFIError::Other("Invalid UTF-8 in column name".to_string()))?
 		.to_string();
 
-	// Decode type constraint
 	let constraint = decode_type_constraint(
 		ffi_col.base_type,
 		ffi_col.constraint_type,
@@ -89,24 +87,20 @@ pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, FFI
 		id: ColumnId(ffi_col.id),
 		name,
 		constraint,
-		properties: Vec::new(), // Simplified version - no policies
+		properties: Vec::new(),
 		index: ColumnIndex(ffi_col.column_index),
 		auto_increment: ffi_col.auto_increment != 0,
-		dictionary_id: None, // Simplified version - no dictionary
+		dictionary_id: None,
 	})
 }
 
 pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<PrimaryKey, FFIError> {
-	// Get column IDs
 	let column_ids = if !ffi_pk.column_ids.is_null() && ffi_pk.column_count > 0 {
 		unsafe { from_raw_parts(ffi_pk.column_ids, ffi_pk.column_count).to_vec() }
 	} else {
 		Vec::new()
 	};
 
-	// Note: We can't fully reconstruct PrimaryKey because it contains Vec<Column>,
-	// but we only have column IDs. This is a limitation of the simplified FFI.
-	// For now, we'll create placeholder Column entries.
 	let columns = column_ids
 		.into_iter()
 		.enumerate()

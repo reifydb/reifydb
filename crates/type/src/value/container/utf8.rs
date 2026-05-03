@@ -47,10 +47,6 @@ where
 
 impl Serialize for Utf8Container<Cow> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
-		// Postcard wire compat with the previous `Vec<String>` form: the
-		// inner VarlenContainer encodes as a sequence of byte slices,
-		// which postcard serializes identically to a sequence of strings
-		// (length-prefixed length-prefixed bytes).
 		self.inner.serialize(serializer)
 	}
 }
@@ -77,23 +73,15 @@ impl Utf8Container<Cow> {
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
-		// Heuristic: assume average ~16 bytes per string for the byte
-		// arena. This is just a starting capacity hint; the buffer
-		// grows on demand.
 		Self {
 			inner: VarlenContainer::with_capacity(capacity, capacity * 16),
 		}
 	}
 
-	/// Reconstruct from a Vec of owned Strings (for compatibility with
-	/// previous `from_raw_parts(Vec<String>)`).
 	pub fn from_raw_parts(data: Vec<String>) -> Self {
 		Self::from_vec(data)
 	}
 
-	/// Build directly from contiguous bytes + offsets (zero-copy from the
-	/// caller's perspective). Caller must ensure the bytes are valid UTF-8
-	/// and offsets are well-formed.
 	pub fn from_bytes_offsets(data: Vec<u8>, offsets: Vec<u64>) -> Self {
 		debug_assert!(str::from_utf8(&data).is_ok(), "Utf8Container data must be valid UTF-8");
 		Self {
@@ -101,8 +89,6 @@ impl Utf8Container<Cow> {
 		}
 	}
 
-	/// Try to decompose into a `Vec<String>` for compatibility with code
-	/// paths that need owned strings. Always succeeds (allocates).
 	pub fn try_into_raw_parts(self) -> Option<Vec<String>> {
 		Some(self.iter().map(|s| s.unwrap().to_string()).collect())
 	}
@@ -115,17 +101,12 @@ impl<S: Storage> Utf8Container<S> {
 		}
 	}
 
-	/// Construct from storage-generic data+offsets vectors. Used by arena
-	/// conversion. Caller must ensure data is valid UTF-8 and offsets are
-	/// well-formed (length >= 1, [0] == 0, monotonic non-decreasing,
-	/// last <= data.len()).
 	pub fn from_storage_parts(data: S::Vec<u8>, offsets: S::Vec<u64>) -> Self {
 		Self {
 			inner: VarlenContainer::from_storage_parts(data, offsets),
 		}
 	}
 
-	/// Borrow the inner data + offsets vectors.
 	pub fn data_storage(&self) -> &S::Vec<u8> {
 		self.inner.data()
 	}
@@ -146,17 +127,14 @@ impl<S: Storage> Utf8Container<S> {
 		self.inner.is_empty()
 	}
 
-	/// Storage-generic clear (works for any `S: Storage`).
 	pub fn clear(&mut self) {
 		self.inner.clear_generic();
 	}
 
-	/// Borrow the i-th string. UTF-8 validity is guaranteed by construction.
 	pub fn get(&self, index: usize) -> Option<&str> {
 		let bytes = self.inner.get_bytes(index)?;
 		// SAFETY: All push paths validate UTF-8 (push(&str) takes a
-		// validated &str; from_bytes_offsets debug-asserts validity).
-		// VarlenContainer never splits or rearranges bytes.
+
 		Some(unsafe { str::from_utf8_unchecked(bytes) })
 	}
 
@@ -168,18 +146,14 @@ impl<S: Storage> Utf8Container<S> {
 		true
 	}
 
-	/// Borrow the underlying concatenated payload bytes. Used by the FFI
-	/// marshal path for zero-copy borrow.
 	pub fn data_bytes(&self) -> &[u8] {
 		self.inner.data_bytes()
 	}
 
-	/// Borrow the underlying offsets array (length = `len + 1`).
 	pub fn offsets(&self) -> &[u64] {
 		self.inner.offsets()
 	}
 
-	/// Borrow the underlying VarlenContainer (test/debug only).
 	pub fn inner(&self) -> &VarlenContainer<S> {
 		&self.inner
 	}
@@ -195,12 +169,10 @@ impl<S: Storage> Utf8Container<S> {
 		}
 	}
 
-	/// Iterate strings as `Option<&str>`. Always Some for indices < len.
 	pub fn iter(&self) -> impl Iterator<Item = Option<&str>> + '_ {
 		(0..self.len()).map(|i| self.get(i))
 	}
 
-	/// Iterate strings as `&str` directly.
 	pub fn iter_str(&self) -> impl Iterator<Item = &str> + '_ {
 		(0..self.len()).map(|i| self.get(i).unwrap())
 	}

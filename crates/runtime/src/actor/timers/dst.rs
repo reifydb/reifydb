@@ -16,7 +16,6 @@ use std::{
 use super::{TimerHandle, next_timer_id};
 use crate::{actor::mailbox::ActorRef, context::clock::MockClock};
 
-/// A timer entry in the DST timer heap.
 pub(crate) struct DstTimerEntry {
 	id: u64,
 	pub(crate) deadline_nanos: u64,
@@ -34,16 +33,12 @@ enum DstTimerKind {
 	},
 }
 
-/// Shared timer heap type.
 pub(crate) type DstTimerHeap = Rc<RefCell<BinaryHeap<DstTimerEntry>>>;
 
-/// Create a new empty timer heap.
 pub(crate) fn new_timer_heap() -> DstTimerHeap {
 	Rc::new(RefCell::new(BinaryHeap::new()))
 }
 
-// Min-heap ordering: smallest deadline first.
-// BinaryHeap is a max-heap, so we reverse the comparison.
 impl PartialEq for DstTimerEntry {
 	fn eq(&self, other: &Self) -> bool {
 		self.deadline_nanos == other.deadline_nanos && self.id == other.id
@@ -60,12 +55,10 @@ impl PartialOrd for DstTimerEntry {
 
 impl Ord for DstTimerEntry {
 	fn cmp(&self, other: &Self) -> CmpOrdering {
-		// Reverse for min-heap: smaller deadline = higher priority
 		other.deadline_nanos.cmp(&self.deadline_nanos).then_with(|| other.id.cmp(&self.id))
 	}
 }
 
-/// Schedule a one-shot timer that sends a message after a delay.
 pub(crate) fn schedule_once_fn<M: 'static, F: FnOnce() -> M + 'static>(
 	heap: &DstTimerHeap,
 	clock: &MockClock,
@@ -91,7 +84,6 @@ pub(crate) fn schedule_once_fn<M: 'static, F: FnOnce() -> M + 'static>(
 	handle
 }
 
-/// Schedule a repeating timer using a factory function.
 pub(crate) fn schedule_repeat_fn<M: 'static, F: Fn() -> M + 'static>(
 	heap: &DstTimerHeap,
 	clock: &MockClock,
@@ -124,7 +116,6 @@ pub(crate) fn schedule_repeat_fn<M: 'static, F: Fn() -> M + 'static>(
 	handle
 }
 
-/// Schedule a repeating timer that sends a cloned message.
 pub(crate) fn schedule_repeat<M: Clone + 'static>(
 	heap: &DstTimerHeap,
 	clock: &MockClock,
@@ -135,15 +126,10 @@ pub(crate) fn schedule_repeat<M: Clone + 'static>(
 	schedule_repeat_fn(heap, clock, actor_ref, interval, move || msg.clone())
 }
 
-/// Fire all timers whose deadline is <= `now_nanos`.
-///
-/// Timers are fired in deadline order. Repeat timers are re-inserted
-/// with their next deadline. Returns the number of timers fired.
 pub(crate) fn fire_due_timers(heap: &DstTimerHeap, now_nanos: u64) -> usize {
 	let mut fired = 0;
 
 	loop {
-		// Peek to check if the next timer is due.
 		let should_pop = heap.borrow().peek().map_or(false, |entry| entry.deadline_nanos <= now_nanos);
 
 		if !should_pop {
@@ -152,7 +138,6 @@ pub(crate) fn fire_due_timers(heap: &DstTimerHeap, now_nanos: u64) -> usize {
 
 		let entry = heap.borrow_mut().pop().unwrap();
 
-		// Skip cancelled timers.
 		if entry.cancelled.load(Ordering::SeqCst) {
 			continue;
 		}

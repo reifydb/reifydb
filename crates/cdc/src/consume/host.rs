@@ -9,22 +9,15 @@ use reifydb_transaction::transaction::{command::CommandTransaction, query::Query
 use reifydb_type::Result;
 
 pub trait CdcHost: Clone + Send + Sync + 'static {
-	/// Begin a new command transaction.
 	fn begin_command(&self) -> Result<CommandTransaction>;
 
-	/// Begin a new read-only query transaction.
 	fn begin_query(&self) -> Result<QueryTransaction>;
 
-	/// Get the current committed version.
 	fn current_version(&self) -> Result<CommitVersion>;
 
-	/// Get the version up to which all transactions are complete.
 	fn done_until(&self) -> CommitVersion;
 
-	/// Wait for the watermark to reach the specified version.
-	/// Returns true if the version was reached, false if timeout.
 	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool;
 
-	/// Get the materialized catalog for fingerprint-based shape lookup.
 	fn materialized_catalog(&self) -> &MaterializedCatalog;
 }

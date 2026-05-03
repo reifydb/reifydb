@@ -23,10 +23,6 @@ use crate::{
 	vm::{services::Services, stack::SymbolTable},
 };
 
-/// Engine-side implementation of the policy evaluator trait.
-///
-/// Holds references to `Services` (for functions/clock) and `SymbolTable`
-/// (for variable resolution), and compiles+evaluates RQL expressions.
 pub struct PolicyEvaluator<'a> {
 	services: &'a Arc<Services>,
 	symbols: &'a SymbolTable,

@@ -57,34 +57,28 @@ impl MaterializedCatalog {
 		}
 	}
 
-	/// Find the latest gRPC binding registered under `name`.
 	pub fn find_grpc_binding_by_name(&self, name: &str) -> Option<Binding> {
 		self.bindings_by_grpc_name.get(name).and_then(|entry| self.find_binding(*entry.value()))
 	}
 
-	/// Find the gRPC binding registered under `name` as of `version`.
 	pub fn find_grpc_binding_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Binding> {
 		self.bindings_by_grpc_name.get(name).and_then(|entry| self.find_binding_at(*entry.value(), version))
 	}
 
-	/// Find the latest WS binding registered under `name`.
 	pub fn find_ws_binding_by_name(&self, name: &str) -> Option<Binding> {
 		self.bindings_by_ws_name.get(name).and_then(|entry| self.find_binding(*entry.value()))
 	}
 
-	/// Find the WS binding registered under `name` as of `version`.
 	pub fn find_ws_binding_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Binding> {
 		self.bindings_by_ws_name.get(name).and_then(|entry| self.find_binding_at(*entry.value(), version))
 	}
 
-	/// Find the latest HTTP binding registered at `(method, path)`.
 	pub fn find_http_binding_by_method_path(&self, method: &str, path: &str) -> Option<Binding> {
 		self.bindings_by_http_method_path
 			.get(&(method.to_string(), path.to_string()))
 			.and_then(|entry| self.find_binding(*entry.value()))
 	}
 
-	/// Find the HTTP binding registered at `(method, path)` as of `version`.
 	pub fn find_http_binding_by_method_path_at(
 		&self,
 		method: &str,
@@ -96,12 +90,10 @@ impl MaterializedCatalog {
 			.and_then(|entry| self.find_binding_at(*entry.value(), version))
 	}
 
-	/// List the latest version of all HTTP bindings.
 	pub fn list_http_bindings(&self) -> Vec<Binding> {
 		self.bindings_http.iter().filter_map(|entry| self.find_binding(*entry.key())).collect()
 	}
 
-	/// List all HTTP bindings as visible at the given commit version.
 	pub fn list_http_bindings_at(&self, version: CommitVersion) -> Vec<Binding> {
 		self.bindings_http.iter().filter_map(|entry| self.find_binding_at(*entry.key(), version)).collect()
 	}

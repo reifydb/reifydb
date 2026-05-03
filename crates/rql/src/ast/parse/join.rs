@@ -25,11 +25,9 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Join)?;
 		let with = self.parse_sub_query()?;
 
-		// as <alias>
 		self.consume_operator(As)?;
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
-		// using (col1, col2) and ...
 		let using_clause = self.parse_using_clause()?;
 		let ttl = self.parse_with_clause_for_operator()?;
 
@@ -61,7 +59,6 @@ impl<'bump> Parser<'bump> {
 
 		let with = self.parse_sub_query()?;
 
-		// Required: as <alias>
 		self.consume_operator(As)?;
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 		let ttl = self.parse_with_clause_for_operator()?;
@@ -83,11 +80,9 @@ impl<'bump> Parser<'bump> {
 
 		let with = self.parse_sub_query()?;
 
-		// as <alias>
 		self.consume_operator(As)?;
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
-		// using (col1, col2) and ...
 		let using_clause = self.parse_using_clause()?;
 		let ttl = self.parse_with_clause_for_operator()?;
 
@@ -108,11 +103,9 @@ impl<'bump> Parser<'bump> {
 
 		let with = self.parse_sub_query()?;
 
-		// as <alias>
 		self.consume_operator(As)?;
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
-		// using (col1, col2) and ...
 		let using_clause = self.parse_using_clause()?;
 		let ttl = self.parse_with_clause_for_operator()?;
 
@@ -126,16 +119,14 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse: using (expr, expr) and|or (expr, expr) ...
 	fn parse_using_clause(&mut self) -> Result<AstUsingClause<'bump>> {
 		let using_token = self.consume_keyword(Using)?;
 		let mut pairs = Vec::new();
 
 		loop {
-			// Expect: (expression, expression)
 			self.consume_operator(OpenParen)?;
 			let first = self.parse_node(Precedence::None)?;
-			// Consume comma separator
+
 			if !self.current()?.is_separator(Comma) {
 				return Err(AstError::TokenizeError {
 					message: "expected ','".to_string(),
@@ -146,7 +137,6 @@ impl<'bump> Parser<'bump> {
 			let second = self.parse_node(Precedence::None)?;
 			self.consume_operator(CloseParen)?;
 
-			// Check for connector ('and' or 'or')
 			let connector = if !self.is_eof() {
 				if self.current()?.is_operator(And) {
 					self.advance()?;

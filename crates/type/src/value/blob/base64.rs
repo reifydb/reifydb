@@ -11,21 +11,18 @@ use crate::{
 impl Blob {
 	pub fn from_b64(fragment: Fragment) -> Result<Self, Error> {
 		let b64_str = fragment.text();
-		// Try transaction base64 first, then without padding if it fails
+
 		match general_purpose::STANDARD.decode(b64_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),
-			Err(_) => {
-				// Try without padding
-				match general_purpose::STANDARD_NO_PAD.decode(b64_str) {
-					Ok(bytes) => Ok(Blob::new(bytes)),
-					Err(_) => Err(TypeError::BlobEncoding {
-						kind: BlobEncodingKind::InvalidBase64,
-						message: format!("Invalid base64 string: '{}'", fragment.text()),
-						fragment,
-					}
-					.into()),
+			Err(_) => match general_purpose::STANDARD_NO_PAD.decode(b64_str) {
+				Ok(bytes) => Ok(Blob::new(bytes)),
+				Err(_) => Err(TypeError::BlobEncoding {
+					kind: BlobEncodingKind::InvalidBase64,
+					message: format!("Invalid base64 string: '{}'", fragment.text()),
+					fragment,
 				}
-			}
+				.into()),
+			},
 		}
 	}
 

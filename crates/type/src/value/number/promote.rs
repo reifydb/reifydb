@@ -124,7 +124,7 @@ impl_promote_float_float!(f32, f32 => f64);
 impl_promote_float_float!(f32, f64 => f64); impl_promote_float_float!(f64, f32 => f64);
 impl_promote_float_float!(f64, f64 => f64);
 
-// float - signed
+
 
 impl_promote_float_integer!(f32, i8 => f64); impl_promote_integer_float!(i8, f32 => f64);
 impl_promote_float_integer!(f32, i16 => f64); impl_promote_integer_float!(i16, f32 => f64);
@@ -138,7 +138,7 @@ impl_promote_float_integer!(f64, i32 => f64); impl_promote_integer_float!(i32, f
 impl_promote_float_integer!(f64, i64 => f64); impl_promote_integer_float!(i64, f64 => f64);
 impl_promote_float_integer!(f64, i128 => f64); impl_promote_integer_float!(i128, f64 => f64);
 
-// float - unsigned
+
 
 impl_promote_float_integer!(f32, u8 => f64); impl_promote_integer_float!(u8, f32 => f64);
 impl_promote_float_integer!(f32, u16 => f64); impl_promote_integer_float!(u16, f32 => f64);
@@ -152,7 +152,7 @@ impl_promote_float_integer!(f64, u32 => f64); impl_promote_integer_float!(u32, f
 impl_promote_float_integer!(f64, u64 => f64); impl_promote_integer_float!(u64, f64 => f64);
 impl_promote_float_integer!(f64, u128 => f64); impl_promote_integer_float!(u128, f64 => f64);
 
-// signed - signed 
+
 macro_rules! impl_promote_signed_signed {
     ($l:ty, $r:ty => $common:ty) => {
         impl Promote<$r> for $l {
@@ -506,7 +506,7 @@ impl Promote<Uint> for Decimal {
         (self.clone(), r_as_decimal)
     }
 }
-// Float to Int, Uint, Decimal promotions
+
 impl Promote<Int> for f32 {
     type Output = Decimal;
     
@@ -687,7 +687,7 @@ impl Promote<f32> for Decimal {
     }
 }
 
-// f64 implementations
+
 impl Promote<Int> for f64 {
     type Output = Decimal;
     
@@ -882,7 +882,7 @@ impl Promote<f64> for Decimal {
     }
 }
 
-// Promote implementations for integer types with Int
+
 macro_rules! impl_promote_int_to_int {
     ($($t:ty),*) => {
         $(
@@ -923,7 +923,7 @@ macro_rules! impl_promote_int_to_int {
 
 impl_promote_int_to_int!(i8, i16, i32, i64, i128);
 
-// Promote implementations for unsigned integer types with Uint
+
 macro_rules! impl_promote_uint_to_uint {
     ($($t:ty),*) => {
         $(
@@ -964,7 +964,7 @@ macro_rules! impl_promote_uint_to_uint {
 
 impl_promote_uint_to_uint!(u8, u16, u32, u64, u128);
 
-// Promote implementations for unsigned integers with Int (promotes to Int)
+
 macro_rules! impl_promote_uint_to_int {
     ($($t:ty),*) => {
         $(
@@ -1005,7 +1005,7 @@ macro_rules! impl_promote_uint_to_int {
 
 impl_promote_uint_to_int!(u8, u16, u32, u64, u128);
 
-// Promote implementations for signed integers with Uint (promotes to Int)
+
 macro_rules! impl_promote_int_to_uint {
     ($($t:ty),*) => {
         $(
@@ -1046,7 +1046,7 @@ macro_rules! impl_promote_int_to_uint {
 
 impl_promote_int_to_uint!(i8, i16, i32, i64, i128);
 
-// Promote implementations for all integer types with Decimal
+
 macro_rules! impl_promote_int_to_decimal {
     ($($t:ty),*) => {
         $(

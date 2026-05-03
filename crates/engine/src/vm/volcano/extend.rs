@@ -150,7 +150,6 @@ impl Transform for ExtendNode {
 		let created_at = input.created_at.clone();
 		let updated_at = input.updated_at.clone();
 
-		// Collect existing column names for duplicate checking
 		let existing_names: Vec<Fragment> = input.iter().map(|c| c.name().clone()).collect();
 
 		let session = EvalContext::from_transform(ctx, stored_ctx);
@@ -192,7 +191,6 @@ impl Transform for ExtendNode {
 			new_names.push(display_label(expr));
 		}
 
-		// Validate no duplicate column names against existing columns
 		for new_name in &new_names {
 			for existing_name in &existing_names {
 				if new_name.text() == existing_name.text() {
@@ -201,7 +199,6 @@ impl Transform for ExtendNode {
 			}
 		}
 
-		// Validate no duplicates within new columns
 		for i in 0..new_names.len() {
 			for j in (i + 1)..new_names.len() {
 				if new_names[i].text() == new_names[j].text() {
@@ -229,7 +226,7 @@ impl Transform for ExtendNode {
 pub(crate) struct ExtendWithoutInputNode {
 	expressions: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
-	/// When UDFs are present, stores the pre-computed UDF result columns.
+
 	udf_columns: Option<Columns>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
@@ -248,7 +245,6 @@ impl ExtendWithoutInputNode {
 impl QueryNode for ExtendWithoutInputNode {
 	#[instrument(name = "volcano::extend::noinput::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		// Extract and evaluate UDFs if present
 		if let Some((rewritten, udf_cols)) = evaluate_udfs_no_input(&self.expressions, ctx, rx)? {
 			self.expressions = rewritten;
 			self.udf_columns = Some(udf_cols);
@@ -279,7 +275,6 @@ impl QueryNode for ExtendWithoutInputNode {
 		let mut new_columns = Vec::with_capacity(self.expressions.len());
 
 		for compiled_expr in compiled {
-			// If we have UDF result columns, include them so __udf_N column refs resolve
 			let exec_ctx = match &self.udf_columns {
 				Some(udf_cols) => session.with_eval(udf_cols.clone(), 1),
 				None => session.with_eval_empty(),
@@ -291,7 +286,6 @@ impl QueryNode for ExtendWithoutInputNode {
 
 		let column_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 
-		// Check for duplicate column names within the new columns
 		for i in 0..column_names.len() {
 			for j in (i + 1)..column_names.len() {
 				if column_names[i].text() == column_names[j].text() {

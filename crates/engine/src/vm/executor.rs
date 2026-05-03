@@ -47,7 +47,6 @@ use crate::{
 	},
 };
 
-/// Executor is the orchestration layer for RQL statement execution.
 pub struct Executor(Arc<Services>);
 
 impl Clone for Executor {
@@ -74,12 +73,10 @@ impl Executor {
 		Self(Arc::new(Services::new(catalog, config, flow_operator_store, stats_reader)))
 	}
 
-	/// Get a reference to the underlying Services
 	pub fn services(&self) -> &Arc<Services> {
 		&self.0
 	}
 
-	/// Construct an Executor from an existing `Arc<Services>`.
 	pub fn from_services(services: Arc<Services>) -> Self {
 		Self(services)
 	}
@@ -89,8 +86,6 @@ impl Executor {
 		Self(Services::testing())
 	}
 
-	/// If the error is a REMOTE_001 and we have a RemoteRegistry, forward the query.
-	/// Returns `Ok(Some(frames))` if forwarded, `Ok(None)` if not a remote query.
 	#[cfg(not(reifydb_single_threaded))]
 	fn try_forward_remote_query(&self, err: &Error, rql: &str, params: Params) -> Result<Option<Vec<Frame>>> {
 		if let Some(ref registry) = self.0.remote_registry
@@ -110,7 +105,6 @@ impl RqlExecutor for Executor {
 	}
 }
 
-/// Populate a stack with parameters so they can be accessed as variables.
 fn populate_symbols(symbols: &mut SymbolTable, params: &Params) -> Result<()> {
 	match params {
 		Params::Positional(values) => {
@@ -129,8 +123,6 @@ fn populate_symbols(symbols: &mut SymbolTable, params: &Params) -> Result<()> {
 	Ok(())
 }
 
-/// Populate the `$identity` variable in the symbol table so policy bodies
-/// (and user RQL) can reference `$identity.id`, `$identity.name`, and `$identity.roles`.
 fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Transaction<'_>) -> Result<()> {
 	let identity = tx.identity();
 	if identity.is_privileged() {
@@ -158,16 +150,13 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 	Ok(())
 }
 
-/// Execute a list of compiled units, tracking output frames separately.
 type CompiledUnitsResult = (Vec<Frame>, Vec<Frame>, SymbolTable, Vec<StatementMetric>);
 
-/// Error from `execute_compiled_units` that preserves partial metrics.
 struct ExecutionFailure {
 	error: Error,
 	partial_metrics: Vec<StatementMetric>,
 }
 
-/// Build `ExecutionMetrics` from a list of statement metrics.
 fn build_metrics(statements: Vec<StatementMetric>) -> ExecutionMetrics {
 	let fps: Vec<_> = statements.iter().map(|m| m.fingerprint).collect();
 	ExecutionMetrics {
@@ -183,7 +172,6 @@ struct RunUnitOutcome {
 	execute_duration_us: u64,
 }
 
-/// Run a single compiled unit's VM instructions. Output frames are appended to `result`.
 #[instrument(
 	name = "vm::run",
 	level = "debug",
@@ -209,7 +197,6 @@ fn run_compiled_unit(
 	}
 }
 
-/// Returns (output_results, last_result, final_symbols, metrics).
 #[instrument(
 	name = "executor::execute_units",
 	level = "debug",
@@ -261,7 +248,6 @@ fn execute_compiled_units(
 	Ok((output_results, result, symbols, metrics))
 }
 
-/// Merge output_results and remaining results into the final result.
 fn merge_results(mut output_results: Vec<Frame>, mut remaining: Vec<Frame>) -> Vec<Frame> {
 	output_results.append(&mut remaining);
 	output_results
@@ -276,12 +262,6 @@ fn error_result(error: Error, metrics: ExecutionMetrics) -> ExecutionResult {
 	}
 }
 
-/// Extract the actual rows-affected count from a DML result.
-///
-/// DML handlers (INSERT/UPDATE/DELETE) emit a single summary frame with a
-/// column named "inserted", "updated", or "deleted" containing the count as
-/// a `Uint8` value. When that pattern is detected, return the real count.
-/// Otherwise fall back to the number of frames (correct for SELECT, DDL, etc.).
 fn extract_rows_affected(result: &[Frame]) -> u64 {
 	if result.len() == 1 {
 		let frame = &result[0];
@@ -302,7 +282,6 @@ fn extract_rows_affected(result: &[Frame]) -> u64 {
 }
 
 impl Executor {
-	/// Shared setup: create symbols and populate with params + identity.
 	#[instrument(name = "executor::setup_symbols", level = "debug", skip_all)]
 	fn setup_symbols(&self, params: &Params, tx: &mut Transaction<'_>) -> Result<SymbolTable> {
 		let mut symbols = SymbolTable::new();
@@ -311,16 +290,11 @@ impl Executor {
 		Ok(symbols)
 	}
 
-	/// Shared compile step used by every RQL entry point (rql, query, command, admin).
 	#[instrument(name = "executor::compile", level = "debug", skip(self, tx), fields(rql = %rql))]
 	fn compile_query(&self, tx: &mut Transaction<'_>, rql: &str) -> Result<CompilationResult> {
 		self.compiler.compile_with_policy(tx, rql, inject_from_policies)
 	}
 
-	/// Execute RQL against an existing open transaction.
-	///
-	/// This is the universal RQL execution interface: it compiles and runs
-	/// arbitrary RQL within whatever transaction variant the caller provides.
 	#[instrument(name = "executor::rql", level = "debug", skip(self, tx, params), fields(rql = %rql))]
 	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> ExecutionResult {
 		let mut symbols = match self.setup_symbols(&params, tx) {
@@ -675,7 +649,6 @@ impl Executor {
 
 	#[instrument(name = "executor::subscription", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
 	pub fn subscription(&self, txn: &mut QueryTransaction, cmd: Subscription<'_>) -> ExecutionResult {
-		// Pre-compilation validation: parse and check statement constraints
 		let bump = Bump::new();
 		let statements = match parse_str(&bump, cmd.rql) {
 			Ok(s) => s,
@@ -850,7 +823,6 @@ impl Executor {
 		}
 	}
 
-	/// Call a procedure by fully-qualified name (e.g., "banking.transfer_funds").
 	#[instrument(name = "executor::call_procedure", level = "debug", skip(self, txn, params), fields(name = %name))]
 	pub fn call_procedure(&self, txn: &mut CommandTransaction, name: &str, params: &Params) -> ExecutionResult {
 		let rql = format!("CALL {}()", name);

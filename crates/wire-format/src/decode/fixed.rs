@@ -36,8 +36,6 @@ use crate::{
 	error::DecodeError,
 };
 
-/// Decode a plain-encoded fixed-width column.
-/// Returns `None` if the type code is not a fixed-width type.
 pub(crate) fn decode_fixed_plain(
 	type_code: u8,
 	row_count: usize,
@@ -148,7 +146,6 @@ pub(crate) fn decode_fixed_plain(
 	Some(result)
 }
 
-/// Decode an RLE-encoded column.
 pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) -> Result<FrameColumnData, DecodeError> {
 	let ty = Type::from_u8(type_code);
 	match ty {
@@ -245,7 +242,6 @@ pub(crate) fn decode_rle_column(type_code: u8, row_count: usize, data: &[u8]) ->
 	}
 }
 
-/// Decode a delta-encoded column.
 pub(crate) fn decode_delta_column(
 	type_code: u8,
 	row_count: usize,
@@ -334,7 +330,6 @@ pub(crate) fn decode_delta_column(
 	}
 }
 
-/// Decode a delta-RLE-encoded column.
 pub(crate) fn decode_delta_rle_column(
 	type_code: u8,
 	row_count: usize,

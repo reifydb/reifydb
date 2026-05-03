@@ -43,7 +43,6 @@ pub(crate) fn decode_dictionary_columns(
 use query::{QueryContext, QueryNode};
 use reifydb_core::value::column::headers::ColumnHeaders;
 
-/// Placeholder node used temporarily during `mem::replace` in initialize().
 pub(crate) struct NoopNode;
 
 impl QueryNode for NoopNode {

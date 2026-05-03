@@ -57,7 +57,6 @@ impl<'a> EvalContext<'a> {
 		}
 	}
 
-	/// Sibling context with fresh `columns` / `row_count`, sharing all invariant refs.
 	pub fn with_eval(&self, columns: Columns, row_count: usize) -> EvalContext<'a> {
 		EvalContext {
 			target: None,
@@ -132,7 +131,6 @@ impl<'a> EvalContext<'a> {
 	}
 }
 
-/// Compile-time context for resolving UDFs.
 pub struct CompileContext<'a> {
 	pub symbols: &'a SymbolTable,
 }

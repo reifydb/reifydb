@@ -17,10 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes all currently active subscriptions.
-///
-/// Each row shows the subscription ID and the number of columns in that subscription.
-/// This uses dynamic IoC resolution to avoid a hard dependency on the subscription subsystem.
 pub struct SystemSubscriptions {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

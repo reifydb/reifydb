@@ -14,16 +14,14 @@ impl ColumnBuffer {
 				inner,
 				bitvec,
 			} => {
-				// Push a default value to the inner container (not recursive promotion)
 				with_container!(inner.as_mut(), |c| c.push_default());
 				DataBitVec::push(bitvec, false);
 			}
 			_ => {
-				// Promote bare container to Option-wrapped, then push none
 				let len = self.len();
 				let mut bitvec = BitVec::repeat(len, true);
 				let mut inner = mem::replace(self, ColumnBuffer::bool(vec![]));
-				// Push a default value to the inner container directly (avoid recursion)
+
 				with_container!(&mut inner, |c| c.push_default());
 				DataBitVec::push(&mut bitvec, false);
 				*self = ColumnBuffer::Option {

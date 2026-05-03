@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::migrations::*, vtable::MIGRATIONS};
 
-/// Returns the static definition for the system.migrations virtual table.
-/// This table shows migration definitions and their audit trail.
 pub fn migrations() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

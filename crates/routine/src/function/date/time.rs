@@ -33,7 +33,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTime {
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Time // Returns the Time part of a DateTime
+		Type::Time
 	}
 
 	fn accepted_types(&self) -> InputTypes {
@@ -66,10 +66,10 @@ impl<'a> Routine<FunctionContext<'a>> for DateTime {
 
 		for i in 0..row_count {
 			if data.is_defined(i) {
-				let datetime_val = data.get_value(i); // Assuming get_value returns a DateTime type
+				let datetime_val = data.get_value(i);
 				result_data.push(datetime_val.time());
 			} else {
-				result_data.push(Value::null()); // Placeholder for undefined
+				result_data.push(Value::null());
 			}
 		}
 

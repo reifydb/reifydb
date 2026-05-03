@@ -14,8 +14,6 @@ use tracing::warn;
 
 use crate::materialized::MaterializedCatalog;
 
-/// Try to decode an EncodedRow into a Row using the materialized catalog.
-/// Returns None if the values are too short or the shape is not in the cache.
 fn decode_row(catalog: &MaterializedCatalog, row_number: RowNumber, row: EncodedRow) -> Option<Row> {
 	if row.len() < SHAPE_HEADER_SIZE {
 		warn!("EncodedRow too short for shape fingerprint ({} < {})", row.len(), SHAPE_HEADER_SIZE);
@@ -36,13 +34,11 @@ fn decode_row(catalog: &MaterializedCatalog, row_number: RowNumber, row: Encoded
 	}
 }
 
-/// Build an insert Diff from a row delta.
 pub fn build_insert_diff(catalog: &MaterializedCatalog, row_number: RowNumber, post: EncodedRow) -> Option<Diff> {
 	let row = decode_row(catalog, row_number, post)?;
 	Some(Diff::insert(Columns::from_row(&row)))
 }
 
-/// Build an update Diff from a row delta with pre and post values.
 pub fn build_update_diff(
 	catalog: &MaterializedCatalog,
 	row_number: RowNumber,
@@ -54,15 +50,11 @@ pub fn build_update_diff(
 	Some(Diff::update(Columns::from_row(&pre_row), Columns::from_row(&post_row)))
 }
 
-/// Build a remove Diff from a row delta.
 pub fn build_remove_diff(catalog: &MaterializedCatalog, row_number: RowNumber, pre: EncodedRow) -> Option<Diff> {
 	let row = decode_row(catalog, row_number, pre)?;
 	Some(Diff::remove(Columns::from_row(&row)))
 }
 
-/// Build an insert Diff into a caller-provided `Columns` slab. The slab is
-/// refilled in place via `Arc::make_mut`, then Arc-cloned into the resulting
-/// `Diff`. Used by `CdcProducerActor` to reuse capacity across calls.
 pub fn build_insert_diff_into(
 	catalog: &MaterializedCatalog,
 	row_number: RowNumber,
@@ -74,7 +66,6 @@ pub fn build_insert_diff_into(
 	Some(Diff::insert_arc(post_buf.clone()))
 }
 
-/// Build an update Diff into caller-provided `Columns` slabs.
 pub fn build_update_diff_into(
 	catalog: &MaterializedCatalog,
 	row_number: RowNumber,
@@ -90,7 +81,6 @@ pub fn build_update_diff_into(
 	Some(Diff::update_arc(pre_buf.clone(), post_buf.clone()))
 }
 
-/// Build a remove Diff into a caller-provided `Columns` slab.
 pub fn build_remove_diff_into(
 	catalog: &MaterializedCatalog,
 	row_number: RowNumber,
@@ -102,9 +92,6 @@ pub fn build_remove_diff_into(
 	Some(Diff::remove_arc(pre_buf.clone()))
 }
 
-/// Like `build_insert_diff_into` but sources inner `ColumnBuffer`s from a
-/// shared `ColumnBufferPool` so per-row `Vec` allocations amortize across
-/// deltas of any shape.
 pub fn build_insert_diff_into_with_pool(
 	catalog: &MaterializedCatalog,
 	row_number: RowNumber,
@@ -117,8 +104,6 @@ pub fn build_insert_diff_into_with_pool(
 	Some(Diff::insert_arc(post_buf.clone()))
 }
 
-/// Like `build_update_diff_into` but sources inner `ColumnBuffer`s from a
-/// shared `ColumnBufferPool`.
 pub fn build_update_diff_into_with_pool(
 	catalog: &MaterializedCatalog,
 	row_number: RowNumber,
@@ -135,8 +120,6 @@ pub fn build_update_diff_into_with_pool(
 	Some(Diff::update_arc(pre_buf.clone(), post_buf.clone()))
 }
 
-/// Like `build_remove_diff_into` but sources inner `ColumnBuffer`s from a
-/// shared `ColumnBufferPool`.
 pub fn build_remove_diff_into_with_pool(
 	catalog: &MaterializedCatalog,
 	row_number: RowNumber,

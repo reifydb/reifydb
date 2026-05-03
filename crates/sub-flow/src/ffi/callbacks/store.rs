@@ -20,13 +20,11 @@ use reifydb_type::{error::Error, util::cowvec::CowVec};
 use super::store_iterator::{self, StoreIteratorHandle};
 use crate::ffi::context::get_transaction_mut;
 
-/// Internal structure for store iterators (stored behind StoreIteratorFFI pointer)
 #[repr(C)]
 struct StoreIteratorInternal {
 	handle: StoreIteratorHandle,
 }
 
-/// Get a value from store by key
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_store_get(
 	ctx: *mut ContextFFI,
@@ -42,14 +40,11 @@ pub(super) extern "C" fn host_store_get(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Convert raw bytes to EncodedKey
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Get value from transaction
 		match flow_txn.get(&key) {
 			Ok(Some(value)) => {
-				// Copy value to output buffer
 				let value_bytes = value.as_slice();
 				let value_ptr = host_alloc(value_bytes.len());
 				if value_ptr.is_null() {
@@ -70,7 +65,6 @@ pub(super) extern "C" fn host_store_get(
 	}
 }
 
-/// Check if a key exists in store
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_store_contains_key(
 	ctx: *mut ContextFFI,
@@ -86,11 +80,9 @@ pub(super) extern "C" fn host_store_contains_key(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Convert raw bytes to EncodedKey
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
-		// Check if key exists in transaction
 		match flow_txn.contains_key(&key) {
 			Ok(exists) => {
 				*result = if exists {
@@ -105,7 +97,6 @@ pub(super) extern "C" fn host_store_contains_key(
 	}
 }
 
-/// Create an iterator for store keys with a given prefix
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_store_prefix(
 	ctx: *mut ContextFFI,
@@ -121,7 +112,6 @@ pub(super) extern "C" fn host_store_prefix(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Get prefix bytes
 		let prefix_bytes = if prefix_ptr.is_null() {
 			vec![]
 		} else {
@@ -132,11 +122,8 @@ pub(super) extern "C" fn host_store_prefix(
 		let result = flow_txn.prefix(&prefix);
 		match result {
 			Ok(batch) => {
-				// Create iterator handle from batch
-				// No unsafe transmute needed - batches own their data
 				let handle = store_iterator::create_iterator(batch);
 
-				// Allocate internal structure and store handle
 				let iter_ptr =
 					host_alloc(size_of::<StoreIteratorInternal>()) as *mut StoreIteratorInternal;
 				if iter_ptr.is_null() {
@@ -144,7 +131,6 @@ pub(super) extern "C" fn host_store_prefix(
 					return FFI_ERROR_ALLOC;
 				}
 
-				// Initialize the iterator structure with the handle
 				ptr::write(
 					iter_ptr,
 					StoreIteratorInternal {
@@ -152,7 +138,6 @@ pub(super) extern "C" fn host_store_prefix(
 					},
 				);
 
-				// Cast to opaque StoreIteratorFFI pointer
 				*iterator_out = iter_ptr as *mut StoreIteratorFFI;
 				FFI_OK
 			}
@@ -161,12 +146,10 @@ pub(super) extern "C" fn host_store_prefix(
 	}
 }
 
-/// Bound type constants for FFI
 const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
-/// Create an iterator for store keys in a range
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_store_range(
 	ctx: *mut ContextFFI,
@@ -186,47 +169,44 @@ pub(super) extern "C" fn host_store_range(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Decode start bound from type and bytes
 		let start_bound = match start_bound_type {
 			BOUND_UNBOUNDED => Bound::Unbounded,
 			BOUND_INCLUDED => {
 				if start_ptr.is_null() {
-					return FFI_ERROR_NULL_PTR; // Invalid: Included bound requires key bytes
+					return FFI_ERROR_NULL_PTR;
 				}
 				let start_bytes = from_raw_parts(start_ptr, start_len).to_vec();
 				Bound::Included(EncodedKey(CowVec::new(start_bytes)))
 			}
 			BOUND_EXCLUDED => {
 				if start_ptr.is_null() {
-					return FFI_ERROR_NULL_PTR; // Invalid: Excluded bound requires key bytes
+					return FFI_ERROR_NULL_PTR;
 				}
 				let start_bytes = from_raw_parts(start_ptr, start_len).to_vec();
 				Bound::Excluded(EncodedKey(CowVec::new(start_bytes)))
 			}
-			_ => return FFI_ERROR_INTERNAL, // Invalid bound type
+			_ => return FFI_ERROR_INTERNAL,
 		};
 
-		// Decode end bound from type and bytes
 		let end_bound = match end_bound_type {
 			BOUND_UNBOUNDED => Bound::Unbounded,
 			BOUND_INCLUDED => {
 				if end_ptr.is_null() {
-					return FFI_ERROR_NULL_PTR; // Invalid: Included bound requires key bytes
+					return FFI_ERROR_NULL_PTR;
 				}
 				let end_bytes = from_raw_parts(end_ptr, end_len).to_vec();
 				Bound::Included(EncodedKey(CowVec::new(end_bytes)))
 			}
 			BOUND_EXCLUDED => {
 				if end_ptr.is_null() {
-					return FFI_ERROR_NULL_PTR; // Invalid: Excluded bound requires key bytes
+					return FFI_ERROR_NULL_PTR;
 				}
 				let end_bytes = from_raw_parts(end_ptr, end_len).to_vec();
 				Bound::Excluded(EncodedKey(CowVec::new(end_bytes)))
 			}
-			_ => return FFI_ERROR_INTERNAL, // Invalid bound type
+			_ => return FFI_ERROR_INTERNAL,
 		};
 
-		// Create range from decoded bounds
 		let range = EncodedKeyRange::new(start_bound, end_bound);
 		let result: Result<MultiVersionBatch, _> = (|| -> Result<_, Error> {
 			let iter = flow_txn.range(range, 1024);
@@ -242,11 +222,8 @@ pub(super) extern "C" fn host_store_range(
 
 		match result {
 			Ok(batch) => {
-				// Create iterator handle from batch
-				// No unsafe transmute needed - batches own their data
 				let handle = store_iterator::create_iterator(batch);
 
-				// Allocate internal structure and store handle
 				let iter_ptr =
 					host_alloc(size_of::<StoreIteratorInternal>()) as *mut StoreIteratorInternal;
 				if iter_ptr.is_null() {
@@ -254,7 +231,6 @@ pub(super) extern "C" fn host_store_range(
 					return FFI_ERROR_ALLOC;
 				}
 
-				// Initialize the iterator structure with the handle
 				ptr::write(
 					iter_ptr,
 					StoreIteratorInternal {
@@ -262,7 +238,6 @@ pub(super) extern "C" fn host_store_range(
 					},
 				);
 
-				// Cast to opaque StoreIteratorFFI pointer
 				*iterator_out = iter_ptr as *mut StoreIteratorFFI;
 				FFI_OK
 			}
@@ -271,7 +246,6 @@ pub(super) extern "C" fn host_store_range(
 	}
 }
 
-/// Get the next key-value pair from a store iterator
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_store_iterator_next(
 	iterator: *mut StoreIteratorFFI,
@@ -283,14 +257,11 @@ pub(super) extern "C" fn host_store_iterator_next(
 	}
 
 	unsafe {
-		// Cast opaque pointer back to internal structure
 		let iter_internal = iterator as *mut StoreIteratorInternal;
 		let iter_handle = (*iter_internal).handle;
 
-		// Get next item from iterator
 		match store_iterator::next_iterator(iter_handle) {
 			Some((key, value)) => {
-				// Allocate and copy key
 				let key_ptr = host_alloc(key.len());
 				if key_ptr.is_null() {
 					return FFI_ERROR_ALLOC;
@@ -300,10 +271,8 @@ pub(super) extern "C" fn host_store_iterator_next(
 				(*key_out).len = key.len();
 				(*key_out).cap = key.len();
 
-				// Allocate and copy value
 				let value_ptr = host_alloc(value.len());
 				if value_ptr.is_null() {
-					// Free the key we just allocated
 					host_free(key_ptr, key.len());
 					return FFI_ERROR_ALLOC;
 				}
@@ -319,7 +288,6 @@ pub(super) extern "C" fn host_store_iterator_next(
 	}
 }
 
-/// Free a store iterator
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_store_iterator_free(iterator: *mut StoreIteratorFFI) {
 	if iterator.is_null() {
@@ -327,14 +295,11 @@ pub(super) extern "C" fn host_store_iterator_free(iterator: *mut StoreIteratorFF
 	}
 
 	unsafe {
-		// Cast opaque pointer back to internal structure
 		let iter_internal = iterator as *mut StoreIteratorInternal;
 
-		// Get the handle and free the iterator from registry
 		let handle = (*iter_internal).handle;
 		store_iterator::free_iterator(handle);
 
-		// Free the internal structure itself
 		host_free(iter_internal as *mut u8, size_of::<StoreIteratorInternal>());
 	}
 }

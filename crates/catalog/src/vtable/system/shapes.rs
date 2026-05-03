@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes registered shape information
 pub struct SystemShapes {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,

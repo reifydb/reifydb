@@ -39,13 +39,11 @@ use crate::{
 	query::QueryPlan,
 };
 
-/// Owned primary key definition for physical plan nodes (materialized from bump-allocated logical plan)
 #[derive(Debug, Clone)]
 pub struct PrimaryKey {
 	pub columns: Vec<PrimaryKeyColumn>,
 }
 
-/// Owned primary key column for physical plan nodes
 #[derive(Debug, Clone)]
 pub struct PrimaryKeyColumn {
 	pub column: Fragment,
@@ -76,11 +74,11 @@ pub enum PhysicalPlan {
 	Migrate(MigrateNode),
 	RollbackMigration(RollbackMigrationNode),
 	Dispatch(DispatchNode),
-	// Alter
+
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode),
 	AlterRemoteNamespace(AlterRemoteNamespaceNode),
-	// Mutate
+
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),
 	InsertTable(InsertTableNode),
@@ -89,31 +87,30 @@ pub enum PhysicalPlan {
 	Update(UpdateTableNode),
 	UpdateRingBuffer(UpdateRingBufferNode),
 	UpdateSeries(UpdateSeriesNode),
-	// Variable assignment
+
 	Declare(DeclareNode),
 	Assign(AssignNode),
 	Append(AppendPhysicalNode),
-	// Variable resolution
+
 	Variable(VariableNode),
 	Environment(EnvironmentNode),
-	// Control flow
+
 	Conditional(ConditionalNode),
 	Loop(LoopPhysicalNode),
 	While(WhilePhysicalNode),
 	For(ForPhysicalNode),
 	Break,
 	Continue,
-	// User-defined functions
+
 	DefineFunction(DefineFunctionNode),
 	Return(ReturnNode),
 	CallFunction(CallFunctionNode),
 
-	// Query
 	Aggregate(AggregateNode),
 	Distinct(DistinctNode),
 	Filter(FilterNode),
 	IndexScan(IndexScanNode),
-	// Row-number optimized access
+
 	RowPointLookup(RowPointLookupNode),
 	RowListLookup(RowListLookupNode),
 	RowRangeScan(RowRangeScanNode),
@@ -134,14 +131,14 @@ pub enum PhysicalPlan {
 	RingBufferScan(RingBufferScanNode),
 	DictionaryScan(DictionaryScanNode),
 	SeriesScan(SeriesScanNode),
-	// Series DML
+
 	InsertSeries(InsertSeriesNode),
 	DeleteSeries(DeleteSeriesNode),
 	Generator(GeneratorNode),
 	Window(WindowNode),
-	// Auto-scalarization for 1x1 frames
+
 	Scalarize(ScalarizeNode),
-	// Auth/Permissions
+
 	CreateIdentity(CreateIdentityNode),
 	CreateRole(CreateRoleNode),
 	Grant(GrantNode),
@@ -301,7 +298,6 @@ pub enum AlterTableAction {
 	},
 }
 
-// Create Primary Key node
 #[derive(Debug, Clone)]
 pub struct CreatePrimaryKeyNode {
 	pub namespace: ResolvedNamespace,
@@ -309,19 +305,17 @@ pub struct CreatePrimaryKeyNode {
 	pub columns: Vec<PrimaryKeyColumn>,
 }
 
-// Create Procedure node
 #[derive(Debug, Clone)]
 pub struct CreateProcedureNode {
 	pub namespace: Namespace,
 	pub name: Fragment,
 	pub params: Vec<ProcedureParam>,
 	pub body_source: String,
-	/// Ignored when `is_test = true` (test procedures have no trigger).
+
 	pub trigger: RqlTrigger,
 	pub is_test: bool,
 }
 
-/// Physical node for CREATE SERIES
 #[derive(Debug, Clone)]
 pub struct CreateSeriesNode {
 	pub namespace: ResolvedNamespace,
@@ -332,7 +326,6 @@ pub struct CreateSeriesNode {
 	pub ttl: Option<Ttl>,
 }
 
-/// Physical node for CREATE EVENT
 #[derive(Debug, Clone)]
 pub struct CreateEventNode {
 	pub namespace: Namespace,
@@ -340,7 +333,6 @@ pub struct CreateEventNode {
 	pub variants: Vec<CreateSumTypeVariant>,
 }
 
-/// Physical node for CREATE TAG
 #[derive(Debug, Clone)]
 pub struct CreateTagNode {
 	pub namespace: Namespace,
@@ -348,14 +340,12 @@ pub struct CreateTagNode {
 	pub variants: Vec<CreateSumTypeVariant>,
 }
 
-/// A resolved key-value config pair
 #[derive(Debug, Clone)]
 pub struct ConfigPair {
 	pub key: Fragment,
 	pub value: Fragment,
 }
 
-/// Physical node for CREATE SOURCE
 #[derive(Debug, Clone)]
 pub struct CreateSourceNode {
 	pub namespace: Namespace,
@@ -366,7 +356,6 @@ pub struct CreateSourceNode {
 	pub target_name: Fragment,
 }
 
-/// Physical node for CREATE SINK
 #[derive(Debug, Clone)]
 pub struct CreateSinkNode {
 	pub namespace: Namespace,
@@ -377,7 +366,6 @@ pub struct CreateSinkNode {
 	pub config: Vec<ConfigPair>,
 }
 
-/// Physical node for DROP SOURCE
 #[derive(Debug, Clone)]
 pub struct DropSourceNode {
 	pub if_exists: bool,
@@ -386,7 +374,6 @@ pub struct DropSourceNode {
 	pub cascade: bool,
 }
 
-/// Physical node for DROP SINK
 #[derive(Debug, Clone)]
 pub struct DropSinkNode {
 	pub if_exists: bool,
@@ -395,7 +382,6 @@ pub struct DropSinkNode {
 	pub cascade: bool,
 }
 
-/// Physical node for CREATE BINDING
 #[derive(Debug, Clone)]
 pub struct CreateBindingNode {
 	pub namespace: Namespace,
@@ -405,7 +391,6 @@ pub struct CreateBindingNode {
 	pub format: BindingFormat,
 }
 
-/// Physical node for DROP BINDING
 #[derive(Debug, Clone)]
 pub struct DropBindingNode {
 	pub namespace: Namespace,
@@ -413,7 +398,6 @@ pub struct DropBindingNode {
 	pub if_exists: bool,
 }
 
-/// Physical node for DROP PROCEDURE
 #[derive(Debug, Clone)]
 pub struct DropProcedureNode {
 	pub namespace_name: Fragment,
@@ -422,7 +406,6 @@ pub struct DropProcedureNode {
 	pub if_exists: bool,
 }
 
-/// Physical node for DROP HANDLER
 #[derive(Debug, Clone)]
 pub struct DropHandlerNode {
 	pub namespace_name: Fragment,
@@ -432,7 +415,6 @@ pub struct DropHandlerNode {
 	pub if_exists: bool,
 }
 
-/// Physical node for DROP TEST
 #[derive(Debug, Clone)]
 pub struct DropTestNode {
 	pub namespace_name: Fragment,
@@ -441,7 +423,6 @@ pub struct DropTestNode {
 	pub if_exists: bool,
 }
 
-// Assert Block node (multi-statement ASSERT or ASSERT ERROR)
 #[derive(Debug, Clone)]
 pub struct AssertBlockNode {
 	pub rql: String,
@@ -449,7 +430,6 @@ pub struct AssertBlockNode {
 	pub message: Option<String>,
 }
 
-// Create Test node
 #[derive(Debug, Clone)]
 pub struct CreateTestNode {
 	pub namespace: Namespace,
@@ -458,7 +438,6 @@ pub struct CreateTestNode {
 	pub body_source: String,
 }
 
-// Run Tests node
 #[derive(Debug, Clone)]
 pub struct RunTestsNode {
 	pub scope: RunTestsScope,
@@ -471,7 +450,6 @@ pub enum RunTestsScope {
 	Single(ResolvedNamespace, String),
 }
 
-/// Physical node for CREATE MIGRATION
 #[derive(Debug, Clone)]
 pub struct CreateMigrationNode {
 	pub name: String,
@@ -479,19 +457,16 @@ pub struct CreateMigrationNode {
 	pub rollback_body_source: Option<String>,
 }
 
-/// Physical node for MIGRATE
 #[derive(Debug, Clone)]
 pub struct MigrateNode {
 	pub target: Option<String>,
 }
 
-/// Physical node for ROLLBACK MIGRATION
 #[derive(Debug, Clone)]
 pub struct RollbackMigrationNode {
 	pub target: Option<String>,
 }
 
-/// Physical node for DISPATCH
 #[derive(Debug, Clone)]
 pub struct DispatchNode {
 	pub namespace: Namespace,
@@ -500,7 +475,6 @@ pub struct DispatchNode {
 	pub fields: Vec<(String, Expression)>,
 }
 
-// Create Policy node
 #[derive(Debug, Clone)]
 pub struct CreateColumnPropertyNode {
 	pub namespace: ResolvedNamespace,
@@ -561,12 +535,10 @@ pub struct VariableNode {
 #[derive(Debug, Clone)]
 pub struct EnvironmentNode {}
 
-/// A function parameter in the physical plan
 #[derive(Debug, Clone)]
 pub struct FunctionParameter {
-	/// Parameter name (includes $)
 	pub name: Fragment,
-	/// Optional type constraint
+
 	pub type_constraint: Option<TypeConstraint>,
 }
 
@@ -843,36 +815,29 @@ pub struct WindowNode {
 	pub ts: Option<String>,
 }
 
-/// O(1) point lookup by row number: `filter rownum == N`
 #[derive(Debug, Clone)]
 pub struct RowPointLookupNode {
-	/// The source to look up in (table, ring buffer, etc.)
 	pub source: ResolvedShape,
-	/// The row number to fetch
+
 	pub row_number: u64,
 }
 
-/// O(k) list lookup by row numbers: `filter rownum in [a, b, c]`
 #[derive(Debug, Clone)]
 pub struct RowListLookupNode {
-	/// The source to look up in
 	pub source: ResolvedShape,
-	/// The row numbers to fetch
+
 	pub row_numbers: Vec<u64>,
 }
 
-/// Range scan by row numbers: `filter rownum between X and Y`
 #[derive(Debug, Clone)]
 pub struct RowRangeScanNode {
-	/// The source to scan
 	pub source: ResolvedShape,
-	/// Start of the range (inclusive)
+
 	pub start: u64,
-	/// End of the range (inclusive)
+
 	pub end: u64,
 }
 
-/// APPEND statement physical plan node
 #[derive(Debug, Clone)]
 pub enum AppendPhysicalNode {
 	IntoVariable {
@@ -885,7 +850,6 @@ pub enum AppendPhysicalNode {
 	},
 }
 
-/// Source for an APPEND physical plan
 #[derive(Debug, Clone)]
 pub enum AppendPhysicalSource {
 	Statement(Vec<PhysicalPlan>),

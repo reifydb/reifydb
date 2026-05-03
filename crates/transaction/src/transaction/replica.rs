@@ -26,14 +26,6 @@ use crate::{
 	transaction::write::Write,
 };
 
-/// A replica transaction for applying replicated catalog changes.
-///
-/// This is a lean, purpose-built transaction type that commits at the
-/// primary's exact version. It has no interceptors, no change tracking,
-/// no RQL executor - only the read/write surface needed by
-/// `CatalogChangeApplier` implementations.
-///
-/// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct ReplicaTransaction {
 	pub(crate) rpl: Option<MultiReplicaTransaction>,
 	state: ReplicaTransactionState,
@@ -47,7 +39,6 @@ enum ReplicaTransactionState {
 }
 
 impl ReplicaTransaction {
-	/// Create a new replica transaction at the primary's exact version.
 	#[instrument(name = "transaction::replica::new", level = "debug", skip(multi), fields(version = %version.0))]
 	pub fn new(multi: MultiTransaction, version: CommitVersion) -> Result<Self> {
 		let rpl = multi.begin_replica(version)?;
@@ -65,10 +56,6 @@ impl ReplicaTransaction {
 		}
 	}
 
-	/// Commit at the primary's exact version.
-	///
-	/// Bypasses oracle conflict detection, version allocation, and all
-	/// interceptors. Does not emit PostCommitEvent.
 	#[instrument(name = "transaction::replica::commit_at_version", level = "debug", skip(self))]
 	pub fn commit_at_version(&mut self) -> Result<()> {
 		self.check_active()?;
@@ -80,7 +67,6 @@ impl ReplicaTransaction {
 		}
 	}
 
-	/// Rollback the transaction.
 	#[instrument(name = "transaction::replica::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> Result<()> {
 		self.check_active()?;
@@ -92,67 +78,57 @@ impl ReplicaTransaction {
 		}
 	}
 
-	/// Get the transaction version (the primary's commit version).
 	#[inline]
 	pub fn version(&self) -> CommitVersion {
 		self.rpl.as_ref().unwrap().version()
 	}
 
-	/// Get the transaction ID.
 	#[inline]
 	pub fn id(&self) -> TransactionId {
 		self.rpl.as_ref().unwrap().id()
 	}
 
-	/// Get access to the pending writes in this transaction.
 	#[inline]
 	pub fn pending_writes(&self) -> &PendingWrites {
 		self.rpl.as_ref().unwrap().pending_writes()
 	}
 
-	/// Get a value by key.
 	#[inline]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		self.check_active()?;
 		Ok(self.rpl.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
-	/// Check if a key exists.
 	#[inline]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.check_active()?;
 		self.rpl.as_mut().unwrap().contains_key(key)
 	}
 
-	/// Get a prefix batch.
 	#[inline]
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.check_active()?;
 		self.rpl.as_mut().unwrap().prefix(prefix)
 	}
 
-	/// Get a reverse prefix batch.
 	#[inline]
 	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.check_active()?;
 		self.rpl.as_mut().unwrap().prefix_rev(prefix)
 	}
 
-	/// Set a key-value pair.
 	#[inline]
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
 		self.rpl.as_mut().unwrap().set(key, row)
 	}
 
-	/// Unset a key, preserving the deleted values.
 	#[inline]
 	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
 		self.rpl.as_mut().unwrap().unset(key, row)
 	}
 
-	/// Remove a key without preserving the deleted values.
 	#[inline]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_active()?;
@@ -166,7 +142,6 @@ impl ReplicaTransaction {
 		Ok(())
 	}
 
-	/// Create a streaming iterator for forward range queries.
 	#[inline]
 	pub fn range(
 		&mut self,
@@ -177,7 +152,6 @@ impl ReplicaTransaction {
 		Ok(self.rpl.as_mut().unwrap().range(range, batch_size))
 	}
 
-	/// Create a streaming iterator for reverse range queries.
 	#[inline]
 	pub fn range_rev(
 		&mut self,
@@ -217,11 +191,7 @@ impl Write for ReplicaTransaction {
 		ReplicaTransaction::mark_preexisting(self, key)
 	}
 	#[inline]
-	fn track_row_change(&mut self, _change: RowChange) {
-		// Replicas do not generate row-change events.
-	}
+	fn track_row_change(&mut self, _change: RowChange) {}
 	#[inline]
-	fn track_flow_change(&mut self, _change: Change) {
-		// Replicas do not run flow processing.
-	}
+	fn track_flow_change(&mut self, _change: Change) {}
 }

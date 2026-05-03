@@ -29,7 +29,6 @@ impl CatalogStore {
 	) -> Result<Authentication> {
 		let id = SystemSequence::next_authentication_id(txn)?;
 
-		// Serialize properties as JSON
 		let properties_json = to_string(&properties).map_err(|e| {
 			Error(Box::new(Diagnostic {
 				code: "CT_020".to_string(),

@@ -7,25 +7,15 @@ use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_runtime::sync::{map::Map, rwlock::RwLock};
 use reifydb_type::util::cowvec::CowVec;
 
-/// Value with optional tombstone (None = deleted)
 pub(super) type Value = Option<CowVec<u8>>;
 
-/// Current versions: key -> (version, value)
 pub(super) type CurrentMap = BTreeMap<CowVec<u8>, (CommitVersion, Value)>;
 
-/// Historical versions: key -> (version -> value)
-/// Inner BTreeMap uses Reverse<CommitVersion> for descending order
 pub(super) type HistoricalMap = BTreeMap<CowVec<u8>, BTreeMap<Reverse<CommitVersion>, Value>>;
 
-/// Table entry with split current/historical storage for MVCC.
-///
-/// This design optimizes for the common case of reading the latest version:
-/// - `current`: Most recent version per key (fast path for normal reads)
-/// - `historical`: All older versions (point-in-time queries)
 pub(super) struct Entry {
-	/// Most recent version for each key
 	pub current: Arc<RwLock<CurrentMap>>,
-	/// Historical versions (all except current)
+
 	pub historical: Arc<RwLock<HistoricalMap>>,
 }
 
@@ -47,7 +37,6 @@ impl Clone for Entry {
 	}
 }
 
-/// Convert EntryKind to a unique string key for storage in DashMap
 pub(super) fn entry_id_to_key(entry: EntryKind) -> String {
 	match entry {
 		EntryKind::Multi => "multi".to_string(),
@@ -56,9 +45,6 @@ pub(super) fn entry_id_to_key(entry: EntryKind) -> String {
 	}
 }
 
-/// Table storage using Map for concurrent per-table access.
-///
-/// Uses DashMap on native platforms and Arc<RwLock<HashMap>> on WASM.
 pub(super) struct Entries {
 	pub(super) data: Map<String, Entry>,
 }

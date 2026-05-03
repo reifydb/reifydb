@@ -92,24 +92,18 @@ where
 		})
 	}
 
-	/// Get the actor system
 	pub fn actor_system(&self) -> ActorSystem {
 		self.inner.actor_system()
 	}
 
-	/// Get the shared configuration.
 	pub fn config(&self) -> Arc<dyn GetConfig> {
 		self.inner.config()
 	}
 
-	/// Access the underlying oracle. Crate-private so the write/replica
-	/// transactions can read snapshot version, register on watermarks, and
-	/// invoke `new_commit` / `advance_unchecked` directly.
 	pub(crate) fn oracle(&self) -> &Arc<Oracle<L>> {
 		&self.inner
 	}
 
-	/// Clear the conflict detection window after bootstrap.
 	pub fn bootstrapping_completed(&self) {
 		self.inner.bootstrapping_completed();
 	}
@@ -136,7 +130,6 @@ where
 				version,
 			)
 		} else {
-			// Pair with `done_query(safe_version)` in TransactionManagerQuery::drop.
 			self.inner.query.register_in_flight(safe_version);
 			TransactionManagerQuery::new_current(
 				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
@@ -146,52 +139,33 @@ where
 		})
 	}
 
-	/// Register a version with the command watermark before storage write.
-	/// Used by the replica applier to participate in the watermark system.
 	pub fn begin_commit(&self, version: CommitVersion) {
 		self.inner.command.register_in_flight(version);
 	}
 
-	/// Mark a commit version as done in the command watermark.
-	/// Used by the replica applier after storage write completes.
 	pub fn done_commit(&self, version: CommitVersion) {
 		self.inner.done_commit(version);
 	}
 
-	/// Advance the version provider's clock to at least the given version.
-	/// Used by the replica applier so that `clock.current()` returns
-	/// the latest replicated version for subsequent query transactions.
 	pub fn advance_clock_to(&self, version: CommitVersion) {
 		self.inner.clock.advance_to(version);
 	}
 
-	/// Returns the highest version where ALL prior versions have completed.
-	/// This is useful for CDC polling to know the safe upper bound for fetching
-	/// CDC events - all events up to this version are guaranteed to be in storage.
 	#[instrument(name = "transaction::manager::done_until", level = "trace", skip(self))]
 	pub fn done_until(&self) -> CommitVersion {
 		self.inner.command.done_until()
 	}
 
-	/// Highest version strictly below which no in-flight read transaction is
-	/// observing; versions less than this are GC-safe in `__historical`.
 	#[instrument(name = "transaction::manager::query_done_until", level = "trace", skip(self))]
 	pub fn query_done_until(&self) -> CommitVersion {
 		self.inner.query.done_until()
 	}
 
-	/// Wait for the watermark to reach the given version with a timeout.
-	/// Returns true if the watermark reached the target, false if timeout occurred.
 	#[instrument(name = "transaction::manager::wait_for_mark_timeout", level = "trace", skip(self))]
 	pub fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
 		self.inner.command.wait_for_mark_timeout(version, timeout)
 	}
 
-	/// Advance the version state for replica replication.
-	///
-	/// This advances the watermark, the version provider counter, and the query
-	/// watermark so that queries can see replicated data. Must only be called
-	/// from the replica applier in sequential version order.
 	pub fn advance_version_for_replica(&self, version: CommitVersion) {
 		self.inner.advance_version_for_replica(version);
 		self.inner.command.advance_to(version);
@@ -304,23 +278,18 @@ impl MultiTransaction {
 		Ok(Self(Arc::new(Inner::new(store, single, event_bus, actor_system, metrics_clock, rng, config)?)))
 	}
 
-	/// Get the actor system
 	pub fn actor_system(&self) -> ActorSystem {
 		self.0.actor_system()
 	}
 
-	/// Get the shared configuration from the oracle.
 	pub fn config(&self) -> Arc<dyn GetConfig> {
 		self.0.tm.config()
 	}
 
-	/// Clear the conflict detection window after bootstrap.
 	pub fn bootstrapping_completed(&self) {
 		self.0.bootstrapping_completed();
 	}
 
-	/// Highest version strictly below which no in-flight read transaction is
-	/// observing; versions less than this are GC-safe in `__historical`.
 	#[instrument(name = "transaction::query_done_until", level = "trace", skip(self))]
 	pub fn query_done_until(&self) -> CommitVersion {
 		self.0.tm.query_done_until()
@@ -338,10 +307,6 @@ impl MultiTransaction {
 		MultiReadTransaction::new(self.clone(), None)
 	}
 
-	/// Begin a query transaction at a specific version.
-	///
-	/// This is used for parallel query execution where multiple tasks need to
-	/// read from the same snapshot (same CommitVersion) for consistency.
 	#[instrument(name = "transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0))]
 	pub fn begin_query_at_version(&self, version: CommitVersion) -> Result<MultiReadTransaction> {
 		MultiReadTransaction::new(self.clone(), Some(version))
@@ -354,10 +319,6 @@ impl MultiTransaction {
 		MultiWriteTransaction::new(self.clone())
 	}
 
-	/// Begin a replica write transaction at the primary's exact version.
-	///
-	/// The returned transaction commits at the given version, bypassing
-	/// oracle conflict detection and version allocation.
 	#[instrument(name = "transaction::begin_replica", level = "debug", skip(self), fields(version = %version.0))]
 	pub fn begin_replica(&self, version: CommitVersion) -> Result<MultiReplicaTransaction> {
 		MultiReplicaTransaction::new(self.clone(), version)
@@ -380,7 +341,6 @@ impl MultiTransaction {
 		MultiVersionContains::contains(&self.store, key, version)
 	}
 
-	/// Get a reference to the underlying transaction store.
 	pub fn store(&self) -> &MultiStore {
 		&self.store
 	}

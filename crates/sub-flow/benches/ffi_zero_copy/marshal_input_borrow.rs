@@ -55,7 +55,6 @@ fn bench_marshal_numeric_utf8(n_rows: usize, iters: usize) {
 	let change = build_numeric_utf8_change(n_rows);
 	let mut arena = Arena::new();
 
-	// Warmup - first call grows the bumpalo backing chunks.
 	let _ = arena.marshal_change(&change);
 	arena.clear();
 

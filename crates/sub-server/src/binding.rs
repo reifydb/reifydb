@@ -20,18 +20,6 @@ use crate::{
 	state::AppState,
 };
 
-/// Synthesize and dispatch `CALL {ns}::{proc}()` for a binding; parameters are resolved
-/// at execution time from `params` (no `$name` placeholders in the CALL text).
-///
-/// The caller is responsible for:
-/// - Resolving the binding and locating its procedure by `binding.procedure_id`.
-/// - Validating `params` against the procedure's declared parameter list (rejecting unknown keys, missing required,
-///   type-coercion failures) before calling here.
-/// - Building `RequestMetadata` from its transport-specific request.
-///
-/// Returns `(frames, metrics)` from the engine; each transport wraps it into its own
-/// response format based on `binding.format` and reads `metrics.total` / `metrics.fingerprint`
-/// for telemetry headers.
 #[cfg(not(reifydb_single_threaded))]
 pub async fn dispatch_binding(
 	state: &AppState,

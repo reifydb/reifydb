@@ -4,17 +4,13 @@
 use std::{error, fmt, iter};
 const BASE58_CHARS: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
-/// Encode bytes to base58 string
 pub fn encode(input: &[u8]) -> String {
 	if input.is_empty() {
 		return String::new();
 	}
 
-	// Count leading zeros
 	let leading_zeros = input.iter().take_while(|&&b| b == 0).count();
 
-	// Convert to base58 using big-integer arithmetic
-	// We work with a mutable copy of the input as a big-endian number
 	let mut bytes = input.to_vec();
 	let mut result = Vec::new();
 
@@ -28,30 +24,24 @@ pub fn encode(input: &[u8]) -> String {
 		result.push(BASE58_CHARS[remainder as usize]);
 	}
 
-	// Add leading '1's for each leading zero byte
 	result.extend(iter::repeat_n(b'1', leading_zeros));
 
-	// Reverse and convert to string
 	result.reverse();
 	String::from_utf8(result).unwrap()
 }
 
-/// Decode base58 string to bytes
 pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
 	if input.is_empty() {
 		return Ok(Vec::new());
 	}
 
-	// Count leading '1's (they represent leading zero bytes)
 	let leading_ones = input.chars().take_while(|&c| c == '1').count();
 
-	// Convert from base58 to bytes
 	let mut bytes: Vec<u8> = Vec::new();
 
 	for ch in input.chars() {
 		let value = char_to_value(ch)?;
 
-		// Multiply existing bytes by 58 and add the new value
 		let mut carry = value as u32;
 		for byte in bytes.iter_mut().rev() {
 			let val = (*byte as u32) * 58 + carry;
@@ -65,7 +55,6 @@ pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
 		}
 	}
 
-	// Prepend leading zero bytes
 	let mut result = vec![0u8; leading_ones];
 	result.extend(bytes);
 

@@ -443,14 +443,12 @@ fn text_to_float(column_data: &ColumnBuffer, target: Type, lazy_fragment: impl L
 		..
 	} = column_data
 	{
-		// Create base fragment once for efficiency
 		let base_fragment = lazy_fragment.fragment();
 		let mut out = ColumnBuffer::with_capacity(target.clone(), container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = container.get(idx).unwrap();
-				// Create efficient borrowed fragment for
-				// parsing
+
 				let temp_fragment = Fragment::internal(val);
 
 				match target.clone() {
@@ -586,7 +584,6 @@ float_to_int_vec!(f64_to_u32_vec, f64, u32, Type::Uint4, 0.0, u32::MAX as f64);
 float_to_int_vec!(f64_to_u64_vec, f64, u64, Type::Uint8, 0.0, u64::MAX as f64);
 float_to_int_vec!(f64_to_u128_vec, f64, u128, Type::Uint16, 0.0, u128::MAX as f64);
 
-// Float to Int conversion
 fn f32_to_int_vec(container: &NumberContainer<f32>) -> Result<ColumnBuffer> {
 	let mut out = ColumnBuffer::with_capacity(Type::Int, container.len());
 	for idx in 0..container.len() {
@@ -617,7 +614,6 @@ fn f64_to_int_vec(container: &NumberContainer<f64>) -> Result<ColumnBuffer> {
 	Ok(out)
 }
 
-// Float to Uint conversion
 fn f32_to_uint_vec(container: &NumberContainer<f32>) -> Result<ColumnBuffer> {
 	let mut out = ColumnBuffer::with_capacity(Type::Uint, container.len());
 	for idx in 0..container.len() {
@@ -656,13 +652,12 @@ fn f64_to_uint_vec(container: &NumberContainer<f64>) -> Result<ColumnBuffer> {
 	Ok(out)
 }
 
-// Float to Decimal conversion
 fn f32_to_decimal_vec(container: &NumberContainer<f32>, target: Type) -> Result<ColumnBuffer> {
 	let mut out = ColumnBuffer::with_capacity(target, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			// Convert float to decimal with default precision/scale
+
 			let decimal = Decimal::from_i64(val.trunc() as i64);
 			out.push::<Decimal>(decimal);
 		} else {
@@ -677,7 +672,7 @@ fn f64_to_decimal_vec(container: &NumberContainer<f64>, target: Type) -> Result<
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			// Convert float to decimal with default precision/scale
+
 			let decimal = Decimal::from_i64(val.trunc() as i64);
 			out.push::<Decimal>(decimal);
 		} else {
@@ -794,7 +789,6 @@ fn number_to_number(
 	    to_struct => [(Decimal, Decimal)]
 	);
 
-	// Special handling for Int (uses Clone instead of Copy)
 	if let ColumnBuffer::Int {
 		container,
 		..
@@ -931,7 +925,6 @@ fn number_to_number(
 		}
 	}
 
-	// Special handling for Uint (uses Clone instead of Copy)
 	if let ColumnBuffer::Uint {
 		container,
 		..
@@ -1068,8 +1061,6 @@ fn number_to_number(
 		}
 	}
 
-	// Special handling for Decimal source (which is a struct variant in
-	// ColumnBuffer)
 	if let ColumnBuffer::Decimal {
 		container,
 		..

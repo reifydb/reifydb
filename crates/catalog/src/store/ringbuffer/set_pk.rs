@@ -11,8 +11,6 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer};
 
 impl CatalogStore {
-	/// Set the primary key ID for a ring buffer
-	/// Returns an internal error if the ring buffer doesn't exist
 	pub(crate) fn set_ringbuffer_primary_key(
 		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,

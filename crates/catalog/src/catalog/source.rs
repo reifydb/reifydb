@@ -44,14 +44,12 @@ impl Catalog {
 	) -> Result<Option<Source>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
 				if let Some(source) =
 					self.materialized.find_source_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(source));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(source) = CatalogStore::find_source_by_name(
 					&mut Transaction::Command(&mut *cmd),
 					namespace,
@@ -67,26 +65,22 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(source) =
 					TransactionalSourceChanges::find_source_by_name(admin, namespace, name)
 				{
 					return Ok(Some(source.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalSourceChanges::is_source_deleted_by_name(admin, namespace, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(source) =
 					self.materialized.find_source_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(source));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(source) = CatalogStore::find_source_by_name(
 					&mut Transaction::Admin(&mut *admin),
 					namespace,
@@ -102,14 +96,12 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(source) =
 					self.materialized.find_source_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(source));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(source) = CatalogStore::find_source_by_name(
 					&mut Transaction::Query(&mut *qry),
 					namespace,
@@ -146,14 +138,12 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
 				if let Some(source) =
 					self.materialized.find_source_by_name_at(namespace, name, rep.version())
 				{
 					return Ok(Some(source));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(source) = CatalogStore::find_source_by_name(
 					&mut Transaction::Replica(&mut *rep),
 					namespace,

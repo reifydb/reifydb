@@ -137,7 +137,6 @@ pub(crate) fn update_series(
 	Ok(update_series_result(namespace.name(), &series.name, updated_count))
 }
 
-/// Pre + post snapshot of a series row update, used for flow-change tracking.
 struct SeriesUpdateEvent<'a> {
 	columns: &'a Columns,
 	pre: &'a EncodedRow,

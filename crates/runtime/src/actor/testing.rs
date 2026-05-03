@@ -24,12 +24,6 @@ use crate::{
 	pool::{PoolConfig, Pools},
 };
 
-/// Test harness for synchronous actor testing.
-///
-/// This harness allows testing actors without spawning tasks:
-/// - Messages are queued in a local VecDeque
-/// - Processing is explicit via `process_one()` or `process_all()`
-/// - State is directly accessible for assertions
 pub struct TestHarness<A: Actor> {
 	actor: A,
 	state: A::State,
@@ -38,7 +32,6 @@ pub struct TestHarness<A: Actor> {
 }
 
 impl<A: Actor> TestHarness<A> {
-	/// Create a new test harness for the given actor.
 	pub fn new(actor: A) -> Self {
 		let ctx = TestContext::new();
 		let state = actor.init(&ctx.to_context());
@@ -51,10 +44,6 @@ impl<A: Actor> TestHarness<A> {
 		}
 	}
 
-	/// Create a new test harness with a pre-initialized state.
-	///
-	/// This is useful when you want to test specific state transitions
-	/// without going through the init process.
 	pub fn with_state(actor: A, state: A::State) -> Self {
 		let ctx = TestContext::new();
 
@@ -66,28 +55,16 @@ impl<A: Actor> TestHarness<A> {
 		}
 	}
 
-	/// Send a message to the actor's mailbox.
-	///
-	/// The message will be queued and processed when `process_one()`
-	/// or `process_all()` is called.
 	pub fn send(&mut self, msg: A::Message) {
 		self.mailbox.push_back(msg);
 	}
 
-	/// Process a single message from the mailbox.
-	///
-	/// Returns `Some(flow)` if a message was processed,
-	/// or `None` if the mailbox was empty.
 	pub fn process_one(&mut self) -> Option<Directive> {
 		let msg = self.mailbox.pop_front()?;
 		let flow = self.actor.handle(&mut self.state, msg, &self.ctx.to_context());
 		Some(flow)
 	}
 
-	/// Process all messages in the mailbox.
-	///
-	/// Returns a Vec of all Directive values returned by handle().
-	/// Processing stops early if any handler returns `Directive::Stop`.
 	pub fn process_all(&mut self) -> Vec<Directive> {
 		let mut flows = Vec::new();
 
@@ -101,9 +78,6 @@ impl<A: Actor> TestHarness<A> {
 		flows
 	}
 
-	/// Process messages until the mailbox is empty or a condition is met.
-	///
-	/// Returns the flows from all processed messages.
 	pub fn process_until<F>(&mut self, mut condition: F) -> Vec<Directive>
 	where
 		F: FnMut(&A::State) -> bool,
@@ -126,50 +100,39 @@ impl<A: Actor> TestHarness<A> {
 		flows
 	}
 
-	/// Call the actor's idle hook.
-	///
-	/// This is useful for testing background work behavior.
 	pub fn idle(&mut self) -> Directive {
 		self.actor.idle(&self.ctx.to_context())
 	}
 
-	/// Call the actor's post_stop hook.
 	pub fn post_stop(&mut self) {
 		self.actor.post_stop();
 	}
 
-	/// Get a reference to the actor's state.
 	pub fn state(&self) -> &A::State {
 		&self.state
 	}
 
-	/// Get a mutable reference to the actor's state.
 	pub fn state_mut(&mut self) -> &mut A::State {
 		&mut self.state
 	}
 
-	/// Check if the mailbox is empty.
 	pub fn is_empty(&self) -> bool {
 		self.mailbox.is_empty()
 	}
 
-	/// Get the number of messages in the mailbox.
 	pub fn mailbox_len(&self) -> usize {
 		self.mailbox.len()
 	}
 
-	/// Signal cancellation.
 	pub fn cancel(&mut self) {
 		self.ctx.cancel();
 	}
 
-	/// Check if cancelled.
 	pub fn is_cancelled(&self) -> bool {
 		self.ctx.is_cancelled()
 	}
 }
 
-/// Test context that doesn't require a real runtime.
 struct TestContext<M> {
 	cancel: CancellationToken,
 	_marker: PhantomData<M>,
@@ -191,12 +154,7 @@ impl<M: Send + 'static> TestContext<M> {
 		self.cancel.is_cancelled()
 	}
 
-	/// Convert to a Context.
-	///
-	/// Note: The ActorRef in this context is not usable for sending
-	/// messages in tests. Use `harness.send()` instead.
 	fn to_context(&self) -> Context<M> {
-		// Create a dummy actor ref using platform-specific implementation
 		#[cfg(not(reifydb_single_threaded))]
 		let actor_ref = {
 			let (tx, _rx) = unbounded();
@@ -212,7 +170,6 @@ impl<M: Send + 'static> TestContext<M> {
 			actor_ref
 		};
 
-		// Create an actor system for testing
 		let pools = Pools::new(PoolConfig::default());
 
 		#[cfg(reifydb_target = "dst")]

@@ -20,7 +20,6 @@ use reifydb_type::Result;
 
 use crate::subsystem::GrpcSubsystem;
 
-/// Configurator for the gRPC server subsystem.
 pub struct GrpcConfigurator {
 	bind_addr: Option<String>,
 	admin_bind_addr: Option<String>,
@@ -57,8 +56,6 @@ impl GrpcConfigurator {
 		self
 	}
 
-	/// Set the admin bind address.
-	/// When set, admin operations are served on this separate port.
 	pub fn admin_bind_addr(mut self, addr: impl Into<String>) -> Self {
 		self.admin_bind_addr = Some(addr.into());
 		self
@@ -111,9 +108,7 @@ impl GrpcConfigurator {
 #[derive(Clone, Debug)]
 pub struct GrpcConfig {
 	pub bind_addr: Option<String>,
-	/// Address to bind the admin gRPC server to.
-	/// When set, admin operations are only available on this port.
-	/// When not set, admin operations are not available.
+
 	pub admin_bind_addr: Option<String>,
 	pub max_connections: usize,
 	pub query_timeout: Duration,

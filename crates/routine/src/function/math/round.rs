@@ -53,7 +53,6 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 		let (val_data, val_bitvec) = value_column.unwrap_option();
 		let row_count = val_data.len();
 
-		// Helper to get precision value at row index
 		let get_precision = |row_idx: usize| -> i32 {
 			if let Some(prec_col) = precision_column {
 				let (p_data, _) = prec_col.data().unwrap_option();

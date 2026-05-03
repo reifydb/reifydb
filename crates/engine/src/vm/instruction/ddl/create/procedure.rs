@@ -38,7 +38,6 @@ pub(crate) fn create_procedure(
 	let procedure = services.catalog.create_procedure(txn, to_create)?;
 
 	if is_handler {
-		// Also register in the handler store for handler-specific lookups
 		if let RqlTrigger::Event {
 			variant,
 		} = plan.trigger

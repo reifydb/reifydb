@@ -99,7 +99,6 @@ impl<'a> Vm<'a> {
 				}
 			}
 			None => {
-				// Empty list: IN is always false, NOT IN always true (broadcast to probe length).
 				let len = probe.data.len().max(1);
 				let data = ColumnBuffer::bool(vec![negated; len]);
 				ColumnWithName::new(frag.clone(), data)

@@ -17,7 +17,7 @@ use crate::vtable::user::{
 };
 use crate::Result;
 
-/// Adapter that wraps a `UserVTable` into the internal `VTable` trait.
+
 pub struct UserVTableAdapter<U: UserVTable> {
 	user_table: U,
 	vtable: Arc<VTable>,
@@ -25,7 +25,7 @@ pub struct UserVTableAdapter<U: UserVTable> {
 }
 
 impl<U: UserVTable> UserVTableAdapter<U> {
-	/// Create a new adapter wrapping the user table.
+
 	pub fn new(user_table: U, definition: Arc<VTable>) -> Self {
 		Self {
 			user_table,
@@ -67,7 +67,7 @@ impl<U: UserVTable> VTable for UserVTableAdapter<U> {
 	}
 }
 
-/// Adapter that wraps a `UserVTableIterator` into the internal `VTable` trait.
+
 pub struct UserVTableIteratorAdapter<U: UserVTableIterator> {
 	user_iter: U,
 	vtable: Arc<VTable>,
@@ -76,13 +76,13 @@ pub struct UserVTableIteratorAdapter<U: UserVTableIterator> {
 }
 
 impl<U: UserVTableIterator> UserVTableIteratorAdapter<U> {
-	/// Create a new adapter wrapping the user iterator.
+
 	#[allow(dead_code)]
 	pub fn new(user_iter: U, vtable: Arc<VTable>) -> Self {
 		Self {
 			user_iter,
 			vtable,
-			batch_size: 1000, // Default batch size
+			batch_size: 1000,
 			initialized: false,
 		}
 	}
@@ -90,7 +90,7 @@ impl<U: UserVTableIterator> UserVTableIteratorAdapter<U> {
 
 impl<U: UserVTableIterator> VTable for UserVTableIteratorAdapter<U> {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<()> {
-		// Convert internal context to user pushdown context
+
 		let user_ctx = match ctx {
 			VTableContext::Basic {
 				..
@@ -133,7 +133,7 @@ impl<U: UserVTableIterator> VTable for UserVTableIteratorAdapter<U> {
 	}
 }
 
-/// Convert user row-oriented data to column-oriented data.
+
 pub(super) fn convert_rows_to_columns(
 	user_columns: &[UserVTableColumn],
 	rows: Vec<Vec<Value>>,
@@ -141,11 +141,11 @@ pub(super) fn convert_rows_to_columns(
 	let num_rows = rows.len();
 	let num_cols = user_columns.len();
 
-	// Initialize column data vectors
+
 	let mut column_data: Vec<ColumnBuffer> =
 		user_columns.iter().map(|col| ColumnBuffer::with_capacity(col.data_type.clone(), num_rows)).collect();
 
-	// Transpose row data into columns
+
 	for row in rows {
 		for (col_idx, value) in row.into_iter().enumerate() {
 			if col_idx < num_cols {
@@ -154,7 +154,7 @@ pub(super) fn convert_rows_to_columns(
 		}
 	}
 
-	// Create Column structs
+
 	user_columns
 		.iter()
 		.zip(column_data)

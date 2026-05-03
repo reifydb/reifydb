@@ -10,9 +10,6 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-/// Build a `system::metrics::cdc::<name>` virtual table definition.
-///
-/// Schema: (id, namespace_id, key_bytes, value_bytes, total_bytes, count).
 pub fn metrics_cdc_vtable(id: VTableId, local_name: &str) -> Arc<VTable> {
 	Arc::new(VTable {
 		id,

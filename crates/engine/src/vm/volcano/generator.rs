@@ -75,7 +75,6 @@ impl QueryNode for GeneratorNode {
 		let session = EvalContext::from_query(stored_ctx);
 		let evaluation_ctx = session.with_eval_empty();
 
-		// Evaluate all parameter expressions into columns
 		let mut evaluated_columns = Vec::new();
 		for expr in &self.expressions {
 			let column = evaluate(&evaluation_ctx, expr)?;

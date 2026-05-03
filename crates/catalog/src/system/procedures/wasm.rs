@@ -12,7 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use crate::system::ids::{columns::procedures::wasm::*, vtable::PROCEDURES_WASM};
 
-/// Returns the static definition for the `system::procedures::wasm` virtual table.
 pub fn procedures_wasm() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

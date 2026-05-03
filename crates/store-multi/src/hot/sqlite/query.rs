@@ -15,8 +15,6 @@ pub(super) fn version_from_bytes(bytes: &[u8]) -> CommitVersion {
 	CommitVersion(u64::from_be_bytes(bytes.try_into().expect("version must be 8 bytes")))
 }
 
-/// DDL: create the `__current` table for a logical table.
-/// One row per logical key; `key` is the sole primary key.
 pub(super) fn build_create_current_sql(table_name: &str) -> String {
 	format!(
 		"CREATE TABLE IF NOT EXISTS \"{}\" (\
@@ -28,10 +26,6 @@ pub(super) fn build_create_current_sql(table_name: &str) -> String {
 	)
 }
 
-/// DDL: create the `__historical` table for a logical table.
-/// Many rows per logical key; PK is `(key, version)` so that
-/// `WHERE key = ? AND version <= ? ORDER BY version DESC LIMIT 1`
-/// is a single index seek + step.
 pub(super) fn build_create_historical_sql(table_name: &str) -> String {
 	format!(
 		"CREATE TABLE IF NOT EXISTS \"{}\" (\
@@ -44,14 +38,10 @@ pub(super) fn build_create_historical_sql(table_name: &str) -> String {
 	)
 }
 
-/// Point-get from `__current`. Returns the row whose `version` may or may
-/// not satisfy the snapshot constraint; the caller checks and falls back
-/// to `__historical` if not.
 pub(super) fn build_get_current_sql(current_name: &str) -> String {
 	format!("SELECT version, value FROM \"{}\" WHERE key = ?1", current_name)
 }
 
-/// Point-get from `__historical` for a key, latest visible <= snapshot.
 pub(super) fn build_get_historical_sql(historical_name: &str) -> String {
 	format!(
 		"SELECT version, value FROM \"{}\" WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
@@ -59,8 +49,6 @@ pub(super) fn build_get_historical_sql(historical_name: &str) -> String {
 	)
 }
 
-/// Range scan over `__current`, optionally filtered by inclusive/exclusive
-/// key bounds. Streamable via the PK index; SQLite stops after `LIMIT N`.
 pub(super) fn build_range_current_query(
 	current_name: &str,
 	start: Bound<&[u8]>,
@@ -115,8 +103,6 @@ pub(super) fn build_range_current_query(
 	(query, params)
 }
 
-/// Get all versions of a key by unioning the row from `__current` with all
-/// rows in `__historical`. Result is sorted descending by version.
 pub(super) fn build_get_all_versions_sql(current_name: &str, historical_name: &str) -> String {
 	format!(
 		"SELECT version, value FROM \"{current}\" WHERE key = ?1 \

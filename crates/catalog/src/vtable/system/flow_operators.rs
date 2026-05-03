@@ -21,7 +21,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes loaded FFI operators from shared libraries
 pub struct SystemFlowOperators {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
@@ -67,7 +66,6 @@ impl BaseVTable for SystemFlowOperators {
 			library_paths.push(info.library_path.to_str().unwrap_or("<invalid path>"));
 			apis.push(info.api);
 
-			// Decode capabilities bitfield into separate boolean columns
 			cap_inserts.push(has_capability(info.capabilities, CAPABILITY_INSERT));
 			cap_updates.push(has_capability(info.capabilities, CAPABILITY_UPDATE));
 			cap_deletes.push(has_capability(info.capabilities, CAPABILITY_DELETE));

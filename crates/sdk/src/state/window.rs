@@ -6,16 +6,6 @@ use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
 use super::{FFIRawStatefulOperator, utils};
 use crate::{error::Result, operator::context::OperatorContext};
 
-/// Window-based state management for time or count-based windowing
-///
-/// This trait provides support for operators that partition state into windows,
-/// such as sliding time windows or tumbling count windows. Each window has its own
-/// state entry indexed by a window key.
-///
-/// Window keys should be designed to support efficient expiration. Common patterns:
-/// - Time-based: Use timestamp as part of the key
-/// - Count-based: Use sequence number as part of the key
-/// - Composite: Combine time/count with other dimensions
 pub trait FFIWindowStateful: FFIRawStatefulOperator {
 	fn shape(&self) -> RowShape;
 

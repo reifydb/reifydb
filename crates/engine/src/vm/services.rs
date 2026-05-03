@@ -24,10 +24,6 @@ use reifydb_type::value::sumtype::VariantRef;
 #[cfg(not(reifydb_single_threaded))]
 use crate::remote::RemoteRegistry;
 
-/// Configuration bundle for engine services.
-///
-/// Groups the shared extension registries and runtime context that flow through
-/// `StandardEngine::new` -> `Executor::new` -> `Services::new`.
 pub struct EngineConfig {
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
@@ -37,10 +33,6 @@ pub struct EngineConfig {
 	pub remote_registry: Option<RemoteRegistry>,
 }
 
-/// Services is a container for shared resources used throughout the execution engine.
-///
-/// This struct provides a single location for all the shared resources that the VM,
-/// query operators, and other components need access to.
 pub struct Services {
 	pub catalog: Catalog,
 	pub runtime_context: RuntimeContext,
@@ -91,7 +83,7 @@ impl Services {
 	#[allow(dead_code)]
 	pub fn testing() -> Arc<Self> {
 		let store = SingleStore::testing_memory();
-		// Build the default Routines registry: native functions + native procedures.
+
 		let routines_builder = Routines::builder();
 		let routines_builder = default_native_functions(routines_builder);
 		let routines_builder = default_native_procedures(routines_builder);

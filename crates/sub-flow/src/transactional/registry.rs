@@ -12,8 +12,6 @@ use reifydb_type::{Result, value::identity::IdentityId};
 
 use crate::engine::FlowEngine;
 
-/// Detects whether a newly-discovered `FlowDag` is a transactional view flow,
-/// and if so registers it in the transactional `FlowEngine`.
 pub struct TransactionalFlowRegistry {
 	pub flow_engine: Arc<RwLock<FlowEngine>>,
 	pub engine: StandardEngine,
@@ -21,10 +19,6 @@ pub struct TransactionalFlowRegistry {
 }
 
 impl TransactionalFlowRegistry {
-	/// Try to register a flow as a transactional view flow.
-	///
-	/// Returns `true` if the flow was transactional and was registered,
-	/// `false` if it is a deferred (or other) flow and should be handled elsewhere.
 	pub fn try_register(&self, flow: FlowDag) -> Result<bool> {
 		if !self.is_transactional_view_flow(&flow) {
 			return Ok(false);
@@ -32,22 +26,16 @@ impl TransactionalFlowRegistry {
 
 		let mut engine = self.flow_engine.write().unwrap();
 
-		// Already registered (e.g. post-commit interceptor raced with CDC dispatcher).
 		if engine.flows.contains_key(&flow.id) {
 			return Ok(true);
 		}
 
 		let mut cmd = self.engine.begin_command(IdentityId::system())?;
 		engine.register(&mut cmd, flow)?;
-		// Registration performs only catalog reads - no writes were made to cmd.
-		// Dropping cmd without commit is safe (auto-rollback is a no-op).
+
 		Ok(true)
 	}
 
-	/// Load a flow by ID from the catalog and register it if it is transactional.
-	///
-	/// Used by the post-commit interceptor to eagerly register transactional flows
-	/// at commit time, before CDC polling picks them up.
 	pub fn try_register_by_id(&self, flow_id: FlowId) -> Result<()> {
 		let mut query = self.engine.begin_query(IdentityId::system())?;
 		let flow = load_flow_dag(&self.catalog, &mut Transaction::Query(&mut query), flow_id)?;
@@ -55,7 +43,6 @@ impl TransactionalFlowRegistry {
 		Ok(())
 	}
 
-	/// Returns `true` if any sink view node in the flow writes to a transactional view.
 	fn is_transactional_view_flow(&self, flow: &FlowDag) -> bool {
 		let mut query = match self.engine.begin_query(IdentityId::system()) {
 			Ok(q) => q,

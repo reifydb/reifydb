@@ -7,13 +7,11 @@ use reifydb_type::Result;
 use super::FlowTransaction;
 
 impl FlowTransaction {
-	/// Set a value, buffering it in pending writes
 	pub fn set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()> {
 		self.inner_mut().pending.insert(key.clone(), value);
 		Ok(())
 	}
 
-	/// Remove a key, buffering the deletion in pending operations
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.inner_mut().pending.remove(key.clone());
 		Ok(())

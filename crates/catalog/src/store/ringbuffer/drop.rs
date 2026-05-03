@@ -14,24 +14,19 @@ use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_ringbuffer(txn: &mut AdminTransaction, ringbuffer: RingBufferId) -> Result<()> {
-		// First, find the ringbuffer to get its namespace and primary key
 		let pk_id = if let Some(ringbuffer_def) =
 			Self::find_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer)?
 		{
-			// Remove the namespace-ringbuffer link (secondary index)
 			txn.remove(&NamespaceRingBufferKey::encoded(ringbuffer_def.namespace, ringbuffer))?;
 			ringbuffer_def.primary_key.as_ref().map(|pk| pk.id)
 		} else {
 			None
 		};
 
-		// Clean up all associated metadata (columns, policies, sequences, pk, retention)
 		drop_shape_metadata(txn, ringbuffer.into(), pk_id)?;
 
-		// Remove the ringbuffer metadata
 		txn.remove(&RingBufferMetadataKey::encoded(ringbuffer))?;
 
-		// Remove the ringbuffer definition
 		txn.remove(&RingBufferKey::encoded(ringbuffer))?;
 
 		Ok(())

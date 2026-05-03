@@ -15,9 +15,7 @@ use number::scan_number;
 use temporal::scan_temporal;
 use text::scan_text;
 
-/// Scan for any literal token
 pub fn scan_literal<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
-	// Try each literal type
 	if let Some(token) = scan_text(cursor) {
 		Some(token)
 	} else if let Some(token) = scan_number(cursor) {

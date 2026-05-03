@@ -5,30 +5,24 @@ use std::{fmt, ops::Deref};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 
-/// Standard column name for RowNumber columns
 pub static ROW_NUMBER_COLUMN_NAME: &str = "rownum";
 
-/// A encoded number - a unique 64-bit unsigned integer for a table encoded
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct RowNumber(pub u64);
 
 impl RowNumber {
-	/// Create a new RowNumber from a u64
-	/// Panics if id is 0, as encoded numbers must start from 1
 	pub fn new(id: u64) -> Self {
 		assert!(id > 0, "Row numbers must be greater than 0, got {}", id);
 		RowNumber(id)
 	}
 
-	/// Get the inner u64 value
 	pub fn value(&self) -> u64 {
 		self.0
 	}
 }
 
 impl Default for RowNumber {
-	/// Default encoded number is 1 (not 0, as encoded numbers start from 1)
 	fn default() -> Self {
 		RowNumber(1)
 	}

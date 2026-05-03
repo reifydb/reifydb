@@ -42,11 +42,6 @@ pub enum Predicate {
 	Not(Box<Predicate>),
 }
 
-// Evaluate a `Predicate` over a `ColumnBlock`, producing a `Selection` that
-// callers can feed to `compute::filter`. Per-column iteration walks each chunk
-// independently and dispatches through `compute::compare`, so encoding-specific
-// kernels stay live - canonicalization happens only on the bool result we have
-// to inspect bit-by-bit, not on the input columns.
 pub fn evaluate(block: &ColumnBlock, predicate: &Predicate) -> Result<Selection> {
 	let len = block.len();
 	let mask = evaluate_mask(block, predicate, len)?;
@@ -95,8 +90,6 @@ fn compare_mask(block: &ColumnBlock, col: &ColRef, rhs: &Value, op: CompareOp) -
 	}
 	let mut parts = Vec::with_capacity(ch.chunks.len());
 	for chunk in &ch.chunks {
-		// `compute::compare` routes through encoding-specific specialization, so
-		// compressed encodings can run the comparison without canonicalizing.
 		let result = compute::compare(chunk, rhs, op)?;
 		parts.push(bool_array_to_mask(&result)?);
 	}
@@ -130,9 +123,6 @@ fn column<'a>(block: &'a ColumnBlock, col: &ColRef) -> Result<&'a ColumnChunks> 
 	})
 }
 
-// Convert a bool canonical `Column` to a `RowMask`. None-valued rows count as
-// "not selected" - three-valued-logic collapses to a two-valued mask at the
-// `Selection` boundary.
 fn bool_array_to_mask(array: &Column) -> Result<RowMask> {
 	let canon = array.to_canonical()?;
 	if !matches!(canon.buffer, ColumnBuffer::Bool(_)) {

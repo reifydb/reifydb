@@ -7,26 +7,6 @@
 
 use std::env;
 
-/// Emit the `reifydb_target` cfg based on the current compilation target.
-///
-/// Call this from your crate's `build.rs`:
-/// ```ignore
-/// fn main() {
-///     reifydb_build::emit_target_cfg();
-/// }
-/// ```
-///
-/// Then use in code:
-/// ```ignore
-/// #[cfg(reifydb_target = "native")]
-/// fn native_only() { }
-///
-/// #[cfg(reifydb_target = "wasm")]
-/// fn wasm_only() { }
-///
-/// #[cfg(reifydb_target = "wasi")]
-/// fn wasi_only() { }
-/// ```
 pub fn emit_target_cfg() {
 	let target = env::var("TARGET").unwrap_or_default();
 
@@ -40,7 +20,6 @@ pub fn emit_target_cfg() {
 		("native", false)
 	};
 
-	// Emit the check-cfg directive to tell the compiler about our custom cfgs
 	println!("cargo::rustc-check-cfg=cfg(reifydb_target, values(\"native\", \"wasm\", \"wasi\", \"dst\"))");
 	println!("cargo::rustc-check-cfg=cfg(reifydb_single_threaded)");
 	println!("cargo:rustc-cfg=reifydb_target=\"{}\"", reifydb_target);

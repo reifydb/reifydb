@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system authentication information
 pub struct SystemAuthentications {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

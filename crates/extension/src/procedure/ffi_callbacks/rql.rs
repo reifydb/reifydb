@@ -15,17 +15,6 @@ use tracing::error;
 
 use super::memory::host_alloc;
 
-/// Host RQL callback for FFI procedures.
-///
-/// Reconstructs the Transaction and Executor from the ContextFFI pointers,
-/// executes the RQL statement, and serializes the result frames into the output buffer.
-///
-/// # Safety
-///
-/// - `ctx` must be a valid pointer to a `ContextFFI` whose `txn_ptr` points to a live `Transaction`.
-/// - `rql_ptr` must be valid for reading `rql_len` bytes of valid UTF-8.
-/// - `params_ptr` must be valid for reading `params_len` bytes, or null if `params_len` is 0.
-/// - `result_out` must be a valid pointer to a `BufferFFI` for writing.
 pub unsafe extern "C" fn host_rql(
 	ctx: *mut ContextFFI,
 	rql_ptr: *const u8,
@@ -40,14 +29,12 @@ pub unsafe extern "C" fn host_rql(
 		}
 
 		unsafe {
-			// Reconstruct RQL string
 			let rql_bytes = slice::from_raw_parts(rql_ptr, rql_len);
 			let rql_str = match str::from_utf8(rql_bytes) {
 				Ok(s) => s,
 				Err(_) => return FFI_ERROR_INVALID_UTF8,
 			};
 
-			// Deserialize params
 			let params: Params = if params_ptr.is_null() || params_len == 0 {
 				Params::None
 			} else {
@@ -61,18 +48,15 @@ pub unsafe extern "C" fn host_rql(
 				}
 			};
 
-			// Reconstruct Transaction from context pointer
 			let ctx_ref = &mut *ctx;
 			let tx = &mut *(ctx_ref.txn_ptr as *mut Transaction<'_>);
 
-			// Execute RQL
 			let result = tx.rql(rql_str, params);
 			if let Some(ref e) = result.error {
 				error!("host_rql: rql execution failed: {}", e);
 				return FFI_ERROR_INTERNAL;
 			}
 
-			// Serialize result frames with postcard
 			let result_bytes = match to_stdvec(&result.frames) {
 				Ok(b) => b,
 				Err(e) => {
@@ -81,7 +65,6 @@ pub unsafe extern "C" fn host_rql(
 				}
 			};
 
-			// Copy result into output buffer using host_alloc
 			let out_ptr = host_alloc(result_bytes.len());
 			if out_ptr.is_null() && !result_bytes.is_empty() {
 				return FFI_ERROR_INTERNAL;

@@ -16,7 +16,6 @@ impl CatalogStore {
 	pub(crate) fn list_ringbuffers_all(rx: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
 		let mut result = Vec::new();
 
-		// Collect ringbuffer data first to avoid holding stream borrow
 		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64, Vec<String>, bool)> = Vec::new();
 		{
 			let stream = rx.range(RingBufferKey::full_scan(), 1024)?;
@@ -59,7 +58,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Now fetch additional details for each ringbuffer
 		for (ringbuffer_id, namespace_id, name, capacity, partition_by, underlying) in ringbuffer_data {
 			let primary_key = Self::find_primary_key(rx, ringbuffer_id)?;
 			let columns = Self::list_columns(rx, ringbuffer_id)?;

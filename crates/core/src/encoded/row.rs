@@ -8,10 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::encoded::shape::fingerprint::RowShapeFingerprint;
 
-/// Size of shape header (fingerprint + created_at + updated_at) in bytes
 pub const SHAPE_HEADER_SIZE: usize = 24;
 
-/// A boxed values iterator.
 pub type EncodedRowIter = Box<dyn EncodedRowIterator>;
 
 pub trait EncodedRowIterator: Iterator<Item = EncodedRow> {}
@@ -19,7 +17,6 @@ pub trait EncodedRowIterator: Iterator<Item = EncodedRow> {}
 impl<I: Iterator<Item = EncodedRow>> EncodedRowIterator for I {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-// [shape_finger_print]:[bitvec]:[static_values]:[dynamic_values]
 #[derive(PartialEq, Eq)]
 pub struct EncodedRow(pub CowVec<u8>);
 
@@ -53,14 +50,12 @@ impl EncodedRow {
 		}
 	}
 
-	/// Read the shape fingerprint from the header
 	#[inline]
 	pub fn fingerprint(&self) -> RowShapeFingerprint {
 		let bytes: [u8; 8] = self.0[0..8].try_into().unwrap();
 		RowShapeFingerprint::from_le_bytes(bytes)
 	}
 
-	/// Write the shape fingerprint to the header
 	pub fn set_fingerprint(&mut self, fingerprint: RowShapeFingerprint) {
 		self.0.make_mut()[0..8].copy_from_slice(&fingerprint.to_le_bytes());
 	}

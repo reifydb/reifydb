@@ -120,7 +120,6 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 
 		KeyKind::Column | KeyKind::Columns => dispatch::<ColumnApplier>(catalog, txn, change),
 
-		// Secondary index keys - write to txn, no materialized catalog action
 		KeyKind::NamespaceTable
 		| KeyKind::NamespaceView
 		| KeyKind::NamespaceFlow
@@ -136,7 +135,6 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		| KeyKind::VariantHandler
 		| KeyKind::PolicyOp => dispatch::<PassthroughApplier>(catalog, txn, change),
 
-		// All other keys (Row data, etc.) - write to txn, no materialized catalog action
 		_ => dispatch::<PassthroughApplier>(catalog, txn, change),
 	}
 }

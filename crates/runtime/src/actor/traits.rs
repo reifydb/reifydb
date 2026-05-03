@@ -3,68 +3,33 @@
 
 use crate::actor::{context::Context, system::ActorConfig};
 
-/// What the actor wants to do after handling a message.
-///
-/// This enum controls actor behavior after processing each message.
-///
-/// - **Native**: Actors run as batched tasks on a shared rayon pool. `Yield` ends the current batch and resubmits to
-///   the back of the pool queue. `Park` goes idle until a new message arrives (zero pool resource usage).
-/// - **WASM**: Messages are processed inline (synchronously), so `Yield` and `Park` are no-ops.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Directive {
-	/// Keep processing messages immediately (up to batch limit).
 	Continue,
 
-	/// End current batch, resubmit to back of pool queue.
 	Yield,
 
-	/// Go idle until a new message arrives. The actor consumes zero pool
-	/// resources while parked.
 	Park,
 
-	/// Stop this actor permanently.
-	///
-	/// The actor's `post_stop` hook will be called, and the actor
-	/// will be removed from the system.
 	Stop,
 }
 
 pub trait Actor: Send + Sync + 'static {
-	/// The actor's internal state (owned, not shared).
 	type State: Send + 'static;
 
-	/// Messages this actor can receive.
 	type Message: Send + 'static;
 
-	/// Create initial state. Called on start and restart.
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State;
 
-	/// Handle a single message. This is the core of the actor.
-	///
-	/// Return `Directive` to control scheduling:
-	/// - `Continue`: Process next message immediately
-	/// - `Yield`: Give other actors a chance to run
-	/// - `Park`: Sleep until a message arrives
-	/// - `Stop`: Terminate this actor
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive;
 
-	/// Called when the mailbox is empty.
-	///
-	/// Use for:
-	/// - Background/periodic work
-	/// - Polling external state
-	/// - Cleanup tasks
-	///
-	/// Default: Park (sleep until message arrives)
 	#[allow(unused_variables)]
 	fn idle(&self, ctx: &Context<Self::Message>) -> Directive {
 		Directive::Park
 	}
 
-	/// Called once after actor stops (always called, even on panic).
 	fn post_stop(&self) {}
 
-	/// Actor configuration. Override for custom settings.
 	fn config(&self) -> ActorConfig {
 		ActorConfig::default()
 	}

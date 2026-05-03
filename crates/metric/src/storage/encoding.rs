@@ -20,58 +20,44 @@ use crate::{
 	storage::{cdc::CdcStats, multi::MultiStorageStats},
 };
 
-/// Current key encoding version
 const KEY_VERSION: u8 = 0x01;
 
-/// Sub-key discriminators
 const SUBKEY_BY_TYPE: u8 = 0x01;
 const SUBKEY_BY_OBJECT: u8 = 0x02;
 const SUBKEY_CDC: u8 = 0x03;
 
-/// id discriminators for encoding
 const ID_SHAPE: u8 = 0x00;
 const ID_FLOW_NODE: u8 = 0x01;
 const ID_SYSTEM: u8 = 0x02;
 
-/// Encode a per-type stats key.
-/// Format: `[VERSION][0x25][0x01][tier:1][key_kind:1]`
 pub fn encode_type_stats_key(tier: Tier, kind: KeyKind) -> Vec<u8> {
 	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_TYPE, tier_to_byte(tier), kind as u8]
 }
 
-/// Encode a per-object MVCC stats key.
-/// Format: `[VERSION][0x25][0x02][tier:1][id:variable]`
 pub fn encode_storage_stats_key(tier: Tier, id: MetricId) -> Vec<u8> {
 	let mut key = vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_OBJECT, tier_to_byte(tier)];
 	encode_object_id(&mut key, id);
 	key
 }
 
-/// Create a prefix for scanning all per-type stats keys.
 pub fn type_stats_key_prefix() -> Vec<u8> {
 	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_TYPE]
 }
 
-/// Create a prefix for scanning all per-object MVCC stats keys.
 pub fn storage_stats_key_prefix() -> Vec<u8> {
 	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_OBJECT]
 }
 
-/// Encode a CDC stats key.
-/// Format: `[VERSION][0x25][0x03][id:variable]`
 pub fn encode_cdc_stats_key(id: MetricId) -> Vec<u8> {
 	let mut key = vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_CDC];
 	encode_object_id(&mut key, id);
 	key
 }
 
-/// Create a prefix for scanning all CDC stats keys.
 pub fn cdc_stats_key_prefix() -> Vec<u8> {
 	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_CDC]
 }
 
-/// Decode a per-type stats key back into (Tier, KeyKind).
-/// Returns None if the key is malformed or not a type stats key.
 pub fn decode_type_stats_key(key: &[u8]) -> Option<(Tier, KeyKind)> {
 	if key.len() < 5 {
 		return None;
@@ -84,8 +70,6 @@ pub fn decode_type_stats_key(key: &[u8]) -> Option<(Tier, KeyKind)> {
 	Some((tier, kind))
 }
 
-/// Decode a per-object MVCC stats key back into (Tier, Id).
-/// Returns None if the key is malformed or not a storage stats key.
 pub fn decode_storage_stats_key(key: &[u8]) -> Option<(Tier, MetricId)> {
 	if key.len() < 5 {
 		return None;
@@ -98,8 +82,6 @@ pub fn decode_storage_stats_key(key: &[u8]) -> Option<(Tier, MetricId)> {
 	Some((tier, id))
 }
 
-/// Decode a CDC stats key back into Id.
-/// Returns None if the key is malformed or not a CDC stats key.
 pub fn decode_cdc_stats_key(key: &[u8]) -> Option<MetricId> {
 	if key.len() < 4 {
 		return None;
@@ -110,10 +92,8 @@ pub fn decode_cdc_stats_key(key: &[u8]) -> Option<MetricId> {
 	decode_object_id(&key[3..])
 }
 
-/// StorageStats is 48 bytes (6 x u64).
 pub const STORAGE_STATS_SIZE: usize = 48;
 
-/// Encode StorageStats to bytes.
 pub fn encode_storage_stats(stats: &MultiStorageStats) -> Vec<u8> {
 	let mut buf = Vec::with_capacity(STORAGE_STATS_SIZE);
 	buf.extend_from_slice(&stats.current_key_bytes.to_le_bytes());
@@ -125,7 +105,6 @@ pub fn encode_storage_stats(stats: &MultiStorageStats) -> Vec<u8> {
 	buf
 }
 
-/// Decode StorageStats from bytes.
 pub fn decode_storage_stats(bytes: &[u8]) -> Option<MultiStorageStats> {
 	if bytes.len() < STORAGE_STATS_SIZE {
 		return None;
@@ -140,10 +119,8 @@ pub fn decode_storage_stats(bytes: &[u8]) -> Option<MultiStorageStats> {
 	})
 }
 
-/// CdcStats is 24 bytes (3 x u64).
 pub const CDC_STATS_SIZE: usize = 24;
 
-/// Encode CdcStats to bytes.
 pub fn encode_cdc_stats(stats: &CdcStats) -> Vec<u8> {
 	let mut buf = Vec::with_capacity(CDC_STATS_SIZE);
 	buf.extend_from_slice(&stats.key_bytes.to_le_bytes());
@@ -152,7 +129,6 @@ pub fn encode_cdc_stats(stats: &CdcStats) -> Vec<u8> {
 	buf
 }
 
-/// Decode CdcStats from bytes.
 pub fn decode_cdc_stats(bytes: &[u8]) -> Option<CdcStats> {
 	if bytes.len() < CDC_STATS_SIZE {
 		return None;
@@ -221,7 +197,6 @@ fn decode_object_id(bytes: &[u8]) -> Option<MetricId> {
 	}
 }
 
-// ShapeId encoding (9 bytes: 1 byte discriminant + 8 bytes id)
 fn encode_shape_id(shape_id: ShapeId) -> [u8; 9] {
 	let mut buf = [0u8; 9];
 	buf[0] = shape_id.to_type_u8();

@@ -19,15 +19,12 @@ use reifydb_sdk::error::{FFIError, Result as FFIResult};
 use super::ffi::NativeProcedureFFI;
 use crate::loader::ffi::{LibraryCache, buffer_to_string, validate_api_version};
 
-/// Global singleton FFI procedure loader
 static GLOBAL_FFI_PROCEDURE_LOADER: OnceLock<RwLock<ProcedureLoader>> = OnceLock::new();
 
-/// Get the global FFI procedure loader
 pub fn ffi_procedure_loader() -> &'static RwLock<ProcedureLoader> {
 	GLOBAL_FFI_PROCEDURE_LOADER.get_or_init(|| RwLock::new(ProcedureLoader::new()))
 }
 
-/// FFI procedure loader for dynamic libraries
 pub struct ProcedureLoader {
 	cache: LibraryCache,
 	procedure_paths: HashMap<String, PathBuf>,
@@ -86,7 +83,6 @@ impl ProcedureLoader {
 		Ok((name, descriptor.api))
 	}
 
-	/// Register a procedure library without instantiating it
 	pub fn register_procedure(&mut self, path: &Path) -> FFIResult<Option<LoadedProcedureInfo>> {
 		if !self.load_procedure_library(path)? {
 			return Ok(None);
@@ -108,7 +104,6 @@ impl ProcedureLoader {
 		Ok(Some(info))
 	}
 
-	/// Load a procedure from a dynamic library
 	pub fn load_procedure(&mut self, path: &Path, config: &[u8]) -> FFIResult<Option<NativeProcedureFFI>> {
 		if !self.load_procedure_library(path)? {
 			return Ok(None);
@@ -135,7 +130,6 @@ impl ProcedureLoader {
 		Ok(Some(NativeProcedureFFI::new(name, descriptor, instance)))
 	}
 
-	/// Create a procedure instance from an already loaded library by name
 	pub fn create_procedure_by_name(&mut self, name: &str, config: &[u8]) -> FFIResult<NativeProcedureFFI> {
 		let path = self
 			.procedure_paths
@@ -147,13 +141,11 @@ impl ProcedureLoader {
 			.ok_or_else(|| FFIError::Other(format!("Procedure library no longer valid: {}", name)))
 	}
 
-	/// Check if a procedure name is registered
 	pub fn has_procedure(&self, name: &str) -> bool {
 		self.procedure_paths.contains_key(name)
 	}
 }
 
-/// Information about a loaded FFI procedure
 #[derive(Debug, Clone)]
 pub struct LoadedProcedureInfo {
 	pub name: String,
@@ -169,8 +161,6 @@ impl Default for ProcedureLoader {
 	}
 }
 
-/// Scan a directory for FFI procedure shared libraries and register them
-/// onto an existing `RoutinesConfigurator`.
 pub fn register_procedures_from_dir(dir: &Path, mut builder: RoutinesConfigurator) -> FFIResult<RoutinesConfigurator> {
 	let loader = ffi_procedure_loader();
 	let mut loader_guard = loader.write().unwrap();
@@ -190,9 +180,7 @@ pub fn register_procedures_from_dir(dir: &Path, mut builder: RoutinesConfigurato
 				Ok(Some(info)) => {
 					names.push(info.name);
 				}
-				Ok(None) => {
-					// Not a valid procedure library, skip
-				}
+				Ok(None) => {}
 				Err(e) => {
 					eprintln!(
 						"Warning: Failed to register procedure from {}: {}",

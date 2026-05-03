@@ -61,7 +61,7 @@ impl<const N: usize> From<[Value; N]> for Params {
 
 #[macro_export]
 macro_rules! params {
-    // Named parameters with mixed keys: params!{ name: value, "key": value }
+
     { $($key:tt : $value:expr),+ $(,)? } => {
         {
             let mut map = ::std::collections::HashMap::new();
@@ -72,12 +72,12 @@ macro_rules! params {
         }
     };
 
-    // Empty positional parameters
+
     [] => {
         $crate::params::Params::None
     };
 
-    // Positional parameters: params![value1, value2, ...]
+
     [ $($value:expr),+ $(,)? ] => {
         {
             let values = vec![

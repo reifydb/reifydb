@@ -70,9 +70,6 @@ use crate::{
 	},
 };
 
-/// A `&'static Params` value pointing at `Params::None`. Used by UDF / test
-/// runner Vm construction sites to make the "no caller params inside a UDF
-/// body" semantics explicit at the call site.
 pub static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 
 pub struct Vm<'a> {
@@ -82,18 +79,15 @@ pub struct Vm<'a> {
 	pub symbols: SymbolTable,
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
-	/// Number of rows in the current batch. 1 = scalar mode.
+
 	pub(crate) batch_size: usize,
-	/// Current active execution mask. None means all rows are active.
+
 	pub(crate) active_mask: Option<BitVec>,
-	/// Stack of mask frames for nested masked conditionals.
+
 	pub(crate) mask_stack: Vec<MaskFrame>,
-	/// Stack of loop mask states for nested WHILE loops in columnar mode.
+
 	pub(crate) loop_mask_stack: Vec<LoopMaskState>,
-	/// Borrowed evaluation invariants - combined with `&self.symbols` on demand
-	/// in `eval_ctx()` to produce a full `EvalContext`. Stored as loose fields
-	/// rather than a nested `EvalContext` because the latter would need
-	/// `&self.symbols` and would be self-referential.
+
 	pub(crate) params: &'a Params,
 	pub(crate) routines: &'a Routines,
 	pub(crate) runtime_context: &'a RuntimeContext,
@@ -162,10 +156,6 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	/// Execute `instructions` on this Vm with `self.params` temporarily swapped to
-	/// `Params::None`. Used for UDF and closure bodies, which are isolated from the
-	/// caller's `$param` bindings (formal parameters are bound via the symbol table,
-	/// not `Params`). Ensures the swap is reverted even if the body errors.
 	pub(crate) fn run_isolated_body(
 		&mut self,
 		services: &Arc<Services>,
@@ -180,16 +170,6 @@ impl<'a> Vm<'a> {
 		run_result
 	}
 
-	/// Pop a scalar Value from the stack. Works for Scalar(Columns) and
-	/// 1x1 Columns variants.
-	///
-	/// Invariant: only legitimate in scalar-mode contexts (`batch_size == 1`) or
-	/// in DDL/DML code paths where a single value is required. All arithmetic,
-	/// comparison, and logic dispatch goes through columnar kernels via
-	/// `pop_as_column`; scalar-path jump helpers are guarded by `batch_size > 1`
-	/// checks in the dispatch in `run`. If you add a new caller, confirm it's
-	/// unreachable when the VM is batch-mode, or the call will fail on multi-row
-	/// input.
 	pub(crate) fn pop_value(&mut self) -> Result<Value> {
 		match self.stack.pop()? {
 			Variable::Columns {
@@ -199,7 +179,6 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	/// Pop the top of stack as Columns. Works for any variant.
 	pub(crate) fn pop_as_columns(&mut self) -> Result<Columns> {
 		match self.stack.pop()? {
 			Variable::Columns {
@@ -223,10 +202,7 @@ impl<'a> Vm<'a> {
 	) -> Result<()> {
 		let params = self.params;
 		while self.ip < instructions.len() {
-			// Check if current IP is a mask merge point (end of else-branch)
-			if self.batch_size > 1 && self.check_mask_merge_point()? {
-				// Merge happened; IP is already at end_addr, continue to execute it
-			}
+			if self.batch_size > 1 && self.check_mask_merge_point()? {}
 
 			match &instructions[self.ip] {
 				Instruction::Halt => return Ok(()),
@@ -244,7 +220,6 @@ impl<'a> Vm<'a> {
 						let value = self.stack.pop()?;
 						self.exec_store_var_masked(name, value)?;
 					} else if self.batch_size > 1 {
-						// Columnar mode without mask: store the full column
 						let name = strip_dollar_prefix(f.text());
 						let value = self.stack.pop()?;
 						self.symbols.reassign(name.to_string(), value)?;
@@ -297,8 +272,6 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::JumpIfFalsePop(addr) => {
 					if self.batch_size > 1 {
-						// Check if this is a WHILE loop condition (next instruction is
-						// EnterScope(Loop))
 						let is_while_loop = instructions.get(self.ip + 1).is_some_and(|next| {
 							matches!(next, Instruction::EnterScope(ScopeType::Loop))
 						});
@@ -308,20 +281,16 @@ impl<'a> Vm<'a> {
 								.last()
 								.is_none_or(|s| s.loop_end_addr != *addr)
 						{
-							// First entry into a WHILE loop - handle specially
 							let var = self.stack.pop()?;
 							let bool_bv = extract_bool_bitvec(&var)?;
 							let parent = self.effective_mask();
 							let candidate = self.intersect_condition(&bool_bv);
 
 							if candidate == parent {
-								// All true - no mask needed, proceed normally
 							} else if candidate.none() {
-								// All false - skip the loop
 								self.ip = *addr;
 								continue;
 							} else {
-								// Mixed - enter loop mask
 								self.enter_loop_mask(*addr, candidate);
 							}
 						} else if self.exec_jump_if_false_pop_columnar(*addr)? {

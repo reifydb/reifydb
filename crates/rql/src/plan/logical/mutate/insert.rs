@@ -74,7 +74,6 @@ impl<'bump> Compiler<'bump> {
 		let ns_segments: Vec<&str> = namespace.iter().map(|n| n.text()).collect();
 
 		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_segments(tx, &ns_segments)? {
-			// Check if this is a remote namespace
 			if let Some(address) = ns.address() {
 				return Err(IdentifierError::RemoteNamespace {
 					namespace: ns_segments.join("::"),

@@ -12,8 +12,6 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Get a retention strategy for a shape (table, view, or ring buffer)
-	/// Returns an error if no retention strategy is set
 	pub(crate) fn get_shape_retention_strategy(
 		rx: &mut Transaction<'_>,
 		shape: ShapeId,
@@ -26,8 +24,6 @@ impl CatalogStore {
 		})
 	}
 
-	/// Get a retention strategy for an operator (flow node)
-	/// Returns an error if no retention strategy is set
 	pub(crate) fn get_operator_retention_strategy(
 		rx: &mut Transaction<'_>,
 		operator: FlowNodeId,

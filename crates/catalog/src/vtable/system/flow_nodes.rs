@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system flow node information
 pub struct SystemFlowNodes {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

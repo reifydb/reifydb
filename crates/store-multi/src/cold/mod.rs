@@ -8,10 +8,6 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierStorage};
 
-/// Cold storage tier.
-///
-/// This is a placeholder enum with no variants yet.
-/// Will be implemented when cold tier storage is needed.
 #[derive(Clone)]
 pub enum ColdStorage {}
 

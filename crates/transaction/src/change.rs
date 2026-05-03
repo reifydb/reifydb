@@ -283,56 +283,55 @@ pub trait TransactionalMigrationChanges {
 
 #[derive(Default, Debug, Clone)]
 pub struct TransactionalCatalogChanges {
-	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
-	/// Configuration changes in order
+
 	pub config: Vec<Change<Config>>,
-	/// All binding definition changes in order (no coalescing)
+
 	pub binding: Vec<Change<Binding>>,
-	/// All dictionary definition changes in order (no coalescing)
+
 	pub dictionary: Vec<Change<Dictionary>>,
-	/// All flow definition changes in order (no coalescing)
+
 	pub flow: Vec<Change<Flow>>,
-	/// All handler definition changes in order (no coalescing)
+
 	pub handler: Vec<Change<Handler>>,
-	/// All migration definition changes in order (no coalescing)
+
 	pub migration: Vec<Change<Migration>>,
-	/// All migration event changes in order (no coalescing)
+
 	pub migration_event: Vec<Change<MigrationEvent>>,
-	/// All namespace definition changes in order (no coalescing)
+
 	pub namespace: Vec<Change<Namespace>>,
-	/// All procedure definition changes in order (no coalescing)
+
 	pub procedure: Vec<Change<Procedure>>,
-	/// All ring buffer definition changes in order (no coalescing)
+
 	pub ringbuffer: Vec<Change<RingBuffer>>,
-	/// All series definition changes in order (no coalescing)
+
 	pub series: Vec<Change<Series>>,
-	/// All sink definition changes in order (no coalescing)
+
 	pub sink: Vec<Change<Sink>>,
-	/// All source definition changes in order (no coalescing)
+
 	pub source: Vec<Change<Source>>,
 	pub sumtype: Vec<Change<SumType>>,
-	/// All test definition changes in order (no coalescing)
+
 	pub test: Vec<Change<Test>>,
-	/// All table definition changes in order (no coalescing)
+
 	pub table: Vec<Change<Table>>,
-	/// All identity definition changes in order (no coalescing)
+
 	pub identity: Vec<Change<Identity>>,
-	/// All authentication definition changes in order (no coalescing)
+
 	pub authentication: Vec<Change<Authentication>>,
-	/// All role definition changes in order (no coalescing)
+
 	pub role: Vec<Change<Role>>,
-	/// All granted-role changes in order (no coalescing)
+
 	pub granted_role: Vec<Change<GrantedRole>>,
-	/// All policy definition changes in order (no coalescing)
+
 	pub policy: Vec<Change<Policy>>,
-	/// All view definition changes in order (no coalescing)
+
 	pub view: Vec<Change<View>>,
-	/// All row TTL changes in order (no coalescing)
+
 	pub row_ttl: Vec<Change<(ShapeId, Ttl)>>,
-	/// All per-operator TTL changes in order (no coalescing)
+
 	pub operator_ttl: Vec<Change<(FlowNodeId, Ttl)>>,
-	/// Order of operations for replay/rollback
+
 	pub log: Vec<Operation>,
 }
 
@@ -791,16 +790,12 @@ impl TransactionalCatalogChanges {
 	}
 }
 
-/// Represents a single change
 #[derive(Debug, Clone)]
 pub struct Change<T> {
-	/// State before the change (None for CREATE)
 	pub pre: Option<T>,
 
-	/// State after the change (None for DELETE)
 	pub post: Option<T>,
 
-	/// Type of operation
 	pub op: OperationType,
 }
 
@@ -811,7 +806,6 @@ pub enum OperationType {
 	Delete,
 }
 
-/// Log entry for operation ordering
 #[derive(Debug, Clone)]
 pub enum Operation {
 	Binding {
@@ -945,14 +939,11 @@ impl TransactionalCatalogChanges {
 		}
 	}
 
-	/// Check if a table exists in this transaction's view
 	pub fn table_exists(&self, id: TableId) -> bool {
 		self.get_table(id).is_some()
 	}
 
-	/// Get current state of a table within this transaction
 	pub fn get_table(&self, id: TableId) -> Option<&Table> {
-		// Find the last change for this table ID
 		for change in self.table.iter().rev() {
 			if let Some(table) = &change.post {
 				if table.id == id {
@@ -961,21 +952,17 @@ impl TransactionalCatalogChanges {
 			} else if let Some(table) = &change.pre
 				&& table.id == id && change.op == Delete
 			{
-				// Table was deleted
 				return None;
 			}
 		}
 		None
 	}
 
-	/// Check if a view exists in this transaction's view
 	pub fn view_exists(&self, id: ViewId) -> bool {
 		self.get_view(id).is_some()
 	}
 
-	/// Get current state of a view within this transaction
 	pub fn get_view(&self, id: ViewId) -> Option<&View> {
-		// Find the last change for this view ID
 		for change in self.view.iter().rev() {
 			if let Some(view) = &change.post {
 				if view.id() == id {
@@ -984,16 +971,13 @@ impl TransactionalCatalogChanges {
 			} else if let Some(view) = &change.pre
 				&& view.id() == id && change.op == Delete
 			{
-				// View was deleted
 				return None;
 			}
 		}
 		None
 	}
 
-	/// Get current state of a row TTL within this transaction
 	pub fn get_row_ttl(&self, shape: ShapeId) -> Option<&Ttl> {
-		// Find the last change for this shape ID
 		for change in self.row_ttl.iter().rev() {
 			if let Some((s, ttl)) = &change.post {
 				if *s == shape {
@@ -1002,39 +986,32 @@ impl TransactionalCatalogChanges {
 			} else if let Some((s, _)) = &change.pre
 				&& *s == shape && change.op == Delete
 			{
-				// TTL was deleted
 				return None;
 			}
 		}
 		None
 	}
 
-	/// Get all pending changes for commit
 	pub fn get_pending_changes(&self) -> &[Operation] {
 		&self.log
 	}
 
-	/// Get the transaction ID
 	pub fn txn_id(&self) -> TransactionId {
 		self.txn_id
 	}
 
-	/// Get namespace definition changes
 	pub fn namespace(&self) -> &[Change<Namespace>] {
 		&self.namespace
 	}
 
-	/// Get table definition changes
 	pub fn table(&self) -> &[Change<Table>] {
 		&self.table
 	}
 
-	/// Get view definition changes
 	pub fn view(&self) -> &[Change<View>] {
 		&self.view
 	}
 
-	/// Clear all changes (for rollback)
 	pub fn clear(&mut self) {
 		self.binding.clear();
 		self.config.clear();
@@ -1062,7 +1039,6 @@ impl TransactionalCatalogChanges {
 	}
 }
 
-/// Tracks a table row insertion for post-commit event emission
 #[derive(Debug, Clone)]
 pub struct TableRowInsertion {
 	pub table_id: TableId,
@@ -1070,14 +1046,7 @@ pub struct TableRowInsertion {
 	pub encoded: EncodedRow,
 }
 
-/// Tracks row changes across different entity types for post-commit event emission
 #[derive(Debug, Clone)]
 pub enum RowChange {
-	/// A row was inserted into a table
 	TableInsert(TableRowInsertion),
-	// Future variants:
-	// ViewInsert(ViewRowInsertion),
-	// RingBufferInsert(RingBufferRowInsertion),
-	// TableUpdate(TableRowUpdate),
-	// TableDelete(TableRowDelete),
 }

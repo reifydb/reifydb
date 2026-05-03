@@ -92,7 +92,6 @@ pub mod write;
 
 use slot::{OperatorStateSlot, PersistFn};
 
-/// Parameters for creating a transactional (inline) FlowTransaction.
 pub struct TransactionalParams {
 	pub version: CommitVersion,
 	pub pending: Pending,
@@ -102,15 +101,10 @@ pub struct TransactionalParams {
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub clock: Clock,
-	/// In-transaction view outputs accumulated by the pre-commit interceptor
-	/// from previous execution levels. Operators that read from a view parent
-	/// (e.g. `PrimitiveViewOperator::pull`) overlay these on top of their
-	/// `read_version` storage scan so sibling transactional views are visible
-	/// within the same pre-commit.
+
 	pub view_overlay: Arc<Vec<Change>>,
 }
 
-/// Shared fields between Deferred and Transactional variants.
 pub struct FlowTransactionInner {
 	pub version: CommitVersion,
 	pub pending: Pending,
@@ -121,40 +115,26 @@ pub struct FlowTransactionInner {
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
 	pub clock: Clock,
-	/// Per-txn operator state cache. Populated lazily on first
-	/// `operator_state(node, ...)` call; flushed once at
-	/// `flush_operator_states` (typically right before `take_pending`).
+
 	pub operator_states: HashMap<FlowNodeId, OperatorStateSlot>,
 }
 
 pub enum FlowTransaction {
-	/// CDC-driven async flow processing.
-	/// Reads only from committed storage + flow pending writes.
 	Deferred {
 		inner: FlowTransactionInner,
 	},
 
-	/// Inline flow processing within a committing transaction.
-	/// Can additionally read uncommitted writes from the parent transaction.
 	Transactional {
 		inner: FlowTransactionInner,
-		/// Read-only snapshot of the committing transaction's KV writes.
+
 		base_pending: Pending,
-		/// View outputs produced by sibling flows in earlier execution levels
-		/// of this pre-commit. Consulted by view-reading pull paths to overlay
-		/// in-transaction writes on top of the `read_version` snapshot. Empty
-		/// for the first level.
+
 		view_overlay: Arc<Vec<Change>>,
 	},
 
-	/// Ephemeral subscription flow processing.
-	///
-	/// Operator state lives in an in-memory HashMap instead of the multi-version
-	/// store; source reads go through query at the CDC version.
-	/// No writes are committed to persistent storage.
 	Ephemeral {
 		inner: FlowTransactionInner,
-		/// In-memory operator state, replacing state_query for FlowNodeState keys.
+
 		state: HashMap<EncodedKey, EncodedRow>,
 	},
 }
@@ -194,10 +174,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Create a deferred (CDC) FlowTransaction from a parent transaction.
-	///
-	/// Used by the async worker path. Reads only from committed storage +
-	/// flow-generated pending writes - no base pending from a parent transaction.
 	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(parent, catalog, interceptors, clock), fields(version = version.0))]
 	pub fn deferred(
 		parent: &AdminTransaction,
@@ -226,9 +202,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Create a deferred (CDC) FlowTransaction from pre-built parts.
-	///
-	/// Used by the worker actor which creates its own query transactions.
 	pub fn deferred_from_parts(
 		version: CommitVersion,
 		pending: Pending,
@@ -254,11 +227,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Create a transactional (inline) FlowTransaction.
-	///
-	/// Used by the pre-commit interceptor path. `base_pending` is a read-only
-	/// snapshot of the committing transaction's KV writes so that flow operators
-	/// can see uncommitted row data.
 	pub fn transactional(params: TransactionalParams) -> Self {
 		Self::Transactional {
 			inner: FlowTransactionInner {
@@ -278,12 +246,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Return a (cheap) clone of the in-transaction view overlay, if any.
-	/// Returns `None` for Deferred / Ephemeral transactions (which read
-	/// everything from committed storage). Operators reading from a view
-	/// parent overlay these changes on top of their storage reads so sibling
-	/// transactional view outputs produced earlier in the same pre-commit
-	/// are visible.
 	pub fn view_overlay(&self) -> Option<Arc<Vec<Change>>> {
 		match self {
 			Self::Transactional {
@@ -294,11 +256,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Create an ephemeral (subscription) FlowTransaction.
-	///
-	/// Operator state is backed by an in-memory HashMap. Source data reads
-	/// go through `query` at the specified version. State reads
-	/// go to `state` instead of the multi-version store.
 	pub fn ephemeral(
 		version: CommitVersion,
 		query: MultiReadTransaction,
@@ -326,14 +283,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Merge pending state writes back into the ephemeral state HashMap.
-	///
-	/// After flow processing, pending writes contain both state mutations and
-	/// subscription output writes. This method merges state mutations (keys
-	/// matching FlowNodeState/FlowNodeInternalState) back into state
-	/// and clears pending.
-	///
-	/// Only applicable to the Ephemeral variant; no-op for others.
 	pub fn merge_state(&mut self) {
 		if let Self::Ephemeral {
 			inner,
@@ -356,10 +305,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Extract the ephemeral state HashMap, consuming the state from this transaction.
-	///
-	/// Used to persist ephemeral state across CDC batches.
-	/// Only applicable to the Ephemeral variant; returns empty HashMap for others.
 	pub fn take_state(&mut self) -> HashMap<EncodedKey, EncodedRow> {
 		if let Self::Ephemeral {
 			state,
@@ -372,22 +317,18 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Get the transaction version.
 	pub fn version(&self) -> CommitVersion {
 		self.inner().version
 	}
 
-	/// Extract pending writes, replacing them with an empty buffer.
 	pub fn take_pending(&mut self) -> Pending {
 		mem::take(&mut self.inner_mut().pending)
 	}
 
-	/// Extract pending shapes, replacing them with an empty buffer.
 	pub fn take_pending_shapes(&mut self) -> Vec<RowShape> {
 		mem::take(&mut self.inner_mut().pending_shapes)
 	}
 
-	/// Track a view-level flow change in this transaction's accumulator.
 	pub fn track_flow_change(&mut self, change: Change) {
 		if let ChangeOrigin::Shape(id) = change.origin {
 			for diff in change.diffs {
@@ -396,7 +337,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Drain the accumulator entries collected during flow processing.
 	pub fn take_accumulator_entries(&mut self) -> Vec<(ShapeId, Diff)> {
 		let acc = &mut self.inner_mut().accumulator;
 		let entries: Vec<_> = acc.entries_from(0).to_vec();
@@ -404,38 +344,25 @@ impl FlowTransaction {
 		entries
 	}
 
-	/// Get a reference to the pending writes.
 	#[cfg(test)]
 	pub fn pending(&self) -> &Pending {
 		&self.inner().pending
 	}
 
-	/// Update the transaction to read at a new version
 	pub fn update_version(&mut self, new_version: CommitVersion) {
 		let inner = self.inner_mut();
 		inner.version = new_version;
 		inner.query.read_as_of_version_inclusive(new_version);
 	}
 
-	/// Get access to the catalog for reading metadata
 	pub fn catalog(&self) -> &Catalog {
 		&self.inner().catalog
 	}
 
-	/// Get access to the clock for timestamp generation
 	pub fn clock(&self) -> &Clock {
 		&self.inner().clock
 	}
 
-	/// Get or initialise the cached operator state for `node`.
-	///
-	/// On first access in this txn, `load` is invoked to build `(state, persist)`.
-	/// `state` is held boxed, `persist` is stashed for `flush_operator_states`.
-	/// On subsequent calls, the cached state is returned directly without
-	/// re-decoding, regardless of how many batches have flowed through.
-	///
-	/// Operators that mutate the returned `&mut S` must call
-	/// `mark_state_dirty(node)` so the slot is persisted at flush time.
 	pub fn operator_state<S, F>(&mut self, node: FlowNodeId, load: F) -> Result<&mut S>
 	where
 		S: 'static + Send,
@@ -454,20 +381,12 @@ impl FlowTransaction {
 		Ok(slot.value.downcast_mut::<S>().expect("operator state type mismatch"))
 	}
 
-	/// Mark the cached state for `node` as dirty so it is persisted on flush.
-	/// No-op if the slot does not exist (e.g. operator never touched state).
 	pub fn mark_state_dirty(&mut self, node: FlowNodeId) {
 		if let Some(slot) = self.inner_mut().operator_states.get_mut(&node) {
 			slot.dirty = true;
 		}
 	}
 
-	/// Take the cached state for `node`, returning the owned value and the
-	/// existing persist closure. Used by operators whose helpers need
-	/// `&mut FlowTransaction` alongside `&mut State` (e.g. `Take` calling
-	/// `parent.pull(txn, ...)` while mutating its `TakeState`). Pair every
-	/// `take_operator_state` with `put_operator_state` before returning so
-	/// the slot is restored for the next batch.
 	pub fn take_operator_state<S, F>(&mut self, node: FlowNodeId, load: F) -> Result<(S, PersistFn)>
 	where
 		S: 'static + Send,
@@ -481,8 +400,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Restore a state slot taken by `take_operator_state`, marking it dirty
-	/// since the operator just mutated it.
 	pub fn put_operator_state<S>(&mut self, node: FlowNodeId, state: S, persist: PersistFn)
 	where
 		S: 'static + Send,
@@ -497,9 +414,6 @@ impl FlowTransaction {
 		);
 	}
 
-	/// Drain dirty slots and persist them. Must be called before
-	/// `take_pending` so the resulting state writes are included in the
-	/// pending buffer that the caller later commits.
 	pub fn flush_operator_states(&mut self) -> Result<()> {
 		let states = mem::take(&mut self.inner_mut().operator_states);
 		for (_, slot) in states {

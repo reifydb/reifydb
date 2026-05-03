@@ -6,7 +6,6 @@ pub mod walk;
 
 use crate::plan::physical::PhysicalPlan;
 
-/// Run all expression optimization passes over `plan` in place.
 pub fn optimize_physical(plan: &mut PhysicalPlan<'_>) {
 	walk::walk_expressions_mut(plan, &mut fold::fold, &mut fold::fold_projection);
 }

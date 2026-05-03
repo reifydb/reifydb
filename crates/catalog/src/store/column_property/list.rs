@@ -44,10 +44,8 @@ impl CatalogStore {
 	pub(crate) fn list_column_properties_all(rx: &mut Transaction<'_>) -> Result<Vec<ColumnProperty>> {
 		let mut result = Vec::new();
 
-		// Get all columns from tables and views
 		let columns = CatalogStore::list_columns_all(rx)?;
 
-		// For each column, get its policies
 		for info in columns {
 			let policies = CatalogStore::list_column_properties(rx, info.column.id)?;
 			result.extend(policies);

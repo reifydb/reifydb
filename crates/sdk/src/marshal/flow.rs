@@ -31,12 +31,10 @@ use crate::ffi::arena::Arena;
 
 impl Arena {
 	pub fn marshal_change(&mut self, change: &Change) -> ChangeFFI {
-		// Allocate array for diffs
 		let diffs_count = change.diffs.len();
 		let diffs_ptr = if diffs_count > 0 {
 			let diffs_array = self.alloc(diffs_count * size_of::<DiffFFI>()) as *mut DiffFFI;
 
-			// Marshal each diff
 			unsafe {
 				let diffs_slice = from_raw_parts_mut(diffs_array, diffs_count);
 				for (i, diff) in change.diffs.iter().enumerate() {

@@ -14,9 +14,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	/// List all dictionaries in a namespace
 	pub(crate) fn list_dictionaries(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Dictionary>> {
-		// Collect dictionary IDs first to avoid borrow conflict
 		let mut dictionary_ids = Vec::new();
 		{
 			let stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
@@ -39,7 +37,6 @@ impl CatalogStore {
 		Ok(dictionaries)
 	}
 
-	/// List all dictionaries in the database
 	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> Result<Vec<Dictionary>> {
 		let mut dictionaries = Vec::new();
 

@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes variant and field information for event sumtypes
 pub struct SystemEventVariants {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

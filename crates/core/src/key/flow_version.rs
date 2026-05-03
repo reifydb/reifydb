@@ -8,8 +8,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-/// Key for storing a flow's last processed CDC version.
-/// Used for exactly-once processing semantics across restarts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowVersionKey {
 	pub flow: FlowId,

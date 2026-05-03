@@ -16,13 +16,6 @@ use crate::{
 	materialized::{MaterializedCatalog, load::identity::load_identities},
 };
 
-/// Bootstrap the root identity in the catalog.
-///
-/// Creates an identity named "root" with `IdentityId::root()`.
-/// This makes root a real catalog identity that can have authentication attached
-/// (e.g., `CREATE AUTHENTICATION FOR root { method: token; token: '...' }`).
-///
-/// Skips creation if the root identity already exists.
 pub fn bootstrap_root_identity(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
@@ -47,7 +40,6 @@ pub fn bootstrap_root_identity(
 	CatalogStore::create_identity_with_id(&mut admin, "root", IdentityId::root())?;
 	admin.commit()?;
 
-	// Reload materialized catalog to pick up the new identity
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
 	load_identities(&mut Transaction::Query(&mut qt), catalog)?;
 

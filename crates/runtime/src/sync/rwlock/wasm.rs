@@ -7,41 +7,35 @@ use std::{
 	ops::{Deref, DerefMut},
 };
 
-/// WASM reader-writer lock implementation using RefCell (no actual locking needed).
 pub struct RwLockInner<T> {
 	inner: cell::RefCell<T>,
 }
 
 impl<T> RwLockInner<T> {
-	/// Creates a new reader-writer lock.
 	pub fn new(value: T) -> Self {
 		Self {
 			inner: cell::RefCell::new(value),
 		}
 	}
 
-	/// Acquires a read lock (immutable borrow).
 	pub fn read(&self) -> RwLockReadGuardInner<'_, T> {
 		RwLockReadGuardInner {
 			inner: self.inner.borrow(),
 		}
 	}
 
-	/// Acquires a write lock (mutable borrow).
 	pub fn write(&self) -> RwLockWriteGuardInner<'_, T> {
 		RwLockWriteGuardInner {
 			inner: self.inner.borrow_mut(),
 		}
 	}
 
-	/// Attempts to acquire a read lock.
 	pub fn try_read(&self) -> Option<RwLockReadGuardInner<'_, T>> {
 		self.inner.try_borrow().ok().map(|inner| RwLockReadGuardInner {
 			inner,
 		})
 	}
 
-	/// Attempts to acquire a write lock.
 	pub fn try_write(&self) -> Option<RwLockWriteGuardInner<'_, T>> {
 		self.inner.try_borrow_mut().ok().map(|inner| RwLockWriteGuardInner {
 			inner,
@@ -49,7 +43,6 @@ impl<T> RwLockInner<T> {
 	}
 }
 
-/// WASM guard providing read access to the data protected by an RwLock.
 pub struct RwLockReadGuardInner<'a, T> {
 	inner: Ref<'a, T>,
 }
@@ -62,7 +55,6 @@ impl<'a, T> Deref for RwLockReadGuardInner<'a, T> {
 	}
 }
 
-/// WASM guard providing write access to the data protected by an RwLock.
 pub struct RwLockWriteGuardInner<'a, T> {
 	inner: RefMut<'a, T>,
 }

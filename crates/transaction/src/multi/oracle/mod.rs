@@ -72,10 +72,6 @@ impl CommittedWindow {
 pub(crate) struct OracleState {
 	pub time_windows: BTreeMap<CommitVersion, CommittedWindow>,
 
-	/// Highest commit version present in any evicted window. Any
-	/// transaction with read-start version below this must be rejected
-	/// with TooOld - the conflict history needed to authorise its commit
-	/// is gone.
 	pub evicted_up_through: CommitVersion,
 }
 
@@ -135,22 +131,18 @@ where
 		}
 	}
 
-	/// Return the shared configuration so callers can wire it to the catalog.
 	pub fn config(&self) -> Arc<dyn GetConfig> {
 		self.config.clone()
 	}
 
-	/// Get the actor system
 	pub fn actor_system(&self) -> ActorSystem {
 		self.actor_system.clone()
 	}
 
-	/// Get the metrics clock
 	pub fn metrics_clock(&self) -> &Clock {
 		&self.metrics_clock
 	}
 
-	/// Get the RNG
 	pub fn rng(&self) -> &Rng {
 		&self.rng
 	}
@@ -351,9 +343,6 @@ where
 		self.clock.advance_to(version);
 	}
 
-	/// Allocate the next commit version without registering the transaction
-	/// in the conflict-detection time-windows. Caller bypasses SSI conflict
-	/// detection; see `Engine::bulk_insert_unchecked` for the safety contract.
 	pub(crate) fn advance_unchecked(&self, version: CommitVersion) -> Result<CreateCommitResult> {
 		let inner = self.inner.read();
 		if version < inner.evicted_up_through {

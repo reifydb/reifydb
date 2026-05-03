@@ -19,7 +19,6 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_prefix(&mut self) -> Result<Ast<'bump>> {
 		let operator = self.parse_prefix_operator()?;
 
-		// Determine precedence based on operator type
 		let precedence = match &operator {
 			AstPrefixOperator::Not(_) => Precedence::Assignment,
 			_ => Precedence::Prefix,

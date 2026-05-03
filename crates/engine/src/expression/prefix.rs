@@ -14,8 +14,6 @@ use reifydb_type::{
 
 use crate::{Result, expression::option::unary_op_unwrap_option};
 
-/// Macro for signed integer prefix arms (Int1, Int2, Int4, Int8, Int16).
-/// Each arm negates with `-*val`, plus with `*val`, and Not returns an error.
 macro_rules! prefix_signed_int {
 	($column:expr, $container:expr, $operator:expr, $fragment:expr, $variant:ident) => {{
 		let mut result = Vec::with_capacity($container.data().len());
@@ -42,8 +40,6 @@ macro_rules! prefix_signed_int {
 	}};
 }
 
-/// Macro for unsigned integer prefix arms (Uint1, Uint2, Uint4, Uint8, Uint16).
-/// Each arm converts to a signed type, then negates/plus, and Not returns an error.
 macro_rules! prefix_unsigned_int {
 	($column:expr, $container:expr, $operator:expr, $fragment:expr, $signed_ty:ty, $constructor:ident) => {{
 		let mut result = Vec::with_capacity($container.data().len());
@@ -67,8 +63,6 @@ macro_rules! prefix_unsigned_int {
 	}};
 }
 
-/// Macro for float prefix arms (Float4, Float8).
-/// Same pattern as signed ints but with float zero defaults.
 macro_rules! prefix_float {
 	($column:expr, $container:expr, $operator:expr, $fragment:expr, $zero:expr, $constructor:ident) => {{
 		let mut result = Vec::with_capacity($container.data().len());
@@ -95,7 +89,6 @@ macro_rules! prefix_float {
 	}};
 }
 
-/// Macro for types that only support `Not` returning an error and `unimplemented!()` for arithmetic.
 macro_rules! prefix_not_error {
 	($operator:expr, $fragment:expr, $category:expr) => {
 		match $operator {
@@ -110,9 +103,6 @@ macro_rules! prefix_not_error {
 	};
 }
 
-/// Applies a prefix operator to an already-evaluated column, without re-evaluating
-/// the inner expression. This avoids recompilation when the column has already been
-/// computed.
 pub(crate) fn prefix_apply(
 	column: &ColumnWithName,
 	operator: &PrefixOperator,

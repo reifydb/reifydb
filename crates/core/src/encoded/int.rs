@@ -9,35 +9,23 @@ use reifydb_type::value::{int::Int, r#type::Type};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-/// Int storage modes using MSB of i128 as indicator
-/// MSB = 0: Value stored inline in lower 127 bits
-/// MSB = 1: Dynamic storage, lower 127 bits contain offset+length
 const MODE_INLINE: u128 = 0x00000000000000000000000000000000;
 const MODE_MASK: u128 = 0x80000000000000000000000000000000;
 
-/// Bit masks for inline mode (127 bits for value)
 const INLINE_VALUE_MASK: u128 = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
-/// Bit masks for dynamic mode (lower 127 bits contain offset+length)
-const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits for offset
-const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
+const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
+const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
-	/// Set a Int value with 2-tier storage optimization
-	/// - Values fitting in 127 bits: stored inline with MSB=0
-	/// - Large values: stored in dynamic section with MSB=1
 	pub fn set_int(&self, row: &mut EncodedRow, index: usize, value: &Int) {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int);
 
-		// Try i128 inline storage first (fits in 127 bits)
 		if let Some(i128_val) = value.0.to_i128() {
-			// Check if value fits in 127 bits (MSB must be 0)
 			if (-(1i128 << 126)..(1i128 << 126)).contains(&i128_val) {
-				// Clean up old dynamic data if transitioning from dynamic→inline
 				self.remove_dynamic_data(row, index);
 
-				// Mode 0: Store inline in lower 127 bits
 				let packed = MODE_INLINE | ((i128_val as u128) & INLINE_VALUE_MASK);
 				unsafe {
 					ptr::write_unaligned(
@@ -50,12 +38,10 @@ impl RowShape {
 			}
 		}
 
-		// Mode 1: Dynamic storage for arbitrary precision
 		let bytes = value.0.to_signed_bytes_le();
 		self.replace_dynamic_data(row, index, &bytes);
 	}
 
-	/// Get a Int value, detecting storage mode from MSB
 	pub fn get_int(&self, row: &EncodedRow, index: usize) -> Int {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int);
@@ -66,18 +52,14 @@ impl RowShape {
 		let mode = packed & MODE_MASK;
 
 		if mode == MODE_INLINE {
-			// Extract 127-bit value and sign-extend to i128
 			let value = (packed & INLINE_VALUE_MASK) as i128;
 			let signed = if value & (1i128 << 126) != 0 {
-				// Sign bit is set, extend with 1s
 				value | (1i128 << 127)
 			} else {
 				value
 			};
 			Int::from(signed)
 		} else {
-			// MODE_DYNAMIC: Extract offset and length for dynamic
-			// storage
 			let offset = (packed & DYNAMIC_OFFSET_MASK) as usize;
 			let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
 
@@ -88,7 +70,6 @@ impl RowShape {
 		}
 	}
 
-	/// Try to get a Int value, returning None if undefined
 	pub fn try_get_int(&self, row: &EncodedRow, index: usize) -> Option<Int> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Int {
 			Some(self.get_int(row, index))

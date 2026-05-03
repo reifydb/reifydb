@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system identity information
 pub struct SystemIdentities {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

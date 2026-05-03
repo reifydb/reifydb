@@ -22,21 +22,17 @@ use tracing::{debug, info, trace, warn};
 use super::{ListOperatorTtls, OperatorScanStats, scanner};
 use crate::{gc::row::scanner::ScanResult, store::StandardMultiStore, tier::RangeCursor};
 
-/// Holds state for the chunked, stateful scanner.
 #[derive(Default)]
 pub struct ScannerState {
 	cursors: HashMap<FlowNodeId, RangeCursor>,
 }
 
-/// Internal state for the operator-state TTL actor.
 pub struct ActorState {
 	_timer_handle: Option<TimerHandle>,
 	scanning: bool,
 	scanner: ScannerState,
 }
 
-/// Background actor that periodically scans operator-state rows for expired
-/// entries and physically drops them based on per-operator TTL configuration.
 pub struct Actor<P: ListOperatorTtls> {
 	store: StandardMultiStore,
 	provider: P,
@@ -143,10 +139,7 @@ impl<P: ListOperatorTtls> Actor<P> {
 						ScanResult::Yielded => {
 							state.scanner.cursors.insert(*node_id, cursor);
 						}
-						ScanResult::Exhausted => {
-							// Cursor is removed; operator restarts from the beginning next
-							// tick.
-						}
+						ScanResult::Exhausted => {}
 					}
 				}
 				Err(e) => {
@@ -232,11 +225,6 @@ impl<P: ListOperatorTtls> ActorTrait for Actor<P> {
 	}
 }
 
-/// Spawn an operator-state TTL actor that periodically scans and drops expired
-/// rows under per-operator TTL configurations.
-///
-/// The provider is typically implemented by the catalog layer reading from a
-/// materialized cache populated from `OperatorTtlKey` entries in storage.
 pub fn spawn_operator_ttl_actor<P: ListOperatorTtls>(
 	store: StandardMultiStore,
 	system: ActorSystem,

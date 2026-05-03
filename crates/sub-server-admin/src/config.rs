@@ -5,7 +5,6 @@ use std::{fmt, time::Duration};
 
 use reifydb_runtime::SharedRuntime;
 
-/// Configurator for the admin server subsystem.
 pub struct AdminConfigurator {
 	bind_addr: String,
 	max_connections: usize,
@@ -22,7 +21,6 @@ impl Default for AdminConfigurator {
 }
 
 impl AdminConfigurator {
-	/// Create a new AdminConfigurator with default values.
 	pub fn new() -> Self {
 		Self {
 			bind_addr: "127.0.0.1:9090".to_string(),
@@ -34,32 +32,27 @@ impl AdminConfigurator {
 		}
 	}
 
-	/// Set the bind address.
 	pub fn bind_addr(mut self, addr: impl Into<String>) -> Self {
 		self.bind_addr = addr.into();
 		self
 	}
 
-	/// Set the maximum number of connections.
 	pub fn max_connections(mut self, max: usize) -> Self {
 		self.max_connections = max;
 		self
 	}
 
-	/// Set the request timeout.
 	pub fn request_timeout(mut self, timeout: Duration) -> Self {
 		self.request_timeout = timeout;
 		self
 	}
 
-	/// Enable authentication with the given token.
 	pub fn with_auth(mut self, token: String) -> Self {
 		self.auth_required = true;
 		self.auth_token = Some(token);
 		self
 	}
 
-	/// Set the shared runtime.
 	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
 		self.runtime = Some(runtime);
 		self
@@ -77,20 +70,18 @@ impl AdminConfigurator {
 	}
 }
 
-/// Immutable configuration for the admin server subsystem.
 #[derive(Clone)]
 pub struct AdminConfig {
-	/// Address to bind the admin server to (e.g., "127.0.0.1:9090").
 	pub bind_addr: String,
-	/// Maximum number of concurrent connections.
+
 	pub max_connections: usize,
-	/// Timeout for entire request lifecycle.
+
 	pub request_timeout: Duration,
-	/// Whether authentication is required.
+
 	pub auth_required: bool,
-	/// Authentication token (if auth is required).
+
 	pub auth_token: Option<String>,
-	/// Optional shared runtime.
+
 	pub runtime: Option<SharedRuntime>,
 }
 

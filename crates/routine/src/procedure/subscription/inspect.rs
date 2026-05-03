@@ -71,7 +71,6 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for InspectSubscription {
 
 		let subscription_id = SubscriptionId(subscription_id_value);
 
-		// Resolve SubscriptionInspector from IoC (registered by sub-subscription factory)
 		let inspector =
 			ctx.ioc.resolve::<SubscriptionInspectorRef>()
 				.expect("SubscriptionInspector not registered in IoC");

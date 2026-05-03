@@ -89,10 +89,8 @@ impl FlowTransaction {
 		keys_removed = field::Empty
 	))]
 	pub fn state_clear(&mut self, id: FlowNodeId) -> Result<()> {
-		// Phase 1: Scan to collect all keys
 		let keys_to_remove = self.scan_keys_for_clear(id)?;
 
-		// Phase 2: Remove all collected keys
 		let count = keys_to_remove.len();
 		self.remove_keys(keys_to_remove)?;
 

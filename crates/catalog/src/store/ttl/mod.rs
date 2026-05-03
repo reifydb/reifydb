@@ -15,7 +15,6 @@ use reifydb_core::{
 
 use self::shape::ttl_config;
 
-/// Encode a Ttl into EncodedRow
 pub(crate) fn encode_ttl_config(config: &Ttl) -> EncodedRow {
 	let mut row = ttl_config::SHAPE.allocate();
 
@@ -26,7 +25,6 @@ pub(crate) fn encode_ttl_config(config: &Ttl) -> EncodedRow {
 	row
 }
 
-/// Decode a Ttl from EncodedRow
 pub(crate) fn decode_ttl_config(row: &EncodedRow) -> Option<Ttl> {
 	let anchor = decode_anchor(ttl_config::SHAPE.get_u8(row, ttl_config::ANCHOR))?;
 	let cleanup_mode = decode_cleanup_mode(ttl_config::SHAPE.get_u8(row, ttl_config::CLEANUP_MODE))?;

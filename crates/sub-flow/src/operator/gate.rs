@@ -36,7 +36,6 @@ use crate::{
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
-/// A sentinel value stored to mark a row as "visible" (latch open).
 static VISIBLE_MARKER: LazyLock<EncodedRow> = LazyLock::new(|| EncodedRow(CowVec::new(vec![1])));
 
 pub struct GateOperator {
@@ -72,8 +71,6 @@ impl GateOperator {
 		}
 	}
 
-	/// Evaluate conditions on all rows in Columns.
-	/// Returns a boolean mask indicating which rows pass the conditions.
 	fn evaluate(&self, columns: &Columns) -> Result<Vec<bool>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -172,7 +169,6 @@ impl GateOperator {
 		post: &Arc<Columns>,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		// Without row_numbers there is no per-row state; behave as a pure filter.
 		if post.row_numbers.is_empty() {
 			let mask = self.evaluate(post)?;
 			let passing_indices: Vec<usize> =
@@ -191,7 +187,6 @@ impl GateOperator {
 				self.mark_visible(txn, rn)?;
 				passing_indices.push(i);
 			}
-			// not pass: drop, latch stays closed
 		}
 		if !passing_indices.is_empty() {
 			result.push(Diff::insert(post.extract_by_indices(&passing_indices)));
@@ -207,8 +202,6 @@ impl GateOperator {
 		post: Arc<Columns>,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		// Without row_numbers there is no per-row state to consult; treat the
-		// row as already-visible and pass the Update through unchanged.
 		if post.row_numbers.is_empty() {
 			result.push(Diff::Update {
 				pre,
@@ -223,14 +216,11 @@ impl GateOperator {
 
 		for (i, (&rn, &mask_val)) in post.row_numbers.iter().zip(mask.iter()).enumerate() {
 			if self.is_visible(txn, rn)? {
-				// latch already open: forward Update unconditionally
 				update_indices.push(i);
 			} else if mask_val {
-				// latch closed but condition now passes: open and emit as Insert
 				self.mark_visible(txn, rn)?;
 				insert_indices.push(i);
 			}
-			// closed and still failing: drop
 		}
 
 		if !update_indices.is_empty() {
@@ -252,7 +242,6 @@ impl GateOperator {
 		pre: Arc<Columns>,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		// Without row_numbers there is no per-row state; pass through.
 		if pre.row_numbers.is_empty() {
 			result.push(Diff::Remove {
 				pre,
@@ -267,7 +256,6 @@ impl GateOperator {
 				self.mark_invisible(txn, rn)?;
 				remove_indices.push(i);
 			}
-			// never visible: drop
 		}
 
 		if !remove_indices.is_empty() {

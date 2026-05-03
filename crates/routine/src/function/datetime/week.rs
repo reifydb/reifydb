@@ -27,17 +27,13 @@ impl DateTimeWeek {
 	}
 }
 
-/// Compute the ISO 8601 week number for a date.
 fn iso_week_number(date: &Date) -> Result<i32, RoutineError> {
 	let days = date.to_days_since_epoch();
 
-	// ISO day of week: Mon=1..Sun=7
 	let dow = ((days % 7 + 3) % 7 + 7) % 7 + 1;
 
-	// Find the Thursday of this date's week (ISO weeks are identified by their Thursday)
 	let thursday = days + (4 - dow);
 
-	// Find Jan 1 of the year containing that Thursday
 	let thursday_year = {
 		let d = Date::from_days_since_epoch(thursday).ok_or_else(|| RoutineError::FunctionExecutionFailed {
 			function: Fragment::internal("datetime::week"),
@@ -51,7 +47,6 @@ fn iso_week_number(date: &Date) -> Result<i32, RoutineError> {
 	})?;
 	let jan1_days = jan1.to_days_since_epoch();
 
-	// Week number = how many weeks between Jan 1 of that year and the Thursday
 	Ok((thursday - jan1_days) / 7 + 1)
 }
 

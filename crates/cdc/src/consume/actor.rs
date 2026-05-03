@@ -22,14 +22,12 @@ use tracing::{debug, error};
 use super::{checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost};
 use crate::storage::CdcStore;
 
-/// Configuration for the poll actor
 #[derive(Debug, Clone)]
 pub struct PollActorConfig {
-	/// Unique identifier for this consumer
 	pub consumer_id: CdcConsumerId,
-	/// How often to poll when no data is available
+
 	pub poll_interval: Duration,
-	/// Maximum batch size for fetching CDC events (None = unbounded)
+
 	pub max_batch_size: Option<u64>,
 }
 
@@ -42,7 +40,6 @@ pub struct PollActor<H: CdcHost, C: CdcConsume> {
 }
 
 impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
-	/// Create a new poll actor
 	pub fn new(config: PollActorConfig, host: H, consumer: C, store: CdcStore) -> Self {
 		let consumer_key = CdcConsumerKey {
 			consumer: config.consumer_id.clone(),
@@ -59,32 +56,24 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	}
 }
 
-/// Phase of the poll actor state machine
 pub enum Phase {
-	/// Ready to accept a new Poll
 	Ready,
-	/// Waiting for watermark to catch up to a specific version
+
 	WaitingForWatermark {
 		current_version: CommitVersion,
 		retries_remaining: u8,
 	},
-	/// Waiting for the consumer to respond
+
 	WaitingForConsume {
-		/// The latest CDC version in the batch
 		latest_version: CommitVersion,
-		/// Number of CDC transactions in the batch
+
 		count: usize,
 	},
 }
 
 pub struct PollState {
 	phase: Phase,
-	/// In-memory mirror of the durable checkpoint, plus any skip-ahead
-	/// advances made on idle polls. Seeded from storage on first poll.
-	/// Used as the lower bound for `fetch_cdcs_until` so we never re-read
-	/// filtered ranges. Never persisted directly - the durable record is
-	/// updated only inside `finish_consume`, where it commits atomically
-	/// alongside the consumer's user-data writes.
+
 	cached_checkpoint: Option<CommitVersion>,
 }
 
@@ -98,7 +87,6 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 			self.config.consumer_id, self.config.poll_interval
 		);
 
-		// Send initial poll message to start the loop
 		let _ = ctx.self_ref().send(CdcPollMessage::Poll);
 
 		PollState {
@@ -230,11 +218,6 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		self.dispatch_to_consumer(relevant_cdcs, ctx);
 	}
 
-	/// Advance the in-memory checkpoint past a range that had no relevant CDCs,
-	/// then poll immediately. Does NOT touch the multi store - this advance is a
-	/// process-local skip-ahead. The durable checkpoint moves only when
-	/// `finish_consume` actually applies CDCs (a real-work commit that the multi
-	/// store legitimately version-bumps).
 	#[inline]
 	fn advance_checkpoint_skip_ahead(
 		&self,
@@ -256,9 +239,6 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		Some(v)
 	}
 
-	/// First-poll only: read the durable checkpoint from storage. After this we
-	/// never read the durable checkpoint again - the cache is authoritative
-	/// until process exit. On error, schedules a retry poll and returns None.
 	#[inline]
 	fn seed_checkpoint_from_durable(&self, ctx: &Context<CdcPollMessage>) -> Option<CommitVersion> {
 		let mut query = match self.host.begin_query() {
@@ -322,19 +302,6 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		}
 	}
 
-	/// Advance the in-memory checkpoint. The consumer has applied its writes via
-	/// its own transaction; the checkpoint here is a process-local watermark
-	/// used as the lower bound for the next fetch, mirrored from
-	/// `state.cached_checkpoint`.
-	///
-	/// We do NOT persist the checkpoint to the multi store. A per-batch persist
-	/// would write a `CdcConsumer`-keyed row - filtered from CDC by
-	/// `should_exclude_from_cdc` but still allocating a fresh `current_version`
-	/// on every batch. That drifts version-sensitive callers (e.g. cdc-snapshot
-	/// golden scripts) and produces redundant work, since the consumer's apply
-	/// is idempotent: on restart the durable checkpoint is re-seeded from
-	/// storage in `start_consume`, the consumer re-fetches the same range, and
-	/// re-applies the same set/unset writes - cheap and correct.
 	#[inline]
 	fn advance_after_success(
 		&self,

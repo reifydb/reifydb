@@ -8,7 +8,6 @@ use crate::{CatalogStore, Result, store::migration::migration_from_row};
 
 impl CatalogStore {
 	pub(crate) fn find_migration_by_name(txn: &mut Transaction<'_>, name: &str) -> Result<Option<Migration>> {
-		// Scan all migrations and find by name
 		let range = MigrationKey::full_scan();
 		for entry in txn.range(range, 1024)? {
 			let entry = entry?;

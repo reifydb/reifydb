@@ -40,7 +40,6 @@ impl<'bump> Compiler<'bump> {
 		};
 		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 
-		// Resolve optional tag type
 		let tag = if let Some(tag_ident) = create.tag {
 			let tag_ns_segments: Vec<&str> = if tag_ident.namespace.is_empty() {
 				ns_segments.clone()

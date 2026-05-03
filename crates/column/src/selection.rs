@@ -3,10 +3,6 @@
 
 use reifydb_core::value::column::mask::RowMask;
 
-// Result of evaluating a predicate against a `ColumnBlock`.
-//
-// `None_` uses a trailing underscore so pattern matches don't shadow
-// `Option::None`.
 #[derive(Clone, Debug)]
 pub enum Selection {
 	All,

@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes FFI procedures loaded from shared libraries.
 pub struct SystemProceduresFfi {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,

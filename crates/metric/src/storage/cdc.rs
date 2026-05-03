@@ -20,38 +20,30 @@ use crate::{
 	},
 };
 
-/// CDC (Change Data Capture) statistics for a single object.
-///
-/// Tracks storage consumption from CDC entries without tiering.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CdcStats {
-	/// Total bytes used by keys in CDC entries
 	pub key_bytes: u64,
-	/// Total bytes used by values in CDC entries
+
 	pub value_bytes: u64,
-	/// Number of CDC entries
+
 	pub entry_count: u64,
 }
 
 impl CdcStats {
-	/// Create new empty CDC stats.
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	/// Total bytes (keys + values).
 	pub fn total_bytes(&self) -> u64 {
 		self.key_bytes + self.value_bytes
 	}
 
-	/// Record CDC bytes for a change.
 	pub fn record(&mut self, key_bytes: u64, value_bytes: u64) {
 		self.key_bytes += key_bytes;
 		self.value_bytes += value_bytes;
 		self.entry_count += 1;
 	}
 
-	/// Record CDC entry drop (decrement stats).
 	pub fn record_drop(&mut self, key_bytes: u64, value_bytes: u64) {
 		self.key_bytes = self.key_bytes.saturating_sub(key_bytes);
 		self.value_bytes = self.value_bytes.saturating_sub(value_bytes);
@@ -67,43 +59,34 @@ impl AddAssign for CdcStats {
 	}
 }
 
-/// Writer for CDC statistics (single writer only, no tiering).
-///
-/// This should only be used by the MetricsWorker to maintain single-writer semantics.
 pub struct CdcStatsWriter<S> {
 	storage: S,
 }
 
 impl<S: SingleVersionStore> CdcStatsWriter<S> {
-	/// Create a new writer.
 	pub fn new(storage: S) -> Self {
 		Self {
 			storage,
 		}
 	}
 
-	/// Record CDC bytes for a change.
 	pub fn record_cdc(&mut self, key: &[u8], value_bytes: u64) -> Result<()> {
 		let id = parse_id(key);
 		let key_bytes = key.len() as u64;
 
 		let storage_key = EncodedKey::new(encode_cdc_stats_key(id));
 
-		// Read current (or default)
 		let mut stats = self
 			.storage
 			.get(&storage_key)?
 			.and_then(|v| decode_cdc_stats(v.row.as_slice()))
 			.unwrap_or_default();
 
-		// Modify
 		stats.record(key_bytes, value_bytes);
 
-		// Write back
 		self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_cdc_stats(&stats))))
 	}
 
-	/// Record CDC entry drop (decrement stats).
 	pub fn record_drop(&mut self, key: &[u8], value_bytes: u64) -> Result<()> {
 		let id = parse_id(key);
 		let key_bytes = key.len() as u64;
@@ -120,27 +103,23 @@ impl<S: SingleVersionStore> CdcStatsWriter<S> {
 	}
 }
 
-/// Reader for CDC statistics (read-only).
 #[derive(Clone)]
 pub struct CdcStatsReader<S> {
 	storage: S,
 }
 
 impl<S: SingleVersionStore> CdcStatsReader<S> {
-	/// Create a new reader.
 	pub fn new(storage: S) -> Self {
 		Self {
 			storage,
 		}
 	}
 
-	/// Get stats for a specific object.
 	pub fn get(&self, id: MetricId) -> Result<Option<CdcStats>> {
 		let key = EncodedKey::new(encode_cdc_stats_key(id));
 		Ok(self.storage.get(&key)?.and_then(|v| decode_cdc_stats(v.row.as_slice())))
 	}
 
-	/// Scan all CDC stats entries.
 	pub fn scan_all(&self) -> Result<Vec<(MetricId, CdcStats)>> {
 		let prefix = EncodedKey::new(cdc_stats_key_prefix());
 		let batch = self.storage.prefix(&prefix)?;

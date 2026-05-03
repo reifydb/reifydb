@@ -119,13 +119,11 @@ pub(crate) fn insert_table(
 	Ok(insert_table_result(namespace.name(), &table.name, total_rows as u64))
 }
 
-/// Primary key + its row-number shape - always travel together when set.
 struct PkContext<'a> {
 	pk_def: &'a PrimaryKey,
 	row_number_shape: &'a RowShape,
 }
 
-/// Input columns + an index over them by name.
 struct ColumnView<'a> {
 	columns: &'a Columns,
 	column_map: &'a HashMap<&'a str, usize>,

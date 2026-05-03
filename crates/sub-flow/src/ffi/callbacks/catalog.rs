@@ -24,7 +24,6 @@ use reifydb_type::value::constraint::{Constraint, TypeConstraint};
 
 use crate::ffi::context::get_transaction_mut;
 
-/// Find a namespace by ID at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_namespace(
 	ctx: *mut ContextFFI,
@@ -40,13 +39,10 @@ pub(super) extern "C" fn host_catalog_find_namespace(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Access catalog through the catalog() helper method
 		let catalog = flow_txn.catalog();
 
-		// Query catalog
 		match catalog.materialized.find_namespace_at(NamespaceId(namespace_id), CommitVersion(version)) {
 			Some(namespace) => {
-				// Marshal to FFI
 				*output = marshal_namespace(&namespace);
 				FFI_OK
 			}
@@ -55,7 +51,6 @@ pub(super) extern "C" fn host_catalog_find_namespace(
 	}
 }
 
-/// Find a namespace by name at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 	ctx: *mut ContextFFI,
@@ -72,20 +67,16 @@ pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Convert name bytes to string
 		let name_bytes = from_raw_parts(name_ptr, name_len);
 		let name = match from_utf8(name_bytes) {
 			Ok(s) => s,
 			Err(_) => return FFI_ERROR_INVALID_UTF8,
 		};
 
-		// Access catalog
 		let catalog = flow_txn.catalog();
 
-		// Query catalog
 		match catalog.materialized.find_namespace_by_name_at(name, CommitVersion(version)) {
 			Some(namespace) => {
-				// Marshal to FFI
 				*output = marshal_namespace(&namespace);
 				FFI_OK
 			}
@@ -94,7 +85,6 @@ pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 	}
 }
 
-/// Find a table by ID at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_table(
 	ctx: *mut ContextFFI,
@@ -110,27 +100,21 @@ pub(super) extern "C" fn host_catalog_find_table(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Access catalog
 		let catalog = flow_txn.catalog();
 
-		// Query catalog
 		match catalog.materialized.find_table_at(TableId(table_id), CommitVersion(version)) {
-			Some(table) => {
-				// Marshal to FFI
-				match marshal_table(&table) {
-					Ok(table_ffi) => {
-						*output = table_ffi;
-						FFI_OK
-					}
-					Err(_) => FFI_ERROR_MARSHAL,
+			Some(table) => match marshal_table(&table) {
+				Ok(table_ffi) => {
+					*output = table_ffi;
+					FFI_OK
 				}
-			}
+				Err(_) => FFI_ERROR_MARSHAL,
+			},
 			None => FFI_NOT_FOUND,
 		}
 	}
 }
 
-/// Find a table by name in a namespace at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_table_by_name(
 	ctx: *mut ContextFFI,
@@ -148,38 +132,31 @@ pub(super) extern "C" fn host_catalog_find_table_by_name(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Convert name bytes to string
 		let name_bytes = from_raw_parts(name_ptr, name_len);
 		let name = match from_utf8(name_bytes) {
 			Ok(s) => s,
 			Err(_) => return FFI_ERROR_INVALID_UTF8,
 		};
 
-		// Access catalog
 		let catalog = flow_txn.catalog();
 
-		// Query catalog
 		match catalog.materialized.find_table_by_name_at(
 			NamespaceId(namespace_id),
 			name,
 			CommitVersion(version),
 		) {
-			Some(table) => {
-				// Marshal to FFI
-				match marshal_table(&table) {
-					Ok(table_ffi) => {
-						*output = table_ffi;
-						FFI_OK
-					}
-					Err(_) => FFI_ERROR_MARSHAL,
+			Some(table) => match marshal_table(&table) {
+				Ok(table_ffi) => {
+					*output = table_ffi;
+					FFI_OK
 				}
-			}
+				Err(_) => FFI_ERROR_MARSHAL,
+			},
 			None => FFI_NOT_FOUND,
 		}
 	}
 }
 
-/// Free a namespace definition allocated by the host
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_free_namespace(namespace: *mut NamespaceFFI) {
 	if namespace.is_null() {
@@ -189,14 +166,12 @@ pub(super) extern "C" fn host_catalog_free_namespace(namespace: *mut NamespaceFF
 	unsafe {
 		let ns = &*namespace;
 
-		// Free name buffer
 		if !ns.name.ptr.is_null() && ns.name.len > 0 {
 			host_free(ns.name.ptr as *mut u8, ns.name.len);
 		}
 	}
 }
 
-/// Free a table definition allocated by the host
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 	if table.is_null() {
@@ -206,40 +181,34 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 	unsafe {
 		let tbl = &*table;
 
-		// Free table name
 		if !tbl.name.ptr.is_null() && tbl.name.len > 0 {
 			host_free(tbl.name.ptr as *mut u8, tbl.name.len);
 		}
 
-		// Free columns array
 		if !tbl.columns.is_null() && tbl.column_count > 0 {
 			let columns_slice = from_raw_parts(tbl.columns, tbl.column_count);
 			for col in columns_slice {
-				// Free column name
 				if !col.name.ptr.is_null() && col.name.len > 0 {
 					host_free(col.name.ptr as *mut u8, col.name.len);
 				}
 			}
-			// Free columns array itself
+
 			host_free(tbl.columns as *mut u8, tbl.column_count * mem::size_of::<ColumnFFI>());
 		}
 
-		// Free primary key
 		if !tbl.primary_key.is_null() {
 			let pk = &*tbl.primary_key;
-			// Free column IDs array
+
 			if !pk.column_ids.is_null() && pk.column_count > 0 {
 				host_free(pk.column_ids as *mut u8, pk.column_count * mem::size_of::<u64>());
 			}
-			// Free primary key struct itself
+
 			host_free(tbl.primary_key as *mut u8, mem::size_of::<PrimaryKeyFFI>());
 		}
 	}
 }
 
-/// Marshal a Namespace to FFI
 fn marshal_namespace(namespace: &Namespace) -> NamespaceFFI {
-	// Allocate and copy name
 	let name_bytes = namespace.name().as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
 	if !name_ptr.is_null() {
@@ -259,9 +228,7 @@ fn marshal_namespace(namespace: &Namespace) -> NamespaceFFI {
 	}
 }
 
-/// Marshal a Table to FFI
 fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
-	// Allocate and copy table name
 	let name_bytes = table.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
 	if name_ptr.is_null() {
@@ -271,18 +238,15 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 		ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 	}
 
-	// Allocate columns array
 	let columns_count = table.columns.len();
 	let columns_ptr = if columns_count > 0 {
 		let size = columns_count * mem::size_of::<ColumnFFI>();
 		let ptr = host_alloc(size) as *mut ColumnFFI;
 		if ptr.is_null() {
-			// Clean up name before returning error
 			unsafe { host_free(name_ptr, name_bytes.len()) };
 			return Err("Failed to allocate columns array");
 		}
 
-		// Marshal each column
 		for (i, col) in table.columns.iter().enumerate() {
 			unsafe {
 				*ptr.add(i) = marshal_column(col)?;
@@ -294,11 +258,9 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 		ptr::null_mut()
 	};
 
-	// Marshal primary key if present
 	let (has_pk, pk_ptr) = if let Some(pk) = &table.primary_key {
 		let pk_ptr = host_alloc(mem::size_of::<PrimaryKeyFFI>()) as *mut PrimaryKeyFFI;
 		if pk_ptr.is_null() {
-			// Clean up before returning error
 			unsafe { host_free(name_ptr, name_bytes.len()) };
 			if !columns_ptr.is_null() {
 				unsafe {
@@ -332,9 +294,7 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 	})
 }
 
-/// Marshal a Column to FFI
 fn marshal_column(column: &Column) -> Result<ColumnFFI, &'static str> {
-	// Allocate and copy column name
 	let name_bytes = column.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
 	if name_ptr.is_null() {
@@ -344,7 +304,6 @@ fn marshal_column(column: &Column) -> Result<ColumnFFI, &'static str> {
 		ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 	}
 
-	// Encode type constraint
 	let (base_type, constraint_type, param1, param2) = encode_type_constraint(&column.constraint);
 
 	Ok(ColumnFFI {
@@ -367,9 +326,7 @@ fn marshal_column(column: &Column) -> Result<ColumnFFI, &'static str> {
 	})
 }
 
-/// Marshal a PrimaryKey to FFI
 fn marshal_primary_key(pk: &PrimaryKey) -> Result<PrimaryKeyFFI, &'static str> {
-	// Allocate column IDs array
 	let column_count = pk.columns.len();
 	let column_ids_ptr = if column_count > 0 {
 		let size = column_count * mem::size_of::<u64>();
@@ -378,7 +335,6 @@ fn marshal_primary_key(pk: &PrimaryKey) -> Result<PrimaryKeyFFI, &'static str> {
 			return Err("Failed to allocate primary key column IDs");
 		}
 
-		// Copy column IDs
 		for (i, col) in pk.columns.iter().enumerate() {
 			unsafe {
 				*ptr.add(i) = col.id.0;
@@ -397,10 +353,6 @@ fn marshal_primary_key(pk: &PrimaryKey) -> Result<PrimaryKeyFFI, &'static str> {
 	})
 }
 
-/// Encode a TypeConstraint to FFI format
-///
-/// Returns: (base_type, constraint_type, param1, param2)
-/// - constraint_type: 0=None, 1=MaxBytes, 2=PrecisionScale
 fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
 	let base_type = constraint.get_type().to_u8();
 
@@ -410,10 +362,7 @@ fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
 		Some(Constraint::PrecisionScale(precision, scale)) => {
 			(base_type, 2, precision.value() as u32, scale.value() as u32)
 		}
-		Some(Constraint::Dictionary(_, _)) => {
-			// Dictionary constraint: encode as type 3
-			(base_type, 3, 0, 0)
-		}
+		Some(Constraint::Dictionary(_, _)) => (base_type, 3, 0, 0),
 		Some(Constraint::SumType(id)) => (base_type, 4, id.to_u64() as u32, 0),
 	}
 }

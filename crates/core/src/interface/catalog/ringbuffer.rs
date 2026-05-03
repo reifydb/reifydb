@@ -33,8 +33,8 @@ pub struct RingBufferMetadata {
 	pub id: RingBufferId,
 	pub capacity: u64,
 	pub count: u64,
-	pub head: u64, // Position of oldest entry
-	pub tail: u64, // Position for next insert
+	pub head: u64,
+	pub tail: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]

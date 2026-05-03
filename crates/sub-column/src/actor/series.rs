@@ -60,12 +60,6 @@ pub struct SeriesMaterializationState {
 	_timer_handle: Option<TimerHandle>,
 }
 
-// Per-series, per-closed-bucket materialization. Each tick opens one read
-// transaction, reads `SeriesMetadata` per series, enumerates candidate buckets
-// in `[oldest_key, newest_key]`, filters to closed buckets via `is_closed`,
-// materializes those whose `sequence_counter` has advanced since last
-// materialization (late-arrival signal), and overwrites the registry entry
-// atomically under the shared `(series_id, bucket)` key.
 pub struct SeriesMaterializationActor {
 	engine: StandardEngine,
 	registry: SnapshotRegistry,
@@ -275,9 +269,6 @@ impl SeriesMaterializationActor {
 	}
 }
 
-// The scan emits: [key column, optional "tag", then the remaining data
-// columns (excluding the key)]. Build the schema in the same order so the
-// batch-concat helper finds columns by name.
 fn scan_output_schema(series: &Series) -> Vec<(String, Type)> {
 	let key_name = series.key.column().to_string();
 	let key_ty = series

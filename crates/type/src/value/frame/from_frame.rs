@@ -9,15 +9,13 @@ use std::{
 use super::frame::Frame;
 use crate::value::try_from::FromValueError;
 
-/// Error type for Frame deserialization via `FromFrame` derive.
 #[derive(Debug, Clone)]
 pub enum FromFrameError {
-	/// A required column was not found in the frame.
 	MissingColumn {
 		column: String,
 		struct_name: &'static str,
 	},
-	/// Value extraction failed for a specific cell.
+
 	ValueError {
 		column: String,
 		row: usize,
@@ -47,27 +45,6 @@ impl Display for FromFrameError {
 
 impl error::Error for FromFrameError {}
 
-/// Trait for types that can be deserialized from a Frame.
-///
-/// This trait is typically derived using `#[derive(FromFrame)]` from the
-/// `reifydb` or `reifydb_client` crates.
-///
-/// # Example
-///
-/// ```ignore
-/// use reifydb::FromFrame;  // or reifydb_client::FromFrame
-///
-/// #[derive(FromFrame)]
-/// struct User {
-///     id: i64,
-///     name: String,
-/// }
-///
-/// let users: Vec<User> = User::from_frame(&frame)?;
-/// // or using TryFrom:
-/// let users: Vec<User> = (&frame).try_into()?;
-/// ```
 pub trait FromFrame: Sized {
-	/// Deserialize a vector of Self from a Frame.
 	fn from_frame(frame: &Frame) -> Result<Vec<Self>, FromFrameError>;
 }

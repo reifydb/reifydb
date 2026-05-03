@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::flows::*, vtable::FLOWS};
 
-/// Returns the static definition for the system.flows virtual table
-/// This table exposes information about all standalone flows in the database
 pub fn flows() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
@@ -53,9 +51,8 @@ pub fn flows() -> Arc<VTable> {
 				Column {
 					id: STATUS,
 					name: "status".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8), /* Will store
-					                                                        * "Active", "Paused",
-					                                                        * or "Failed" */
+					constraint: TypeConstraint::unconstrained(Type::Utf8),
+
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,

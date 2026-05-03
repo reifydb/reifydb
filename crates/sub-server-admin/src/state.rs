@@ -15,10 +15,6 @@ use reifydb_runtime::{
 
 use crate::actor::AdminServerActor;
 
-/// Shared application state for admin handler.
-///
-/// This struct is cloneable and cheap to clone since `StandardEngine` uses
-/// `Arc` internally.
 #[derive(Clone)]
 pub struct AdminState {
 	engine: StandardEngine,
@@ -31,7 +27,6 @@ pub struct AdminState {
 }
 
 impl AdminState {
-	/// Create a new AdminState.
 	pub fn new(
 		engine: StandardEngine,
 		max_connections: usize,
@@ -52,10 +47,6 @@ impl AdminState {
 		}
 	}
 
-	/// Spawn a short-lived actor for one request and return its ref + handle.
-	///
-	/// The caller must keep the `ActorHandle` alive until the reply is received;
-	/// dropping it shuts down the actor.
 	pub fn spawn_actor(&self) -> (ActorRef<AdminMessage>, ActorHandle<AdminMessage>) {
 		let actor = AdminServerActor::new(
 			self.engine.clone(),
@@ -68,37 +59,31 @@ impl AdminState {
 		(actor_ref, handle)
 	}
 
-	/// Get a reference to the database engine.
 	#[inline]
 	pub fn engine(&self) -> &StandardEngine {
 		&self.engine
 	}
 
-	/// Get a clone of the database engine.
 	#[inline]
 	pub fn engine_clone(&self) -> StandardEngine {
 		self.engine.clone()
 	}
 
-	/// Get the maximum connections.
 	#[inline]
 	pub fn max_connections(&self) -> usize {
 		self.max_connections
 	}
 
-	/// Get the request timeout.
 	#[inline]
 	pub fn request_timeout(&self) -> Duration {
 		self.request_timeout
 	}
 
-	/// Check if authentication is required.
 	#[inline]
 	pub fn auth_required(&self) -> bool {
 		self.auth_required
 	}
 
-	/// Get the auth token (if set).
 	#[inline]
 	pub fn auth_token(&self) -> Option<&str> {
 		self.auth_token.as_deref()

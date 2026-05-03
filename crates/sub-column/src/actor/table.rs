@@ -43,11 +43,6 @@ pub struct TableMaterializationState {
 	_timer_handle: Option<TimerHandle>,
 }
 
-// Periodic per-table materialization. Each tick: open a fresh read transaction,
-// walk the catalog, skip tables whose `CommitVersion` hasn't advanced, and
-// otherwise drive the engine's `TableScanNode` to collect `Columns` batches,
-// concatenate into a single-chunk `ColumnBlock`, wrap as a `Snapshot`, and
-// insert into the shared `SnapshotRegistry`.
 pub struct TableMaterializationActor {
 	engine: StandardEngine,
 	registry: SnapshotRegistry,

@@ -25,7 +25,6 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		to_create: PolicyToCreate,
 	) -> Result<(Policy, Vec<PolicyOperation>)> {
-		// Check duplicate by name if named
 		if let Some(ref name) = to_create.name
 			&& (Self::find_policy_by_name(&mut Transaction::Admin(&mut *txn), name)?).is_some()
 		{
@@ -38,8 +37,6 @@ impl CatalogStore {
 			.into());
 		}
 
-		// Reject unknown operation keys up-front: enforcement matches operation names by
-		// exact string equality, so a typo silently makes the whole policy dead code.
 		for op in &to_create.operations {
 			if !to_create.target_type.is_valid_operation(&op.operation) {
 				return Err(CatalogError::PolicyInvalidOperation {
@@ -64,7 +61,6 @@ impl CatalogStore {
 
 		txn.set(&PolicyKey::encoded(policy_id), row)?;
 
-		// Write operation rows
 		let mut ops = Vec::new();
 		for (i, op) in to_create.operations.iter().enumerate() {
 			let mut op_row = policy_op::SHAPE.allocate();

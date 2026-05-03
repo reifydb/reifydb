@@ -36,8 +36,6 @@ use crate::{
 	warm::WarmStorage,
 };
 
-/// Fixed chunk size for internal tier scans.
-/// This is the number of versioned entries fetched per tier per iteration.
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
 
 impl MultiVersionGet for StandardMultiStore {
@@ -45,7 +43,6 @@ impl MultiVersionGet for StandardMultiStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		let table = classify_key(key);
 
-		// Try hot tier first
 		if let Some(hot) = &self.hot {
 			match get_at_version(hot, table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
@@ -63,7 +60,6 @@ impl MultiVersionGet for StandardMultiStore {
 			}
 		}
 
-		// Try warm tier
 		if let Some(warm) = &self.warm {
 			match get_at_version(warm, table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
@@ -81,7 +77,6 @@ impl MultiVersionGet for StandardMultiStore {
 			}
 		}
 
-		// Try cold tier
 		if let Some(cold) = &self.cold {
 			match get_at_version(cold, table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
@@ -113,7 +108,6 @@ impl MultiVersionContains for StandardMultiStore {
 impl MultiVersionCommit for StandardMultiStore {
 	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
-		// Get the hot storage tier (warm and cold are placeholders for now)
 		let Some(storage) = &self.hot else {
 			return Ok(());
 		};
@@ -128,10 +122,6 @@ impl MultiVersionCommit for StandardMultiStore {
 	}
 }
 
-/// `commit`'s per-delta classification: Set/Unset go to `batches` (and emit
-/// metric entries), Remove goes to `batches` only, Drop is queued for the
-/// drop-actor with optional pending-version tagging if the same key was Set
-/// in this commit (single-version-semantics keys).
 struct ClassifiedDeltas {
 	pending_set_keys: HashSet<CowVec<u8>>,
 	writes: Vec<MultiWrite>,
@@ -203,10 +193,6 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 	}
 }
 
-/// Combine explicit `Delta::Drop` requests with implicit drops for
-/// single-version-semantics keys that were also Set in this commit. Both kinds
-/// share the same commit version; explicit drops carry a pending_version only
-/// when the same key was Set in this commit (overlap case).
 #[inline]
 fn build_drop_batch(
 	explicit_drops: Vec<(EntryKind, EncodedKey)>,
@@ -256,29 +242,22 @@ impl StandardMultiStore {
 	}
 }
 
-/// Cursor state for multi-version range streaming.
-///
-/// Tracks position in each tier independently, allowing the scan to continue
-/// until enough unique logical keys are collected.
 #[derive(Debug, Clone, Default)]
 pub struct MultiVersionRangeCursor {
-	/// Cursor for hot tier
 	pub hot: RangeCursor,
-	/// Cursor for warm tier
+
 	pub warm: RangeCursor,
-	/// Cursor for cold tier
+
 	pub cold: RangeCursor,
-	/// Whether all tiers are exhausted
+
 	pub exhausted: bool,
 }
 
 impl MultiVersionRangeCursor {
-	/// Create a new cursor at the start.
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	/// Check if all tiers are exhausted.
 	pub fn is_exhausted(&self) -> bool {
 		self.exhausted
 	}
@@ -456,10 +435,6 @@ pub fn scan_tiers_latest(
 }
 
 impl StandardMultiStore {
-	/// Fetch the next batch of entries, continuing from cursor position.
-	///
-	/// This properly handles high version density by scanning until `batch_size`
-	/// unique logical keys are collected OR all tiers are exhausted.
 	pub fn range_next(
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
@@ -474,9 +449,6 @@ impl StandardMultiStore {
 			});
 		}
 
-		// An unconfigured tier has nothing to contribute; treat it as exhausted so
-		// the horizon helpers below don't see a phantom "non-exhausted, no
-		// last_key" cursor and refuse to filter.
 		mark_unconfigured_exhausted(self, cursor);
 
 		let table = classify_key_range(&range);
@@ -509,16 +481,8 @@ impl StandardMultiStore {
 			}
 		}
 
-		// Per-tier cursors can be at different positions after this iteration:
-		// tiers with smaller chunks advanced their last_key less far than tiers with
-		// larger chunks. Emitting everything would let the lagging tier re-emit
-		// keys above its own last_key on the next call. Compute horizon = smallest
-		// last_key among non-exhausted tiers, drop entries beyond it from
-		// `collected`, and rewind any over-advanced tier so the next call resumes
-		// from the same horizon for every tier.
 		apply_forward_horizon(cursor, &mut collected);
 
-		// Convert to MultiVersionRow in sorted key order, filtering out tombstones.
 		let items: Vec<MultiVersionRow> = collected
 			.into_iter()
 			.filter_map(|(key_bytes, (v, value))| {
@@ -538,11 +502,6 @@ impl StandardMultiStore {
 		})
 	}
 
-	/// Create an iterator for forward range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The iterator yields individual entries
-	/// and maintains cursor state internally.
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
@@ -560,11 +519,6 @@ impl StandardMultiStore {
 		}
 	}
 
-	/// Create an iterator for reverse range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The iterator yields individual entries
-	/// in reverse key order and maintains cursor state internally.
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
@@ -582,10 +536,6 @@ impl StandardMultiStore {
 		}
 	}
 
-	/// Fetch the next batch of entries in reverse order, continuing from cursor position.
-	///
-	/// This properly handles high version density by scanning until `batch_size`
-	/// unique logical keys are collected OR all tiers are exhausted.
 	fn range_rev_next(
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
@@ -642,17 +592,8 @@ impl StandardMultiStore {
 			}
 		}
 
-		// Per-tier cursors can be at different positions after this iteration. In
-		// reverse iteration `last_key` is the smallest key emitted; the tier whose
-		// chunk reached the smallest key has consumed more than its peers. Emitting
-		// everything would let the trailing tier re-emit keys below its own
-		// last_key on the next call. Compute horizon = largest last_key among
-		// non-exhausted tiers, drop entries < horizon from `collected`, and rewind
-		// any over-advanced tier so the next call resumes from the same horizon for
-		// every tier.
 		apply_reverse_horizon(cursor, &mut collected);
 
-		// Convert to MultiVersionRow in REVERSE sorted key order, filtering out tombstones.
 		let items: Vec<MultiVersionRow> = collected
 			.into_iter()
 			.rev()
@@ -674,10 +615,6 @@ impl StandardMultiStore {
 	}
 }
 
-/// Mark per-tier cursors as exhausted for any tier the store does not have
-/// configured. The cursor type carries a slot for every tier regardless of
-/// whether the storage is wired up; without this, the horizon helpers see a
-/// phantom non-exhausted cursor with `last_key=None` and refuse to filter.
 fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor) {
 	if store.hot.is_none() {
 		cursor.hot.exhausted = true;
@@ -690,11 +627,6 @@ fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVer
 	}
 }
 
-/// Drop collected entries past the slowest non-exhausted tier's last_key, and
-/// rewind any over-advanced tier cursor to that horizon. After this returns,
-/// every non-exhausted tier's `last_key` is identical, so the next call resumes
-/// from a consistent position across tiers and the BTreeMap dedupe in
-/// `scan_tier_chunk` covers any re-emission.
 fn apply_forward_horizon(
 	cursor: &mut MultiVersionRangeCursor,
 	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
@@ -725,9 +657,7 @@ fn forward_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
 		}
 		let last = match &tier.last_key {
 			Some(k) => k.clone(),
-			// A non-exhausted tier with no last_key emitted nothing this iteration
-			// but may still have keys to return; horizon must be the start of the
-			// range, which we represent as "no horizon" so nothing is dropped.
+
 			None => return None,
 		};
 		horizon = Some(match horizon {
@@ -804,7 +734,6 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 			return Ok(None);
 		}
 
-		// Hot storage must be available for version lookups
 		let storage = self.hot.as_ref().expect("hot storage required for version lookups");
 
 		let table = classify_key(key);
@@ -827,7 +756,6 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 
 impl MultiVersionStore for StandardMultiStore {}
 
-/// Iterator for forward multi-version range queries.
 pub struct MultiVersionRangeIter {
 	store: StandardMultiStore,
 	cursor: MultiVersionRangeCursor,
@@ -842,19 +770,16 @@ impl Iterator for MultiVersionRangeIter {
 	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		// If we have items in the current batch, return them
 		if self.current_index < self.current_batch.len() {
 			let item = self.current_batch[self.current_index].clone();
 			self.current_index += 1;
 			return Some(Ok(item));
 		}
 
-		// If cursor is exhausted, we're done
 		if self.cursor.exhausted {
 			return None;
 		}
 
-		// Fetch the next batch
 		match self.store.range_next(&mut self.cursor, self.range.clone(), self.version, self.batch_size as u64)
 		{
 			Ok(batch) => {
@@ -873,7 +798,6 @@ impl Iterator for MultiVersionRangeIter {
 	}
 }
 
-/// Iterator for reverse multi-version range queries.
 pub struct MultiVersionRangeRevIter {
 	store: StandardMultiStore,
 	cursor: MultiVersionRangeCursor,
@@ -888,19 +812,16 @@ impl Iterator for MultiVersionRangeRevIter {
 	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		// If we have items in the current batch, return them
 		if self.current_index < self.current_batch.len() {
 			let item = self.current_batch[self.current_index].clone();
 			self.current_index += 1;
 			return Some(Ok(item));
 		}
 
-		// If cursor is exhausted, we're done
 		if self.cursor.exhausted {
 			return None;
 		}
 
-		// Fetch the next batch
 		match self.store.range_rev_next(
 			&mut self.cursor,
 			self.range.clone(),
@@ -923,13 +844,10 @@ impl Iterator for MultiVersionRangeRevIter {
 	}
 }
 
-/// Classify a range to determine which table it belongs to.
 fn classify_key_range(range: &EncodedKeyRange) -> EntryKind {
 	classify_range(range).unwrap_or(EntryKind::Multi)
 }
 
-/// Create range bounds from an EncodedKeyRange.
-/// Returns the start and end byte slices for the range query.
 fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 	let start = match &range.start {
 		Bound::Included(key) => key.as_ref().to_vec(),

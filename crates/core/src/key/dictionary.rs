@@ -11,7 +11,6 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for storing dictionary metadata
 #[derive(Debug, Clone, PartialEq)]
 pub struct DictionaryKey {
 	pub dictionary: DictionaryId,
@@ -76,12 +75,10 @@ impl EncodableKey for DictionaryKey {
 	}
 }
 
-/// Key for dictionary entries: hash(value) -> (id, value)
-/// Uses xxh3_128 hash of the value for fixed-size keys
 #[derive(Debug, Clone, PartialEq)]
 pub struct DictionaryEntryKey {
 	pub dictionary: DictionaryId,
-	pub hash: [u8; 16], // xxh3_128 hash of the value
+	pub hash: [u8; 16],
 }
 
 impl DictionaryEntryKey {
@@ -151,7 +148,6 @@ impl EncodableKey for DictionaryEntryKey {
 	}
 }
 
-/// Key for reverse lookup: id -> row_number (for decoding)
 #[derive(Debug, Clone, PartialEq)]
 pub struct DictionaryEntryIndexKey {
 	pub dictionary: DictionaryId,
@@ -223,7 +219,6 @@ impl EncodableKey for DictionaryEntryIndexKey {
 	}
 }
 
-/// Key for dictionary entry ID sequence
 #[derive(Debug, Clone, PartialEq)]
 pub struct DictionarySequenceKey {
 	pub dictionary: DictionaryId,
@@ -271,7 +266,6 @@ impl EncodableKey for DictionarySequenceKey {
 	}
 }
 
-/// Key range for dictionary entry index scans
 #[derive(Debug, Clone, PartialEq)]
 pub struct DictionaryEntryIndexKeyRange {
 	pub dictionary: DictionaryId,
@@ -326,7 +320,6 @@ impl EncodableKeyRange for DictionaryEntryIndexKeyRange {
 	}
 
 	fn decode(_range: &EncodedKeyRange) -> (Option<Self>, Option<Self>) {
-		// Range decoding not typically needed
 		(None, None)
 	}
 }

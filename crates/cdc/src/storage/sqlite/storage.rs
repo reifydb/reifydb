@@ -44,12 +44,8 @@ struct Inner {
 	last_zstd_level: AtomicU8,
 }
 
-/// `(decoded entries, raw version blobs)` returned from `select_oldest_eligible`.
 type CompactionCandidates = (Vec<Cdc>, Vec<Vec<u8>>);
 
-/// `(block index rows: (max_version_blob, payload), live row payloads)` returned
-/// from `snapshot_block_and_live`. Block rows carry the PK so the caller can key
-/// the cache; live rows are bare payloads.
 type RangeSnapshot = (Vec<(Vec<u8>, Vec<u8>)>, Vec<Vec<u8>>);
 
 struct FullBlockScan {
@@ -264,12 +260,6 @@ impl SqliteCdcStorage {
 		Ok(Some(build_block_summary(&entries, min_version, max_version, compressed_bytes)))
 	}
 
-	/// Phase A: short-lived read under the connection mutex. No txn.
-	///
-	/// Returns `Some((entries, version_blobs))` if a viable batch exists,
-	/// or `None` when there is nothing to compact (no live entries, max
-	/// below safety_lag, or fewer than target_size eligible rows when
-	/// partial blocks are not allowed).
 	fn select_oldest_eligible(
 		&self,
 		target_size: usize,
@@ -294,12 +284,6 @@ impl SqliteCdcStorage {
 		Ok(Some((entries, version_blobs)))
 	}
 
-	/// Phase C: short-lived commit under the connection mutex.
-	///
-	/// DELETE first so we can detect a concurrent `drop_before` via
-	/// rows_affected; rolls back and returns `Ok(false)` if the row count
-	/// mismatches (next tick retries on a fresh snapshot). Returns
-	/// `Ok(true)` after a successful swap.
 	#[allow(clippy::too_many_arguments)]
 	fn commit_block_swap(
 		&self,
@@ -333,12 +317,6 @@ impl SqliteCdcStorage {
 		Ok(true)
 	}
 
-	/// Snapshot both `cdc_block` and `cdc` under a single connection lock so the
-	/// two reads are consistent. Without this, a concurrent compactor can move
-	/// an entry from `cdc` into a new block between the two reads and the row
-	/// goes missing in the merged output: we miss it in the block read (block
-	/// didn't exist yet) and miss it in the live read (row already deleted from
-	/// cdc).
 	#[inline]
 	fn snapshot_block_and_live(
 		&self,
@@ -571,14 +549,6 @@ fn query_max_live_version(conn: &Connection) -> CdcStorageResult<Option<u64>> {
 	max_live.map(|b| bytes_to_version(&b).map(|v| v.0)).transpose()
 }
 
-/// Cap eligibility at the CDC producer's commit watermark. Below this watermark,
-/// every PostCommitEvent has been fully processed by the producer actor, so the
-/// cdc table contains the complete set of entries for those versions. Above the
-/// watermark, an in-flight producer write could still land at a version we are
-/// about to pack, breaking the invariant that for any block, every CDC version
-/// in [block.min, block.max] is contained in that block.
-///
-/// Returns `None` if `max_v < safety_lag` (nothing eligible yet).
 #[inline]
 fn compute_eligible_max(max_v: u64, safety_lag: u64, producer_watermark: CommitVersion) -> Option<CommitVersion> {
 	if max_v < safety_lag {
@@ -687,9 +657,6 @@ fn datetime_to_nanos(dt: &DateTime) -> i64 {
 	dt.to_nanos() as i64
 }
 
-/// Fold an entry slice's timestamps into `(min, max)` nanos. Timestamps are
-/// not guaranteed monotonic with version (clock skew, batched commits) so we
-/// compute the range explicitly rather than taking first/last.
 fn summarize_timestamps(entries: &[Cdc]) -> (i64, i64) {
 	entries.iter().fold((i64::MAX, i64::MIN), |(lo, hi), c| {
 		let n = datetime_to_nanos(&c.timestamp);
@@ -766,8 +733,6 @@ fn merge_block_and_live(block_items: Vec<Cdc>, live_items: Vec<Cdc>) -> Vec<Cdc>
 			merged.push(live_items[li].clone());
 			li += 1;
 		} else {
-			// Same version in both (compactor swap raced with our read);
-			// keep the block copy and skip the live duplicate.
 			merged.push(block_items[bi].clone());
 			bi += 1;
 			li += 1;
@@ -884,10 +849,6 @@ fn extend_dropped_entries(out: &mut Vec<DroppedCdcEntry>, system_changes: &[Syst
 	}
 }
 
-/// Delete the live CDC rows whose payloads are now folded into a block.
-/// Returns `true` if the row count matched `expected_count` (caller commits),
-/// `false` if a concurrent `drop_before` already removed some (caller rolls
-/// back so the next compactor tick retries on a fresh snapshot).
 #[inline]
 fn delete_compacted_versions(
 	tx: &Transaction<'_>,
@@ -1031,9 +992,6 @@ impl CdcStorage for SqliteCdcStorage {
 }
 
 impl SqliteCdcStorage {
-	/// Try the indexed `cdc_block.max_timestamp` lookup. Returns the smallest
-	/// `min_version` of any block whose `max_timestamp >= cutoff`, or `None` if
-	/// no block straddles the cutoff (caller falls back to scanning live rows).
 	#[inline]
 	fn try_block_index_cutoff(&self, cutoff_nanos: i64) -> CdcStorageResult<Option<CommitVersion>> {
 		let block_hit: Option<Vec<u8>> = {
@@ -1049,8 +1007,6 @@ impl SqliteCdcStorage {
 		block_hit.map(|b| bytes_to_version(&b)).transpose()
 	}
 
-	/// Pick the start of the live-row scan: the smallest live version, or
-	/// `None` if the live table is empty (caller returns `block_max + 1`).
 	#[inline]
 	fn pick_scan_start(&self) -> CdcStorageResult<Option<CommitVersion>> {
 		self.min_version_live()

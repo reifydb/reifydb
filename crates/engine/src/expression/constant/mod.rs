@@ -61,8 +61,6 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 				return Ok(ColumnBuffer::int8(vec![v; row_count]));
 			}
 
-			// if parsing as i128 fails and its a negative
-			// number, we are maxed out and can stop
 			match parse_primitive_int::<i128>(fragment.clone()) {
 				Ok(v) => {
 					return Ok(ColumnBuffer::int16(vec![v; row_count]));

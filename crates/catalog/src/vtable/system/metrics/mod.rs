@@ -15,9 +15,6 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, Result, vtable::VTableRegistry};
 
-/// Primitive kinds that can be surfaced as `system::metrics::{storage,cdc}::*`
-/// virtual tables. Each variant pairs with a leaf name (e.g. `Table -> "table"`)
-/// and a filter over `MetricId` rows returned by the stats reader.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatsPrimitive {
 	Table,
@@ -31,21 +28,12 @@ pub enum StatsPrimitive {
 	System,
 }
 
-/// Row extracted from a `(MetricId, _)` pair by `StatsPrimitive::match_metric_id`.
-/// `id` is the object id; `namespace_id` is resolved via the catalog.
 pub(crate) struct StatsRow {
 	pub id: u64,
 	pub namespace_id: u64,
 }
 
 impl StatsPrimitive {
-	/// Match + resolve a `MetricId` against this primitive kind.
-	///
-	/// Returns `Ok(Some(row))` if the metric belongs to this primitive,
-	/// `Ok(None)` if it does not, or an error if catalog lookup fails.
-	///
-	/// For `Flow`, the caller is responsible for aggregating; this method
-	/// returns the row keyed by `flow_id` (not `flow_node_id`).
 	pub(crate) fn match_metric_id(
 		self,
 		txn: &mut Transaction<'_>,

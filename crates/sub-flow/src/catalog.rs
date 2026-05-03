@@ -15,7 +15,7 @@ use reifydb_type::Result;
 
 pub struct FlowCatalog {
 	catalog: Catalog,
-	/// Shared across all clones so the dispatcher and coordinator see the same cache.
+
 	flows: Arc<RwLock<BTreeMap<FlowId, FlowDag>>>,
 }
 
@@ -27,10 +27,7 @@ impl FlowCatalog {
 		}
 	}
 
-	/// Get or load flow from catalog with caching (double-check locking pattern).
-	/// Returns (FlowDag, is_new) where is_new is true if the flow was newly cached.
 	pub fn get_or_load_flow(&self, txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<(FlowDag, bool)> {
-		// Fast path: read lock - flow already cached
 		{
 			let cache = self.flows.read();
 			if let Some(flow) = cache.get(&flow_id) {
@@ -38,7 +35,6 @@ impl FlowCatalog {
 			}
 		}
 
-		// Slow path: load and cache
 		let flow = load_flow_dag(&self.catalog, txn, flow_id)?;
 		let mut cache = self.flows.write();
 
@@ -48,22 +44,18 @@ impl FlowCatalog {
 		Ok((cached_flow, is_new))
 	}
 
-	/// Remove a flow from the cache so it can be rediscovered as new.
 	pub fn remove(&self, flow_id: FlowId) {
 		self.flows.write().remove(&flow_id);
 	}
 
-	/// Look up a view definition from the materialized catalog (no transaction needed).
 	pub fn find_view(&self, view_id: ViewId) -> Option<View> {
 		self.catalog.materialized.find_view(view_id)
 	}
 
-	/// Get all registered flow IDs
 	pub fn get_flow_ids(&self) -> Vec<FlowId> {
 		self.flows.read().keys().copied().collect()
 	}
 
-	/// Persist pending row shapes via the underlying catalog.
 	pub fn persist_pending_shapes(&self, txn: &mut Transaction<'_>, shapes: Vec<RowShape>) -> Result<()> {
 		self.catalog.persist_pending_shapes(txn, shapes)
 	}

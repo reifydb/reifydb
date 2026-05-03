@@ -21,11 +21,6 @@ pub mod state_iterator;
 pub mod store;
 pub mod store_iterator;
 
-/// Create the complete host callbacks structure
-///
-/// This aggregates all callback function pointers from the memory, state,
-/// store, logging, and catalog modules into a single HostCallbacks structure that
-/// can be passed to FFI operators.
 pub fn create_host_callbacks() -> HostCallbacks {
 	HostCallbacks {
 		memory: MemoryCallbacks {
@@ -78,7 +73,6 @@ pub fn create_host_callbacks() -> HostCallbacks {
 	}
 }
 
-/// Stub: RQL execution is not supported from sub-flow FFI operators.
 unsafe extern "C" fn host_rql_unsupported(
 	_ctx: *mut ContextFFI,
 	_rql_ptr: *const u8,

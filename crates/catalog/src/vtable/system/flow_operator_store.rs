@@ -10,7 +10,6 @@ use std::{
 use reifydb_core::event::{EventListener, flow::FlowOperatorLoadedEvent};
 use reifydb_type::value::constraint::TypeConstraint;
 
-/// Information about a single column vtable in an operator
 #[derive(Clone, Debug)]
 pub struct SystemOperatorColumnInfo {
 	pub name: String,
@@ -18,7 +17,6 @@ pub struct SystemOperatorColumnInfo {
 	pub description: String,
 }
 
-/// Cached information about a loaded flow operator
 #[derive(Clone, Debug)]
 pub struct SystemFlowOperatorInfo {
 	pub operator: String,
@@ -29,10 +27,8 @@ pub struct SystemFlowOperatorInfo {
 	pub output_columns: Vec<SystemOperatorColumnInfo>,
 }
 
-/// Thread-safe in-memory store for flow operator information
 #[derive(Clone)]
 pub struct SystemFlowOperatorStore {
-	// Key: operator
 	operators: Arc<RwLock<HashMap<String, SystemFlowOperatorInfo>>>,
 }
 
@@ -58,7 +54,6 @@ impl SystemFlowOperatorStore {
 	}
 }
 
-/// Event listener that maintains the flow operator store
 pub struct SystemFlowOperatorEventListener {
 	store: SystemFlowOperatorStore,
 }

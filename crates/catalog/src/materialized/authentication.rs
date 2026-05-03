@@ -10,7 +10,6 @@ use reifydb_type::value::identity::IdentityId;
 use crate::materialized::{MaterializedCatalog, MultiVersionAuthentication};
 
 impl MaterializedCatalog {
-	/// Find an authentication by id at a specific version
 	pub fn find_authentication_at(&self, id: AuthenticationId, version: CommitVersion) -> Option<Authentication> {
 		self.authentications.get(&id).and_then(|entry| {
 			let multi = entry.value();
@@ -18,7 +17,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find an authentication by (identity, method) at a specific version
 	pub fn find_authentication_by_identity_and_method_at(
 		&self,
 		identity: IdentityId,
@@ -31,7 +29,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find an authentication by id (returns latest version)
 	pub fn find_authentication(&self, id: AuthenticationId) -> Option<Authentication> {
 		self.authentications.get(&id).and_then(|entry| {
 			let multi = entry.value();
@@ -39,7 +36,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// List authentications filtered by method at a specific version
 	pub fn list_authentications_by_method_at(&self, method: &str, version: CommitVersion) -> Vec<Authentication> {
 		self.authentications
 			.iter()

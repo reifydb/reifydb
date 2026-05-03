@@ -138,7 +138,6 @@ pub(crate) fn update_ringbuffer(
 	Ok(update_ringbuffer_result(namespace.name(), &ringbuffer.name, updated_count))
 }
 
-/// Input columns + an index over them by name.
 struct ColumnView<'a> {
 	columns: &'a Columns,
 	column_map: &'a HashMap<&'a str, usize>,

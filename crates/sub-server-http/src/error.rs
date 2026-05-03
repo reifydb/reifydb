@@ -13,12 +13,10 @@ use reifydb_type::error::Diagnostic;
 use serde::Serialize;
 use tracing::{debug, error};
 
-/// JSON error response body.
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
-	/// Human-readable error message.
 	pub error: String,
-	/// Machine-readable error code.
+
 	pub code: String,
 }
 
@@ -31,29 +29,25 @@ impl ErrorResponse {
 	}
 }
 
-/// JSON diagnostic error response body (matches WS format).
 #[derive(Debug, Serialize)]
 pub struct DiagnosticResponse {
-	/// Full diagnostic information.
 	pub diagnostic: Diagnostic,
 }
 
-/// Application error type that converts to HTTP responses.
 #[derive(Debug)]
 pub enum AppError {
-	/// Authentication error.
 	Auth(AuthError),
-	/// Query/command execution error.
+
 	Execute(ExecuteError),
-	/// Request parsing error.
+
 	BadRequest(String),
-	/// Invalid parameter error.
+
 	InvalidParams(String),
-	/// Resource not found (404).
+
 	NotFound(String),
-	/// HTTP method not allowed for this resource (405).
+
 	MethodNotAllowed(String),
-	/// Internal server error.
+
 	Internal(String),
 }
 
@@ -87,7 +81,6 @@ impl error::Error for AppError {}
 
 impl IntoResponse for AppError {
 	fn into_response(self) -> Response {
-		// Handle engine errors specially - they have full diagnostic info
 		if let AppError::Execute(ExecuteError::Engine {
 			diagnostic,
 			rql,
@@ -145,7 +138,6 @@ impl IntoResponse for AppError {
 			AppError::Execute(ExecuteError::Engine {
 				..
 			}) => {
-				// Already handled above
 				unreachable!()
 			}
 			AppError::BadRequest(msg) => {

@@ -69,10 +69,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
 						let substr = substr_container.get(i).unwrap();
 						let index = s
 							.find(substr)
-							.map(|pos| {
-								// Convert byte position to character position
-								s[..pos].chars().count() as i32
-							})
+							.map(|pos| s[..pos].chars().count() as i32)
 							.unwrap_or(-1);
 						result_data.push(index);
 						result_bitvec.push(true);

@@ -15,11 +15,10 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_take(&mut self) -> Result<AstTake<'bump>> {
 		let token = self.consume_keyword(Keyword::Take)?;
 
-		// Check if braces are used (optional)
 		let has_braces = !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly);
 
 		if has_braces {
-			self.advance()?; // consume opening brace
+			self.advance()?;
 		}
 
 		let take = self.parse_node(Precedence::None)?;

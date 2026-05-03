@@ -60,48 +60,32 @@ macro_rules! impl_to_temporal {
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = container.get(idx).unwrap();
-					// Use internal fragment for parsing - positions will be replaced with actual
-					// source positions
+
 					let temp_fragment = Fragment::internal(val);
 
 					let parsed = $parse_fn(temp_fragment).map_err(|mut e| {
-						// Get the original fragment for error reporting
 						let proper_fragment = lazy_fragment.fragment();
 
-						// Handle fragment replacement based on the context
-						// For Internal fragments (from parsing), we need to adjust position
 						if let Fragment::Internal {
 							text: error_text,
 						} = &e.0.fragment
 						{
-							// Check if we're dealing with a string literal (Statement
-							// fragment) that contains position information we can use
-							// for sub-fragments
 							if let Fragment::Statement {
 								text: source_text,
 								..
 							} = &proper_fragment
 							{
-								// For string literals, if the source text exactly
-								// matches the value being parsed, or contains it
-								// with quotes, it's a string literal
 								if &**source_text == val
 									|| source_text.contains(&format!("\"{}\"", val))
 								{
-									// This is a string literal - adjust position
-									// within the string
 									let offset =
 										val.find(&**error_text).unwrap_or(0);
 									e.0.fragment = proper_fragment
 										.sub_fragment(offset, error_text.len());
 								} else {
-									// This is a column reference - use the column
-									// name
 									e.0.fragment = proper_fragment.clone();
 								}
 							} else {
-								// Not a Statement fragment - use as is (for column
-								// references)
 								e.0.fragment = proper_fragment.clone();
 							}
 						}

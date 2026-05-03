@@ -71,11 +71,6 @@ pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> OperatorDescriptorFFI 
 	}
 }
 
-/// Create an operator instance from FFI parameters
-///
-/// # Safety
-/// - config_ptr must be valid for config_len bytes or null
-/// - The returned pointer must be freed by calling the destroy function
 pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,
@@ -110,18 +105,6 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 	Box::into_raw(wrapper) as *mut c_void
 }
 
-/// Returns the operator magic number
-///
-/// FFI operator libraries must export this function as `ffi_operator_magic`
-/// to be recognized as valid operators by the loader.
-///
-/// # Example
-/// ```ignore
-/// #[unsafe(no_mangle)]
-/// pub extern "C" fn ffi_operator_magic() -> u32 {
-///     reifydb_flow_operator_sdk::ffi::exports::operator_magic()
-/// }
-/// ```
 pub extern "C" fn operator_magic() -> u32 {
 	OPERATOR_MAGIC
 }

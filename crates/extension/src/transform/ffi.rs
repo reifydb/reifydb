@@ -27,25 +27,18 @@ use crate::{
 	procedure::ffi_callbacks::{logging, memory},
 };
 
-// One scratch arena per OS thread, shared across all NativeTransformFFI
-// instances active on the same thread. Reset (`Arena::clear`) at the top of
-// every `apply` so scaffolding memory is bounded to one call's worth.
 thread_local! {
 	static FFI_TRANSFORM_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
 }
 
-/// FFI transform that wraps an external transform implementation.
 pub struct NativeTransformFFI {
 	#[allow(dead_code)]
 	descriptor: TransformDescriptorFFI,
 	vtable: TransformVTableFFI,
 	instance: *mut c_void,
-	/// Per-instance output collector. The guest builds output columns via
-	/// `BuilderCallbacks` (acquire/data_ptr/commit/emit_diff); after the
-	/// vtable call returns the host drains a single Insert-shaped diff.
+
 	builder_registry: BuilderRegistry,
-	/// Pre-built FFI context. `operator_id` and `callbacks` are written
-	/// once in `new`. `clock_now_nanos` is refreshed per call.
+
 	cached_ctx: UnsafeCell<ContextFFI>,
 }
 
@@ -75,8 +68,7 @@ impl NativeTransformFFI {
 }
 
 // SAFETY: NativeTransformFFI is only accessed from a single context at a time.
-// The raw pointer, builder registry (Mutex-guarded), and cached ContextFFI
-// (UnsafeCell, single-actor invariant) are not shared across threads.
+
 unsafe impl Send for NativeTransformFFI {}
 unsafe impl Sync for NativeTransformFFI {}
 
@@ -91,15 +83,11 @@ impl Drop for NativeTransformFFI {
 impl Transform for NativeTransformFFI {
 	#[instrument(name = "transform::ffi::apply", level = "debug", skip_all)]
 	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
-		// Reset the per-thread arena before marshaling input scaffolding.
 		// SAFETY: single-threaded per call; no live pointers from a prior
-		// call survive past `apply`'s return.
+
 		FFI_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 		let ffi_input = FFI_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&input) });
 
-		// Refresh the clock from the runtime context so system-column
-		// stamping inside the builder callbacks honours mock clocks
-		// during tests.
 		let ffi_ctx_ptr = self.cached_ctx.get();
 		unsafe {
 			(*ffi_ctx_ptr).clock_now_nanos = ctx.runtime_context.clock.now_nanos();
@@ -121,9 +109,6 @@ impl Transform for NativeTransformFFI {
 	}
 }
 
-/// Host callbacks for non-flow FFI extension points (transforms, procedures).
-/// Reuses the real memory/log/builder callbacks; state, store, catalog, rql
-/// are stubbed because there's no flow `FlowTransaction` to read from.
 fn pure_host_callbacks() -> HostCallbacks {
 	HostCallbacks {
 		memory: MemoryCallbacks {

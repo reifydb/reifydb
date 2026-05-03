@@ -23,15 +23,13 @@ use crate::value::{
 	uuid::{Uuid4, Uuid7},
 };
 
-/// Error type for Value extraction failures
 #[derive(Debug, Clone, PartialEq)]
 pub enum FromValueError {
-	/// The Value variant doesn't match the expected type
 	TypeMismatch {
 		expected: Type,
 		found: Type,
 	},
-	/// Numeric value out of range for target type
+
 	OutOfRange {
 		value: String,
 		target_type: &'static str,
@@ -59,24 +57,9 @@ impl Display for FromValueError {
 
 impl error::Error for FromValueError {}
 
-/// Trait for strict extraction of Rust types from Value.
-///
-/// This is the inverse of `IntoValue`. Each implementation only accepts
-/// the exact matching Value variant (e.g., `i64` only accepts `Value::Int8`).
-///
-/// For Undefined values or type mismatches, use `from_value()` which returns
-/// `Option<Self>` for convenience.
 pub trait TryFromValue: Sized {
-	/// Attempt to extract a value of this type from a Value.
-	///
-	/// Returns an error if the Value variant doesn't match the expected type.
-	/// Note: This does NOT handle Undefined - use `from_value()` for that.
 	fn try_from_value(value: &Value) -> Result<Self, FromValueError>;
 
-	/// Extract from Value, returning None for Undefined or type mismatch.
-	///
-	/// This is the recommended method for most use cases as it handles
-	/// Undefined values gracefully.
 	fn from_value(value: &Value) -> Option<Self> {
 		match value {
 			Value::None {
@@ -87,17 +70,9 @@ pub trait TryFromValue: Sized {
 	}
 }
 
-/// Trait for widening extraction of Rust types from Value.
-///
-/// Unlike `TryFromValue`, this allows compatible type conversions:
-/// - `i64` can be extracted from `Int1`, `Int2`, `Int4`, or `Int8`
-/// - `u64` can be extracted from `Uint1`, `Uint2`, `Uint4`, or `Uint8`
-/// - `f64` can be extracted from `Float4`, `Float8`, or any integer type
 pub trait TryFromValueCoerce: Sized {
-	/// Attempt to extract with widening conversion.
 	fn try_from_value_coerce(value: &Value) -> Result<Self, FromValueError>;
 
-	/// Extract with coercion, returning None for Undefined or incompatible types.
 	fn from_value_coerce(value: &Value) -> Option<Self> {
 		match value {
 			Value::None {
@@ -476,7 +451,7 @@ impl TryFromValueCoerce for u64 {
 			Value::Uint2(v) => Ok(*v as u64),
 			Value::Uint4(v) => Ok(*v as u64),
 			Value::Uint8(v) => Ok(*v),
-			// Also allow signed integers if non-negative
+
 			Value::Int1(v) if *v >= 0 => Ok(*v as u64),
 			Value::Int2(v) if *v >= 0 => Ok(*v as u64),
 			Value::Int4(v) if *v >= 0 => Ok(*v as u64),
@@ -526,7 +501,7 @@ impl TryFromValueCoerce for f64 {
 		match value {
 			Value::Float4(v) => Ok(v.value() as f64),
 			Value::Float8(v) => Ok(v.value()),
-			// Allow integer to float conversion (may lose precision for large values)
+
 			Value::Int1(v) => Ok(*v as f64),
 			Value::Int2(v) => Ok(*v as f64),
 			Value::Int4(v) => Ok(*v as f64),

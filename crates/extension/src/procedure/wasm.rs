@@ -13,13 +13,6 @@ fn ext_err(err: ExtensionError) -> RoutineError {
 	RoutineError::Wrapped(Box::new(Error::from(FFIError::Other(err.to_string()))))
 }
 
-/// WASM procedure that loads and executes a `.wasm` module.
-///
-/// Each WASM module must export:
-/// - `alloc(size: i32) -> i32` - allocate `size` bytes, return pointer
-/// - `dealloc(ptr: i32, size: i32)` - free memory
-/// - `procedure(params_ptr: i32, params_len: i32) -> i32` - pointer to output (first 4 bytes at output pointer = output
-///   length as LE u32)
 pub struct WasmProcedure {
 	info: RoutineInfo,
 	wasm_bytes: Vec<u8>,
@@ -40,7 +33,7 @@ impl WasmProcedure {
 }
 
 // SAFETY: WasmProcedure only holds inert data (name + bytes).
-// A fresh Engine is created per invocation, so no shared mutable state.
+
 unsafe impl Send for WasmProcedure {}
 unsafe impl Sync for WasmProcedure {}
 

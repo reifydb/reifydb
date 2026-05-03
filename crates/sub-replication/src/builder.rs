@@ -3,7 +3,6 @@
 
 use std::time::Duration;
 
-/// Configurator for a primary replication instance that streams CDC to replicas.
 pub struct PrimaryConfigurator {
 	bind_addr: Option<String>,
 	poll_interval: Duration,
@@ -55,7 +54,6 @@ impl From<PrimaryConfigurator> for ReplicationConfig {
 	}
 }
 
-/// Configurator for a replica instance that connects to a primary and applies CDC.
 pub struct ReplicaConfigurator {
 	primary_addr: Option<String>,
 	batch_size: u64,
@@ -107,34 +105,23 @@ impl From<ReplicaConfigurator> for ReplicationConfig {
 	}
 }
 
-/// Immutable configuration for a primary replication instance.
 pub struct PrimaryConfig {
 	pub bind_addr: Option<String>,
 	pub poll_interval: Duration,
 	pub batch_size: u64,
 }
 
-/// Immutable configuration for a replica instance.
 pub struct ReplicaConfig {
 	pub primary_addr: Option<String>,
 	pub batch_size: u64,
 	pub reconnect_interval: Duration,
 }
 
-/// Resolved replication configuration - either primary or replica.
 pub enum ReplicationConfig {
 	Primary(PrimaryConfig),
 	Replica(ReplicaConfig),
 }
 
-/// Entry-point configurator for replication.
-///
-/// An instance is either a primary or a replica - never both.
-///
-/// ```ignore
-/// .with_replication(|c| c.primary().bind_addr("127.0.0.1:0"))
-/// .with_replication(|c| c.replica().primary_addr("http://..."))
-/// ```
 pub struct ReplicationConfigurator;
 
 impl ReplicationConfigurator {

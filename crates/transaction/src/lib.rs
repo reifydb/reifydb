@@ -28,8 +28,6 @@ pub mod multi;
 pub mod single;
 pub mod transaction;
 
-/// A unique identifier for a transaction using UUIDv7 for time-ordered
-/// uniqueness
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct TransactionId(pub(crate) Uuid7);
@@ -43,12 +41,6 @@ impl Deref for TransactionId {
 }
 
 impl TransactionId {
-	/// Generate a new transaction ID using the infrastructure RNG stream.
-	///
-	/// Uses `rng.infra_bytes_10()` instead of `rng.bytes_10()` so that
-	/// transaction ID generation does not consume from the primary RNG.
-	/// This ensures deterministic test output across runners that create
-	/// different numbers of internal transactions (e.g. gRPC vs embedded).
 	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
 		let millis = clock.now_millis();
 		let random_bytes = rng.infra_bytes_10();

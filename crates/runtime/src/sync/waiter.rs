@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use crate::sync::{condvar::Condvar, mutex::Mutex};
 
-/// Handle for waiting on a specific version to complete
 #[derive(Debug)]
 pub struct WaiterHandle {
 	notified: Mutex<bool>,

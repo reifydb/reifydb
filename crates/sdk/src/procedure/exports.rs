@@ -34,11 +34,6 @@ pub fn create_procedure_descriptor<T: FFIProcedureWithMetadata>() -> ProcedureDe
 	}
 }
 
-/// Create a procedure instance from FFI parameters
-///
-/// # Safety
-/// - config_ptr must be valid for config_len bytes or null
-/// - The returned pointer must be freed by calling the destroy function
 pub unsafe extern "C" fn create_procedure_instance<T: FFIProcedureWithMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,
@@ -68,10 +63,6 @@ pub unsafe extern "C" fn create_procedure_instance<T: FFIProcedureWithMetadata>(
 	Box::into_raw(wrapper) as *mut c_void
 }
 
-/// Returns the procedure magic number
-///
-/// FFI procedure libraries must export this function as `ffi_procedure_magic`
-/// to be recognized as valid procedures by the loader.
 pub extern "C" fn procedure_magic() -> u32 {
 	PROCEDURE_MAGIC
 }

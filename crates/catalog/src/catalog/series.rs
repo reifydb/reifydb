@@ -140,7 +140,6 @@ impl Catalog {
 		Ok(series)
 	}
 
-	/// Create a series with a specific ID and column IDs. Used for bootstrapping system shapes.
 	pub fn create_series_with_id(
 		&self,
 		txn: &mut AdminTransaction,

@@ -28,23 +28,14 @@ use vec::IntoIter;
 
 use super::FlowTransaction;
 
-/// Determines which query snapshot to read from inside a FlowTransaction.
 pub(crate) enum ReadFrom {
-	/// Snapshots at the latest committed version. Use for keys whose values
-	/// are produced by flow processing and must reflect writes committed by
-	/// previous CDC batches (operator state, ringbuffer metadata, series metadata).
 	StateQuery,
-	/// Snapshots at the CDC event version. Use for keys whose values are the
-	/// source data being consumed - the original table rows that triggered
-	/// the CDC event, plus catalog/schema metadata the flow reads but never writes.
+
 	Query,
 }
 
 impl FlowTransaction {
-	/// Get a value by key, checking pending writes first, then (if transactional) base_pending, then querying
-	/// multi-version store
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		// 1. Check flow-generated pending writes
 		let inner = self.inner();
 		if inner.pending.is_removed(key) {
 			return Ok(None);
@@ -53,7 +44,6 @@ impl FlowTransaction {
 			return Ok(Some(value.clone()));
 		}
 
-		// 2. Check transaction's base writes (only for Transactional variant)
 		if let Self::Transactional {
 			base_pending,
 			..
@@ -67,7 +57,6 @@ impl FlowTransaction {
 			}
 		}
 
-		// 3. Ephemeral: state keys from HashMap, source keys from query
 		if let Self::Ephemeral {
 			inner,
 			state,
@@ -82,7 +71,6 @@ impl FlowTransaction {
 			};
 		}
 
-		// 4. Fall through to committed storage
 		let inner = self.inner_mut();
 		let query = match Self::read_from(key) {
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
@@ -94,7 +82,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Check if a key exists
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		let inner = self.inner();
 		if inner.pending.is_removed(key) {
@@ -117,7 +104,6 @@ impl FlowTransaction {
 			}
 		}
 
-		// Ephemeral: state keys from HashMap, source keys from query
 		if let Self::Ephemeral {
 			inner,
 			state,
@@ -137,7 +123,6 @@ impl FlowTransaction {
 		query.contains_key(key)
 	}
 
-	/// Prefix scan
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		let range = EncodedKeyRange::prefix(prefix);
 		let items = self.range(range, 1024).collect::<Result<Vec<_>>>()?;
@@ -151,23 +136,13 @@ impl FlowTransaction {
 		match Key::kind(key) {
 			None => ReadFrom::Query,
 			Some(kind) => match kind {
-				// Flow-produced state - read from state_query so subsequent
-				// CDC batches see the prior batch's committed writes.
 				KeyKind::FlowNodeState => ReadFrom::StateQuery,
 				KeyKind::FlowNodeInternalState => ReadFrom::StateQuery,
 				KeyKind::RingBufferMetadata => ReadFrom::StateQuery,
 				KeyKind::SeriesMetadata => ReadFrom::StateQuery,
 
-				// Row keys are used for both source tables and flow-produced views.
-				// Sink operators write view/ringbuffer rows but never read them
-				// back via get() - they only read metadata and operator state.
-				// Source table rows must come from query (CDC event version).
-				// If a future operator needs to read back its own row output
-				// across CDC batches, this will need finer-grained routing
-				// based on the ShapeId embedded in the RowKey.
 				KeyKind::Row => ReadFrom::Query,
 
-				// Source data & catalog metadata - read from query
 				KeyKind::Namespace => ReadFrom::Query,
 				KeyKind::Table => ReadFrom::Query,
 				KeyKind::NamespaceTable => ReadFrom::Query,
@@ -240,12 +215,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Create an iterator for forward range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The iterator yields individual entries
-	/// and maintains cursor state internally. Pending writes are merged with
-	/// committed storage data.
 	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
@@ -280,7 +249,6 @@ impl FlowTransaction {
 				base_pending,
 				..
 			} => {
-				// Collect base layer entries in range, then let flow pending shadow base for same keys
 				let mut merged: BTreeMap<EncodedKey, PendingWrite> = base_pending
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
@@ -306,7 +274,6 @@ impl FlowTransaction {
 				inner,
 				state,
 			} => {
-				// Merge pending writes with ephemeral state or query
 				let is_state_range = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						matches!(Self::read_from(start), ReadFrom::StateQuery)
@@ -322,7 +289,6 @@ impl FlowTransaction {
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
 				if is_state_range {
-					// State keys: build iterator from state HashMap
 					let state_items: Vec<Result<MultiVersionRow>> = state
 						.iter()
 						.filter(|(k, _)| range.contains(k))
@@ -335,7 +301,7 @@ impl FlowTransaction {
 						})
 						.collect();
 					let v = inner.version;
-					// Sort state items by key for merge iterator
+
 					let mut sorted_items = state_items;
 					sorted_items.sort_by(|a, b| match (a, b) {
 						(Ok(a), Ok(b)) => a.key.cmp(&b.key),
@@ -343,7 +309,6 @@ impl FlowTransaction {
 					});
 					Box::new(flow_merge_pending_iterator(pending_vec, sorted_items.into_iter(), v))
 				} else {
-					// Source data: delegate to query
 					let storage_iter = inner.query.range(range, batch_size);
 					let v = inner.version;
 					Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
@@ -352,11 +317,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Create an iterator for reverse range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The iterator yields individual entries
-	/// in reverse key order and maintains cursor state internally.
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
@@ -431,7 +391,6 @@ impl FlowTransaction {
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
 				if is_state_range {
-					// State keys: build reverse iterator from state HashMap
 					let mut state_items: Vec<Result<MultiVersionRow>> = state
 						.iter()
 						.filter(|(k, _)| range.contains(k))
@@ -444,7 +403,7 @@ impl FlowTransaction {
 						})
 						.collect();
 					let v = inner.version;
-					// Sort in reverse order for reverse merge iterator
+
 					state_items.sort_by(|a, b| match (a, b) {
 						(Ok(a), Ok(b)) => b.key.cmp(&a.key),
 						_ => Ordering::Equal,
@@ -455,7 +414,6 @@ impl FlowTransaction {
 						v,
 					))
 				} else {
-					// Source data: delegate to query
 					let storage_iter = inner.query.range_rev(range, batch_size);
 					let v = inner.version;
 					Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
@@ -465,7 +423,6 @@ impl FlowTransaction {
 	}
 }
 
-/// Iterator that merges pending writes with storage data (forward order).
 struct FlowMergePendingIterator<I>
 where
 	I: Iterator<Item = Result<MultiVersionRow>>,
@@ -490,7 +447,6 @@ where
 					let storage_val = match storage_result {
 						Ok(v) => v,
 						Err(_) => {
-							// Consume the error from the iterator and propagate it
 							let err = self.storage_iter.next().unwrap();
 							return Some(err);
 						}
@@ -498,7 +454,6 @@ where
 					let cmp = pending_key.cmp(&storage_val.key);
 
 					if matches!(cmp, Ordering::Less) {
-						// Pending key comes first
 						let (key, value) = self.pending_iter.next().unwrap();
 						if let PendingWrite::Set(row) = value {
 							return Some(Ok(MultiVersionRow {
@@ -507,11 +462,9 @@ where
 								version: self.version,
 							}));
 						}
-						// PendingWrite::Remove = skip (tombstone), continue loop
 					} else if matches!(cmp, Ordering::Equal) {
-						// Same key - pending shadows storage
 						let (key, value) = self.pending_iter.next().unwrap();
-						self.storage_iter.next(); // Consume storage entry
+						self.storage_iter.next();
 						if let PendingWrite::Set(row) = value {
 							return Some(Ok(MultiVersionRow {
 								key,
@@ -519,14 +472,11 @@ where
 								version: self.version,
 							}));
 						}
-						// PendingWrite::Remove = skip (tombstone), continue loop
 					} else {
-						// Storage key comes first
 						return Some(self.storage_iter.next().unwrap());
 					}
 				}
 				(Some(_), None) => {
-					// Only pending left
 					let (key, value) = self.pending_iter.next().unwrap();
 					if let PendingWrite::Set(row) = value {
 						return Some(Ok(MultiVersionRow {
@@ -535,10 +485,8 @@ where
 							version: self.version,
 						}));
 					}
-					// PendingWrite::Remove = skip (tombstone), continue loop
 				}
 				(None, Some(_)) => {
-					// Only storage left
 					return Some(self.storage_iter.next().unwrap());
 				}
 				(None, None) => return None,
@@ -547,7 +495,6 @@ where
 	}
 }
 
-/// Create an iterator that merges pending writes with storage data (forward order).
 fn flow_merge_pending_iterator<I>(
 	pending: Vec<(EncodedKey, PendingWrite)>,
 	storage_iter: I,
@@ -563,7 +510,6 @@ where
 	}
 }
 
-/// Iterator that merges pending writes with storage data (reverse order).
 struct FlowMergePendingIteratorRev<I>
 where
 	I: Iterator<Item = Result<MultiVersionRow>>,
@@ -588,7 +534,6 @@ where
 					let storage_val = match storage_result {
 						Ok(v) => v,
 						Err(_) => {
-							// Consume the error from the iterator and propagate it
 							let err = self.storage_iter.next().unwrap();
 							return Some(err);
 						}
@@ -596,7 +541,6 @@ where
 					let cmp = pending_key.cmp(&storage_val.key);
 
 					if matches!(cmp, Ordering::Greater) {
-						// Reverse: Pending key is larger (comes first in reverse)
 						let (key, value) = self.pending_iter.next().unwrap();
 						if let PendingWrite::Set(row) = value {
 							return Some(Ok(MultiVersionRow {
@@ -605,11 +549,9 @@ where
 								version: self.version,
 							}));
 						}
-						// PendingWrite::Remove = skip (tombstone), continue loop
 					} else if matches!(cmp, Ordering::Equal) {
-						// Same key - pending shadows storage
 						let (key, value) = self.pending_iter.next().unwrap();
-						self.storage_iter.next(); // Consume storage entry
+						self.storage_iter.next();
 						if let PendingWrite::Set(row) = value {
 							return Some(Ok(MultiVersionRow {
 								key,
@@ -617,14 +559,11 @@ where
 								version: self.version,
 							}));
 						}
-						// PendingWrite::Remove = skip (tombstone), continue loop
 					} else {
-						// Storage key comes first in reverse order
 						return Some(self.storage_iter.next().unwrap());
 					}
 				}
 				(Some(_), None) => {
-					// Only pending left
 					let (key, value) = self.pending_iter.next().unwrap();
 					if let PendingWrite::Set(row) = value {
 						return Some(Ok(MultiVersionRow {
@@ -633,10 +572,8 @@ where
 							version: self.version,
 						}));
 					}
-					// PendingWrite::Remove = skip (tombstone), continue loop
 				}
 				(None, Some(_)) => {
-					// Only storage left
 					return Some(self.storage_iter.next().unwrap());
 				}
 				(None, None) => return None,
@@ -645,7 +582,6 @@ where
 	}
 }
 
-/// Create an iterator that merges pending writes with storage data (reverse order).
 fn flow_merge_pending_iterator_rev<I>(
 	pending: Vec<(EncodedKey, PendingWrite)>,
 	storage_iter: I,

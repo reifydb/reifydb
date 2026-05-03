@@ -413,10 +413,6 @@ fn get_as_f64(data: &ColumnBuffer, i: usize) -> f64 {
 }
 
 fn promote_two(left: Type, right: Type) -> Type {
-	// Known-side-wins symmetric: (X, Any) and (Any, X) yield X when X is numeric;
-	// (Any, Any) yields Any. Runs BEFORE canonicalization so `power(Int, none)`
-	// preserves `Int` rather than falling into the Int→Int16 overflow-guard
-	// branch (no value exists to overflow when the exponent is null).
 	if matches!(left, Type::Any) && matches!(right, Type::Any) {
 		return Type::Any;
 	}
@@ -794,7 +790,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 					scale: *scale,
 				}
 			}
-			// Mixed-type case: promote both columns to a common type and recurse
+
 			_ => {
 				let base_type = base_data.get_type();
 				let exp_type = exp_data.get_type();

@@ -145,7 +145,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 				tag,
 			})
 		}
-		// Default to table for backwards compat during transition (storage_kind=0 from old data)
+
 		_ => View::Table(TableView {
 			id,
 			name,

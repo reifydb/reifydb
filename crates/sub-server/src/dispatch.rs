@@ -23,14 +23,6 @@ mod native {
 		state::AppState,
 	};
 
-	/// Dispatch a query/command/admin operation through the actor with interceptors.
-	///
-	/// This is the single entry point for all native transport handlers.
-	/// The caller is responsible only for:
-	/// 1. Extracting identity from transport-specific auth
-	/// 2. Building `RequestMetadata` from transport-specific headers
-	/// 3. Parsing params from transport-specific wire format
-	/// 4. Converting the result into transport-specific response format
 	#[instrument(name = "dispatch", level = "debug", skip_all, fields(op = ?ctx.operation))]
 	pub async fn dispatch(
 		state: &AppState,
@@ -44,10 +36,6 @@ mod native {
 		Ok((frames, metrics))
 	}
 
-	/// Dispatch a subscribe operation through the actor with interceptors.
-	///
-	/// Separate from `dispatch()` because Subscribe uses `Reply<ServerSubscribeResponse>`
-	/// rather than `Reply<ServerResponse>`.
 	#[instrument(name = "dispatch_subscribe", level = "debug", skip_all, fields(op = ?ctx.operation))]
 	pub async fn dispatch_subscribe(
 		state: &AppState,

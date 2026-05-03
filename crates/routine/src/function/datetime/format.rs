@@ -24,7 +24,6 @@ impl DateTimeFormat {
 	}
 }
 
-/// Compute day of year from year/month/day
 fn compute_day_of_year(year: i32, month: u32, day: u32) -> u32 {
 	let mut doy = 0u32;
 	for m in 1..month {

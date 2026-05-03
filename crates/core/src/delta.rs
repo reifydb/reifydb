@@ -11,22 +11,16 @@ pub enum Delta {
 		key: EncodedKey,
 		row: EncodedRow,
 	},
-	/// Unset an entry, preserving the deleted values.
-	/// Symmetric with Set - use when the deleted data matters (e.g., row data, CDC).
+
 	Unset {
 		key: EncodedKey,
 		row: EncodedRow,
 	},
-	/// Remove an entry without preserving the deleted values.
-	/// Use when only the key matters (e.g., index entries, catalog metadata).
+
 	Remove {
 		key: EncodedKey,
 	},
-	/// Drop operation - completely erases historical versioned entries from storage.
-	/// Unlike Remove (which writes a tombstone and generates CDC), Drop:
-	/// - Deletes existing entries without writing anything new
-	/// - Never generates CDC events
-	/// - Only keeps the most recent version (aggressive cleanup)
+
 	Drop {
 		key: EncodedKey,
 	},
@@ -45,7 +39,6 @@ impl Ord for Delta {
 }
 
 impl Delta {
-	/// Returns the key
 	pub fn key(&self) -> &EncodedKey {
 		match self {
 			Self::Set {
@@ -66,7 +59,6 @@ impl Delta {
 		}
 	}
 
-	/// Returns the encoded row, if None, it means the entry is marked as remove or drop.
 	pub fn row(&self) -> Option<&EncodedRow> {
 		match self {
 			Self::Set {

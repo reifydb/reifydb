@@ -17,7 +17,6 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `CREATE AUTHENTICATION FOR user { key: value; ... }`
 	pub(crate) fn parse_create_authentication(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::For)?;
 		let user_token = self.consume(TokenKind::Identifier)?;
@@ -30,14 +29,12 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse `DROP AUTHENTICATION [IF EXISTS] FOR user { method: <method> }`
 	pub(crate) fn parse_drop_authentication(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 		self.consume_keyword(Keyword::For)?;
 		let user_token = self.consume(TokenKind::Identifier)?;
 		let entries = self.parse_authentication_body()?;
 
-		// Extract method from entries
 		let method = entries
 			.iter()
 			.find(|e| e.key.text() == "method")
@@ -52,7 +49,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse `{ key: value; key: value; ... }`
 	fn parse_authentication_body(&mut self) -> Result<Vec<AstAuthenticationEntry<'bump>>> {
 		self.consume_operator(Operator::OpenCurly)?;
 		self.skip_new_line()?;
@@ -66,7 +62,6 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// key is an identifier or keyword-as-ident
 			let key_token = self.consume_name()?;
 			self.consume_operator(Operator::Colon)?;
 			let value = self.parse_node(Precedence::None)?;
@@ -76,7 +71,6 @@ impl<'bump> Parser<'bump> {
 				value,
 			});
 
-			// Skip semicolons and newlines between entries
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 			self.skip_new_line()?;
 		}

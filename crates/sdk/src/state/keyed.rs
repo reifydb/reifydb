@@ -10,20 +10,12 @@ use reifydb_type::value::{Value, r#type::Type};
 use super::{FFIRawStatefulOperator, utils};
 use crate::{error::Result, operator::context::OperatorContext};
 
-/// Operator with multiple keyed state values (for aggregations, grouping, etc.)
-///
-/// This trait provides a higher-level interface for operators that need to maintain
-/// separate state values for different keys. This is commonly used for group-by operations
-/// where each group needs its own aggregate state.
-///
-/// Keys are encoded using order-preserving encoding to maintain sort order.
 pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 	fn shape(&self) -> RowShape;
 
 	fn key_types(&self) -> &[Type];
 
 	fn encode_key(&self, key_values: &[Value]) -> EncodedKey {
-		// Use keycode encoding for order-preserving keys
 		let mut serializer = KeySerializer::new();
 
 		for value in key_values.iter() {

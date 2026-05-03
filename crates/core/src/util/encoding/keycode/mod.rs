@@ -26,7 +26,6 @@ use reifydb_type::{
 
 use crate::util::encoding::keycode::{deserialize::Deserializer, serialize::Serializer};
 
-/// Encode a bool value for keycode (true=0x00, false=0x01 for descending order)
 pub fn encode_bool(value: bool) -> u8 {
 	if value {
 		0x00
@@ -35,12 +34,11 @@ pub fn encode_bool(value: bool) -> u8 {
 	}
 }
 
-/// Encode an f32 value for keycode
 pub fn encode_f32(value: f32) -> [u8; 4] {
 	let mut bytes = value.to_be_bytes();
 	match value.is_sign_negative() {
-		false => bytes[0] ^= 1 << 7,                     // positive, flip sign bit
-		true => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
+		false => bytes[0] ^= 1 << 7,
+		true => bytes.iter_mut().for_each(|b| *b = !*b),
 	}
 	for b in bytes.iter_mut() {
 		*b = !*b;
@@ -48,12 +46,11 @@ pub fn encode_f32(value: f32) -> [u8; 4] {
 	bytes
 }
 
-/// Encode an f64 value for keycode
 pub fn encode_f64(value: f64) -> [u8; 8] {
 	let mut bytes = value.to_be_bytes();
 	match value.is_sign_negative() {
-		false => bytes[0] ^= 1 << 7,                     // positive, flip sign bit
-		true => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
+		false => bytes[0] ^= 1 << 7,
+		true => bytes.iter_mut().for_each(|b| *b = !*b),
 	}
 	for b in bytes.iter_mut() {
 		*b = !*b;
@@ -61,62 +58,55 @@ pub fn encode_f64(value: f64) -> [u8; 8] {
 	bytes
 }
 
-/// Encode an i8 value for keycode (flip sign bit, then NOT)
 pub fn encode_i8(value: i8) -> [u8; 1] {
 	let mut bytes = value.to_be_bytes();
-	bytes[0] ^= 1 << 7; // flip sign bit
+	bytes[0] ^= 1 << 7;
 	for b in bytes.iter_mut() {
 		*b = !*b;
 	}
 	bytes
 }
 
-/// Encode an i16 value for keycode (flip sign bit, then NOT)
 pub fn encode_i16(value: i16) -> [u8; 2] {
 	let mut bytes = value.to_be_bytes();
-	bytes[0] ^= 1 << 7; // flip sign bit
+	bytes[0] ^= 1 << 7;
 	for b in bytes.iter_mut() {
 		*b = !*b;
 	}
 	bytes
 }
 
-/// Encode an i32 value for keycode (flip sign bit, then NOT)
 pub fn encode_i32(value: i32) -> [u8; 4] {
 	let mut bytes = value.to_be_bytes();
-	bytes[0] ^= 1 << 7; // flip sign bit
+	bytes[0] ^= 1 << 7;
 	for b in bytes.iter_mut() {
 		*b = !*b;
 	}
 	bytes
 }
 
-/// Encode an i64 value for keycode (flip sign bit, then NOT)
 pub fn encode_i64(value: i64) -> [u8; 8] {
 	let mut bytes = value.to_be_bytes();
-	bytes[0] ^= 1 << 7; // flip sign bit
+	bytes[0] ^= 1 << 7;
 	for b in bytes.iter_mut() {
 		*b = !*b;
 	}
 	bytes
 }
 
-/// Encode an i128 value for keycode (flip sign bit, then NOT)
 pub fn encode_i128(value: i128) -> [u8; 16] {
 	let mut bytes = value.to_be_bytes();
-	bytes[0] ^= 1 << 7; // flip sign bit
+	bytes[0] ^= 1 << 7;
 	for b in bytes.iter_mut() {
 		*b = !*b;
 	}
 	bytes
 }
 
-/// Encode a u8 value for keycode (bitwise NOT)
 pub fn encode_u8(value: u8) -> u8 {
 	!value
 }
 
-/// Encode a u16 value for keycode (bitwise NOT of big-endian)
 pub fn encode_u16(value: u16) -> [u8; 2] {
 	let mut bytes = value.to_be_bytes();
 	for b in bytes.iter_mut() {
@@ -125,7 +115,6 @@ pub fn encode_u16(value: u16) -> [u8; 2] {
 	bytes
 }
 
-/// Encode a u32 value for keycode (bitwise NOT of big-endian)
 pub fn encode_u32(value: u32) -> [u8; 4] {
 	let mut bytes = value.to_be_bytes();
 	for b in bytes.iter_mut() {
@@ -134,7 +123,6 @@ pub fn encode_u32(value: u32) -> [u8; 4] {
 	bytes
 }
 
-/// Encode a u64 value for keycode (bitwise NOT of big-endian)
 pub fn encode_u64(value: u64) -> [u8; 8] {
 	let mut bytes = value.to_be_bytes();
 	for b in bytes.iter_mut() {
@@ -143,7 +131,6 @@ pub fn encode_u64(value: u64) -> [u8; 8] {
 	bytes
 }
 
-/// Encode a u128 value for keycode (bitwise NOT of big-endian)
 pub fn encode_u128(value: u128) -> [u8; 16] {
 	let mut bytes = value.to_be_bytes();
 	for b in bytes.iter_mut() {
@@ -152,7 +139,6 @@ pub fn encode_u128(value: u128) -> [u8; 16] {
 	bytes
 }
 
-/// Encode bytes for keycode (escape 0xff, terminate with 0xffff)
 pub fn encode_bytes(bytes: &[u8], output: &mut Vec<u8>) {
 	for &byte in bytes {
 		if byte == 0xff {
@@ -173,17 +159,15 @@ macro_rules! key_prefix {
     };
 }
 
-/// Serializes a key to a binary Keycode representation (Descending order)
 pub fn serialize<T: Serialize>(key: &T) -> Vec<u8> {
 	let mut serializer = Serializer {
 		output: Vec::new(),
 	};
-	// Panic on failure, as this is a problem with the data structure.
+
 	key.serialize(&mut serializer).expect("key must be serializable");
 	serializer.output
 }
 
-/// Deserializes a key from a binary Keycode representation (Descending order)
 pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> Result<T> {
 	let mut deserializer = Deserializer::from_bytes(input);
 	let t = T::deserialize(&mut deserializer)?;

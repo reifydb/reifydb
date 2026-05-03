@@ -12,7 +12,6 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-// Position types for fragments
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct StatementColumn(pub u32);
@@ -49,28 +48,23 @@ impl PartialEq<i32> for StatementLine {
 	}
 }
 
-/// Fragment - owns all its data
 #[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize, Default)]
 pub enum Fragment {
-	/// No fragment information available
 	#[default]
 	None,
 
-	/// Fragment from a RQL statement with position information
 	Statement {
 		text: Arc<str>,
 		line: StatementLine,
 		column: StatementColumn,
 	},
 
-	/// Fragment from internal/runtime code
 	Internal {
 		text: Arc<str>,
 	},
 }
 
 impl Fragment {
-	/// Get the text value of the fragment
 	pub fn text(&self) -> &str {
 		match self {
 			Fragment::None => "",
@@ -85,7 +79,6 @@ impl Fragment {
 		}
 	}
 
-	/// Get line position
 	pub fn line(&self) -> StatementLine {
 		match self {
 			Fragment::Statement {
@@ -96,7 +89,6 @@ impl Fragment {
 		}
 	}
 
-	/// Get column position
 	pub fn column(&self) -> StatementColumn {
 		match self {
 			Fragment::Statement {
@@ -107,8 +99,6 @@ impl Fragment {
 		}
 	}
 
-	/// Get a sub-fragment starting at the given offset with the given
-	/// length
 	pub fn sub_fragment(&self, offset: usize, length: usize) -> Fragment {
 		let text = self.text();
 		let end = cmp::min(offset + length, text.len());
@@ -137,7 +127,6 @@ impl Fragment {
 		}
 	}
 
-	/// Return a new fragment with replaced text, preserving location info.
 	pub fn with_text(&self, text: impl AsRef<str>) -> Fragment {
 		let text = Arc::from(text.as_ref());
 		match self {
@@ -163,24 +152,12 @@ impl Fragment {
 }
 
 impl Fragment {
-	/// Create an internal fragment - useful for creating fragments from
-	/// substrings.
-	///
-	/// Takes `impl AsRef<str>` so `Arc::<str>::from(&str)` allocates the
-	/// inline Arc payload directly, skipping the implicit `String` round
-	/// trip that the previous `impl Into<String>` signature forced.
 	pub fn internal(text: impl AsRef<str>) -> Self {
 		Fragment::Internal {
 			text: Arc::from(text.as_ref()),
 		}
 	}
 
-	/// Create a testing fragment - returns a Statement fragment for test
-	/// purposes.
-	///
-	/// Takes `impl AsRef<str>` so `Arc::<str>::from(&str)` allocates the
-	/// inline Arc payload directly, skipping the implicit `String` round
-	/// trip that the previous `impl Into<String>` signature forced.
 	pub fn testing(text: impl AsRef<str>) -> Self {
 		Fragment::Statement {
 			text: Arc::from(text.as_ref()),
@@ -189,13 +166,10 @@ impl Fragment {
 		}
 	}
 
-	/// Create an empty testing fragment
 	pub fn testing_empty() -> Self {
 		Self::testing("")
 	}
 
-	/// Merge multiple fragments (in any order) into one encompassing
-	/// fragment
 	pub fn merge_all(fragments: impl IntoIterator<Item = Fragment>) -> Fragment {
 		let mut fragments: Vec<Fragment> = fragments.into_iter().collect();
 		assert!(!fragments.is_empty());
@@ -228,7 +202,6 @@ impl Fragment {
 		}
 	}
 
-	/// Compatibility: expose fragment field for Fragment compatibility
 	pub fn fragment(&self) -> &str {
 		self.text()
 	}
@@ -260,7 +233,6 @@ impl Ord for Fragment {
 
 impl Eq for Fragment {}
 
-// Convenience From implementations
 impl From<String> for Fragment {
 	fn from(s: String) -> Self {
 		Fragment::Internal {
@@ -278,7 +250,6 @@ impl From<&str> for Fragment {
 }
 
 impl Fragment {
-	/// Create a statement fragment with position info
 	pub fn statement(text: impl AsRef<str>, line: u32, column: u32) -> Self {
 		Fragment::Statement {
 			text: Arc::from(text.as_ref()),
@@ -287,13 +258,11 @@ impl Fragment {
 		}
 	}
 
-	/// Create a none fragment
 	pub fn none() -> Self {
 		Fragment::None
 	}
 }
 
-// PartialEq implementations for Fragment with str/String
 impl PartialEq<str> for Fragment {
 	fn eq(&self, other: &str) -> bool {
 		self.text() == other
@@ -318,7 +287,6 @@ impl PartialEq<String> for &Fragment {
 	}
 }
 
-/// Trait for types that can lazily provide a Fragment
 pub trait LazyFragment {
 	fn fragment(&self) -> Fragment;
 }

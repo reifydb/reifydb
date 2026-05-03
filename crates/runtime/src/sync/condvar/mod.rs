@@ -20,27 +20,23 @@ cfg_if! {
 	}
 }
 
-/// Result of a timed wait on a condition variable.
 pub struct WaitTimeoutResult {
 	timed_out: bool,
 }
 
 impl WaitTimeoutResult {
-	/// Returns whether the wait timed out.
 	#[inline]
 	pub fn timed_out(&self) -> bool {
 		self.timed_out
 	}
 }
 
-/// A condition variable for coordinating threads.
 #[derive(Debug)]
 pub struct Condvar {
 	inner: CondvarInner,
 }
 
 impl Condvar {
-	/// Creates a new condition variable.
 	#[inline]
 	pub fn new() -> Self {
 		Self {
@@ -48,13 +44,11 @@ impl Condvar {
 		}
 	}
 
-	/// Blocks the current thread until notified.
 	#[inline]
 	pub fn wait<'a, T>(&self, guard: &mut MutexGuard<'a, T>) {
 		self.inner.wait(guard);
 	}
 
-	/// Blocks the current thread until notified or the timeout expires.
 	#[inline]
 	pub fn wait_for<'a, T>(&self, guard: &mut MutexGuard<'a, T>, timeout: Duration) -> WaitTimeoutResult {
 		let timed_out = self.inner.wait_for(guard, timeout);
@@ -63,13 +57,11 @@ impl Condvar {
 		}
 	}
 
-	/// Wakes up one blocked thread.
 	#[inline]
 	pub fn notify_one(&self) {
 		self.inner.notify_one();
 	}
 
-	/// Wakes up all blocked threads.
 	#[inline]
 	pub fn notify_all(&self) {
 		self.inner.notify_all();

@@ -8,11 +8,6 @@ use reifydb_type::fragment::{Fragment, StatementColumn, StatementLine};
 
 pub type BumpBox<'b, T> = bumpalo::boxed::Box<'b, T>;
 
-/// A bump-allocated fragment that avoids heap allocation during the transient pipeline.
-///
-/// Unlike `Fragment` (which uses `Arc<String>`), `BumpFragment` stores `&'bump str`
-/// slices - either zero-copy references into the original input string, or bump-allocated
-/// strings for constructed text. Converts to owned `Fragment` at materialization boundaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BumpFragment<'bump> {
 	#[default]
@@ -112,11 +107,6 @@ impl<'bump> BumpFragment<'bump> {
 	}
 }
 
-/// Deduplicates `Arc<str>` allocations within a single query compilation.
-///
-/// Identifiers like column names, table names, and operators often repeat across
-/// a query (e.g., `SELECT a, b FROM t WHERE a > 5` - `"a"` appears twice).
-/// The interner maps `&str → Arc<str>`, so the second occurrence just bumps a refcount.
 pub(crate) struct FragmentInterner {
 	strings: HashMap<*const str, Arc<str>>,
 }
@@ -129,8 +119,6 @@ impl FragmentInterner {
 	}
 
 	pub fn intern(&mut self, text: &str) -> Arc<str> {
-		// Use the raw pointer as key - within a single compilation, bump-allocated
-		// strings at the same address are the same string.
 		let key = text as *const str;
 		self.strings.entry(key).or_insert_with(|| Arc::from(text)).clone()
 	}

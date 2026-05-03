@@ -24,20 +24,15 @@ pub mod store;
 pub mod system;
 pub mod test_utils;
 pub mod vtable;
-/// Result type alias for this crate
+
 pub type Result<T> = reifydb_type::Result<T>;
 
 pub(crate) struct CatalogStore;
 
-/// Drop a flow by its name within a namespace.
-///
-/// This is useful for cleaning up flows associated with subscriptions,
-/// where the flow name is derived from the subscription ID.
 pub fn drop_flow_by_name(txn: &mut AdminTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
 	CatalogStore::drop_flow_by_name(txn, namespace, name)
 }
 
-/// Create a new token in storage.
 pub fn create_token(
 	txn: &mut AdminTransaction,
 	token: &str,
@@ -48,22 +43,18 @@ pub fn create_token(
 	CatalogStore::create_token(txn, token, identity, expires_at, created_at)
 }
 
-/// Find a token by its value (constant-time comparison).
 pub fn find_token_by_value(txn: &mut Transaction<'_>, value: &str) -> Result<Option<Token>> {
 	CatalogStore::find_token_by_value(txn, value)
 }
 
-/// Drop a single token by ID.
 pub fn drop_token(txn: &mut AdminTransaction, id: TokenId) -> Result<()> {
 	CatalogStore::drop_token(txn, id)
 }
 
-/// Drop all tokens for a given identity.
 pub fn drop_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
 	CatalogStore::drop_tokens_by_identity(txn, identity)
 }
 
-/// Drop all expired tokens.
 pub fn drop_expired_tokens(txn: &mut AdminTransaction, now: DateTime) -> Result<()> {
 	CatalogStore::drop_expired_tokens(txn, now)
 }

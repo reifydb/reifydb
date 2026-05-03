@@ -19,7 +19,6 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-/// A key-value store backed by the stateful storage system
 pub(crate) struct Store {
 	node_id: FlowNodeId,
 	prefix: Vec<u8>,
@@ -27,7 +26,6 @@ pub(crate) struct Store {
 
 impl Store {
 	pub(crate) fn new(node_id: FlowNodeId, side: JoinSide) -> Self {
-		// Use different prefixes for left and right stores
 		let prefix = match side {
 			JoinSide::Left => vec![0x01],
 			JoinSide::Right => vec![0x02],
@@ -40,7 +38,7 @@ impl Store {
 
 	fn make_key(&self, hash: &Hash128) -> EncodedKey {
 		let mut key_bytes = self.prefix.clone();
-		// Hash128 is a tuple struct containing u128
+
 		key_bytes.extend_from_slice(&hash.0.to_le_bytes());
 		EncodedKey::new(key_bytes)
 	}
@@ -49,7 +47,6 @@ impl Store {
 		let key = self.make_key(hash);
 		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
-				// Deserialize JoinSideEntry from the encoded
 				let shape = RowShape::operator_state();
 				let blob = shape.get_blob(&row, 0);
 				if blob.is_empty() {
@@ -134,9 +131,6 @@ impl Store {
 		Ok(())
 	}
 
-	/// Silently evict bucket entries whose row-header `updated_at_nanos` is older than `cutoff_nanos`.
-	/// Returns the number of buckets evicted. Mirrors row-TTL `Drop` semantics: no `Diff::Remove`,
-	/// no downstream cascade.
 	pub(crate) fn tick_evict(&self, txn: &mut FlowTransaction, cutoff_nanos: u64) -> Result<usize> {
 		let prefix_range = EncodedKeyRange::prefix(&self.prefix);
 		let entries: Vec<(EncodedKey, _)> = state_range(self.node_id, txn, prefix_range)?.collect();

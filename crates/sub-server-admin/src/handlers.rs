@@ -15,13 +15,11 @@ use serde_json::json;
 
 use crate::{assets, state::AdminState};
 
-/// Login request body.
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
 	pub token: String,
 }
 
-/// Login response.
 #[derive(Debug, Serialize)]
 pub struct LoginResponse {
 	pub success: bool,
@@ -29,14 +27,12 @@ pub struct LoginResponse {
 	pub session_token: Option<String>,
 }
 
-/// Auth status response.
 #[derive(Debug, Serialize)]
 pub struct AuthStatusResponse {
 	pub auth_required: bool,
 	pub authenticated: bool,
 }
 
-/// Handle login request.
 pub async fn handle_login(State(state): State<AdminState>, Json(request): Json<LoginRequest>) -> impl IntoResponse {
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
@@ -79,7 +75,6 @@ pub async fn handle_login(State(state): State<AdminState>, Json(request): Json<L
 	}
 }
 
-/// Handle logout request.
 pub async fn handle_logout(State(state): State<AdminState>) -> impl IntoResponse {
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
@@ -100,7 +95,6 @@ pub async fn handle_logout(State(state): State<AdminState>) -> impl IntoResponse
 	)
 }
 
-/// Get authentication status.
 pub async fn handle_auth_status(State(state): State<AdminState>) -> impl IntoResponse {
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
@@ -121,13 +115,11 @@ pub async fn handle_auth_status(State(state): State<AdminState>) -> impl IntoRes
 	)
 }
 
-/// Execute request body.
 #[derive(Debug, Deserialize)]
 pub struct ExecuteRequest {
 	pub query: String,
 }
 
-/// Execute a query (placeholder).
 pub async fn handle_execute(State(state): State<AdminState>, Json(request): Json<ExecuteRequest>) -> impl IntoResponse {
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
@@ -185,7 +177,6 @@ const FALLBACK_HTML: &str = r#"<!DOCTYPE html>
 </body>
 </html>"#;
 
-/// Serve the index.html file.
 pub async fn serve_index() -> impl IntoResponse {
 	if let Some(file) = assets::get_embedded_file("index.html") {
 		Response::builder()
@@ -202,10 +193,7 @@ pub async fn serve_index() -> impl IntoResponse {
 	}
 }
 
-/// Serve static assets.
 pub async fn serve_static(Path(path): Path<String>) -> impl IntoResponse {
-	// The router extracts path without "assets/" prefix (e.g., "index.js")
-	// but the manifest stores files with full path (e.g., "assets/index.js")
 	let clean_path = path.strip_prefix('/').unwrap_or(&path);
 	let full_path = format!("assets/{}", clean_path);
 

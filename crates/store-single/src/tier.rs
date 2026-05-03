@@ -5,26 +5,20 @@ use std::ops::Bound;
 
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-/// A raw storage entry.
-///
-/// Value is None for tombstones (deletions).
 #[derive(Debug, Clone)]
 pub struct RawEntry {
 	pub key: CowVec<u8>,
 	pub value: Option<CowVec<u8>>,
 }
 
-/// A batch of range results with continuation info for pagination.
 #[derive(Debug, Clone)]
 pub struct RangeBatch {
-	/// The entries in this batch.
 	pub entries: Vec<RawEntry>,
-	/// Whether there are more entries after this batch.
+
 	pub has_more: bool,
 }
 
 impl RangeBatch {
-	/// Creates an empty batch with no more results.
 	pub fn empty() -> Self {
 		Self {
 			entries: Vec::new(),
@@ -32,26 +26,19 @@ impl RangeBatch {
 		}
 	}
 
-	/// Returns true if this batch contains no entries.
 	pub fn is_empty(&self) -> bool {
 		self.entries.is_empty()
 	}
 }
 
-/// Cursor state for streaming range queries.
-///
-/// Tracks position within a range scan, enabling efficient continuation
-/// across multiple batches without re-scanning from the beginning.
 #[derive(Debug, Clone)]
 pub struct RangeCursor {
-	/// Last key seen in the previous batch (for Bound::Excluded continuation)
 	pub last_key: Option<CowVec<u8>>,
-	/// Whether this stream is exhausted
+
 	pub exhausted: bool,
 }
 
 impl RangeCursor {
-	/// Create a new cursor at the start of a range.
 	pub fn new() -> Self {
 		Self {
 			last_key: None,
@@ -59,7 +46,6 @@ impl RangeCursor {
 		}
 	}
 
-	/// Check if the stream is exhausted.
 	pub fn is_exhausted(&self) -> bool {
 		self.exhausted
 	}
@@ -71,33 +57,15 @@ impl Default for RangeCursor {
 	}
 }
 
-/// The tier storage trait for single-version storage.
-///
-/// This is intentionally minimal - just raw bytes in/out with no version history.
-/// Single-version storage maintains only the current value for each key.
-///
-/// Implementations must be thread-safe and cloneable.
 pub trait TierStorage: Send + Sync + Clone + 'static {
-	/// Get the value for a key, or None if not found.
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>>;
 
-	/// Check if a key exists in storage.
 	fn contains(&self, key: &[u8]) -> Result<bool> {
 		Ok(self.get(key)?.is_some())
 	}
 
-	/// Write entries atomically.
-	///
-	/// All entries are written in a single transaction.
-	/// This ensures durability and atomicity for commits.
 	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()>;
 
-	/// Fetch the next batch of entries in key order (descending).
-	///
-	/// Uses the cursor to track position. On first call, cursor should be new.
-	/// On subsequent calls, pass the same cursor to continue from where left off.
-	/// Returns up to `batch_size` entries. The cursor is updated with the last
-	/// key seen, and `exhausted` is set to true when no more entries remain.
 	fn range_next(
 		&self,
 		cursor: &mut RangeCursor,
@@ -106,12 +74,6 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		batch_size: usize,
 	) -> Result<RangeBatch>;
 
-	/// Fetch the next batch of entries in reverse key order (ascending).
-	///
-	/// Uses the cursor to track position. On first call, cursor should be new.
-	/// On subsequent calls, pass the same cursor to continue from where left off.
-	/// Returns up to `batch_size` entries. The cursor is updated with the last
-	/// key seen, and `exhausted` is set to true when no more entries remain.
 	fn range_rev_next(
 		&self,
 		cursor: &mut RangeCursor,
@@ -120,14 +82,9 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		batch_size: usize,
 	) -> Result<RangeBatch>;
 
-	/// Ensure storage is initialized.
-	///
-	/// This may create necessary storage structures if needed.
 	fn ensure_table(&self) -> Result<()>;
 
-	/// Delete all entries in storage.
 	fn clear_table(&self) -> Result<()>;
 }
 
-/// Marker trait for storage tiers that support the tier storage interface.
 pub trait TierBackend: TierStorage {}

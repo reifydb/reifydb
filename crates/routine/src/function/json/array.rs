@@ -44,7 +44,6 @@ impl<'a> Routine<FunctionContext<'a>> for JsonArray {
 			)]));
 		}
 
-		// Check for any option columns and unwrap them
 		let mut unwrapped: Vec<_> = Vec::with_capacity(args.len());
 		let mut combined_bv: Option<BitVec> = None;
 

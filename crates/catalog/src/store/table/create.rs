@@ -91,7 +91,6 @@ impl CatalogStore {
 		table::SHAPE.set_u64(&mut row, table::NAMESPACE, namespace);
 		table::SHAPE.set_utf8(&mut row, table::NAME, to_create.name.text());
 
-		// Initialize with no primary key
 		table::SHAPE.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
 		table::SHAPE.set_u8(
 			&mut row,
@@ -122,7 +121,6 @@ impl CatalogStore {
 	}
 
 	fn insert_columns(txn: &mut AdminTransaction, table: TableId, to_create: TableToCreate) -> Result<()> {
-		// Look up namespace name for error messages
 		let namespace_name = Self::find_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?
 			.map(|s| s.name().to_string())
 			.unwrap_or_else(|| format!("namespace_{}", to_create.namespace));
@@ -147,8 +145,6 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	/// Create a table with a specific ID and column IDs. Used for bootstrapping system shapes.
-	/// Skips duplicate check - caller must ensure uniqueness.
 	pub(crate) fn create_table_with_id(
 		txn: &mut AdminTransaction,
 		table_id: TableId,

@@ -10,7 +10,6 @@ use tracing::{debug, error, info, warn};
 use super::applier::ReplicaApplier;
 use crate::generated::{CdcEntry, StreamCdcRequest, reify_db_replication_client::ReifyDbReplicationClient};
 
-/// Client that connects to a primary and replicates CDC entries.
 pub struct ReplicationClient {
 	primary_addr: String,
 	applier: ReplicaApplier,
@@ -33,7 +32,6 @@ impl ReplicationClient {
 		}
 	}
 
-	/// Run the replication loop until shutdown is signaled.
 	pub async fn run(self, mut shutdown_rx: watch::Receiver<bool>) {
 		loop {
 			if *shutdown_rx.borrow() {

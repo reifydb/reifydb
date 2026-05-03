@@ -8,7 +8,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-/// Trait for types that can be converted to a consumer key
 pub trait ToConsumerKey {
 	fn to_consumer_key(&self) -> EncodedKey;
 }
@@ -87,10 +86,6 @@ impl EncodableKey for CdcConsumerKey {
 pub struct CdcConsumerKeyRange;
 
 impl CdcConsumerKeyRange {
-	/// Creates a key range that spans all CDC consumer checkpoint keys
-	///
-	/// Returns an `EncodedKeyRange` that can be used with transaction
-	/// range scan operations to iterate over all registered CDC consumers.
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}

@@ -17,9 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes per-source watermark for each flow.
-///
-/// Each row shows how far behind a flow is for a specific source primitive.
 pub struct SystemFlowWatermarks {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

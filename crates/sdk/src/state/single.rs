@@ -6,11 +6,6 @@ use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
 use super::{FFIRawStatefulOperator, utils};
 use crate::{error::Result, operator::context::OperatorContext};
 
-/// Operator with a single state value (like counters, running sums, etc.)
-///
-/// This trait provides a higher-level interface for operators that only need
-/// a single state value. It handles key management automatically (using an empty key by default)
-/// and provides convenient methods for loading, saving, and updating state.
 pub trait FFISingleStateful: FFIRawStatefulOperator {
 	fn shape(&self) -> RowShape;
 

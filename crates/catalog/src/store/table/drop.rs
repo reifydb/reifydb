@@ -11,17 +11,13 @@ use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_table(txn: &mut AdminTransaction, table: TableId) -> Result<()> {
-		// First, find the table to get its namespace
 		if let Some(table_def) = Self::find_table(&mut Transaction::Admin(&mut *txn), table)? {
-			// Delete the namespace-table link (secondary index)
 			txn.remove(&NamespaceTableKey::encoded(table_def.namespace, table))?;
 		}
 
-		// Clean up all associated metadata (columns, policies, sequences, pk, retention)
 		let pk_id = Self::get_table_pk_id(&mut Transaction::Admin(&mut *txn), table)?;
 		drop_shape_metadata(txn, ShapeId::Table(table), pk_id)?;
 
-		// Delete the table metadata
 		txn.remove(&TableKey::encoded(table))?;
 
 		Ok(())

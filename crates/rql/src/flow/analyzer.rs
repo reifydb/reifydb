@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::flow::{flow::FlowDag, node::FlowNodeType};
 
-/// Represents a reference to a data source
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ShapeReference {
 	Table(TableId),
@@ -20,13 +19,11 @@ pub enum ShapeReference {
 	Series(SeriesId),
 }
 
-/// Represents a reference to a data sink
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SinkReference {
 	View(ViewId),
 }
 
-/// Summary of a flow's inputs and outputs for frontend rendering
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowSummary {
 	pub id: FlowId,
@@ -37,7 +34,6 @@ pub struct FlowSummary {
 	pub execution_order: Vec<FlowNodeId>,
 }
 
-/// Represents the dependency relationship between flows
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowDependency {
 	pub source_flow: FlowId,
@@ -45,7 +41,6 @@ pub struct FlowDependency {
 	pub via_view: ViewId,
 }
 
-/// Complete dependency graph showing relationships between flows
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowDependencyGraph {
 	pub flows: Vec<FlowSummary>,
@@ -78,7 +73,6 @@ impl FlowGraphAnalyzer {
 		}
 	}
 
-	/// Add a flow to the analyzer
 	pub fn add(&mut self, flow: FlowDag) -> FlowSummary {
 		let result = Self::analyze_flow(&flow);
 		self.flows.push(flow);
@@ -86,13 +80,11 @@ impl FlowGraphAnalyzer {
 		result
 	}
 
-	/// Remove a flow from the analyzer by ID
 	pub fn remove(&mut self, flow_id: FlowId) {
 		self.flows.retain(|f| f.id() != flow_id);
 		self.dependency_graph = self.calculate();
 	}
 
-	/// Analyze a flow without adding it to the analyzer
 	fn analyze_flow(flow: &FlowDag) -> FlowSummary {
 		let sources = Self::get_sources(flow);
 		let sinks = Self::get_sinks(flow);
@@ -171,7 +163,6 @@ impl FlowGraphAnalyzer {
 		sinks
 	}
 
-	/// Get the cached dependency graph
 	pub fn get_dependency_graph(&self) -> &FlowDependencyGraph {
 		&self.dependency_graph
 	}
@@ -184,11 +175,9 @@ impl FlowGraphAnalyzer {
 		let mut source_series: BTreeMap<SeriesId, Vec<FlowId>> = BTreeMap::new();
 		let mut sink_views: BTreeMap<ViewId, FlowId> = BTreeMap::new();
 
-		// First pass: analyze all stored flows and build lookup maps
 		for flow in &self.flows {
 			let summary = Self::analyze_flow(flow);
 
-			// Track which flows use which tables as sources
 			for source in &summary.sources {
 				match source {
 					ShapeReference::Table(table_id) => {
@@ -206,7 +195,6 @@ impl FlowGraphAnalyzer {
 				}
 			}
 
-			// Track which flow produces which view
 			for sink in &summary.sinks {
 				match sink {
 					SinkReference::View(view_id) => {
@@ -218,7 +206,6 @@ impl FlowGraphAnalyzer {
 			flow_summaries.push(summary);
 		}
 
-		// Second pass: identify dependencies between flows
 		let dependencies = self.find_flow_dependencies(&flow_summaries, &sink_views);
 
 		FlowDependencyGraph {
@@ -232,7 +219,6 @@ impl FlowGraphAnalyzer {
 		}
 	}
 
-	/// Find dependencies between flows where one flow produces a view that another consumes
 	fn find_flow_dependencies(
 		&self,
 		summaries: &[FlowSummary],
@@ -243,9 +229,7 @@ impl FlowGraphAnalyzer {
 		for flow_summary in summaries {
 			for source in &flow_summary.sources {
 				if let ShapeReference::View(view_id) = source {
-					// Check if this view is produced by another flow
 					if let Some(&producer_flow_id) = sink_views.get(view_id) {
-						// Don't create self-dependencies
 						if producer_flow_id != flow_summary.id {
 							dependencies.push(FlowDependency {
 								source_flow: producer_flow_id,
@@ -261,7 +245,6 @@ impl FlowGraphAnalyzer {
 		dependencies
 	}
 
-	/// Get all flows that depend on a specific table
 	pub fn get_flows_depending_on_table(
 		&self,
 		dependency_graph: &FlowDependencyGraph,
@@ -270,7 +253,6 @@ impl FlowGraphAnalyzer {
 		dependency_graph.source_tables.get(&table_id).cloned().unwrap_or_default()
 	}
 
-	/// Get all flows that depend on a specific view
 	pub fn get_flows_depending_on_view(
 		&self,
 		dependency_graph: &FlowDependencyGraph,
@@ -279,7 +261,6 @@ impl FlowGraphAnalyzer {
 		dependency_graph.source_views.get(&view_id).cloned().unwrap_or_default()
 	}
 
-	/// Get the flow that produces a specific view
 	pub fn get_flow_producing_view(
 		&self,
 		dependency_graph: &FlowDependencyGraph,
@@ -288,17 +269,14 @@ impl FlowGraphAnalyzer {
 		dependency_graph.sink_views.get(&view_id).copied()
 	}
 
-	/// Get all stored flows
 	pub fn flows(&self) -> &[FlowDag] {
 		&self.flows
 	}
 
-	/// Get the number of stored flows
 	pub fn flow_count(&self) -> usize {
 		self.flows.len()
 	}
 
-	/// Clear all stored flows
 	pub fn clear(&mut self) {
 		self.flows.clear();
 		self.dependency_graph = FlowDependencyGraph {
@@ -312,10 +290,6 @@ impl FlowGraphAnalyzer {
 		};
 	}
 
-	/// Returns flows grouped by dependency level. Flows within the same level
-	/// have no dependencies on each other and can execute concurrently.
-	/// Level 0 contains flows with no dependencies, level 1 contains flows
-	/// whose dependencies are all in level 0, etc.
 	pub fn calculate_execution_levels(&self, dependency_graph: &FlowDependencyGraph) -> Vec<Vec<FlowId>> {
 		let mut in_degree: BTreeMap<FlowId, usize> = BTreeMap::new();
 		let mut adjacency: BTreeMap<FlowId, Vec<FlowId>> = BTreeMap::new();

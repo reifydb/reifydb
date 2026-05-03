@@ -10,11 +10,6 @@ use crate::expression::{
 	PrefixOperator, name::canonical_name,
 };
 
-/// Constant-fold and dead-branch eliminate `expr` in place. Bottom-up, single pass
-/// (cascades happen because children fold before parents).
-///
-/// Used for non-projection slots (Filter conditions, Join.on, control flow conditions, etc.)
-/// where the expression's label is not user-visible.
 pub fn fold(expr: &mut Expression) {
 	fold_children(expr);
 	if let Some(folded) = try_fold(expr) {
@@ -22,17 +17,11 @@ pub fn fold(expr: &mut Expression) {
 	}
 }
 
-/// Like [`fold`], but preserves the user-visible column header by wrapping the folded
-/// expression in an `Alias` if the canonical name changed.
-///
-/// Use for projection slots (Map.map, Extend.extend, Aggregate.map/by, Window.aggregations/group_by,
-/// returning clauses) where the expression's name appears as an output column header.
 pub fn fold_projection(expr: &mut Expression) {
 	let original = canonical_name(expr).text().to_string();
 	let was_aliased = matches!(expr, Expression::Alias(_));
 	fold(expr);
 	if was_aliased {
-		// Existing alias on top already pins the user-facing label.
 		return;
 	}
 	let new_label = canonical_name(expr).text().to_string();
@@ -281,17 +270,15 @@ fn fold_logic(left: &Expression, right: &Expression, op: LogicOp) -> Option<Expr
 	let lb = as_bool_constant(left);
 	let rb = as_bool_constant(right);
 	match (lb, rb, op) {
-		// Both sides known: full fold.
 		(Some(a), Some(b), LogicOp::And) => Some(bool_constant(a && b)),
 		(Some(a), Some(b), LogicOp::Or) => Some(bool_constant(a || b)),
 		(Some(a), Some(b), LogicOp::Xor) => Some(bool_constant(a != b)),
-		// Algebraic short-circuits when one side is a known bool.
-		// AND with a known false short-circuits to false regardless of the other side.
+
 		(Some(false), _, LogicOp::And) => Some(bool_constant(false)),
 		(_, Some(false), LogicOp::And) => Some(bool_constant(false)),
 		(Some(true), _, LogicOp::And) => Some(right.clone()),
 		(_, Some(true), LogicOp::And) => Some(left.clone()),
-		// OR with a known true short-circuits to true.
+
 		(Some(true), _, LogicOp::Or) => Some(bool_constant(true)),
 		(_, Some(true), LogicOp::Or) => Some(bool_constant(true)),
 		(Some(false), _, LogicOp::Or) => Some(right.clone()),

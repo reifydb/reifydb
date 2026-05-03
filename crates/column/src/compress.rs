@@ -39,7 +39,7 @@ impl Compressor {
 	pub fn new(cfg: CompressConfig) -> Self {
 		let registry = encoding::global();
 		let order = [
-			EncodingId::CANONICAL_BOOL, // canonical always last via fallback
+			EncodingId::CANONICAL_BOOL,
 			EncodingId::CONSTANT,
 			EncodingId::ALL_NONE,
 			EncodingId::DICT,
@@ -50,8 +50,7 @@ impl Compressor {
 			EncodingId::BITPACK,
 			EncodingId::SPARSE,
 		];
-		// Start with compressed candidates in a fixed order; the canonical fallback
-		// happens outside the candidate loop, so we skip canonical ids here.
+
 		let candidates = order
 			.into_iter()
 			.filter(|id| {

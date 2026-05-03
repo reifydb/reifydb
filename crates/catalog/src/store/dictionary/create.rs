@@ -40,7 +40,6 @@ impl CatalogStore {
 	) -> Result<Dictionary> {
 		let namespace_id = to_create.namespace;
 
-		// Check if dictionary already exists
 		if let Some(dictionary) = CatalogStore::find_dictionary_by_name(
 			&mut Transaction::Admin(&mut *txn),
 			namespace_id,
@@ -56,16 +55,12 @@ impl CatalogStore {
 			.into());
 		}
 
-		// Allocate new dictionary ID
 		let dictionary_id = SystemSequence::next_dictionary_id(txn)?;
 
-		// Store the dictionary
 		Self::store_dictionary(txn, dictionary_id, namespace_id, &to_create)?;
 
-		// Link dictionary to namespace
 		Self::link_dictionary_to_namespace(txn, namespace_id, dictionary_id, to_create.name.text())?;
 
-		// Initialize dictionary sequence counter to 0
 		Self::initialize_dictionary_sequence(txn, dictionary_id)?;
 
 		Self::get_dictionary(&mut Transaction::Admin(&mut *txn), dictionary_id)
@@ -105,8 +100,6 @@ impl CatalogStore {
 	}
 
 	fn initialize_dictionary_sequence(txn: &mut AdminTransaction, dictionary: DictionaryId) -> Result<()> {
-		// Initialize sequence counter to 0
-		// This ensures StorageTracker begins tracking the dictionary immediately
 		let seq_key = DictionarySequenceKey::encoded(dictionary);
 		let initial_value = 0u128.to_be_bytes().to_vec();
 

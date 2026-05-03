@@ -7,7 +7,6 @@ use reifydb_transaction::transaction::Transaction;
 use super::MaterializedCatalog;
 use crate::{Result, store::namespace};
 
-/// Load all namespaces from storage
 pub(crate) fn load_namespaces(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = NamespaceKey::full_scan();
 	let stream = rx.range(range, 1024)?;

@@ -31,12 +31,8 @@ pub enum ResolvedSource {
 	},
 }
 
-/// Default namespace for unqualified identifiers
 pub const DEFAULT_NAMESPACE: &str = "default";
 
-/// Resolve an unresolved source identifier to a ResolvedSource.
-/// Returns `ResolvedSource::Remote` for remote namespaces, or
-/// `ResolvedSource::Shape` for local sources.
 pub fn resolve_unresolved_source(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
@@ -56,7 +52,6 @@ pub fn resolve_unresolved_source(
 		catalog.get_namespace_by_name(tx, DEFAULT_NAMESPACE)?
 	};
 
-	// Check if this is a remote namespace
 	if let Some(address) = ns_def.address() {
 		return Ok(ResolvedSource::Remote {
 			address: address.to_string(),
@@ -71,7 +66,6 @@ pub fn resolve_unresolved_source(
 	let name_fragment = Fragment::internal(name_str);
 	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::internal(a.text()));
 
-	// Check for user-defined virtual tables first (in any namespace)
 	if let Some(virtual_def) = catalog.find_vtable_user_by_name(tx, ns_def.id(), name_str) {
 		return Ok(ResolvedSource::Shape(ResolvedShape::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
@@ -80,9 +74,6 @@ pub fn resolve_unresolved_source(
 		))));
 	}
 
-	// Check if it's a system-managed virtual table namespace (e.g. `system`,
-	// `system::metrics::storage`, `system::metrics::cdc`). The downstream
-	// dispatch in `compile/vtable.rs` matches by namespace id + leaf name.
 	if matches!(
 		ns_def.id(),
 		NamespaceId::SYSTEM
@@ -92,10 +83,10 @@ pub fn resolve_unresolved_source(
 			| NamespaceId::SYSTEM_BINDINGS
 	) {
 		let def = VTable {
-			id: VTableId(0), // Placeholder ID - compile.rs handles actual lookup
+			id: VTableId(0),
 			namespace: ns_def.id(),
 			name: name_str.to_string(),
-			columns: vec![], // Columns are populated at execution time
+			columns: vec![],
 		};
 
 		return Ok(ResolvedSource::Shape(ResolvedShape::TableVirtual(ResolvedTableVirtual::new(
@@ -105,10 +96,7 @@ pub fn resolve_unresolved_source(
 		))));
 	}
 
-	// Try table first
 	if let Some(table) = catalog.find_table_by_name(tx, ns_def.id(), name_str)? {
-		// ResolvedTable doesn't support aliases, so we'll need to handle this differently
-		// For now, just create without alias
 		return Ok(ResolvedSource::Shape(ResolvedShape::Table(ResolvedTable::new(
 			name_fragment,
 			namespace,
@@ -116,10 +104,7 @@ pub fn resolve_unresolved_source(
 		))));
 	}
 
-	// Try ring buffer
 	if let Some(ringbuffer) = catalog.find_ringbuffer_by_name(tx, ns_def.id(), name_str)? {
-		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
-		// For now, just create without alias
 		return Ok(ResolvedSource::Shape(ResolvedShape::RingBuffer(ResolvedRingBuffer::new(
 			name_fragment,
 			namespace,
@@ -127,11 +112,7 @@ pub fn resolve_unresolved_source(
 		))));
 	}
 
-	// Try views FIRST (deferred views share name with their flow)
 	if let Some(view) = catalog.find_view_by_name(tx, ns_def.id(), name_str)? {
-		// Check view type to create appropriate resolved view
-		// ResolvedView types don't support aliases, so we'll need to handle this differently
-		// For now, just create without alias
 		let shape = match view.kind() {
 			ViewKind::Deferred => {
 				ResolvedShape::DeferredView(ResolvedDeferredView::new(name_fragment, namespace, view))
@@ -145,7 +126,6 @@ pub fn resolve_unresolved_source(
 		return Ok(ResolvedSource::Shape(shape));
 	}
 
-	// Try dictionaries
 	if let Some(dictionary) = catalog.find_dictionary_by_name(tx, ns_def.id(), name_str)? {
 		return Ok(ResolvedSource::Shape(ResolvedShape::Dictionary(ResolvedDictionary::new(
 			name_fragment,
@@ -154,7 +134,6 @@ pub fn resolve_unresolved_source(
 		))));
 	}
 
-	// Try series
 	if let Some(series) = catalog.find_series_by_name(tx, ns_def.id(), name_str)? {
 		return Ok(ResolvedSource::Shape(ResolvedShape::Series(ResolvedSeries::new(
 			name_fragment,
@@ -163,7 +142,6 @@ pub fn resolve_unresolved_source(
 		))));
 	}
 
-	// Not found
 	Err(IdentifierError::SourceNotFound(ShapeNotFoundError {
 		namespace: namespace_str.to_string(),
 		name: name_str.to_string(),

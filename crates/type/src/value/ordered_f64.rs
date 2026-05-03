@@ -16,10 +16,6 @@ use crate::{
 	util::float_format::format_f64,
 };
 
-/// A wrapper around f64 that provides total ordering by rejecting NaN values.
-/// This type is sortable and can be used in collections that require Ord,
-/// such as BTreeMap and BTreeSet. It prevents NaN values from being stored,
-/// ensuring that all values are comparable and can be sorted consistently.
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Default)]
 pub struct OrderedF64(f64);
@@ -109,9 +105,6 @@ impl Ord for OrderedF64 {
 	}
 }
 
-/// Convert f64 bits to a u64 that sorts in the same order as the float.
-/// Positive floats: flip sign bit so they sort above negative.
-/// Negative floats: flip all bits so magnitude order is reversed.
 #[inline]
 fn float_to_ordered_u64(f: f64) -> u64 {
 	let bits = f.to_bits();
@@ -138,7 +131,6 @@ impl TryFrom<f64> for OrderedF64 {
 	type Error = Error;
 
 	fn try_from(f: f64) -> Result<Self, Self::Error> {
-		// normalize -0.0 and +0.0
 		let normalized = if f == 0.0 {
 			0.0
 		} else {

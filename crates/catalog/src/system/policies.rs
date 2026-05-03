@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::policies::*, vtable::POLICIES};
 
-/// Returns the static definition for the system.policies virtual table
-/// This table exposes information about all security policies in the database
 pub fn policies() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

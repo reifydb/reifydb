@@ -15,7 +15,6 @@ use crate::{
 	vm::stack::SymbolTable,
 };
 
-/// Coerce each column's data to the target type in batch.
 pub(super) fn coerce_columns(
 	column_data: &[ColumnBuffer],
 	columns: &[Column],
@@ -41,7 +40,7 @@ pub(super) fn coerce_columns(
 
 	for (col_idx, col) in columns.iter().enumerate() {
 		let target = col.constraint.get_type();
-		// For Option(T) columns, cast to the inner type T; None values pass through unchanged
+
 		let cast_target = target.inner_type().clone();
 		let source_data = &column_data[col_idx];
 

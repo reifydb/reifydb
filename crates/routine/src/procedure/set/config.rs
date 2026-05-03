@@ -17,9 +17,6 @@ use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::Rou
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("system::config::set"));
 
-/// Native procedure that sets a configuration value.
-///
-/// Accepts 2 positional arguments: key (Utf8) and value (any).
 pub struct SetConfigProcedure;
 
 impl Default for SetConfigProcedure {

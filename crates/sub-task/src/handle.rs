@@ -10,7 +10,6 @@ use crate::{
 	task::ScheduledTask,
 };
 
-/// Handle for interacting with the task scheduler at runtime
 #[derive(Clone)]
 pub struct TaskHandle {
 	registry: TaskRegistry,

@@ -157,7 +157,6 @@ impl Catalog {
 		Ok(ringbuffer)
 	}
 
-	/// Create a ring buffer with a specific ID and column IDs. Used for bootstrapping system shapes.
 	pub fn create_ringbuffer_with_id(
 		&self,
 		txn: &mut AdminTransaction,

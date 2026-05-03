@@ -38,7 +38,6 @@ impl Columns {
 			.into());
 		}
 
-		// Append system columns from the other columns
 		if !other.row_numbers.is_empty() {
 			self.row_numbers.make_mut().extend(other.row_numbers.iter().copied());
 		}
@@ -88,7 +87,6 @@ impl Columns {
 
 		let rows: Vec<EncodedRow> = rows.into_iter().collect();
 
-		// Verify row_numbers length if provided
 		if !row_numbers.is_empty() && row_numbers.len() != rows.len() {
 			return Err(CoreError::FrameError {
 				message: format!(
@@ -100,18 +98,15 @@ impl Columns {
 			.into());
 		}
 
-		// Append row numbers if provided
 		if !row_numbers.is_empty() {
 			self.row_numbers.make_mut().extend(row_numbers);
 		}
 
-		// Extract and append timestamps from encoded rows
 		for row in &rows {
 			self.created_at.make_mut().push(DateTime::from_nanos(row.created_at_nanos()));
 			self.updated_at.make_mut().push(DateTime::from_nanos(row.updated_at_nanos()));
 		}
 
-		// Handle all-none Option column conversion to properly-typed Option column
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
@@ -252,7 +247,6 @@ impl Columns {
 				*column = new_data;
 			}
 
-			// Set dictionary_id on DictionaryId containers from shape constraint
 			if let ColumnBuffer::DictionaryId(container) = &mut *column
 				&& container.dictionary_id().is_none()
 				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
@@ -261,9 +255,7 @@ impl Columns {
 			}
 		}
 
-		// Append rows using RowShape methods
 		for row in &rows {
-			// Check if all fields are defined
 			let all_defined = (0..shape.field_count()).all(|i| row.is_defined(i));
 
 			if all_defined {
@@ -282,7 +274,6 @@ impl Columns {
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
 			match (&mut *column, field.constraint.get_type()) {
-				// Handle Option-wrapped columns by unwrapping and pushing to inner + bitvec
 				(
 					ColumnBuffer::Option {
 						inner,
@@ -431,15 +422,12 @@ impl Columns {
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
 
-			// If the value is undefined, use ColumnBuffer-level push_none
-			// which correctly promotes bare containers to Option-wrapped
 			if !row.is_defined(index) {
 				column.push_none();
 				continue;
 			}
 
 			match (&mut *column, field.constraint.get_type()) {
-				// Handle Option-wrapped columns
 				(
 					ColumnBuffer::Option {
 						inner,

@@ -10,7 +10,6 @@ use reifydb_type::{
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
-// PRE INSERT
 pub struct DictionaryRowPreInsertContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub value: Value,
@@ -83,7 +82,6 @@ where
 	ClosureDictionaryRowPreInsertInterceptor::new(f)
 }
 
-// POST INSERT
 pub struct DictionaryRowPostInsertContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,
@@ -158,7 +156,6 @@ where
 	ClosureDictionaryRowPostInsertInterceptor::new(f)
 }
 
-// PRE UPDATE
 pub struct DictionaryRowPreUpdateContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,
@@ -233,7 +230,6 @@ where
 	ClosureDictionaryRowPreUpdateInterceptor::new(f)
 }
 
-// POST UPDATE
 pub struct DictionaryRowPostUpdateContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,
@@ -310,7 +306,6 @@ where
 	ClosureDictionaryRowPostUpdateInterceptor::new(f)
 }
 
-// PRE DELETE
 pub struct DictionaryRowPreDeleteContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,
@@ -383,7 +378,6 @@ where
 	ClosureDictionaryRowPreDeleteInterceptor::new(f)
 }
 
-// POST DELETE
 pub struct DictionaryRowPostDeleteContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,
@@ -458,7 +452,6 @@ where
 	ClosureDictionaryRowPostDeleteInterceptor::new(f)
 }
 
-/// Helper struct for executing dictionary interceptors via static methods.
 pub struct DictionaryRowInterceptor;
 
 impl DictionaryRowInterceptor {

@@ -49,22 +49,16 @@ use crate::{
 	store::SubscriptionStore,
 };
 
-/// Internal shared state for the subscription subsystem.
-///
-/// Wrapped in Arc so both the subsystem and the service handle can access it.
 struct SubscriptionState {
 	store: Arc<SubscriptionStore>,
 	flow_engine: Arc<RwLock<FlowEngine>>,
 	flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
-	/// Mapping from subscription_id to flow_id for lifecycle management.
+
 	subscription_flows: RwLock<HashMap<SubscriptionId, FlowId>>,
-	/// Staged delivery buffer - sinks push here, CDC consumer commits per batch.
+
 	delivery: Arc<DeliveryBuffer>,
 }
 
-/// Service handle implementing the engine's SubscriptionService trait.
-///
-/// This is registered in IoC and used by DDL and transport layers.
 struct SubscriptionServiceImpl {
 	state: Arc<SubscriptionState>,
 }
@@ -77,20 +71,16 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		column_names: Vec<String>,
 		txn: &mut Transaction<'_>,
 	) -> Result<()> {
-		// 1. Register buffer in store with column schema
 		self.state.store.register(id, column_names);
 
-		// 2. Register flow in engine, replacing SinkSubscription with ephemeral operator
 		let flow_id = flow_dag.id;
 		{
 			let mut engine = self.state.flow_engine.write().unwrap();
 			register_ephemeral_flow(&mut engine, txn, flow_dag, id, self.state.delivery.clone())?;
 		}
 
-		// 3. Track mapping
 		self.state.subscription_flows.write().unwrap().insert(id, flow_id);
 
-		// 4. Initialize empty flow state
 		self.state.flow_states.insert(flow_id, HashMap::new());
 
 		Ok(())
@@ -100,9 +90,8 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		let existed = self.state.store.unregister(id);
 
 		if let Some(flow_id) = self.state.subscription_flows.write().unwrap().remove(id) {
-			// Remove flow state
 			self.state.flow_states.remove(&flow_id);
-			// Clean up the flow from the engine
+
 			self.state.flow_engine.write().unwrap().remove_flow(flow_id);
 		}
 
@@ -121,8 +110,6 @@ impl SubscriptionService for SubscriptionServiceImpl {
 	}
 }
 
-/// Register a subscription flow in the engine, replacing SinkSubscription nodes
-/// with EphemeralSinkSubscriptionOperator wrapped as Custom.
 fn register_ephemeral_flow(
 	engine: &mut FlowEngine,
 	txn: &mut Transaction<'_>,
@@ -136,7 +123,6 @@ fn register_ephemeral_flow(
 			FlowNodeType::SinkSubscription {
 				..
 			} => {
-				// Replace with ephemeral operator
 				let parent = engine
 					.operators
 					.get(&node.inputs[0])
@@ -160,9 +146,6 @@ fn register_ephemeral_flow(
 	Ok(())
 }
 
-/// Ephemeral subscription subsystem.
-///
-/// Owns an independent CDC consumer that processes subscription flows in-memory.
 pub struct SubscriptionSubsystem {
 	consumer: PollConsumer<StandardEngine, SubscriptionCdcConsumer>,
 	state: Arc<SubscriptionState>,
@@ -220,14 +203,12 @@ impl SubscriptionSubsystem {
 		}
 	}
 
-	/// Get a service handle for IoC registration.
 	pub fn service_handle(&self) -> SubscriptionServiceRef {
 		Arc::new(SubscriptionServiceImpl {
 			state: self.state.clone(),
 		})
 	}
 
-	/// Get the subscription store.
 	pub fn store(&self) -> &Arc<SubscriptionStore> {
 		&self.state.store
 	}
@@ -291,7 +272,6 @@ impl HasVersion for SubscriptionSubsystem {
 	}
 }
 
-/// Implementation of SubscriptionInspector for IoC registration.
 struct SubscriptionInspectorImpl {
 	store: Arc<SubscriptionStore>,
 }
@@ -308,7 +288,6 @@ impl SubscriptionInspector for SubscriptionInspectorImpl {
 	fn inspect(&self, id: SubscriptionId) -> Option<Columns> {
 		let batches = self.store.drain(&id, usize::MAX);
 		if batches.is_empty() {
-			// Return schema-only empty Columns if subscription exists
 			let names = self.store.column_names(&id)?;
 			let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
 			return Some(Columns::from_rows(&name_refs, &[]));
@@ -317,8 +296,6 @@ impl SubscriptionInspector for SubscriptionInspectorImpl {
 			return Some(batches.into_iter().next().unwrap());
 		}
 
-		// Merge multiple batches: collect all column names from first batch,
-		// then collect all rows across batches.
 		let first = &batches[0];
 		let names: Vec<&str> = first.iter().map(|c| c.name().text()).collect();
 
@@ -340,7 +317,6 @@ impl SubscriptionInspector for SubscriptionInspectorImpl {
 	}
 }
 
-/// Factory for creating the subscription subsystem.
 pub struct SubscriptionSubsystemFactory;
 
 impl SubsystemFactory for SubscriptionSubsystemFactory {
@@ -360,7 +336,6 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 		let subsystem =
 			SubscriptionSubsystem::new(engine, cdc_store, store.clone(), runtime_context, custom_operators);
 
-		// Register services in IoC (not the subsystem itself)
 		let service = subsystem.service_handle();
 		ioc.register_service::<SubscriptionServiceRef>(service);
 		ioc.register_service::<Arc<SubscriptionStore>>(store.clone());

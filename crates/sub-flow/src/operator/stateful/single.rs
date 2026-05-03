@@ -6,36 +6,28 @@ use reifydb_type::Result;
 use super::utils;
 use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
 
-/// Operator with a single state value (like counters, running sums, etc.)
-/// Extends TransformOperator directly and uses utility functions for state management
 pub trait SingleStateful: RawStatefulOperator {
-	/// Get or create the layout for state rows
 	fn layout(&self) -> RowShape;
 
-	/// Key for the single state - default is empty
 	fn key(&self) -> EncodedKey {
 		utils::empty_key()
 	}
 
-	/// Create a new state encoded with default values
 	fn create_state(&self) -> EncodedRow {
 		let layout = self.layout();
 		layout.allocate()
 	}
 
-	/// Load the operator's single state encoded
 	fn load_state(&self, txn: &mut FlowTransaction) -> Result<EncodedRow> {
 		let key = self.key();
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
-	/// Save the operator's single state encoded
 	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedRow) -> Result<()> {
 		let key = self.key();
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
-	/// Update state with a function
 	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> Result<EncodedRow>
 	where
 		F: FnOnce(&RowShape, &mut EncodedRow) -> Result<()>,
@@ -47,7 +39,6 @@ pub trait SingleStateful: RawStatefulOperator {
 		Ok(row)
 	}
 
-	/// Clear state
 	fn clear_state(&self, txn: &mut FlowTransaction) -> Result<()> {
 		let key = self.key();
 		utils::state_remove(self.id(), txn, &key)

@@ -12,7 +12,6 @@ use std::sync::Arc;
 
 use crate::routine::registry::RoutinesConfigurator;
 
-/// Register all built-in native procedures directly into a `Routines` builder.
 pub fn default_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfigurator {
 	let builder = builder
 		.register_builtin_procedure(Arc::new(set::config::SetConfigProcedure::new()))

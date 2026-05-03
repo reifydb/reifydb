@@ -108,14 +108,12 @@ impl TableOperations for CommandTransaction {
 
 		TableRowInterceptor::post_insert(self, table, row_number, &row)?;
 
-		// Track insertion for post-commit event emission
 		self.track_row_change(RowChange::TableInsert(TableRowInsertion {
 			table_id: table.id,
 			row_number,
 			encoded: row.clone(),
 		}));
 
-		// Track flow change for transactional view pre-commit processing
 		self.track_flow_change(build_table_insert_change(table, shape, row_number, &row));
 
 		Ok(row)
@@ -183,14 +181,12 @@ impl TableOperations for AdminTransaction {
 
 		TableRowInterceptor::post_insert(self, table, row_number, &row)?;
 
-		// Track insertion for post-commit event emission
 		self.track_row_change(RowChange::TableInsert(TableRowInsertion {
 			table_id: table.id,
 			row_number,
 			encoded: row.clone(),
 		}));
 
-		// Track flow change for transactional view pre-commit processing
 		self.track_flow_change(build_table_insert_change(table, shape, row_number, &row));
 
 		Ok(row)

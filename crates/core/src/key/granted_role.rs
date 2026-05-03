@@ -43,7 +43,7 @@ impl GrantedRoleKey {
 		start.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_identity_id(&identity);
 		let mut end = KeySerializer::with_capacity(18);
 		end.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_identity_id(&identity);
-		// The end key needs to be exclusive-upper, so we add a byte past the prefix
+
 		let start_key = start.to_encoded_key();
 		let mut end_bytes = end.to_encoded_key().to_vec();
 		end_bytes.push(0xFF);

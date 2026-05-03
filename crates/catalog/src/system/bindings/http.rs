@@ -15,7 +15,6 @@ use crate::system::{
 	ids::{columns::bindings::http::*, vtable::BINDINGS_HTTP},
 };
 
-/// Returns the static definition for the `system::bindings::http` virtual table.
 pub fn bindings_http() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

@@ -63,16 +63,9 @@ use super::{
 };
 use crate::Result;
 
-/// Callback type for user-defined virtual tables.
-/// Returns column-oriented data directly.
 pub type UserVTableDataFunction = Arc<dyn Fn(&Params) -> Columns + Send + Sync>;
 
-/// Enum dispatch for all virtual table implementations.
-///
-/// This eliminates the need for `Box<dyn BaseVTable>` trait objects by using
-/// static dispatch via match expressions.
 pub enum VTables {
-	// System tables
 	Sequences(SystemSequences),
 	Namespaces(SystemNamespaces),
 	Tables(SystemTables),
@@ -129,11 +122,10 @@ pub enum VTables {
 	Subscriptions(SystemSubscriptions),
 	VirtualTableColumns(SystemVirtualTableColumns),
 
-	/// User-defined virtual table (callback-based)
 	UserDefined {
 		vtable: Arc<VTable>,
 		data_fn: UserVTableDataFunction,
-		/// Cached params from initialize, used in next()
+
 		params: Option<Params>,
 		exhausted: bool,
 	},
@@ -202,7 +194,6 @@ impl VTables {
 		}
 	}
 
-	/// Initialize the virtual table iterator with context
 	pub fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<()> {
 		match self {
 			Self::Sequences(t) => t.initialize(txn, ctx),
@@ -263,7 +254,6 @@ impl VTables {
 				exhausted,
 				..
 			} => {
-				// Store params for use in next()
 				*stored_params = Some(match ctx {
 					VTableContext::Basic {
 						params,
@@ -279,7 +269,6 @@ impl VTables {
 		}
 	}
 
-	/// Get the next batch of results (volcano iterator pattern)
 	pub fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
 		match self {
 			Self::Sequences(t) => t.next(txn),
@@ -345,7 +334,6 @@ impl VTables {
 					return Ok(None);
 				}
 
-				// Call user's data function which returns Columns directly
 				let default_params = Params::default();
 				let params_ref = stored_params.as_ref().unwrap_or(&default_params);
 				let columns = data_fn(params_ref);

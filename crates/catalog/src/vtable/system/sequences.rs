@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system sequence information
 pub struct SystemSequences {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

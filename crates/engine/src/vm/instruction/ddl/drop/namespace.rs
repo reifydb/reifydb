@@ -26,7 +26,6 @@ pub(crate) fn drop_namespace(
 
 	let def = services.catalog.get_namespace(&mut Transaction::Admin(txn), namespace_id)?;
 
-	// Build the set of all descendant namespace IDs (including namespace_id itself)
 	let all_namespaces = services.catalog.list_namespaces_all(&mut Transaction::Admin(txn))?;
 	let mut descendant_ids: HashSet<_> = HashSet::new();
 	descendant_ids.insert(namespace_id);
@@ -45,7 +44,6 @@ pub(crate) fn drop_namespace(
 
 	let mut dependents = Vec::new();
 
-	// Check for dictionary/sumtype column references from outside descendant namespaces
 	let mut dictionaries = Vec::new();
 	let mut sumtypes = Vec::new();
 	for &ns_id in &descendant_ids {
@@ -90,7 +88,6 @@ pub(crate) fn drop_namespace(
 		})?);
 	}
 
-	// Check for flow references to tables/views/ringbuffers in descendant namespaces from external flows
 	let all_tables = services.catalog.list_tables_all(&mut Transaction::Admin(txn))?;
 	let all_views = services.catalog.list_views_all(&mut Transaction::Admin(txn))?;
 	let all_ringbuffers = services.catalog.list_ringbuffers_all(&mut Transaction::Admin(txn))?;
@@ -105,7 +102,6 @@ pub(crate) fn drop_namespace(
 		let nodes = services.catalog.list_flow_nodes_all(&mut Transaction::Admin(txn))?;
 		let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 
-		// Filter to only nodes belonging to flows OUTSIDE descendant namespaces
 		let external_nodes: Vec<_> = nodes
 			.iter()
 			.filter(|n| {

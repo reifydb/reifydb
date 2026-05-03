@@ -15,7 +15,6 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for storing actual index entries with the encoded index key data
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexEntryKey {
 	pub shape: ShapeId,
@@ -71,7 +70,7 @@ impl EncodableKeyRange for IndexEntryKeyRange {
 	const KIND: KeyKind = KeyKind::IndexEntry;
 
 	fn start(&self) -> Option<EncodedKey> {
-		let mut serializer = KeySerializer::with_capacity(20); // 1 + 1 + 9 + 9
+		let mut serializer = KeySerializer::with_capacity(20);
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
@@ -118,7 +117,6 @@ impl EncodableKey for IndexEntryKey {
 			.extend_u8(Self::KIND as u8)
 			.extend_shape_id(self.shape)
 			.extend_index_id(self.index)
-			// Append the raw index key bytes
 			.extend_raw(self.key.as_slice());
 		serializer.to_encoded_key()
 	}
@@ -139,7 +137,6 @@ impl EncodableKey for IndexEntryKey {
 		let shape = de.read_shape_id().ok()?;
 		let index = de.read_index_id().ok()?;
 
-		// The remaining bytes are the index key
 		let remaining = de.remaining();
 		if remaining > 0 {
 			let remaining_bytes = de.read_raw(remaining).ok()?;
@@ -156,7 +153,6 @@ impl EncodableKey for IndexEntryKey {
 }
 
 impl IndexEntryKey {
-	/// Create a range for scanning all entries of a specific index
 	pub fn index_range(shape: impl Into<ShapeId>, index: IndexId) -> EncodedKeyRange {
 		let range = IndexEntryKeyRange {
 			shape: shape.into(),
@@ -165,7 +161,6 @@ impl IndexEntryKey {
 		EncodedKeyRange::new(Bound::Included(range.start().unwrap()), Bound::Excluded(range.end().unwrap()))
 	}
 
-	/// Create a range for scanning all entries of a shape (all indexes)
 	pub fn shape_range(shape: impl Into<ShapeId>) -> EncodedKeyRange {
 		let shape = shape.into();
 		let mut start_serializer = KeySerializer::with_capacity(11);
@@ -181,8 +176,6 @@ impl IndexEntryKey {
 		}
 	}
 
-	/// Create a range for scanning entries within an index with a specific
-	/// key prefix
 	pub fn key_prefix_range(shape: impl Into<ShapeId>, index: IndexId, key_prefix: &[u8]) -> EncodedKeyRange {
 		let shape = shape.into();
 		let mut serializer = KeySerializer::with_capacity(20 + key_prefix.len());
@@ -194,7 +187,6 @@ impl IndexEntryKey {
 			.extend_raw(key_prefix);
 		let start = serializer.to_encoded_key();
 
-		// For the end key, append 0xFF to get all keys with this prefix
 		let mut end = start.as_slice().to_vec();
 		end.push(0xFF);
 
@@ -204,16 +196,13 @@ impl IndexEntryKey {
 		}
 	}
 
-	/// Create a range for entries from an EncodedIndexKeyRange
-	/// This method leverages the EncodedIndexKeyRange type for cleaner
-	/// range handling.
 	pub fn key_range(
 		shape: impl Into<ShapeId>,
 		index: IndexId,
 		index_range: EncodedIndexKeyRange,
 	) -> EncodedKeyRange {
 		let shape = shape.into();
-		// Build the prefix for this shape and index
+
 		let mut prefix_serializer = KeySerializer::with_capacity(20);
 		prefix_serializer
 			.extend_u8(VERSION)
@@ -222,7 +211,6 @@ impl IndexEntryKey {
 			.extend_index_id(index);
 		let prefix = prefix_serializer.to_encoded_key().to_vec();
 
-		// Convert bounds to include the prefix
 		let start = match index_range.start {
 			Bound::Included(key) => {
 				let mut bytes = prefix.clone();
@@ -234,10 +222,7 @@ impl IndexEntryKey {
 				bytes.extend_from_slice(key.as_slice());
 				Bound::Excluded(EncodedKey::new(bytes))
 			}
-			Bound::Unbounded => {
-				// Start from the beginning of this index
-				Bound::Included(EncodedKey::new(prefix.clone()))
-			}
+			Bound::Unbounded => Bound::Included(EncodedKey::new(prefix.clone())),
 		};
 
 		let end = match index_range.end {
@@ -252,13 +237,11 @@ impl IndexEntryKey {
 				Bound::Excluded(EncodedKey::new(bytes))
 			}
 			Bound::Unbounded => {
-				// End at the beginning of the next index
 				let mut serializer = KeySerializer::with_capacity(20);
 				serializer
 					.extend_u8(VERSION)
 					.extend_u8(KeyKind::IndexEntry as u8)
 					.extend_shape_id(shape)
-					// Use prev() for end bound in descending order
 					.extend_index_id(index.prev());
 				Bound::Excluded(serializer.to_encoded_key())
 			}

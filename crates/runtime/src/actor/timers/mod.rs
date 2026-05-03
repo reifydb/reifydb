@@ -22,9 +22,6 @@ pub(crate) mod wasm;
 #[cfg(reifydb_target = "wasi")]
 use wasi::drain_expired_timers as wasi_drain;
 
-/// Handle to a scheduled timer.
-///
-/// Can be used to cancel the timer before it fires.
 #[derive(Clone)]
 pub struct TimerHandle {
 	id: u64,
@@ -39,25 +36,18 @@ impl TimerHandle {
 		}
 	}
 
-	/// Cancel this timer.
-	///
-	/// If the timer hasn't fired yet, it will be cancelled.
-	/// Returns `true` if the timer was successfully cancelled.
 	pub fn cancel(&self) -> bool {
 		self.cancelled.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok()
 	}
 
-	/// Check if this timer has been cancelled.
 	pub fn is_cancelled(&self) -> bool {
 		self.cancelled.load(Ordering::SeqCst)
 	}
 
-	/// Get the timer ID.
 	pub fn id(&self) -> u64 {
 		self.id
 	}
 
-	/// Get a clone of the cancelled flag.
 	pub(crate) fn cancelled_flag(&self) -> Arc<AtomicBool> {
 		self.cancelled.clone()
 	}
@@ -69,22 +59,16 @@ impl Debug for TimerHandle {
 	}
 }
 
-/// Counter for generating unique timer IDs.
 static TIMER_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn next_timer_id() -> u64 {
 	TIMER_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Drain expired timers, firing their callbacks synchronously.
-///
-/// Only meaningful on WASI where timers are queue-based. No-op on native
-/// (thread-based timers) and WASM (JavaScript event loop handles timers).
 #[cfg(reifydb_target = "wasi")]
 pub fn drain_expired_timers() {
 	wasi_drain();
 }
 
-/// Drain expired timers (no-op on this platform).
 #[cfg(not(reifydb_target = "wasi"))]
 pub fn drain_expired_timers() {}

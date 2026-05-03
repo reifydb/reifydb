@@ -36,7 +36,6 @@ impl AuthenticationProvider for TokenProvider {
 		let credential = credentials.get("token").ok_or_else(|| Error::from(AuthError::MissingToken))?;
 		let token = stored.get("token").ok_or_else(|| Error::from(AuthError::MissingToken))?;
 
-		// Constant-time comparison
 		if token.as_bytes().ct_eq(credential.as_bytes()).into() {
 			Ok(AuthStep::Authenticated)
 		} else {

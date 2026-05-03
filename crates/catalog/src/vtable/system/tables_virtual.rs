@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext, VTableRegistry},
 };
 
-/// Virtual table that exposes information about all virtual tables (system and user-defined)
 pub struct SystemTablesVirtual {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
@@ -45,7 +44,6 @@ impl BaseVTable for SystemTablesVirtual {
 			return Ok(None);
 		}
 
-		// Collect all virtual tables (system only - user-defined tables require catalog access)
 		let mut ids = Vec::new();
 		let mut namespaces = Vec::new();
 		let mut names = Vec::new();
@@ -58,7 +56,6 @@ impl BaseVTable for SystemTablesVirtual {
 			kinds.push("system".to_string());
 		}
 
-		// Add user-defined virtual tables from catalog
 		for def in self.catalog.list_user_vtables() {
 			ids.push(def.id.0);
 			namespaces.push(def.namespace.0);
@@ -66,7 +63,6 @@ impl BaseVTable for SystemTablesVirtual {
 			kinds.push("user".to_string());
 		}
 
-		// Build column data
 		let mut id_col = ColumnBuffer::uint8_with_capacity(ids.len());
 		let mut ns_col = ColumnBuffer::uint8_with_capacity(namespaces.len());
 		let mut name_col = ColumnBuffer::utf8_with_capacity(names.len());

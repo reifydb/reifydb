@@ -13,9 +13,6 @@ use reifydb_type::{Result, value::r#type::Type};
 
 use crate::bucket::{Bucket, BucketId};
 
-// A column as a sequence of `Column` chunks, each encoded independently. v1
-// materialization produces single-chunk `ColumnChunks`s; multi-chunk support
-// is reserved for the future batched-scan path.
 #[derive(Clone)]
 pub struct ColumnChunks {
 	pub ty: Type,
@@ -52,12 +49,6 @@ impl ColumnChunks {
 		self.chunks.len()
 	}
 
-	// Map a row range [start, end) onto the chunks that intersect it. Each entry is
-	// `(chunk_idx, intra_start, intra_end)` where `intra_*` are offsets within
-	// `chunks[chunk_idx]`. Empty chunks contribute nothing; empty ranges yield no
-	// entries. The chunk slice goes through `Column::slice`, so encoding-specific
-	// slice paths stay live - canonicalization only happens at the projection
-	// boundary in the caller.
 	pub fn iter_range_chunks(&self, start: usize, end: usize) -> Vec<(usize, usize, usize)> {
 		debug_assert!(start <= end, "iter_range_chunks: start {start} > end {end}");
 		let mut out = Vec::new();
@@ -84,9 +75,6 @@ impl ColumnChunks {
 
 pub type Schema = Arc<Vec<(String, Type, bool)>>;
 
-// The column container used by a `Snapshot` - a schema plus one
-// `ColumnChunks` per user column. The schema's tuple entries are
-// `(name, ty, nullable)` in positional order.
 #[derive(Clone)]
 pub struct ColumnBlock {
 	pub schema: Schema,
@@ -114,12 +102,6 @@ impl ColumnBlock {
 		self.schema.iter().position(|(n, _, _)| n == name).map(|i| (i, &self.columns[i]))
 	}
 
-	// Build a lightweight view of rows `[start, end)` by slicing each column's
-	// chunks via `Column::slice`. Schema is shared (Arc-bumped). For canonical
-	// encodings the slice is an Arc-bump on the underlying buffer; compressed
-	// encodings retain their compressed form, which is what makes batch-scoped
-	// predicate eval cheap. Used by `SnapshotReader` to evaluate a predicate
-	// against just the rows of the current batch.
 	pub fn view_range(&self, start: usize, end: usize) -> Result<ColumnBlock> {
 		debug_assert!(start <= end, "view_range: start {start} > end {end}");
 		let mut sliced_columns = Vec::with_capacity(self.columns.len());
@@ -135,10 +117,6 @@ impl ColumnBlock {
 	}
 }
 
-// Registry key. Disjoint keyspaces per shape: table snapshots are keyed by
-// `(table_id, commit_version)`, series by `(series_id, bucket)`. Bucket
-// replacement reuses the same `(series_id, bucket)` key, so late-arrival
-// re-materialization overwrites atomically via `DashMap::insert`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SnapshotId {
 	Table {
@@ -151,10 +129,6 @@ pub enum SnapshotId {
 	},
 }
 
-// Provenance - what the snapshot was built from. The `Series` variant carries
-// the full `Bucket` (not just `BucketId`) and the `sequence_counter` observed
-// at materialization time. Readers use these to decide whether a snapshot is
-// still current vs. stale.
 #[derive(Clone, Debug)]
 pub enum SnapshotSource {
 	Table {
@@ -168,9 +142,6 @@ pub enum SnapshotSource {
 	},
 }
 
-// A materialized columnar snapshot. Same `ColumnBlock` container for both
-// shapes - table and series snapshots differ only in their provenance and
-// keying.
 #[derive(Clone)]
 pub struct Snapshot {
 	pub id: SnapshotId,
@@ -193,8 +164,6 @@ impl Snapshot {
 	}
 }
 
-// Lightweight listing record - the shape callers get from
-// `SnapshotRegistry::list()` without cloning the backing `ColumnBlock`.
 #[derive(Clone, Debug)]
 pub struct SnapshotMeta {
 	pub id: SnapshotId,

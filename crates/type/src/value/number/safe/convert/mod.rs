@@ -284,7 +284,7 @@ macro_rules! impl_safe_convert_float_to_int {
                 fn checked_convert(self) -> Option<Int> {
                     if self.is_finite() {
                         let truncated = self.trunc();
-                        // Use ToBigInt trait for efficient conversion
+
                         truncated.to_bigint().map(Int)
                     } else {
                         None
@@ -325,7 +325,7 @@ macro_rules! impl_safe_convert_float_to_uint {
                 fn checked_convert(self) -> Option<Uint> {
                     if self.is_finite() && self >= 0.0 {
                         let truncated = self.trunc();
-                        // Use ToBigInt trait for efficient conversion
+
                         truncated.to_bigint().and_then(|big_int| {
                             if big_int >= BigInt::from(0) {
                                 Some(Uint(big_int))
@@ -353,7 +353,7 @@ macro_rules! impl_safe_convert_float_to_uint {
                     if self.is_finite() && self >= 0.0 {
                         Uint(BigInt::from(self.trunc() as u64))
                     } else if self.is_finite() && self < 0.0 {
-                        // For negative floats, convert to i64 then cast to u64 for two's complement
+
                         Uint(BigInt::from(self.trunc() as i64 as u64))
                     } else {
                         Uint::zero()

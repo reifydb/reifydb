@@ -42,7 +42,6 @@ impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
 			});
 		}
 
-		// Get start value
 		let start_column = args.first().ok_or_else(|| RoutineError::FunctionArityMismatch {
 			function: ctx.fragment.clone(),
 			expected: 2,
@@ -58,7 +57,6 @@ impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
 			}
 		};
 
-		// Get end value
 		let end_column = args.get(1).ok_or_else(|| RoutineError::FunctionArityMismatch {
 			function: ctx.fragment.clone(),
 			expected: 2,
@@ -74,7 +72,6 @@ impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
 			}
 		};
 
-		// Generate the series
 		let series: Vec<i32> = (start_value..=end_value).collect();
 		let series_column = ColumnWithName::int4("value", series);
 

@@ -9,10 +9,6 @@ use std::{
 
 use dashmap::DashMap;
 
-/// Thread-safe LRU cache using DashMap with approximate LRU eviction.
-///
-/// Uses an atomic counter for access ordering instead of timestamps,
-/// providing better performance while maintaining approximate LRU semantics.
 pub struct LruCache<K, V> {
 	map: DashMap<K, Entry<V>>,
 	capacity: usize,
@@ -34,7 +30,6 @@ impl<K: Hash + Eq + Clone, V: Clone> LruCache<K, V> {
 		}
 	}
 
-	/// Get a value and update LRU order. Returns cloned value.
 	pub fn get(&self, key: &K) -> Option<V> {
 		if let Some(mut entry) = self.map.get_mut(key) {
 			entry.last_access = self.access_counter.fetch_add(1, Ordering::Relaxed);
@@ -44,18 +39,15 @@ impl<K: Hash + Eq + Clone, V: Clone> LruCache<K, V> {
 		}
 	}
 
-	/// Put a value into the cache. Returns old value if key existed.
 	pub fn put(&self, key: K, value: V) -> Option<V> {
 		let access = self.access_counter.fetch_add(1, Ordering::Relaxed);
 
-		// Check if key already exists
 		if let Some(mut entry) = self.map.get_mut(&key) {
 			let old_value = mem::replace(&mut entry.value, value);
 			entry.last_access = access;
 			return Some(old_value);
 		}
 
-		// Evict if at capacity before inserting
 		if self.map.len() >= self.capacity {
 			self.evict_lru();
 		}
@@ -70,37 +62,30 @@ impl<K: Hash + Eq + Clone, V: Clone> LruCache<K, V> {
 		None
 	}
 
-	/// Remove a value from the cache.
 	pub fn remove(&self, key: &K) -> Option<V> {
 		self.map.remove(key).map(|(_, entry)| entry.value)
 	}
 
-	/// Check if cache contains a key (read-only, doesn't update LRU order).
 	pub fn contains_key(&self, key: &K) -> bool {
 		self.map.contains_key(key)
 	}
 
-	/// Clear all entries from the cache.
 	pub fn clear(&self) {
 		self.map.clear();
 	}
 
-	/// Get the current number of entries.
 	pub fn len(&self) -> usize {
 		self.map.len()
 	}
 
-	/// Check if the cache is empty.
 	pub fn is_empty(&self) -> bool {
 		self.map.is_empty()
 	}
 
-	/// Get the capacity of the cache.
 	pub fn capacity(&self) -> usize {
 		self.capacity
 	}
 
-	/// Evict the least recently used entry (approximate).
 	fn evict_lru(&self) {
 		let mut oldest_key: Option<K> = None;
 		let mut oldest_access = u64::MAX;

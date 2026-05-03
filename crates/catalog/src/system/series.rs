@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::series::*, vtable::SERIES};
 
-/// Returns the static definition for the system.series virtual table
-/// This table exposes information about all time-series in the database
 pub fn series() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

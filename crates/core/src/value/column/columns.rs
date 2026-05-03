@@ -122,8 +122,6 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 }
 
 impl Columns {
-	/// Extract the single value from a 1-column, 1-row Columns.
-	/// Panics if the Columns does not have exactly 1 column and 1 row.
 	pub fn scalar_value(&self) -> Value {
 		debug_assert_eq!(self.len(), 1, "scalar_value() requires exactly 1 column, got {}", self.len());
 		debug_assert_eq!(
@@ -238,7 +236,6 @@ impl Columns {
 }
 
 impl Columns {
-	/// Get the row number (for single-row Columns). Panics if Columns has 0 or multiple rows.
 	pub fn number(&self) -> RowNumber {
 		assert_eq!(self.row_count(), 1, "number() requires exactly 1 row, got {}", self.row_count());
 		if self.row_numbers.is_empty() {
@@ -370,15 +367,12 @@ impl Columns {
 }
 
 impl Default for Columns {
-	/// Equivalent to [`Columns::empty`]. Required by `core::util::slab::Slab<T>`
-	/// which mints fresh slabs via `T::default()`.
 	fn default() -> Self {
 		Self::empty()
 	}
 }
 
 impl Columns {
-	/// Extract a subset of rows by indices, returning a new Columns
 	pub fn extract_by_indices(&self, indices: &[usize]) -> Columns {
 		if indices.is_empty() {
 			return Columns::empty();
@@ -417,20 +411,10 @@ impl Columns {
 		}
 	}
 
-	/// Extract a single row by index, returning a new Columns with 1 row
 	pub fn extract_row(&self, index: usize) -> Columns {
 		self.extract_by_indices(&[index])
 	}
 
-	/// Append rows from `source` at the given `indices` to `self`.
-	///
-	/// If `self` is empty (no columns), it is initialized to match the shape
-	/// of `source` and populated from the selected indices. Otherwise the
-	/// per-column data, row_numbers, created_at, and updated_at are extended
-	/// in place.
-	///
-	/// Panics if `self` and `source` have different column counts (only
-	/// checked when `self` is non-empty).
 	pub fn append_rows_by_indices(&mut self, source: &Columns, indices: &[usize]) {
 		if indices.is_empty() {
 			return;
@@ -476,8 +460,6 @@ impl Columns {
 		}
 	}
 
-	/// Remove the row whose row_number equals `row_number`, if present.
-	/// Returns true if a row was removed.
 	pub fn remove_row(&mut self, row_number: RowNumber) -> bool {
 		let pos = self.row_numbers.iter().position(|&r| r == row_number);
 		let Some(idx) = pos else {
@@ -489,8 +471,6 @@ impl Columns {
 		true
 	}
 
-	/// Project to a subset of columns by name, preserving the order of the provided names.
-	/// Columns not found in self are silently skipped.
 	pub fn project_by_names(&self, names: &[String]) -> Columns {
 		let mut new_names = Vec::new();
 		let mut new_buffers = Vec::new();
@@ -515,8 +495,6 @@ impl Columns {
 		}
 	}
 
-	/// Partition Columns into groups based on keys (one key per row).
-	/// Returns an IndexMap preserving insertion order of first occurrence.
 	pub fn partition_by_keys<K: Hash + Eq + Clone>(&self, keys: &[K]) -> IndexMap<K, Columns> {
 		assert_eq!(keys.len(), self.row_count(), "keys length must match row count");
 
@@ -528,23 +506,12 @@ impl Columns {
 		key_to_indices.into_iter().map(|(key, indices)| (key, self.extract_by_indices(&indices))).collect()
 	}
 
-	/// Create Columns from a Row by decoding its encoded values.
-	///
-	/// Allocates fresh `CowVec` storage. For hot paths that repeatedly
-	/// rebuild a `Columns` per row (e.g. `CdcProducerActor`), prefer
-	/// `reset_from_row` on a reusable `Columns` slab to retain the inner
-	/// `Vec` capacities across calls.
 	pub fn from_row(row: &Row) -> Self {
 		let mut out = Columns::empty();
 		out.reset_from_row(row);
 		out
 	}
 
-	/// Refill this `Columns` from a single row, retaining inner `Vec`
-	/// capacities when this slab is uniquely owned. When shared (e.g. a
-	/// previous `Diff` is still in flight referencing one of the inner
-	/// `CowVec`s), `Arc::make_mut` forks to a fresh capacity-preserving
-	/// copy.
 	pub fn reset_from_row(&mut self, row: &Row) {
 		let field_count = row.shape.fields().len();
 
@@ -554,8 +521,6 @@ impl Columns {
 		self.columns.clear();
 		self.names.clear();
 
-		// Reserve up-front so per-field push() does not re-trigger
-		// RawVec::grow_one when the slab was created empty.
 		self.columns.make_mut().reserve(field_count);
 		self.names.make_mut().reserve(field_count);
 
@@ -593,12 +558,6 @@ impl Columns {
 		}
 	}
 
-	/// Refill from a row, sourcing inner column buffers from a shared
-	/// `ColumnBufferPool`. Existing buffers whose `get_type()` matches
-	/// the field type are cleared in place; mismatches are released to
-	/// the pool and replaced with `pool.acquire(...)`. New columns
-	/// (slab last held a narrower row) come from `pool.acquire`. Excess
-	/// columns (slab last held a wider row) are released to the pool.
 	pub fn reset_from_row_with_pool(&mut self, row: &Row, pool: &ColumnBufferPool) {
 		let field_count = row.shape.fields().len();
 
@@ -614,7 +573,6 @@ impl Columns {
 		let columns_vec = self.columns.make_mut();
 		let names_vec = self.names.make_mut();
 
-		// Drain extra columns back to the pool (slab last held a wider row).
 		while columns_vec.len() > field_count {
 			if let Some(buf) = columns_vec.pop() {
 				pool.release(buf);
@@ -638,7 +596,6 @@ impl Columns {
 					columns_vec[idx].clear();
 				} else {
 					let replacement = if column_type.is_option() {
-						// Option-wrapped buffers are never pooled; allocate fresh.
 						ColumnBuffer::none_typed(column_type.clone(), 0)
 					} else {
 						pool.acquire(&column_type, 1)
@@ -669,8 +626,6 @@ impl Columns {
 		}
 	}
 
-	/// Convert Columns back to a Row (assumes single row)
-	/// Panics if Columns contains more than 1 row
 	pub fn to_single_row(&self) -> Row {
 		assert_eq!(self.row_count(), 1, "to_row() requires exactly 1 row, got {}", self.row_count());
 		assert_eq!(

@@ -10,7 +10,6 @@ use reifydb_core::{
 	},
 };
 
-/// Classify a key to determine which table it belongs to.
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
 		Some(Key::Row(row_key)) => EntryKind::Source(row_key.shape),
@@ -20,18 +19,10 @@ pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	}
 }
 
-/// Check if a key should maintain single-version semantics (drop old versions on write).
-///
-/// Flow node state keys (both public and internal) are only ever read at the latest
-/// committed version, never for point-in-time queries. Keeping old versions wastes storage.
 pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
 	Key::kind(key).is_some_and(|kind| matches!(kind, KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState))
 }
 
-/// Classify a range to determine which table it belongs to.
-///
-/// Returns `Some(TableId)` if the range is confined to a single table,
-/// or `None` if the range spans multiple tables.
 pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	if let (Some(start), Some(_end)) = RowKeyRange::decode(range) {
 		return Some(EntryKind::Source(start.shape));

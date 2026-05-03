@@ -9,33 +9,32 @@ use serde_json::to_string as to_json;
 use tonic::Status;
 
 pub enum GrpcError {
-	/// Parameter value has wrong byte length for its declared type.
 	InvalidByteLength {
 		r#type: Type,
 		expected: usize,
 		actual: usize,
 	},
-	/// Parameter value contains invalid UTF-8.
+
 	InvalidUtf8(FromUtf8Error),
-	/// Date value is out of range.
+
 	InvalidDate {
 		days: i32,
 	},
-	/// DateTime value is out of range.
+
 	InvalidDateTime(String),
-	/// Time value is out of range.
+
 	InvalidTime {
 		nanos: u64,
 	},
-	/// Decimal string could not be parsed.
+
 	InvalidDecimal(String),
-	/// The parameter type is not supported over gRPC.
+
 	UnsupportedParamType(Type),
-	/// Authentication failed.
+
 	Unauthenticated(AuthError),
-	/// Query/command execution error (timeout, cancelled, engine error, rejected, etc.).
+
 	Execute(ExecuteError),
-	/// Subscription creation failed.
+
 	SubscriptionFailed(String),
 }
 

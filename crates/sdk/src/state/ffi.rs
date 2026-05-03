@@ -40,19 +40,17 @@ pub(crate) fn get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<Enco
 		);
 
 		if result == FFI_OK {
-			// Success - value found
 			if output.ptr.is_null() || output.len == 0 {
 				Span::current().record("found", false);
 				Ok(None)
 			} else {
 				let value_bytes = from_raw_parts(output.ptr, output.len).to_vec();
-				// Free the buffer allocated by host
+
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
 				Span::current().record("found", true);
 				Ok(Some(EncodedRow(CowVec::new(value_bytes))))
 			}
 		} else if result == FFI_NOT_FOUND {
-			// Key not found
 			Span::current().record("found", false);
 			Ok(None)
 		} else {
@@ -156,7 +154,6 @@ pub(crate) fn prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(
 				((*ctx.ctx).callbacks.state.iterator_next)(iterator, &mut key_buf, &mut value_buf);
 
 			if next_result == FFI_END_OF_ITERATION {
-				// End of iteration
 				break;
 			} else if next_result != FFI_OK {
 				((*ctx.ctx).callbacks.state.iterator_free)(iterator);
@@ -166,7 +163,6 @@ pub(crate) fn prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(
 				)));
 			}
 
-			// Convert buffers to owned data
 			if !key_buf.ptr.is_null() && key_buf.len > 0 {
 				let key_bytes = from_raw_parts(key_buf.ptr, key_buf.len).to_vec();
 				let key = EncodedKey(CowVec::new(key_bytes));
@@ -178,7 +174,6 @@ pub(crate) fn prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(
 					EncodedRow(CowVec::new(Vec::new()))
 				};
 
-				// Free buffers allocated by host
 				((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len);
 				if !value_buf.ptr.is_null() && value_buf.len > 0 {
 					((*ctx.ctx).callbacks.memory.free)(value_buf.ptr as *mut u8, value_buf.len);

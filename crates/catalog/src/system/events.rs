@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::events::*, vtable::EVENTS};
 
-/// Returns the static definition for the system.events virtual table
-/// This table exposes information about all event sumtypes in the database
 pub fn events() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

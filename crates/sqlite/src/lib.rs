@@ -14,14 +14,12 @@ pub mod error;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod pragma;
 
-/// Where the SQLite database file lives on disk.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum DbPath {
-	/// A regular file path.
 	File(PathBuf),
-	/// Tmpfs-backed file for WAL support + automatic cleanup.
+
 	Tmpfs(PathBuf),
-	/// RAM-backed file for storage with WAL support + automatic cleanup.
+
 	Memory(PathBuf),
 }
 
@@ -36,7 +34,6 @@ fn memory_dir() -> PathBuf {
 	}
 }
 
-/// Configuration for a SQLite storage backend.
 #[derive(Debug, Clone)]
 pub struct SqliteConfig {
 	pub path: DbPath,
@@ -48,19 +45,11 @@ pub struct SqliteConfig {
 	pub wal_autocheckpoint: u32,
 	pub page_size: u32,
 	pub mmap_size: u64,
-	/// Per-connection prepared statement cache capacity. rusqlite's default is
-	/// 16; the hot tier uses on the order of a few dozen distinct SQL strings
-	/// per active table, so bump well above that.
+
 	pub prepared_statement_cache_capacity: u32,
 }
 
 impl SqliteConfig {
-	/// Balanced production defaults.
-	/// - WAL journal + NORMAL synchronous: durable across crashes, one fsync per commit
-	/// - 8 MiB page cache (2000 pages * 4 KiB) covers a typical hot working set
-	/// - 64 MiB mmap window for fast cold reads
-	/// - 4 KiB pages match the kernel page size
-	/// - Override `cache_size` / `mmap_size` via the fluent builder for unusual workloads.
 	pub fn new<P: AsRef<Path>>(path: P) -> Self {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
@@ -76,11 +65,6 @@ impl SqliteConfig {
 		}
 	}
 
-	/// Safety-first configuration optimized for data integrity.
-	/// - WAL journal mode for crash recovery
-	/// - FULL synchronous mode forces fsync on every commit
-	/// - FILE temp store so a big sort cannot blow up RSS
-	/// - mmap disabled: reads must go through the fsync-respecting page cache
 	pub fn safe<P: AsRef<Path>>(path: P) -> Self {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
@@ -96,12 +80,6 @@ impl SqliteConfig {
 		}
 	}
 
-	/// High-performance configuration optimized for throughput.
-	/// - WAL journal so a crash can still replay batched writes
-	/// - OFF synchronous mode skips fsync entirely (data may be lost on power loss)
-	/// - 16 KiB pages cut per-page metadata overhead for large tables
-	/// - 160 MiB page cache (10000 pages * 16 KiB) and 256 MiB mmap window
-	/// - WAL allowed to grow up to 10000 pages before checkpoint
 	pub fn fast<P: AsRef<Path>>(path: P) -> Self {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
@@ -117,10 +95,6 @@ impl SqliteConfig {
 		}
 	}
 
-	/// Tmpfs-backed configuration for ephemeral database storage.
-	/// Uses /tmp (often tmpfs). The DB file already lives in RAM, so mmap is
-	/// disabled; mmap'ing a tmpfs file would just give the process a second
-	/// resident copy of every page.
 	pub fn tmpfs() -> Self {
 		Self {
 			path: DbPath::Tmpfs(PathBuf::from(format!("/tmp/reifydb_{}.db", Uuid::new_v4()))),
@@ -136,9 +110,6 @@ impl SqliteConfig {
 		}
 	}
 
-	/// In-memory configuration backed by /dev/shm on Linux, temp dir elsewhere.
-	/// Same reasoning as `tmpfs`: the file lives in RAM, so mmap is disabled
-	/// to avoid the second resident copy.
 	pub fn in_memory() -> Self {
 		Self {
 			path: DbPath::Memory(memory_dir().join(format!("reifydb_{}.db", Uuid::new_v4()))),
@@ -154,8 +125,6 @@ impl SqliteConfig {
 		}
 	}
 
-	/// Test configuration with an in-memory database and minimal cache.
-	/// Uses /dev/shm on Linux, temp dir on other platforms.
 	pub fn test() -> Self {
 		Self {
 			path: DbPath::Memory(memory_dir().join(format!("reifydb_{}.db", Uuid::new_v4()))),
@@ -206,15 +175,11 @@ impl SqliteConfig {
 		self
 	}
 
-	/// Set the page size in bytes (must be a power of 2 between 512 and 65536).
-	/// Must be set before the database is created; changing the page size
-	/// on an existing database requires a VACUUM.
 	pub fn page_size(mut self, size: u32) -> Self {
 		self.page_size = size;
 		self
 	}
 
-	/// Memory-mapped I/O size in bytes (0 = disabled).
 	pub fn mmap_size(mut self, size: u64) -> Self {
 		self.mmap_size = size;
 		self
@@ -227,7 +192,6 @@ impl Default for SqliteConfig {
 	}
 }
 
-/// SQLite database open flags.
 #[derive(Debug, Clone)]
 pub struct OpenFlags {
 	pub read_write: bool,
@@ -298,7 +262,6 @@ impl Default for OpenFlags {
 	}
 }
 
-/// SQLite journal mode options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JournalMode {
 	Delete,
@@ -322,7 +285,6 @@ impl JournalMode {
 	}
 }
 
-/// SQLite synchronous mode options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SynchronousMode {
 	Off,
@@ -342,7 +304,6 @@ impl SynchronousMode {
 	}
 }
 
-/// SQLite temporary storage location.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TempStore {
 	Default,

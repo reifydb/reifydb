@@ -14,9 +14,6 @@ use crate::{
 	util::cowvec::CowVec,
 };
 
-// We rely on `DataVec` for storage-generic operations.
-// CowVec-specific paths use `Cow` storage explicitly.
-
 pub struct VarlenContainer<S: Storage = Cow> {
 	data: S::Vec<u8>,
 	offsets: S::Vec<u64>,
@@ -50,7 +47,6 @@ where
 	S::Vec<u64>: PartialEq,
 {
 	fn eq(&self, other: &Self) -> bool {
-		// Compare logical contents, not byte-identical layout
 		if self.len() != other.len() {
 			return false;
 		}
@@ -64,7 +60,6 @@ where
 }
 
 impl VarlenContainer<Cow> {
-	/// Build a fresh container from a sequence of `&[u8]` slices.
 	pub fn from_byte_slices<'a, I>(items: I) -> Self
 	where
 		I: IntoIterator<Item = &'a [u8]>,
@@ -81,7 +76,6 @@ impl VarlenContainer<Cow> {
 		}
 	}
 
-	/// Pre-allocate space for `len` items and `data_bytes` bytes of payload.
 	pub fn with_capacity(item_capacity: usize, data_capacity: usize) -> Self {
 		let mut offsets = Vec::with_capacity(item_capacity + 1);
 		offsets.push(0);
@@ -91,7 +85,6 @@ impl VarlenContainer<Cow> {
 		}
 	}
 
-	/// Empty container with zero capacity.
 	pub fn empty() -> Self {
 		Self {
 			data: CowVec::new(Vec::new()),
@@ -111,9 +104,6 @@ impl VarlenContainer<Cow> {
 }
 
 impl<S: Storage> VarlenContainer<S> {
-	/// Construct directly from storage-generic `S::Vec<u8>` + `S::Vec<u64>`.
-	/// Used by arena-conversion code that builds Bump-backed containers
-	/// from already-allocated parts.
 	pub fn from_storage_parts(data: S::Vec<u8>, offsets: S::Vec<u64>) -> Self {
 		debug_assert!(
 			DataVec::len(&offsets) >= 1,
@@ -126,7 +116,6 @@ impl<S: Storage> VarlenContainer<S> {
 	}
 
 	pub fn len(&self) -> usize {
-		// offsets always has at least one element (the leading 0)
 		DataVec::len(&self.offsets).saturating_sub(1)
 	}
 
@@ -138,12 +127,10 @@ impl<S: Storage> VarlenContainer<S> {
 		DataVec::len(&self.data)
 	}
 
-	/// Borrow the concatenated payload bytes.
 	pub fn data_bytes(&self) -> &[u8] {
 		self.data.as_slice()
 	}
 
-	/// Borrow the offsets array. Length is `len + 1`.
 	pub fn offsets(&self) -> &[u64] {
 		self.offsets.as_slice()
 	}
@@ -158,7 +145,6 @@ impl<S: Storage> VarlenContainer<S> {
 	}
 
 	pub fn capacity(&self) -> usize {
-		// Number of items the offsets vec can hold without realloc - 1 for the leading zero
 		DataVec::capacity(&self.offsets).saturating_sub(1)
 	}
 
@@ -170,7 +156,6 @@ impl<S: Storage> VarlenContainer<S> {
 		&self.offsets
 	}
 
-	/// Storage-generic clear; storage-generic implementations call this.
 	pub fn clear_generic(&mut self) {
 		DataVec::clear(&mut self.data);
 		DataVec::clear(&mut self.offsets);
@@ -187,7 +172,6 @@ impl VarlenContainer<Cow> {
 		offsets_mut.push(0);
 	}
 
-	/// Append a byte slice as a new element.
 	pub fn push_bytes(&mut self, bytes: &[u8]) {
 		let data_mut = self.data.make_mut();
 		data_mut.extend_from_slice(bytes);
@@ -195,9 +179,7 @@ impl VarlenContainer<Cow> {
 		self.offsets.make_mut().push(new_end);
 	}
 
-	/// Extend with all elements from another container.
 	pub fn extend_from(&mut self, other: &Self) {
-		// Extending offsets: each new offset = base + (other_offset[i] - other_offset[0])
 		let base = DataVec::len(&self.data) as u64;
 		let other_offsets = other.offsets.as_slice();
 		let other_data = other.data.as_slice();
@@ -206,12 +188,10 @@ impl VarlenContainer<Cow> {
 		data_mut.extend_from_slice(other_data);
 
 		let offsets_mut = self.offsets.make_mut();
-		// Skip the leading 0 in `other_offsets` since we already have our own.
+
 		offsets_mut.extend(other_offsets.iter().skip(1).map(|&o| base + o));
 	}
 
-	/// Filter in place via a callback that decides whether to keep each
-	/// element. Builds a new (data, offsets) buffer in one pass.
 	pub fn filter_in_place<F: FnMut(usize) -> bool>(&mut self, mut keep: F) {
 		let len = self.len();
 		let mut new_data = Vec::with_capacity(self.data_byte_len());
@@ -228,8 +208,6 @@ impl VarlenContainer<Cow> {
 		self.offsets = CowVec::new(new_offsets);
 	}
 
-	/// Reorder according to indices; out-of-bounds indices yield empty
-	/// elements.
 	pub fn reorder_in_place(&mut self, indices: &[usize]) {
 		let mut new_data = Vec::with_capacity(self.data_byte_len());
 		let mut new_offsets = Vec::with_capacity(indices.len() + 1);
@@ -243,7 +221,6 @@ impl VarlenContainer<Cow> {
 		self.offsets = CowVec::new(new_offsets);
 	}
 
-	/// Take the first `n` elements as a new container.
 	pub fn take_n(&self, n: usize) -> Self {
 		let n = n.min(self.len());
 		let end_byte = self.offsets.as_slice()[n] as usize;
@@ -252,7 +229,6 @@ impl VarlenContainer<Cow> {
 		Self::from_raw_parts(new_data, new_offsets)
 	}
 
-	/// Slice elements `[start, end)` as a new container.
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let len = self.len();
 		let start = start.min(len);
@@ -263,16 +239,13 @@ impl VarlenContainer<Cow> {
 		let start_byte = self.offsets.as_slice()[start] as usize;
 		let end_byte = self.offsets.as_slice()[end] as usize;
 		let new_data: Vec<u8> = self.data.as_slice()[start_byte..end_byte].to_vec();
-		// Re-base offsets so the first one is 0.
+
 		let new_offsets: Vec<u64> =
 			self.offsets.as_slice()[start..=end].iter().map(|o| *o - start_byte as u64).collect();
 		Self::from_raw_parts(new_data, new_offsets)
 	}
 }
 
-// Postcard-stable serde: encode as a sequence of `&[u8]` so the byte stream
-// matches the existing `Vec<Vec<u8>>` / `Vec<String>` encoding. Deserialize
-// via a temporary Vec<Vec<u8>> and rebuild the contiguous layout.
 impl Serialize for VarlenContainer<Cow> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		let mut seq = serializer.serialize_seq(Some(self.len()))?;

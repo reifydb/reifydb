@@ -17,7 +17,6 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for storing TTL configuration for a data shape (table, ringbuffer, series)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RowTtlKey {
 	pub shape: ShapeId,
@@ -95,7 +94,6 @@ impl EncodableKey for RowTtlKey {
 	}
 }
 
-/// Range for scanning all shape TTL configurations
 pub struct RowTtlKeyRange;
 
 impl RowTtlKeyRange {

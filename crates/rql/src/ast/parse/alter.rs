@@ -119,7 +119,6 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
-		// Parse [namespace...].table.column (at least 2 segments required)
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		if segments.len() < 2 {
 			let fragment = token.fragment.to_owned();
@@ -217,7 +216,6 @@ impl<'bump> Parser<'bump> {
 			segments.into_iter().map(|s| s.into_fragment()).collect(),
 		);
 
-		// Parse required WITH { grpc: '...' } block
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 

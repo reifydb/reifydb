@@ -14,11 +14,6 @@ use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::Rou
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("identity::inject"));
 
-/// Procedure that injects a new identity into the current session.
-///
-/// Takes 1 positional parameter: the IdentityId to inject.
-/// Returns a single-column result containing the IdentityId value;
-/// the VM intercepts this result and updates its identity accordingly.
 pub struct IdentityInject;
 
 impl Default for IdentityInject {

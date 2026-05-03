@@ -10,11 +10,6 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-/// Build a `system::metrics::storage::<name>` virtual table definition.
-///
-/// Schema: (id, namespace_id, tier, current_key_bytes, current_value_bytes,
-/// current_total_bytes, current_count, historical_key_bytes, historical_value_bytes,
-/// historical_total_bytes, historical_count, total_bytes).
 pub fn metrics_storage_vtable(id: VTableId, local_name: &str) -> Arc<VTable> {
 	Arc::new(VTable {
 		id,

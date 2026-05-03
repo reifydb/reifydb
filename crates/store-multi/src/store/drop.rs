@@ -6,36 +6,23 @@ use reifydb_type::util::cowvec::CowVec;
 
 use crate::{Result, tier::TierStorage};
 
-/// Information about an entry to be dropped.
 #[derive(Debug, Clone)]
 pub struct DropEntry {
-	/// The logical key to delete
 	pub key: CowVec<u8>,
-	/// The specific version to delete
+
 	pub version: CommitVersion,
-	/// The size of the value being dropped (for metrics tracking)
+
 	pub value_bytes: u64,
 }
 
-/// Find historical versioned keys to drop.
-///
-/// Always keeps the most recent version and drops everything else.
-///
-/// # Arguments
-/// - `storage`: The storage backend to scan
-/// - `table`: The table containing the keys
-/// - `key`: The logical key (without version suffix)
-/// - `pending_version`: Version being written in the same batch (to avoid race)
 pub(crate) fn find_keys_to_drop<S: TierStorage>(
 	storage: &S,
 	table: EntryKind,
 	key: &[u8],
 	pending_version: Option<CommitVersion>,
 ) -> Result<Vec<DropEntry>> {
-	// Get all versions of this key directly (bypasses MVCC resolution)
 	let all_versions = storage.get_all_versions(table, key)?;
 
-	// Collect all versions with their value sizes
 	let mut versioned_entries: Vec<(CommitVersion, u64)> = all_versions
 		.into_iter()
 		.map(|(version, value)| {
@@ -44,30 +31,21 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 		})
 		.collect();
 
-	// Include pending version if provided (version being written in current batch)
-	// This prevents a race where Drop scans storage before Set is written
 	if let Some(pending_ver) = pending_version {
-		// Check if pending version already exists (avoid duplicates)
 		if !versioned_entries.iter().any(|(v, _)| *v == pending_ver) {
-			// Add a placeholder entry for the pending version
-			// value_bytes=0 is fine since this entry will never be dropped (it's the newest)
 			versioned_entries.push((pending_ver, 0));
 		}
 	}
 
-	// Sort by version descending (most recent first)
 	versioned_entries.sort_by(|a, b| b.0.cmp(&a.0));
 
-	// Determine which entries to drop: Keep only index 0 (the latest), drop all others
 	let mut entries_to_drop = Vec::new();
 	let key_cow = CowVec::new(key.to_vec());
 
 	for (idx, (entry_version, value_bytes)) in versioned_entries.into_iter().enumerate() {
-		// Aggressive cleanup: Drop everything except the most recent version
 		let should_drop = idx > 0;
 
 		if should_drop {
-			// Never drop the pending version (it's being written in this batch)
 			if Some(entry_version) == pending_version {
 				continue;
 			}

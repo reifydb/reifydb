@@ -19,7 +19,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system view information
 pub struct SystemViews {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

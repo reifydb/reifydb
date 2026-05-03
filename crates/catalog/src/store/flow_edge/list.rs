@@ -18,7 +18,6 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn list_flow_edges_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowEdge>> {
-		// Collect edge IDs first to avoid holding stream borrow
 		let mut edge_ids = Vec::new();
 		{
 			let stream = rx.range(FlowEdgeByFlowKey::full_scan(flow_id), 1024)?;
@@ -28,7 +27,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Then fetch each edge
 		let mut edges = Vec::new();
 		for edge_id in edge_ids {
 			if let Some(edge) = Self::find_flow_edge(rx, edge_id)? {
@@ -36,7 +34,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Sort by edge_id to ensure consistent ordering (edges are stored in descending order)
 		edges.sort_by_key(|e| e.id);
 
 		Ok(edges)

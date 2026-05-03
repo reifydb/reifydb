@@ -7,13 +7,11 @@ use crate::token::{
 	token::{Literal, Token, TokenKind},
 };
 
-/// Scan for a number literal
 pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
-	// Check for hex (0x...)
 	if cursor.peek_str(2).eq_ignore_ascii_case("0x") {
 		cursor.consume();
 		cursor.consume();
@@ -31,7 +29,6 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		return None;
 	}
 
-	// Check for binary (0b...)
 	if cursor.peek_str(2).eq_ignore_ascii_case("0b") {
 		cursor.consume();
 		cursor.consume();
@@ -49,7 +46,6 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		return None;
 	}
 
-	// Check for octal (0o...)
 	if cursor.peek_str(2).eq_ignore_ascii_case("0o") {
 		cursor.consume();
 		cursor.consume();
@@ -67,10 +63,8 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		return None;
 	}
 
-	// Decimal number (including float and scientific notation)
 	let state = cursor.save_state();
 
-	// Check for leading dot (.123)
 	let has_leading_dot = cursor.peek() == Some('.');
 	if has_leading_dot {
 		cursor.consume();
@@ -82,23 +76,19 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		return None;
 	}
 
-	// Integer part (if no leading dot)
 	if !has_leading_dot {
 		cursor.consume_while(|c| c.is_ascii_digit() || c == '_');
 	}
 
-	// Fractional part
 	if cursor.peek() == Some('.') && !has_leading_dot {
 		if cursor.peek_ahead(1).is_some_and(|c| c.is_ascii_digit()) {
-			cursor.consume(); // consume '.'
+			cursor.consume();
 			cursor.consume_while(|c| c.is_ascii_digit() || c == '_');
 		}
 	} else if has_leading_dot {
-		// Already consumed the dot
 		cursor.consume_while(|c| c.is_ascii_digit() || c == '_');
 	}
 
-	// Scientific notation (e/E)
 	if let Some(e) = cursor.peek()
 		&& (e == 'e' || e == 'E')
 	{
@@ -110,20 +100,15 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		}
 		let exp_part = cursor.consume_while(|c| c.is_ascii_digit() || c == '_');
 		if exp_part.is_empty() {
-			// Invalid scientific notation
 			cursor.restore_state(state);
 			return None;
 		}
 	}
 
-	// Make sure we consumed something
 	if cursor.pos() == start_pos {
 		return None;
 	}
 
-	// Special case: leading dot decimals followed by identifier chars should be rejected
-	// This allows ".5sec" to parse as Dot + Number("5") + Identifier("sec")
-	// instead of Number(".5") + Identifier("sec")
 	if has_leading_dot && cursor.peek().is_some_and(is_identifier_char) {
 		cursor.restore_state(state);
 		return None;

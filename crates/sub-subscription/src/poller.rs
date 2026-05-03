@@ -9,8 +9,6 @@ use tokio::{select, sync::watch::Receiver, task::spawn_blocking, time::interval}
 
 use crate::store::SubscriptionStore;
 
-/// Store-backed subscription poller that drains from in-memory SubscriptionStore
-/// instead of polling persistent storage.
 pub struct StoreBackedPoller {
 	store: Arc<SubscriptionStore>,
 	batch_size: usize,
@@ -24,12 +22,6 @@ impl StoreBackedPoller {
 		}
 	}
 
-	/// Poll all active subscriptions and deliver via the delivery trait.
-	///
-	/// Holds the store's coord read lock for the full cycle so that commits
-	/// from the subscription CDC consumer are blocked until the cycle
-	/// completes. This guarantees the poller never observes a partial
-	/// commit - either a CDC batch's diffs are all visible, or none are.
 	pub fn poll_all(&self, delivery: &dyn SubscriptionDelivery) {
 		let _coord = self.store.begin_poll();
 		let active = delivery.active_subscriptions();
@@ -52,7 +44,6 @@ impl StoreBackedPoller {
 		}
 	}
 
-	/// Run polling loop with interval-based wakeup.
 	pub async fn run_loop(
 		self: Arc<Self>,
 		delivery: Arc<dyn SubscriptionDelivery>,

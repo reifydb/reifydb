@@ -13,13 +13,11 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-/// Direction for counter increment/decrement
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CounterDirection {
-	/// Count upwards: 1, 2, 3, ...
 	#[default]
 	Ascending,
-	/// Count downwards: MAX, MAX-1, MAX-2, ...
+
 	Descending,
 }
 
@@ -30,7 +28,6 @@ pub struct Counter {
 }
 
 impl Counter {
-	/// Create counter with single-byte prefix key
 	pub fn with_prefix(node: FlowNodeId, prefix: u8, direction: CounterDirection) -> Self {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(prefix);
@@ -42,7 +39,6 @@ impl Counter {
 		}
 	}
 
-	/// Create counter with custom key (e.g., subscription ID)
 	pub fn with_key(node: FlowNodeId, key: EncodedKey, direction: CounterDirection) -> Self {
 		Self {
 			node,
@@ -51,7 +47,6 @@ impl Counter {
 		}
 	}
 
-	/// Get next counter value (atomically: returns current, then increments/decrements)
 	pub fn next(&self, txn: &mut FlowTransaction) -> Result<RowNumber> {
 		let current = self.load(txn)?;
 		let next_value = self.compute_next(current);
@@ -59,17 +54,14 @@ impl Counter {
 		Ok(RowNumber(current))
 	}
 
-	/// Get current value without modifying
 	pub fn current(&self, txn: &mut FlowTransaction) -> Result<u64> {
 		self.load(txn)
 	}
 
-	/// Set to specific value
 	pub fn set(&self, txn: &mut FlowTransaction, value: u64) -> Result<()> {
 		self.save(txn, value)
 	}
 
-	// Internal methods
 	fn load(&self, txn: &mut FlowTransaction) -> Result<u64> {
 		match internal_state_get(self.node, txn, &self.key)? {
 			None => Ok(self.default_value()),

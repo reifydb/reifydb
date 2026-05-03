@@ -59,18 +59,15 @@ impl<'a> Routine<FunctionContext<'a>> for DateAdd {
 							let mut month = date.month() as i32;
 							let mut day = date.day();
 
-							// Add months component
 							let total_months = month + dur.get_months();
 							year += (total_months - 1).div_euclid(12);
 							month = (total_months - 1).rem_euclid(12) + 1;
 
-							// Clamp day to valid range for the new month
 							let max_day = days_in_month(year, month as u32);
 							if day > max_day {
 								day = max_day;
 							}
 
-							// Convert to days_since_epoch and add days component
 							if let Some(base) = Date::new(year, month as u32, day) {
 								let total_days = base.to_days_since_epoch()
 									+ dur.get_days() + (dur.get_nanos()

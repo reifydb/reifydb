@@ -33,29 +33,20 @@ use crate::{
 	transform::ffi::stubs,
 };
 
-// One scratch arena per OS thread. Reset before each `execute` so scaffolding
-// memory is bounded to a single call's worth.
 thread_local! {
 	static FFI_PROC_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
 }
 
-/// FFI procedure that wraps an external procedure implementation.
 pub struct NativeProcedureFFI {
 	info: RoutineInfo,
 	#[allow(dead_code)]
 	descriptor: ProcedureDescriptorFFI,
 	vtable: ProcedureVTableFFI,
-	/// Mutex serialises invocations of the underlying FFI instance and, by
-	/// virtue of being held across the whole `execute`, also serialises
-	/// access to `cached_ctx` and `builder_registry`.
+
 	instance: Mutex<*mut c_void>,
-	/// Per-instance output collector. The guest emits its result Columns
-	/// via the builder callbacks; the host drains a single Insert-shaped
-	/// diff after the vtable call returns.
+
 	builder_registry: BuilderRegistry,
-	/// Pre-built FFI context. `operator_id`, `executor_ptr`, and `callbacks`
-	/// are written once in `new`; `txn_ptr` and `clock_now_nanos` are
-	/// refreshed per call inside the Mutex critical section.
+
 	cached_ctx: UnsafeCell<ContextFFI>,
 }
 
@@ -82,7 +73,7 @@ impl NativeProcedureFFI {
 }
 
 // SAFETY: the Mutex around `instance` provides single-actor access; that same
-// critical section guards `cached_ctx` and `builder_registry`.
+
 unsafe impl Send for NativeProcedureFFI {}
 unsafe impl Sync for NativeProcedureFFI {}
 
@@ -138,26 +129,16 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {
 		let instance_guard = self.instance.lock().unwrap();
 		let instance = *instance_guard;
 
-		// Serialise params via the per-thread arena's bumpalo backing if
-		// possible; for now we go through a `Vec<u8>` (postcard's default
-		// allocator) since the procedure call is not in the hottest loop.
 		let params_bytes = to_stdvec(ctx.params).map_err(|e| {
 			RoutineError::Wrapped(Box::new(
 				FFIError::Other(format!("Failed to serialize params: {}", e)).into(),
 			))
 		})?;
 
-		// Reset the per-thread arena. Currently only used by callees of
-		// `host_alloc` / scaffolding inside the FFI runtime; resetting
-		// here keeps memory bounded to one call.
 		// SAFETY: single-threaded per call (Mutex held); no live pointers
-		// from a prior call survive past this function's return.
+
 		FFI_PROC_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 
-		// Refresh per-call ctx fields: txn pointer and clock (from the
-		// procedure's runtime context, so mock clocks in tests apply).
-		// Static fields (`callbacks`, `executor_ptr`, `operator_id`) were
-		// written once in `new`.
 		let ffi_ctx_ptr = self.cached_ctx.get();
 		unsafe {
 			(*ffi_ctx_ptr).txn_ptr = ctx.tx as *mut Transaction<'_> as *mut c_void;

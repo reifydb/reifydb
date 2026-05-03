@@ -8,14 +8,14 @@ use tracing::{Span, field, instrument};
 use super::RowShapeRegistry;
 use crate::{Result, store::row_shape::find::load_all_row_shapes};
 
-/// Loads shapes from storage into the RowShapeRegistry cache.
+
 pub struct RowShapeRegistryLoader;
 
 impl RowShapeRegistryLoader {
-	/// Load all shapes from storage into the registry cache.
-	///
-	/// This is called during database startup to populate the cache
-	/// with persisted shapes.
+
+
+
+
 	#[instrument(
 		name = "row_shape_registry::load_all",
 		level = "debug",

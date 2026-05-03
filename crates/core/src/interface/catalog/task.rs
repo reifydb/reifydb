@@ -6,12 +6,10 @@ use std::{
 	sync::atomic::{AtomicU64, Ordering},
 };
 
-/// Unique identifier for a scheduled task
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TaskId(u64);
 
 impl TaskId {
-	/// Generate a new unique task ID
 	pub fn new() -> Self {
 		static COUNTER: AtomicU64 = AtomicU64::new(1);
 		Self(COUNTER.fetch_add(1, Ordering::Relaxed))

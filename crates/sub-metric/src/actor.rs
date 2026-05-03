@@ -213,9 +213,7 @@ impl Actor for MetricCollectorActor {
 		Directive::Continue
 	}
 
-	fn post_stop(&self) {
-		// Best-effort final emit; state is gone, so nothing further to flush.
-	}
+	fn post_stop(&self) {}
 }
 
 fn emit_stats_processed(event_bus: &EventBus, max_version: &mut CommitVersion) {

@@ -24,7 +24,6 @@ use crate::{
 	pool::Pools,
 };
 
-/// Inner shared state for the actor system.
 struct ActorSystemInner {
 	cancel: CancellationToken,
 	scheduler: SchedulerHandle,
@@ -36,19 +35,12 @@ struct ActorSystemInner {
 	children: Mutex<Vec<ActorSystem>>,
 }
 
-/// Unified system for all concurrent work.
-///
-/// Provides:
-/// - Actor spawning on a shared work-stealing pool
-/// - CPU-bound compute with admission control
-/// - Graceful shutdown via cancellation token
 #[derive(Clone)]
 pub struct ActorSystem {
 	inner: Arc<ActorSystemInner>,
 }
 
 impl ActorSystem {
-	/// Create a new actor system with the given pools and clock.
 	pub fn new(pools: Pools, clock: Clock) -> Self {
 		let scheduler = SchedulerHandle::new(pools.system_pool().clone());
 
@@ -83,67 +75,50 @@ impl ActorSystem {
 		child
 	}
 
-	/// Get the pools for this system.
 	pub fn pools(&self) -> Pools {
 		self.inner.pools.clone()
 	}
 
-	/// Get the cancellation token for this system.
 	pub fn cancellation_token(&self) -> CancellationToken {
 		self.inner.cancel.clone()
 	}
 
-	/// Check if the system has been cancelled.
 	pub fn is_cancelled(&self) -> bool {
 		self.inner.cancel.is_cancelled()
 	}
 
-	/// Signal shutdown to all actors and the timer scheduler.
-	///
-	/// Cancels all actors, wakes any that are parked, then drops the waker
-	/// and keepalive references so actor cells can be freed.
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
 
-		// Propagate shutdown to child scopes.
 		for child in self.inner.children.lock().unwrap().iter() {
 			child.shutdown();
 		}
 
-		// Drain wakers: wake all parked actors and release the closures in one step.
 		let wakers = mem::take(&mut *self.inner.wakers.lock().unwrap());
 		for waker in &wakers {
 			waker();
 		}
 		drop(wakers);
 
-		// Release keepalive references so actor cells can be freed.
 		self.inner.keepalive.lock().unwrap().clear();
 	}
 
-	/// Register a waker to be called on shutdown.
 	pub(crate) fn register_waker(&self, f: Arc<dyn Fn() + Send + Sync>) {
 		self.inner.wakers.lock().unwrap().push(f);
 	}
 
-	/// Register an actor cell to be kept alive while the system is running.
-	///
-	/// Cleared on shutdown so actor cells can be freed.
 	pub(crate) fn register_keepalive(&self, cell: Box<dyn Any + Send + Sync>) {
 		self.inner.keepalive.lock().unwrap().push(cell);
 	}
 
-	/// Register a done receiver for an actor, used by `join()` to wait for all actors.
 	pub(crate) fn register_done_rx(&self, rx: Receiver<()>) {
 		self.inner.done_rxs.lock().unwrap().push(rx);
 	}
 
-	/// Wait for all actors to finish after shutdown, with a default 5-second timeout.
 	pub fn join(&self) -> Result<(), JoinError> {
 		self.join_timeout(Duration::from_secs(5))
 	}
 
-	/// Wait for all actors to finish after shutdown, with a custom timeout.
 	#[allow(clippy::disallowed_methods)]
 	pub fn join_timeout(&self, timeout: Duration) -> Result<(), JoinError> {
 		let deadline = time::Instant::now() + timeout;
@@ -152,9 +127,7 @@ impl ActorSystem {
 			let remaining = deadline.saturating_duration_since(time::Instant::now());
 			match rx.recv_timeout(remaining) {
 				Ok(()) => {}
-				Err(CcRecvTimeoutError::Disconnected) => {
-					// Cell dropped without sending - actor already cleaned up
-				}
+				Err(CcRecvTimeoutError::Disconnected) => {}
 				Err(CcRecvTimeoutError::Timeout) => {
 					return Err(JoinError::new("timed out waiting for actors to stop"));
 				}
@@ -163,20 +136,14 @@ impl ActorSystem {
 		Ok(())
 	}
 
-	/// Get the timer scheduler for scheduling delayed/periodic callbacks.
 	pub fn scheduler(&self) -> &SchedulerHandle {
 		&self.inner.scheduler
 	}
 
-	/// Get the clock for this system.
 	pub fn clock(&self) -> &Clock {
 		&self.inner.clock
 	}
 
-	/// Spawn an actor on the system pool.
-	///
-	/// Use this for lightweight actors that must never stall
-	/// (flow, CDC, watermark, metrics, etc.).
 	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
@@ -184,10 +151,6 @@ impl ActorSystem {
 		pool::spawn_on_pool(self, name, actor, self.inner.pools.system_pool())
 	}
 
-	/// Spawn an actor on the query pool.
-	///
-	/// Use this for execution-heavy actors that may block on engine calls
-	/// (WS, gRPC, HTTP server actors).
 	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
@@ -202,17 +165,14 @@ impl Debug for ActorSystem {
 	}
 }
 
-/// Handle to a spawned actor.
 pub type ActorHandle<M> = PoolActorHandle<M>;
 
-/// Error returned when joining an actor fails.
 #[derive(Debug)]
 pub struct JoinError {
 	message: String,
 }
 
 impl JoinError {
-	/// Create a new JoinError with a message.
 	pub fn new(message: impl Into<String>) -> Self {
 		Self {
 			message: message.into(),

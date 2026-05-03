@@ -25,7 +25,6 @@ fn take_nones(nones: &NoneBitmap, idx: &[usize]) -> NoneBitmap {
 	out
 }
 
-// Indices must be a canonical fixed-width integer column (u8/u16/u32/u64/i32/i64).
 fn extract_indices(indices: &Canonical) -> Result<Vec<usize>> {
 	match &indices.buffer {
 		ColumnBuffer::Uint1(_)

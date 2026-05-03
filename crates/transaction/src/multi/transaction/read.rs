@@ -90,11 +90,6 @@ impl MultiReadTransaction {
 		})
 	}
 
-	/// Create a streaming iterator for forward range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The stream yields individual entries
-	/// and maintains cursor state internally.
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
@@ -104,11 +99,6 @@ impl MultiReadTransaction {
 		Box::new(self.engine.store.range(range, version, batch_size))
 	}
 
-	/// Create a streaming iterator for reverse range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The stream yields individual entries
-	/// in reverse key order and maintains cursor state internally.
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,

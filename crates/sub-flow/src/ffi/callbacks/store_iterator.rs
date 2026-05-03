@@ -5,25 +5,18 @@ use std::{cell::RefCell, collections::HashMap};
 
 use reifydb_core::interface::store::MultiVersionBatch;
 
-/// Handle to a store iterator
 pub type StoreIteratorHandle = u64;
 
-// Thread-local registry of active store iterators
 thread_local! {
 	static ITERATOR_REGISTRY: RefCell<StoreIteratorRegistry> = RefCell::new(StoreIteratorRegistry::new());
 }
 
-/// Batch-based iterator for FFI boundary
-///
-/// Pre-decodes all items from a MultiVersionBatch for efficient iteration.
-/// Returns raw keys without any namespace decoding.
 struct BatchIterator {
-	items: Vec<(Vec<u8>, Vec<u8>)>, // (raw_key, value) pairs
+	items: Vec<(Vec<u8>, Vec<u8>)>,
 	position: usize,
 }
 
 impl BatchIterator {
-	/// Create a new batch iterator from a MultiVersionBatch
 	fn new(batch: MultiVersionBatch) -> Self {
 		let items = batch.items.into_iter().map(|multi| (multi.key.to_vec(), multi.row.to_vec())).collect();
 
@@ -33,7 +26,6 @@ impl BatchIterator {
 		}
 	}
 
-	/// Get the next key-value pair
 	fn next(&mut self) -> Option<(Vec<u8>, Vec<u8>)> {
 		if self.position < self.items.len() {
 			let item = self.items[self.position].clone();
@@ -45,7 +37,6 @@ impl BatchIterator {
 	}
 }
 
-/// Registry for managing store iterators
 struct StoreIteratorRegistry {
 	next_handle: StoreIteratorHandle,
 	iterators: HashMap<StoreIteratorHandle, BatchIterator>,
@@ -75,17 +66,11 @@ impl StoreIteratorRegistry {
 	}
 }
 
-/// Create a new iterator from a batch and return its handle
 pub(crate) fn create_iterator(batch: MultiVersionBatch) -> StoreIteratorHandle {
 	let iter = BatchIterator::new(batch);
 	ITERATOR_REGISTRY.with(|r| r.borrow_mut().insert(iter))
 }
 
-/// Get the next key-value pair from an iterator
-///
-/// Returns:
-/// - Some((key, value)) if there's a next item
-/// - None if iterator is exhausted or handle is invalid
 pub(crate) fn next_iterator(handle: StoreIteratorHandle) -> Option<(Vec<u8>, Vec<u8>)> {
 	ITERATOR_REGISTRY.with(|r| {
 		let mut registry = r.borrow_mut();
@@ -93,7 +78,6 @@ pub(crate) fn next_iterator(handle: StoreIteratorHandle) -> Option<(Vec<u8>, Vec
 	})
 }
 
-/// Free an iterator by its handle
 pub(crate) fn free_iterator(handle: StoreIteratorHandle) -> bool {
 	ITERATOR_REGISTRY.with(|r| r.borrow_mut().remove(handle).is_some())
 }

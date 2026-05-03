@@ -10,9 +10,6 @@ use super::{AuthResponse, AuthService, generate_session_token};
 use crate::error::AuthError;
 
 impl AuthService {
-	/// Auto-provision a new identity with Solana authentication.
-	///
-	/// Creates the identity and Solana auth method, then proceeds with the challenge flow.
 	pub(crate) fn auto_provision_solana(
 		&self,
 		identifier: &str,
@@ -25,11 +22,9 @@ impl AuthService {
 			})
 		})?;
 
-		// Validate the public key via the provider
 		let properties = provider
 			.create(&self.rng, &HashMap::from([("public_key".to_string(), public_key.to_string())]))?;
 
-		// Create identity + auth in an admin transaction
 		let mut admin = self.engine.begin_admin()?;
 		let catalog = self.engine.catalog();
 
@@ -37,7 +32,6 @@ impl AuthService {
 		catalog.create_authentication(&mut admin, ident.id, "solana", properties.clone())?;
 		admin.commit()?;
 
-		// Proceed with challenge flow using the stored properties
 		match provider.authenticate(&properties, credentials)? {
 			AuthStep::Challenge {
 				payload,

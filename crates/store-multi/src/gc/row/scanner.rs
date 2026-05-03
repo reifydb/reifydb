@@ -18,7 +18,6 @@ use crate::{
 	tier::{RangeCursor, TierStorage},
 };
 
-/// A row identified as expired during scanning.
 pub struct ExpiredRow {
 	pub shape_id: ShapeId,
 	pub key: CowVec<u8>,
@@ -31,10 +30,6 @@ pub enum ScanResult {
 	Exhausted,
 }
 
-/// Scan a single shape for rows whose TTL has expired.
-///
-/// Iterates all rows in the shape, reads the anchor timestamp from each
-/// row's trailer, and returns those that have exceeded their TTL duration.
 pub fn scan_shape_by_created_at(
 	storage: &HotStorage,
 	shape_id: ShapeId,
@@ -133,12 +128,8 @@ fn bound_as_ref(bound: &Bound<impl AsRef<[u8]>>) -> Bound<&[u8]> {
 	}
 }
 
-/// Drop all versions of expired rows from storage.
-///
-/// For each expired row key, fetches all stored versions and physically
-/// removes them. Returns stats about the operation.
 // TODO: batch version lookups - currently O(N) individual get_all_versions
-// calls for N expired rows. Consider a bulk API when large TTL bursts occur.
+
 pub fn drop_expired_keys(storage: &HotStorage, expired: &[ExpiredRow], stats: &mut ScanStats) -> Result<()> {
 	if expired.is_empty() {
 		return Ok(());

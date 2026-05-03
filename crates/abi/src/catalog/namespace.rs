@@ -3,14 +3,12 @@
 
 use crate::data::buffer::BufferFFI;
 
-/// FFI-safe namespace definition
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct NamespaceFFI {
-	/// Namespace ID (u64)
 	pub id: u64,
-	/// Namespace name (UTF-8 encoded)
+
 	pub name: BufferFFI,
-	/// Parent namespace ID (0 = root)
+
 	pub parent_id: u64,
 }

@@ -3,7 +3,7 @@
 
 #[macro_export]
 macro_rules! define_event {
-	// Handle empty structs (e.g., OnStartEvent)
+
 	(
 		$(#[$meta:meta])*
 		$vis:vis struct $name:ident {}
@@ -30,7 +30,7 @@ macro_rules! define_event {
 		}
 	};
 
-	// Handle non-empty structs with fields
+
 	(
 		$(#[$meta:meta])*
 		$vis:vis struct $name:ident {
@@ -40,9 +40,9 @@ macro_rules! define_event {
 			),* $(,)?
 		}
 	) => {
-		// create unique inner module name
+
 		::paste::paste! {
-			// Inner struct with all fields
+
 			#[doc(hidden)]
 			#[allow(non_snake_case)]
 			mod [<__inner_ $name:snake>] {
@@ -59,14 +59,14 @@ macro_rules! define_event {
 				}
 			}
 
-			// Wrapper struct with Arc
+
 			$(#[$meta])*
 			#[derive(Debug)]
 			$vis struct $name {
 				inner: std::sync::Arc<[<__inner_ $name:snake>]::Inner>,
 			}
 
-			// Clone implementation (cheap Arc clone)
+
 			impl Clone for $name {
 				fn clone(&self) -> Self {
 					Self {
@@ -75,7 +75,7 @@ macro_rules! define_event {
 				}
 			}
 
-			// Constructor and accessor methods
+
 			impl $name {
 				#[allow(clippy::too_many_arguments)]
 				#[allow(clippy::new_without_default)]
@@ -95,7 +95,7 @@ macro_rules! define_event {
 				)*
 			}
 
-			// Event trait implementation
+
 			impl $crate::event::Event for $name {
 				fn as_any(&self) -> &dyn std::any::Any {
 					self

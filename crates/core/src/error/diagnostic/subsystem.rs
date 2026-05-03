@@ -5,7 +5,6 @@ use std::fmt;
 
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
-/// Subsystem initialization failed
 pub fn init_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_001".to_string(),
@@ -21,7 +20,6 @@ pub fn init_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> D
 	}
 }
 
-/// Required feature is not enabled
 pub fn feature_disabled(feature: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_002".to_string(),
@@ -37,7 +35,6 @@ pub fn feature_disabled(feature: impl fmt::Display) -> Diagnostic {
 	}
 }
 
-/// Server socket binding failed
 pub fn bind_failed(addr: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_003".to_string(),
@@ -53,7 +50,6 @@ pub fn bind_failed(addr: impl fmt::Display, reason: impl fmt::Display) -> Diagno
 	}
 }
 
-/// Graceful shutdown failed
 pub fn shutdown_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_004".to_string(),
@@ -69,7 +65,6 @@ pub fn shutdown_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) 
 	}
 }
 
-/// Failed to retrieve local address after binding
 pub fn address_unavailable(reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_005".to_string(),
@@ -85,7 +80,6 @@ pub fn address_unavailable(reason: impl fmt::Display) -> Diagnostic {
 	}
 }
 
-/// Socket configuration failed
 pub fn socket_config_failed(reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_006".to_string(),

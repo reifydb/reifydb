@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system primary key information
 pub struct SystemPrimaryKeys {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
@@ -51,7 +50,6 @@ impl BaseVTable for SystemPrimaryKeys {
 		let mut pk_ids = Vec::new();
 		let mut shape_ids = Vec::new();
 
-		// Read primary keys from storage instead of in-memory catalog
 		let primary_keys = CatalogStore::list_primary_keys(txn)?;
 		for pk_info in primary_keys {
 			pk_ids.push(pk_info.def.id.0);

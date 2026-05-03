@@ -12,7 +12,6 @@ use reifydb_type::{error, fragment::Fragment, value::Value};
 
 use crate::{Result, error::EngineError};
 
-/// The VM data stack for intermediate results
 #[derive(Debug, Clone)]
 pub struct Stack {
 	variables: Vec<Variable>,
@@ -52,41 +51,33 @@ impl Default for Stack {
 	}
 }
 
-/// A closure paired with its captured environment (snapshotted at definition time)
 #[derive(Debug, Clone)]
 pub struct ClosureValue {
 	pub def: CompiledClosure,
 	pub captured: HashMap<String, Variable>,
 }
 
-/// A variable can be columnar data, a FOR loop iterator, or a closure.
 #[derive(Debug, Clone)]
 pub enum Variable {
-	/// Columnar data. Scalar-ness is derived from shape via `columns.is_scalar()`
-	/// (1 column, 1 row).
 	Columns {
 		columns: Columns,
 	},
-	/// A FOR loop iterator tracking position in a result set
+
 	ForIterator {
 		columns: Columns,
 		index: usize,
 	},
-	/// A closure (anonymous function with captured environment)
+
 	Closure(ClosureValue),
 }
 
 impl Variable {
-	/// Create a scalar variable from a single Value.
 	pub fn scalar(value: Value) -> Self {
 		Variable::Columns {
 			columns: Columns::single_row([("value", value)]),
 		}
 	}
 
-	/// Create a scalar variable whose single column is named after the binding
-	/// (parameter, loop var, or assignment target). Use this when the value is
-	/// being stored as a named symbol so that later access surfaces the binding name.
 	pub fn scalar_named(name: &str, value: Value) -> Self {
 		let mut columns = Columns::single_row([("value", value)]);
 		columns.names.make_mut()[0] = Fragment::internal(name);
@@ -95,14 +86,12 @@ impl Variable {
 		}
 	}
 
-	/// Create a columns variable.
 	pub fn columns(columns: Columns) -> Self {
 		Variable::Columns {
 			columns,
 		}
 	}
 
-	/// Returns true if this variable represents a scalar value (1 column, 1 row).
 	pub fn is_scalar(&self) -> bool {
 		matches!(
 			self,
@@ -110,7 +99,6 @@ impl Variable {
 		)
 	}
 
-	/// Extract the inner Columns from any Columns-backed variant.
 	pub fn as_columns(&self) -> Option<&Columns> {
 		match self {
 			Variable::Columns {
@@ -125,7 +113,6 @@ impl Variable {
 		}
 	}
 
-	/// Extract the single Column from any Columns-backed variant, consuming self.
 	pub fn into_column(self) -> Result<ColumnWithName> {
 		let cols = match self {
 			Variable::Columns {
@@ -155,7 +142,6 @@ impl Variable {
 	}
 }
 
-/// Context for storing and managing variables during query execution with scope support
 #[derive(Debug, Clone)]
 pub struct SymbolTable {
 	inner: Arc<SymbolTableInner>,
@@ -164,18 +150,16 @@ pub struct SymbolTable {
 #[derive(Debug, Clone)]
 struct SymbolTableInner {
 	scopes: Vec<Scope>,
-	/// User-defined functions (pre-compiled)
+
 	functions: HashMap<String, CompiledFunction>,
 }
 
-/// Represents a single scope containing variables
 #[derive(Debug, Clone)]
 struct Scope {
 	variables: HashMap<String, VariableBinding>,
 	scope_type: ScopeType,
 }
 
-/// Control flow signal for loop and function constructs
 #[derive(Debug, Clone)]
 pub enum ControlFlow {
 	Normal,
@@ -190,7 +174,6 @@ impl ControlFlow {
 	}
 }
 
-/// Represents a variable binding with its value and mutability
 #[derive(Debug, Clone)]
 struct VariableBinding {
 	variable: Variable,
@@ -198,7 +181,6 @@ struct VariableBinding {
 }
 
 impl SymbolTable {
-	/// Create a new variable context with a global scope
 	pub fn new() -> Self {
 		let global_scope = Scope {
 			variables: HashMap::new(),
@@ -213,7 +195,6 @@ impl SymbolTable {
 		}
 	}
 
-	/// Enter a new scope (push onto stack)
 	pub fn enter_scope(&mut self, scope_type: ScopeType) {
 		let new_scope = Scope {
 			variables: HashMap::new(),
@@ -222,8 +203,6 @@ impl SymbolTable {
 		Arc::make_mut(&mut self.inner).scopes.push(new_scope);
 	}
 
-	/// Exit the current scope (pop from stack)
-	/// Returns error if trying to exit the global scope
 	pub fn exit_scope(&mut self) -> Result<()> {
 		if self.inner.scopes.len() <= 1 {
 			return Err(error!(internal!("Cannot exit global scope")));
@@ -232,26 +211,21 @@ impl SymbolTable {
 		Ok(())
 	}
 
-	/// Get the current scope depth (0 = global scope)
 	pub fn scope_depth(&self) -> usize {
 		self.inner.scopes.len() - 1
 	}
 
-	/// Get the type of the current scope
 	pub fn current_scope_type(&self) -> &ScopeType {
 		&self.inner.scopes.last().unwrap().scope_type
 	}
 
-	/// Set a variable in the current (innermost) scope (allows shadowing)
 	pub fn set(&mut self, name: String, variable: Variable, mutable: bool) -> Result<()> {
 		self.set_in_current_scope(name, variable, mutable)
 	}
 
-	/// Reassign an existing variable (checks mutability)
-	/// Searches from innermost to outermost scope to find the variable
 	pub fn reassign(&mut self, name: String, variable: Variable) -> Result<()> {
 		let inner = Arc::make_mut(&mut self.inner);
-		// Search from innermost scope to outermost scope
+
 		for scope in inner.scopes.iter_mut().rev() {
 			if let Some(existing) = scope.variables.get(&name) {
 				if !existing.mutable {
@@ -278,13 +252,10 @@ impl SymbolTable {
 		.into())
 	}
 
-	/// Set a variable specifically in the current scope
-	/// Allows shadowing - new variable declarations can shadow existing ones
 	pub fn set_in_current_scope(&mut self, name: String, variable: Variable, mutable: bool) -> Result<()> {
 		let inner = Arc::make_mut(&mut self.inner);
 		let current_scope = inner.scopes.last_mut().unwrap();
 
-		// Allow shadowing - simply insert the new variable binding
 		current_scope.variables.insert(
 			name,
 			VariableBinding {
@@ -295,9 +266,7 @@ impl SymbolTable {
 		Ok(())
 	}
 
-	/// Get a variable by searching from innermost to outermost scope
 	pub fn get(&self, name: &str) -> Option<&Variable> {
-		// Search from innermost scope (end of vector) to outermost scope (beginning)
 		for scope in self.inner.scopes.iter().rev() {
 			if let Some(binding) = scope.variables.get(name) {
 				return Some(&binding.variable);
@@ -306,9 +275,7 @@ impl SymbolTable {
 		None
 	}
 
-	/// Get a variable with its scope depth information
 	pub fn get_with_scope(&self, name: &str) -> Option<(&Variable, usize)> {
-		// Search from innermost scope to outermost scope
 		for (depth_from_end, scope) in self.inner.scopes.iter().rev().enumerate() {
 			if let Some(binding) = scope.variables.get(name) {
 				let scope_depth = self.inner.scopes.len() - 1 - depth_from_end;
@@ -318,17 +285,14 @@ impl SymbolTable {
 		None
 	}
 
-	/// Check if a variable exists in the current scope only
 	pub fn exists_in_current_scope(&self, name: &str) -> bool {
 		self.inner.scopes.last().unwrap().variables.contains_key(name)
 	}
 
-	/// Check if a variable exists in any scope (searches all scopes)
 	pub fn exists_in_any_scope(&self, name: &str) -> bool {
 		self.get(name).is_some()
 	}
 
-	/// Check if a variable is mutable (searches from innermost scope)
 	pub fn is_mutable(&self, name: &str) -> bool {
 		for scope in self.inner.scopes.iter().rev() {
 			if let Some(binding) = scope.variables.get(name) {
@@ -338,7 +302,6 @@ impl SymbolTable {
 		false
 	}
 
-	/// Get all variable names from all scopes (for debugging)
 	pub fn all_variable_names(&self) -> Vec<String> {
 		let mut names = Vec::new();
 		for (scope_idx, scope) in self.inner.scopes.iter().enumerate() {
@@ -349,11 +312,9 @@ impl SymbolTable {
 		names
 	}
 
-	/// Get variable names visible in current scope (respects shadowing)
 	pub fn visible_variable_names(&self) -> Vec<String> {
 		let mut visible = HashMap::new();
 
-		// Process scopes from outermost to innermost so inner scopes override outer ones
 		for scope in &self.inner.scopes {
 			for name in scope.variables.keys() {
 				visible.insert(name.clone(), ());
@@ -363,7 +324,6 @@ impl SymbolTable {
 		visible.keys().cloned().collect()
 	}
 
-	/// Clear all variables in all scopes (reset to just global scope)
 	pub fn clear(&mut self) {
 		let inner = Arc::make_mut(&mut self.inner);
 		inner.scopes.clear();
@@ -374,17 +334,14 @@ impl SymbolTable {
 		inner.functions.clear();
 	}
 
-	/// Define a user-defined function (pre-compiled)
 	pub fn define_function(&mut self, name: String, func: CompiledFunction) {
 		Arc::make_mut(&mut self.inner).functions.insert(name, func);
 	}
 
-	/// Get a user-defined function by name
 	pub fn get_function(&self, name: &str) -> Option<&CompiledFunction> {
 		self.inner.functions.get(name)
 	}
 
-	/// Check if a function exists
 	pub fn function_exists(&self, name: &str) -> bool {
 		self.inner.functions.contains_key(name)
 	}

@@ -62,13 +62,8 @@ use crate::{
 	},
 };
 
-/// Bump-allocated physical plan - the intermediate representation between
-/// logical planning and instruction compilation. Uses `BumpBox`/`Vec` for
-/// tree structure while keeping `Fragment` (Arc<str>) for identifiers
-/// (already materialized from `BumpFragment` during physical compilation).
 #[derive(Debug)]
 pub enum PhysicalPlan<'bump> {
-	// DDL
 	CreateDeferredView(CreateDeferredViewNode<'bump>),
 	CreateTransactionalView(CreateTransactionalViewNode<'bump>),
 	CreateNamespace(CreateNamespaceNode),
@@ -94,7 +89,7 @@ pub enum PhysicalPlan<'bump> {
 	Migrate(nodes::MigrateNode),
 	RollbackMigration(nodes::RollbackMigrationNode),
 	Dispatch(nodes::DispatchNode),
-	// Drop
+
 	DropNamespace(nodes::DropNamespaceNode),
 	DropTable(nodes::DropTableNode),
 	DropView(nodes::DropViewNode),
@@ -109,11 +104,11 @@ pub enum PhysicalPlan<'bump> {
 	DropHandler(nodes::DropHandlerNode),
 	DropTest(nodes::DropTestNode),
 	DropBinding(nodes::DropBindingNode),
-	// Alter
+
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode<'bump>),
 	AlterRemoteNamespace(nodes::AlterRemoteNamespaceNode),
-	// Mutate
+
 	Delete(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
 	DeleteSeries(DeleteSeriesNode<'bump>),
@@ -124,27 +119,27 @@ pub enum PhysicalPlan<'bump> {
 	Update(UpdateTableNode<'bump>),
 	UpdateRingBuffer(UpdateRingBufferNode<'bump>),
 	UpdateSeries(UpdateSeriesNode<'bump>),
-	// Variable assignment
+
 	Declare(DeclareNode<'bump>),
 	Assign(AssignNode<'bump>),
 	Append(AppendPhysicalNode<'bump>),
-	// Variable resolution
+
 	Variable(VariableNode),
 	Environment(EnvironmentNode),
-	// Control flow
+
 	Conditional(ConditionalNode<'bump>),
 	Loop(LoopNode<'bump>),
 	While(WhileNode<'bump>),
 	For(ForNode<'bump>),
 	Break,
 	Continue,
-	// User-defined functions
+
 	DefineFunction(DefineFunctionNode<'bump>),
 	Return(ReturnNode),
 	CallFunction(CallFunctionNode),
-	// Closures
+
 	DefineClosure(DefineClosureNode<'bump>),
-	// Query
+
 	Aggregate(AggregateNode<'bump>),
 	Assert(AssertNode<'bump>),
 	AssertBlock(AssertBlockNode),
@@ -175,7 +170,7 @@ pub enum PhysicalPlan<'bump> {
 	Generator(GeneratorNode),
 	Window(WindowNode<'bump>),
 	Scalarize(ScalarizeNode<'bump>),
-	// Auth/Permissions
+
 	CreateIdentity(nodes::CreateIdentityNode),
 	CreateRole(nodes::CreateRoleNode),
 	Grant(nodes::GrantNode),
@@ -588,7 +583,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Aggregate(aggregate) => {
 					let input = stack.pop().unwrap(); // FIXME
 
-					// Push-down: fold aggregate into RemoteScan
 					let mut vars = Vec::new();
 					for expr in aggregate.by.iter().chain(aggregate.map.iter()) {
 						vars.extend(extract_variable_names(expr));
@@ -807,7 +801,6 @@ impl<'bump> Compiler<'bump> {
 					));
 				}
 
-				// Drop
 				LogicalPlan::DropNamespace(drop) => {
 					stack.push(self.compile_drop_namespace(rx, drop)?);
 				}
@@ -851,7 +844,6 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_drop_binding(rx, drop)?);
 				}
 
-				// Auth/Permissions - pass through logical to physical directly
 				LogicalPlan::CreateIdentity(node) => {
 					stack.push(PhysicalPlan::CreateIdentity(nodes::CreateIdentityNode {
 						name: self.interner.intern_fragment(&node.name),
@@ -887,7 +879,6 @@ impl<'bump> Compiler<'bump> {
 					}));
 				}
 				LogicalPlan::CreateAuthentication(node) => {
-					// Extract method and config from entries
 					let mut method_str = String::new();
 					let mut config = collections::HashMap::new();
 					for entry in &node.entries {
@@ -931,16 +922,12 @@ impl<'bump> Compiler<'bump> {
 									.find_namespace_by_segments(rx, &seg_strs)?
 									.is_some()
 								{
-									// Full path is a namespace; namespace-wide on
-									// nested ns (e.g. ON app::sub).
 									(Some(ns_fragment.with_text(&full_path)), None)
 								} else if self
 									.catalog
 									.find_namespace_by_segments(rx, parent_segs)?
 									.is_some()
 								{
-									// Parent path is a namespace, last segment is a
-									// shape inside it (e.g. ON app::items).
 									(
 										Some(ns_fragment
 											.with_text(&parent_path)),
@@ -949,14 +936,6 @@ impl<'bump> Compiler<'bump> {
 										)),
 									)
 								} else {
-									// Neither full path nor parent path resolves to
-									// an existing namespace. Reject loudly.
-									// Silently falling back to "specific
-									// shape" here used to mis-store the
-									// policy (target_namespace=parent,
-									// target_shape=last), which then never matched
-									// any real shape, causing reads to inject
-									// Filter(false) and return empty.
 									return_error!(namespace_not_found(
 										ns_fragment.with_text(&full_path),
 										&full_path,
@@ -1013,7 +992,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Assert(assert_node) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
 
-					// Push-down: fold assert into RemoteScan
 					if let Some(ref boxed_input) = input {
 						let vars = extract_variable_names(&assert_node.condition);
 						if let Some(pushed) = try_remote_push_down_with_vars(
@@ -1044,7 +1022,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Filter(filter) => {
 					let input = stack.pop().unwrap(); // FIXME
 
-					// Push-down into RemoteScan
 					let vars = extract_variable_names(&filter.condition);
 					if let Some(pushed) = try_remote_push_down_with_vars(
 						&input,
@@ -1055,9 +1032,7 @@ impl<'bump> Compiler<'bump> {
 						continue;
 					}
 
-					// Try to optimize rownum predicates for O(1)/O(k) access
 					if let Some(predicate) = extract_row_predicate(&filter.condition) {
-						// Check if input is a scan node we can optimize
 						let source = match &input {
 							PhysicalPlan::TableScan(scan) => {
 								Some(ResolvedShape::Table(scan.source.clone()))
@@ -1108,7 +1083,6 @@ impl<'bump> Compiler<'bump> {
 						}
 					}
 
-					// Try to push down key/tag predicates into SeriesScan
 					if let PhysicalPlan::SeriesScan(ref scan) = input {
 						let key_col_name = scan.source.def().key.column();
 						if let Some(sp) =
@@ -1132,7 +1106,6 @@ impl<'bump> Compiler<'bump> {
 						}
 					}
 
-					// Default: generic filter
 					stack.push(PhysicalPlan::Filter(FilterNode {
 						conditions: vec![filter.condition],
 						input: self.bump_box(input),
@@ -1142,7 +1115,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Gate(gate) => {
 					let input = stack.pop().unwrap();
 
-					// Push-down: fold gate into RemoteScan
 					let vars = extract_variable_names(&gate.condition);
 					if let Some(pushed) =
 						try_remote_push_down_with_vars(&input, || Some(gate.rql.clone()), vars)
@@ -1724,7 +1696,6 @@ impl<'bump> Compiler<'bump> {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
 
-					// Push-down: both sides target same remote
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
 						(&left, &right) && l.address == r.address
 					{
@@ -1749,7 +1720,6 @@ impl<'bump> Compiler<'bump> {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
 
-					// Push-down: both sides target same remote
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
 						(&left, &right) && l.address == r.address
 					{
@@ -1774,7 +1744,6 @@ impl<'bump> Compiler<'bump> {
 					let left = stack.pop().unwrap(); // FIXME;
 					let right = self.compile(rx, join.with)?.unwrap();
 
-					// Push-down: both sides target same remote
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
 						(&left, &right) && l.address == r.address
 					{
@@ -1798,7 +1767,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Order(order) => {
 					let input = stack.pop().unwrap(); // FIXME
 
-					// Push-down: fold sort into RemoteScan
 					if let Some(pushed) = try_remote_push_down(&input, || Some(order.rql.clone())) {
 						stack.push(pushed);
 						continue;
@@ -1813,7 +1781,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Distinct(distinct) => {
 					let input = stack.pop().unwrap(); // FIXME
 
-					// Push-down: fold distinct into RemoteScan
 					if let Some(pushed) =
 						try_remote_push_down(&input, || Some(distinct.rql.clone()))
 					{
@@ -1877,7 +1844,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Map(map) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
 
-					// Push-down: fold map into RemoteScan
 					if let Some(ref boxed_input) = input {
 						let mut vars = Vec::new();
 						for expr in &map.map {
@@ -1902,7 +1868,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Extend(extend) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
 
-					// Push-down: fold extend into RemoteScan
 					if let Some(ref boxed_input) = input {
 						let mut vars = Vec::new();
 						for expr in &extend.extend {
@@ -1927,7 +1892,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Patch(patch) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
 
-					// Push-down: fold patch into RemoteScan
 					if let Some(ref boxed_input) = input {
 						let mut vars = Vec::new();
 						for expr in &patch.assignments {
@@ -1952,7 +1916,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Apply(apply) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
 
-					// Push-down: fold apply into RemoteScan
 					if let Some(ref boxed_input) = input {
 						let mut vars = Vec::new();
 						for expr in &apply.arguments {
@@ -2080,7 +2043,6 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Take(take) => {
 					let input = stack.pop().unwrap(); // FIXME
 
-					// Push-down: fold take into RemoteScan
 					if let Some(pushed) =
 						try_remote_push_down(&input, || Some(format!("TAKE {}", take.take)))
 					{
@@ -2459,9 +2421,6 @@ impl<'bump> Compiler<'bump> {
 	}
 }
 
-/// Try to push down an operation into a RemoteScan node by appending an RQL suffix.
-/// Returns `Some(PhysicalPlan::RemoteScan(...))` if the input is a RemoteScan and the
-/// suffix closure returns `Some(...)`. Returns `None` otherwise (caller falls through to local op).
 fn try_remote_push_down<'a>(
 	input: &PhysicalPlan<'a>,
 	rql_suffix: impl FnOnce() -> Option<String>,
@@ -2469,8 +2428,6 @@ fn try_remote_push_down<'a>(
 	try_remote_push_down_with_vars(input, rql_suffix, Vec::new())
 }
 
-/// Try to push down an operation into a RemoteScan node, also tracking variable names
-/// that need to be resolved and passed as named params to the remote.
 fn try_remote_push_down_with_vars<'a>(
 	input: &PhysicalPlan<'a>,
 	rql_suffix: impl FnOnce() -> Option<String>,

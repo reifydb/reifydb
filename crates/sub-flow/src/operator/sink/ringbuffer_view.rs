@@ -39,8 +39,8 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct RingBufferState {
-	forward: BTreeMap<RowNumber, RowNumber>, // source_rn → ringbuffer_key
-	reverse: BTreeMap<RowNumber, RowNumber>, // ringbuffer_key → source_rn
+	forward: BTreeMap<RowNumber, RowNumber>,
+	reverse: BTreeMap<RowNumber, RowNumber>,
 }
 
 pub struct SinkRingBufferViewOperator {
@@ -198,11 +198,7 @@ impl SinkRingBufferViewOperator {
 					state.forward.remove(&source_rn);
 				}
 
-				if self.propagate_evictions {
-					// We could read the old row and emit a Remove diff,
-					// but for now we skip (requires reading the old value
-					// from storage).
-				}
+				if self.propagate_evictions {}
 			}
 
 			let source_rn = coerced.row_numbers[row_idx];

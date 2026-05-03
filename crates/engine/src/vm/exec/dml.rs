@@ -24,8 +24,6 @@ fn reject_query_txn(tx: &Transaction<'_>) -> Result<()> {
 }
 
 impl<'a> Vm<'a> {
-	/// Execute a DML operation that takes params and a read-only reference to the symbol table.
-	/// Used by Delete, Update, InsertRingBuffer, InsertSeries, etc.
 	pub(crate) fn exec_dml_with_params<F>(
 		&mut self,
 		services: &Arc<Services>,
@@ -43,8 +41,6 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	/// Execute a DML operation that takes a mutable reference to the symbol table (no params).
-	/// Used by InsertTable, InsertDictionary.
 	pub(crate) fn exec_dml_with_mut_symbols<F>(
 		&mut self,
 		services: &Arc<Services>,

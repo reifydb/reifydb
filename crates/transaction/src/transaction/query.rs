@@ -62,21 +62,16 @@ use crate::{
 	transaction::{RqlExecutor, Transaction},
 };
 
-/// An active query transaction that holds a multi query transaction
-/// and provides query-only access to single storage.
 pub struct QueryTransaction {
 	pub(crate) multi: MultiReadTransaction,
 	pub(crate) single: SingleTransaction,
 
-	/// The identity executing this transaction.
 	pub identity: IdentityId,
 
-	/// Optional RQL executor for running RQL within this transaction.
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 }
 
 impl QueryTransaction {
-	/// Creates a new active query transaction
 	#[instrument(name = "transaction::query::new", level = "debug", skip_all)]
 	pub fn new(multi: MultiReadTransaction, single: SingleTransaction, identity: IdentityId) -> Self {
 		Self {
@@ -87,63 +82,51 @@ impl QueryTransaction {
 		}
 	}
 
-	/// Set the RQL executor for this transaction.
 	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
 		self.executor = Some(executor);
 	}
 
-	/// Execute RQL within this transaction using the attached executor.
-	///
-	/// Panics if no `RqlExecutor` has been set on this transaction.
 	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
 		let executor = self.executor.clone().expect("RqlExecutor not set");
 		executor.rql(&mut Transaction::Query(self), rql, params)
 	}
 
-	/// Get the transaction version
 	#[inline]
 	pub fn version(&self) -> CommitVersion {
 		self.multi.version()
 	}
 
-	/// Get the transaction ID
 	#[inline]
 	pub fn id(&self) -> TransactionId {
 		self.multi.tm.id()
 	}
 
-	/// Get a value by key
 	#[inline]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
-	/// Check if a key exists
 	#[inline]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.multi.contains_key(key)
 	}
 
-	/// Get a prefix batch
 	#[inline]
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.multi.prefix(prefix)
 	}
 
-	/// Get a reverse prefix batch
 	#[inline]
 	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.multi.prefix_rev(prefix)
 	}
 
-	/// Read as of version exclusive
 	#[inline]
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		self.multi.read_as_of_version_exclusive(version);
 		Ok(())
 	}
 
-	/// Create a streaming iterator for forward range queries.
 	#[inline]
 	pub fn range(
 		&self,
@@ -153,7 +136,6 @@ impl QueryTransaction {
 		self.multi.range(range, batch_size)
 	}
 
-	/// Create a streaming iterator for reverse range queries.
 	#[inline]
 	pub fn range_rev(
 		&self,
@@ -163,7 +145,6 @@ impl QueryTransaction {
 		self.multi.range_rev(range, batch_size)
 	}
 
-	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "transaction::query::with_single_query", level = "trace", skip(self, keys, f))]
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
@@ -174,8 +155,6 @@ impl QueryTransaction {
 		self.single.with_query(keys, f)
 	}
 
-	/// Execute a function with access to the multi query transaction.
-	/// This operates within the same transaction context.
 	#[instrument(name = "transaction::query::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&mut self, f: F) -> Result<R>
 	where
@@ -184,7 +163,6 @@ impl QueryTransaction {
 		f(&mut self.multi)
 	}
 
-	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::query::begin_single_query", level = "trace", skip(self, keys))]
 	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
@@ -193,9 +171,6 @@ impl QueryTransaction {
 		self.single.begin_query(keys)
 	}
 }
-
-// No-op implementations of TransactionalChanges for QueryTransaction.
-// Query transactions don't track changes, so all methods return None/false.
 
 impl TransactionalDictionaryChanges for QueryTransaction {
 	fn find_dictionary(&self, _id: DictionaryId) -> Option<&Dictionary> {

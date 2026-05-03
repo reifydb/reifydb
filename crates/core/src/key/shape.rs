@@ -10,7 +10,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-/// Key for storing a shape definition by its fingerprint
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowShapeKey {
 	pub fingerprint: RowShapeFingerprint,
@@ -73,8 +72,6 @@ impl RowShapeKey {
 	}
 }
 
-/// Key for storing individual shape fields
-/// Keyed by (shape_fingerprint, field_index) for ordered retrieval
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowShapeFieldKey {
 	pub shape_fingerprint: RowShapeFingerprint,
@@ -126,7 +123,6 @@ impl RowShapeFieldKey {
 		.encode()
 	}
 
-	/// Scan all fields for a given shape
 	pub fn scan_for_shape(fingerprint: RowShapeFingerprint) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::shape_start(fingerprint)), Some(Self::shape_end(fingerprint)))
 	}

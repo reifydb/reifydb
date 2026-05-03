@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::flow_operators::*, vtable::FLOW_OPERATORS};
 
-/// Returns the static definition for the system.flow_operators virtual table
-/// This table exposes information about loaded FFI operators from shared libraries
 pub fn flow_operators() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

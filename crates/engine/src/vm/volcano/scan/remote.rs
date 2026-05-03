@@ -49,7 +49,6 @@ impl QueryNode for RemoteFetchNode {
 		#[cfg(not(reifydb_single_threaded))]
 		{
 			if let Some(ref registry) = _ctx.services.remote_registry {
-				// Resolve local variables for remote execution
 				let mut named_params: HashMap<String, Value> = HashMap::new();
 				for var_name in &self.variable_names {
 					if let Some(Variable::Columns {
@@ -60,11 +59,9 @@ impl QueryNode for RemoteFetchNode {
 					}
 				}
 
-				// Merge with existing context params
 				let params = if named_params.is_empty() {
 					_ctx.params.clone()
 				} else {
-					// Merge: existing named params take precedence
 					if let Params::Named(ref existing) = _ctx.params {
 						let mut merged = named_params;
 						for (k, v) in existing.iter() {

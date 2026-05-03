@@ -9,10 +9,6 @@ use reifydb_type::Result;
 
 use super::wasm::WasmProcedure;
 
-/// Scan a directory for `.wasm` files and register each as a `WasmProcedure` into the given
-/// `RoutinesConfigurator`, returning the updated builder.
-///
-/// The procedure name is derived from the file stem (e.g. `my_proc.wasm` → `"my_proc"`).
 pub fn register_wasm_procedures_from_dir(
 	dir: &Path,
 	mut builder: RoutinesConfigurator,

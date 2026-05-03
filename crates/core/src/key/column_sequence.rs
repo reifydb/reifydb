@@ -20,7 +20,7 @@ impl EncodableKey for ColumnSequenceKey {
 	const KIND: KeyKind = KeyKind::ColumnSequence;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(19); // 1 + 1 + 9 + 8
+		let mut serializer = KeySerializer::with_capacity(19);
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)

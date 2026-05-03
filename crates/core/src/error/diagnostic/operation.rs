@@ -23,7 +23,6 @@ pub fn take_negative_value(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Missing aggregate map block error
 pub fn missing_aggregate_map_block(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_001".to_string(),
@@ -43,7 +42,6 @@ pub fn missing_aggregate_map_block(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Multiple aggregate map expressions without braces error
 pub fn aggregate_multiple_map_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_002".to_string(),
@@ -63,7 +61,6 @@ pub fn aggregate_multiple_map_without_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Multiple aggregate by expressions without braces error
 pub fn aggregate_multiple_by_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_003".to_string(),
@@ -83,7 +80,6 @@ pub fn aggregate_multiple_by_without_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Multiple DISTINCT columns without braces error
 pub fn distinct_multiple_columns_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "DISTINCT_001".to_string(),
@@ -104,7 +100,6 @@ pub fn distinct_multiple_columns_without_braces(fragment: Fragment) -> Diagnosti
 	}
 }
 
-/// Multiple MAP expressions without braces error
 pub fn map_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "MAP_001".to_string(),
@@ -128,7 +123,6 @@ pub fn map_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic
 	}
 }
 
-/// Multiple EXTEND expressions without braces error
 pub fn extend_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "EXTEND_001".to_string(),
@@ -148,7 +142,6 @@ pub fn extend_multiple_expressions_without_braces(fragment: Fragment) -> Diagnos
 	}
 }
 
-/// Multiple APPLY arguments without braces error
 pub fn apply_multiple_arguments_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "APPLY_001".to_string(),
@@ -169,7 +162,6 @@ pub fn apply_multiple_arguments_without_braces(fragment: Fragment) -> Diagnostic
 	}
 }
 
-/// Missing slide parameter for sliding window error
 pub fn window_missing_slide_parameter(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_002".to_string(),
@@ -189,7 +181,6 @@ pub fn window_missing_slide_parameter(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Slide interval too large for window error
 pub fn window_slide_too_large(fragment: Fragment, slide_value: String, window_value: String) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_003".to_string(),
@@ -214,7 +205,6 @@ pub fn window_slide_too_large(fragment: Fragment, slide_value: String, window_va
 	}
 }
 
-/// Incompatible slide type with window type error
 pub fn window_incompatible_slide_type(fragment: Fragment, window_type: String, slide_type: String) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_004".to_string(),
@@ -238,7 +228,6 @@ pub fn window_incompatible_slide_type(fragment: Fragment, window_type: String, s
 	}
 }
 
-/// Tumbling window with slide parameter error
 pub fn window_tumbling_with_slide(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_005".to_string(),
@@ -261,7 +250,6 @@ pub fn window_tumbling_with_slide(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Incompatible window type and size combination error
 pub fn window_incompatible_type_size(fragment: Fragment, window_type: String, size_type: String) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_006".to_string(),
@@ -283,7 +271,6 @@ pub fn window_incompatible_type_size(fragment: Fragment, window_type: String, si
 	}
 }
 
-/// Missing window type or size error
 pub fn window_missing_type_or_size(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_007".to_string(),
@@ -306,7 +293,6 @@ pub fn window_missing_type_or_size(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// UPDATE missing assignments block error
 pub fn update_missing_assignments_block(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "UPDATE_001".to_string(),
@@ -329,7 +315,6 @@ pub fn update_missing_assignments_block(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// UPDATE empty assignments block error
 pub fn update_empty_assignments_block(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "UPDATE_002".to_string(),
@@ -351,7 +336,6 @@ pub fn update_empty_assignments_block(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// UPDATE missing FILTER clause error
 pub fn update_missing_filter_clause(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "UPDATE_003".to_string(),
@@ -374,7 +358,6 @@ pub fn update_missing_filter_clause(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// DELETE missing target error
 pub fn delete_missing_target(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "DELETE_001".to_string(),
@@ -394,7 +377,6 @@ pub fn delete_missing_target(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// DELETE missing FILTER clause error
 pub fn delete_missing_filter_clause(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "DELETE_002".to_string(),
@@ -415,7 +397,6 @@ pub fn delete_missing_filter_clause(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// INSERT missing target error
 pub fn insert_missing_target(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "INSERT_001".to_string(),
@@ -436,7 +417,6 @@ pub fn insert_missing_target(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// INSERT missing data source error
 pub fn insert_missing_source(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "INSERT_002".to_string(),
@@ -498,7 +478,6 @@ pub fn insert_positional_wrong_length(
 	}
 }
 
-/// SORT missing braces error
 pub fn sort_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "SORT_001".to_string(),
@@ -518,7 +497,6 @@ pub fn sort_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// MAP missing braces error
 pub fn map_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "MAP_002".to_string(),
@@ -537,7 +515,6 @@ pub fn map_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// FILTER missing braces error
 pub fn filter_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "FILTER_001".to_string(),
@@ -556,7 +533,6 @@ pub fn filter_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// EXTEND missing braces error
 pub fn extend_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "EXTEND_002".to_string(),
@@ -575,7 +551,6 @@ pub fn extend_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// PATCH missing braces error
 pub fn patch_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "PATCH_001".to_string(),
@@ -594,7 +569,6 @@ pub fn patch_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// DISTINCT missing braces error
 pub fn distinct_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "DISTINCT_002".to_string(),
@@ -616,7 +590,6 @@ pub fn distinct_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// APPLY missing braces error
 pub fn apply_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "APPLY_002".to_string(),
@@ -636,7 +609,6 @@ pub fn apply_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// TAKE missing braces error
 pub fn take_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "TAKE_002".to_string(),
@@ -656,7 +628,6 @@ pub fn take_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// AGGREGATE missing braces error for projections
 pub fn aggregate_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_004".to_string(),
@@ -676,7 +647,6 @@ pub fn aggregate_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// AGGREGATE BY missing braces error
 pub fn aggregate_by_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_005".to_string(),

@@ -5,36 +5,23 @@ use std::time::Duration;
 
 use crate::sync::mutex::MutexGuard;
 
-/// WASM condition variable implementation (no-op since single-threaded).
 #[derive(Debug)]
 pub struct CondvarInner;
 
 impl CondvarInner {
-	/// Creates a new condition variable.
 	pub fn new() -> Self {
 		Self
 	}
 
-	/// No-op in WASM (never blocks).
-	pub fn wait<'a, T>(&self, _guard: &mut MutexGuard<'a, T>) {
-		// No-op: can't block in single-threaded WASM
-	}
+	pub fn wait<'a, T>(&self, _guard: &mut MutexGuard<'a, T>) {}
 
-	/// No-op in WASM (returns immediately as if timed out).
-	/// Returns true to indicate timeout (can't actually wait).
 	pub fn wait_for<'a, T>(&self, _guard: &mut MutexGuard<'a, T>, _timeout: Duration) -> bool {
 		true
 	}
 
-	/// No-op in WASM (no threads to wake).
-	pub fn notify_one(&self) {
-		// No-op
-	}
+	pub fn notify_one(&self) {}
 
-	/// No-op in WASM (no threads to wake).
-	pub fn notify_all(&self) {
-		// No-op
-	}
+	pub fn notify_all(&self) {}
 }
 
 impl Default for CondvarInner {

@@ -36,10 +36,6 @@ pub(crate) struct EquiJoinAnalysis {
 	pub residual: Vec<Expression>,
 }
 
-/// Analyze join `ON` expressions to separate equi-join key pairs from residual
-/// predicates.  An equi-key pair is `Equal(Column(name), AccessSource(name))`
-/// (in either order).  Any `Or` anywhere causes an immediate abort - all
-/// expressions are returned as residual.
 pub(crate) fn extract_equi_keys(on: &[Expression]) -> EquiJoinAnalysis {
 	let mut leaves = Vec::new();
 	for expr in on {
@@ -68,7 +64,6 @@ pub(crate) fn extract_equi_keys(on: &[Expression]) -> EquiJoinAnalysis {
 	}
 }
 
-/// Recursively check whether an expression tree contains `Or`.
 fn contains_or(expr: &Expression) -> bool {
 	match expr {
 		Expression::Or(_) => true,
@@ -77,7 +72,6 @@ fn contains_or(expr: &Expression) -> bool {
 	}
 }
 
-/// Flatten a tree of `And` nodes into a flat list of leaf expressions.
 fn flatten_and(expr: &Expression, out: &mut Vec<Expression>) {
 	match expr {
 		Expression::And(and) => {
@@ -88,11 +82,8 @@ fn flatten_and(expr: &Expression, out: &mut Vec<Expression>) {
 	}
 }
 
-/// Try to extract an equi-join key pair from an `Equal` expression.
-/// Matches `Equal(Column(..), AccessSource(..))` in either order.
 fn try_extract_equi_pair(expr: &Expression) -> Option<EquiKeyPair> {
 	if let Expression::Equal(eq) = expr {
-		// Column == AccessSource
 		if let (Expression::Column(col), Expression::AccessSource(acc)) = (eq.left.as_ref(), eq.right.as_ref())
 		{
 			return Some(EquiKeyPair {
@@ -100,7 +91,7 @@ fn try_extract_equi_pair(expr: &Expression) -> Option<EquiKeyPair> {
 				right_col_name: acc.column.name.text().to_string(),
 			});
 		}
-		// AccessSource == Column  (swapped)
+
 		if let (Expression::AccessSource(acc), Expression::Column(col)) = (eq.left.as_ref(), eq.right.as_ref())
 		{
 			return Some(EquiKeyPair {
@@ -126,7 +117,6 @@ struct HashJoinState {
 	right_key_indices: Vec<usize>,
 	left_key_indices: Vec<usize>,
 
-	// Probe cursor
 	probe_batch: Option<Columns>,
 	probe_row_idx: usize,
 	current_matches: Vec<usize>,
@@ -134,10 +124,8 @@ struct HashJoinState {
 	current_row_matched: bool,
 	probe_exhausted: bool,
 
-	// Compiled residual predicates
 	compiled_residual: Vec<CompiledExpr>,
 
-	// Reusable scratch buffer for hashing
 	hash_buf: Vec<u8>,
 }
 
@@ -200,12 +188,10 @@ impl HashJoinNode {
 		}
 	}
 
-	/// Build phase: materialize the right side into a hash table.
 	fn build<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<()> {
 		let build_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 		let right_width = build_columns.len();
 
-		// Pre-resolve right key name → column index (empty when build side has no columns)
 		let right_key_indices: Vec<usize> = if build_columns.is_empty() {
 			Vec::new()
 		} else {
@@ -220,7 +206,6 @@ impl HashJoinNode {
 				.collect()
 		};
 
-		// Build hash table using index-based hashing
 		let mut hash_table: HashMap<Hash128, Vec<usize>> = HashMap::new();
 		let mut hash_buf = Vec::with_capacity(256);
 		let row_count = build_columns.row_count();
@@ -230,7 +215,6 @@ impl HashJoinNode {
 			}
 		}
 
-		// Compile residual predicates
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
 		};
@@ -246,7 +230,7 @@ impl HashJoinNode {
 			resolved_names: Vec::new(),
 			right_width,
 			right_key_indices,
-			left_key_indices: Vec::new(), // resolved on first probe batch
+			left_key_indices: Vec::new(),
 			probe_batch: None,
 			probe_row_idx: 0,
 			current_matches: Vec::new(),
@@ -267,7 +251,6 @@ fn split_key_names(pairs: &[EquiKeyPair]) -> (Vec<String>, Vec<String>) {
 	(left, right)
 }
 
-/// Compute hash → lookup bucket → filter by key equality for a single probe row.
 fn compute_matches_for_probe_row(
 	hash_table: &HashMap<Hash128, Vec<usize>>,
 	build_columns: &Columns,
@@ -313,7 +296,6 @@ impl QueryNode for HashJoinNode {
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_initialized(), "HashJoinNode::next() called before initialize()");
 
-		// Build phase (first call)
 		if self.state.is_none() {
 			self.build(rx, ctx)?;
 		}
@@ -321,7 +303,6 @@ impl QueryNode for HashJoinNode {
 		let batch_size = ctx.batch_size as usize;
 		let stored_ctx = self.context.get().clone();
 
-		// We need to work around the borrow checker: take state out, work with it, put it back.
 		let mut state = self.state.take().unwrap();
 
 		if state.probe_exhausted && state.probe_batch.is_none() {
@@ -346,7 +327,6 @@ impl QueryNode for HashJoinNode {
 		let mut result_rows: Vec<Vec<Value>> = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
-		// Resolve column names and left key indices lazily on first probe batch
 		let resolve_names_and_indices = |state: &mut HashJoinState,
 		                                 probe: &Columns,
 		                                 left_key_names: &[String]| {
@@ -367,7 +347,6 @@ impl QueryNode for HashJoinNode {
 		};
 
 		while result_rows.len() < batch_size {
-			// Ensure we have a probe batch
 			if state.probe_batch.is_none() {
 				if state.probe_exhausted {
 					break;
@@ -377,7 +356,7 @@ impl QueryNode for HashJoinNode {
 						resolve_names_and_indices(&mut state, &batch, &self.left_key_names);
 						state.probe_batch = Some(batch);
 						state.probe_row_idx = 0;
-						// Compute matches for first row
+
 						let probe = state.probe_batch.as_ref().unwrap();
 						if probe.row_count() == 0 {
 							state.probe_batch = None;
@@ -405,9 +384,7 @@ impl QueryNode for HashJoinNode {
 			let probe = state.probe_batch.as_ref().unwrap();
 			let probe_row_count = probe.row_count();
 
-			// Check if current probe row's matches are exhausted
 			if state.current_match_idx >= state.current_matches.len() {
-				// Emit unmatched left row for left joins
 				if self.mode == HashJoinMode::Left && !state.current_row_matched {
 					let left_row = probe.get_row(state.probe_row_idx);
 					let mut combined = left_row;
@@ -418,14 +395,12 @@ impl QueryNode for HashJoinNode {
 					}
 				}
 
-				// Advance to next probe row
 				state.probe_row_idx += 1;
 				if state.probe_row_idx >= probe_row_count {
 					state.probe_batch = None;
 					continue;
 				}
 
-				// Compute matches for new probe row
 				state.current_matches = compute_matches_for_probe_row(
 					&state.hash_table,
 					&state.build_columns,
@@ -440,14 +415,12 @@ impl QueryNode for HashJoinNode {
 				continue;
 			}
 
-			// Emit a match
 			let build_idx = state.current_matches[state.current_match_idx];
 			state.current_match_idx += 1;
 
 			let left_row = probe.get_row(state.probe_row_idx);
 			let right_row = state.build_columns.get_row(build_idx);
 
-			// Evaluate residual predicates
 			if !state.compiled_residual.is_empty()
 				&& !eval_join_condition(
 					&state.compiled_residual,

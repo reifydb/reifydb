@@ -23,13 +23,6 @@ use reifydb_rql::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, fragment::Fragment};
 
-/// Inject `from` policies into logical plans.
-///
-/// - Root identity bypasses all policies (returns plans unchanged).
-/// - For non-root identities, finds Pipeline nodes with PrimitiveScan, looks up enabled policies for that shape with
-///   the `from` op, compiles their body_source into logical plan steps, and inserts them after the scan.
-/// - If no `from` policy matches a shape, inserts a `Filter(false)` for default-deny.
-/// - Multiple policies are chained sequentially (AND composition).
 pub fn inject_from_policies<'a>(
 	plans: BumpVec<'a, LogicalPlan<'a>>,
 	bump: &'a Bump,
@@ -37,16 +30,13 @@ pub fn inject_from_policies<'a>(
 	tx: &mut Transaction<'_>,
 ) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
 	let identity = tx.identity();
-	// Root bypasses all policies
+
 	if identity.is_privileged() {
 		return Ok(plans);
 	}
 
-	// If the top-level plans contain PrimitiveScan directly (not inside a Pipeline),
-	// wrap them into a pipeline for injection, then unwrap.
 	let has_scan = plans.iter().any(|p| matches!(p, LogicalPlan::PrimitiveScan(_)));
 	if has_scan {
-		// Treat the entire plans vec as a pipeline
 		let injected = inject_pipeline(plans, bump, catalog, tx)?;
 		return Ok(injected);
 	}
@@ -180,25 +170,18 @@ fn default_deny_filter<'a>() -> LogicalPlan<'a> {
 	})
 }
 
-/// Check if a policy's scope matches a given target namespace and object.
 fn scope_matches(policy: &Policy, target_ns: &str, target_obj: &str) -> bool {
 	match (&policy.target_namespace, &policy.target_shape) {
-		(None, None) => true, // Global
+		(None, None) => true,
 		(Some(ns), None) => {
-			// Namespace-wide: matches the exact namespace OR any child namespace
 			target_ns == ns
 				|| target_ns.strip_prefix(ns.as_str()).is_some_and(|rest| rest.starts_with("::"))
 		}
-		(Some(ns), Some(obj)) => ns == target_ns && obj == target_obj, // Specific
-		(None, Some(_)) => false,                                      // Invalid (defensive)
+		(Some(ns), Some(obj)) => ns == target_ns && obj == target_obj,
+		(None, Some(_)) => false,
 	}
 }
 
-/// Resolve write policies for a given operation on a target object.
-///
-/// - Root identity bypasses all policies (returns empty vec).
-/// - Returns matching enabled policies and their operation definitions for the given operation.
-/// - Writes are default-allow: empty result means the write is permitted.
 pub fn resolve_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
@@ -241,7 +224,6 @@ pub fn resolve_write_policies(
 	Ok(result)
 }
 
-/// Push policy logical plan steps into the result, unwrapping Pipeline nodes.
 fn push_policy_step<'a>(result: &mut BumpVec<'a, LogicalPlan<'a>>, step: LogicalPlan<'a>) {
 	match step {
 		LogicalPlan::Pipeline(p) => {

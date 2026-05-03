@@ -19,17 +19,12 @@ use crate::{
 	tier::{RangeCursor, TierStorage},
 };
 
-/// An operator-state row identified as expired during scanning.
 pub struct ExpiredOperatorState {
 	pub node_id: FlowNodeId,
 	pub key: CowVec<u8>,
 	pub scanned_bytes: u64,
 }
 
-/// Scan a single operator's state for rows whose TTL has expired.
-///
-/// Iterates the operator's `FlowNodeStateKey` range, reads `created_at_nanos`
-/// from each row's header, and returns those that have exceeded the TTL.
 pub fn scan_operator_by_created_at(
 	storage: &HotStorage,
 	node_id: FlowNodeId,
@@ -128,7 +123,6 @@ fn bound_as_ref(bound: &Bound<impl AsRef<[u8]>>) -> Bound<&[u8]> {
 	}
 }
 
-/// Drop all versions of expired operator-state rows from storage.
 pub fn drop_expired_operator_keys(
 	storage: &HotStorage,
 	expired: &[ExpiredOperatorState],

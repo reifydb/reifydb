@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system version information
 pub struct SystemVersions {
 	pub(crate) vtable: Arc<VTable>,
 	ioc: IocContainer,

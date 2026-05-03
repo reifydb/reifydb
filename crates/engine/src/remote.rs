@@ -125,25 +125,19 @@ fn cache_key(address: &str, token: Option<&str>) -> CacheKey {
 	(address.to_string(), token.map(str::to_string))
 }
 
-/// Transport-level gRPC errors mean the cached channel may be dead.
-/// `status_to_error` (reifydb-client) tags these with a `GRPC_` code prefix when
-/// the Status message isn't a JSON-encoded application `Diagnostic`.
 #[cfg(not(reifydb_single_threaded))]
 fn is_transport_error(err: &Error) -> bool {
 	err.0.code.starts_with("GRPC_")
 }
 
-/// Check if an error represents a remote namespace query (REMOTE_001).
 pub fn is_remote_query(err: &Error) -> bool {
 	err.0.code == "REMOTE_001"
 }
 
-/// Extract the remote gRPC address from a REMOTE_001 error diagnostic.
 pub fn extract_remote_address(err: &Error) -> Option<String> {
 	err.0.notes.iter().find_map(|n| n.strip_prefix("Remote gRPC address: ")).map(|s| s.to_string())
 }
 
-/// Extract the remote service token from a REMOTE_001 error diagnostic.
 pub fn extract_remote_token(err: &Error) -> Option<String> {
 	err.0.notes.iter().find_map(|n| n.strip_prefix("Remote token: ")).map(|s| s.to_string())
 }

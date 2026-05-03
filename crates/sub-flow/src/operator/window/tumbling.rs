@@ -12,7 +12,6 @@ use super::{WindowEvent, WindowLayout, WindowOperator};
 use crate::transaction::FlowTransaction;
 
 impl WindowOperator {
-	/// Determine which window an event belongs to for tumbling windows
 	pub fn get_tumbling_window_id(&self, timestamp: u64) -> u64 {
 		match &self.kind {
 			WindowKind::Tumbling {
@@ -28,7 +27,6 @@ impl WindowOperator {
 		}
 	}
 
-	/// Set window start time for tumbling windows (aligned to window boundaries)
 	pub fn set_tumbling_window_start(&self, timestamp: u64) -> u64 {
 		if let Some(duration) = self.size_duration() {
 			let window_size_ms = duration.as_millis() as u64;
@@ -39,7 +37,6 @@ impl WindowOperator {
 	}
 }
 
-/// Process inserts for a single group in tumbling windows
 fn process_tumbling_group_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -110,7 +107,6 @@ fn process_tumbling_group_insert(
 	Ok(result)
 }
 
-/// Apply changes for tumbling windows
 pub fn apply_tumbling_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let changed_at = change.changed_at;
 	let diffs = operator.apply_window_change(txn, &change, true, |op, txn, columns| {

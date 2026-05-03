@@ -19,13 +19,11 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `CREATE <TYPE> POLICY [name] [ON scope] { operations }`
 	pub(crate) fn parse_create_policy(
 		&mut self,
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
 	) -> Result<AstCreate<'bump>> {
-		// Optionally read policy name (identifier before ON or {)
 		let name = if !self.is_eof()
 			&& self.current()?.is_identifier()
 			&& !self.current()?.is_keyword(Keyword::On)
@@ -35,9 +33,7 @@ impl<'bump> Parser<'bump> {
 			None
 		};
 
-		// Parse scope
 		let scope = if target_type == AstPolicyTargetType::Session {
-			// SESSION POLICY has no ON clause
 			AstPolicyScope::Global
 		} else if (self.consume_if(TokenKind::Keyword(Keyword::On))?).is_some() {
 			self.parse_policy_scope()?
@@ -45,7 +41,6 @@ impl<'bump> Parser<'bump> {
 			AstPolicyScope::Global
 		};
 
-		// Parse { operation: body, ... }
 		self.skip_new_line()?;
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -56,25 +51,20 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Parse operation label (identifier or keyword used as identifier)
 			let op_token = if self.current()?.is_identifier() {
 				self.advance()?
 			} else {
-				// Allow keywords like "read", "write", etc. as operation names
 				self.consume_name()?
 			};
 
-			// Consume colon
 			self.consume_operator(Operator::Colon)?;
 			self.skip_new_line()?;
 
-			// Parse body wrapped in { ... }
 			self.consume_operator(Operator::OpenCurly)?;
 			let body_start_pos = self.position;
 
 			let body = self.parse_policy_body()?;
 
-			// Capture body source by slicing the original source between { and }
 			let body_end_pos = self.position;
 			let body_source = if body_start_pos < body_end_pos {
 				let start = self.tokens[body_start_pos].fragment.offset();
@@ -93,7 +83,6 @@ impl<'bump> Parser<'bump> {
 				body_source,
 			});
 
-			// Skip optional newlines/commas between operations
 			self.skip_new_line()?;
 			self.consume_if(TokenKind::Separator(Separator::Comma))?;
 		}
@@ -109,7 +98,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse policy scope: `ns::object` (specific) or `ns` (namespace-wide)
 	fn parse_policy_scope(&mut self) -> Result<AstPolicyScope<'bump>> {
 		let segments = self.parse_double_colon_separated_identifiers()?;
 		let fragments: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
@@ -121,7 +109,6 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	/// Parse a policy body: RQL nodes inside { ... } until closing }
 	fn parse_policy_body(&mut self) -> Result<Vec<Ast<'bump>>> {
 		let mut nodes = Vec::new();
 
@@ -135,7 +122,6 @@ impl<'bump> Parser<'bump> {
 			let node = self.parse_node(Precedence::None)?;
 			nodes.push(node);
 
-			// Consume pipe if present
 			if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
 				self.advance()?;
 			}
@@ -144,7 +130,6 @@ impl<'bump> Parser<'bump> {
 		Ok(nodes)
 	}
 
-	/// Parse `ALTER <TYPE> POLICY name ENABLE|DISABLE`
 	pub(crate) fn parse_alter_policy(
 		&mut self,
 		token: Token<'bump>,
@@ -167,7 +152,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse `DROP <TYPE> POLICY [IF EXISTS] name`
 	pub(crate) fn parse_drop_policy(
 		&mut self,
 		token: Token<'bump>,

@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes output column vtables for FFI operators
 pub struct SystemFlowOperatorOutputs {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

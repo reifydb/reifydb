@@ -16,19 +16,16 @@ use crate::multi::types::DeltaEntry;
 
 #[derive(Debug, Default, Clone)]
 pub struct PendingWrites {
-	/// Primary storage - BTreeMap for sorted key access and range queries
 	writes: BTreeMap<EncodedKey, DeltaEntry>,
-	/// Track insertion order for preserving delta ordering
+
 	insertion_order: Vec<EncodedKey>,
-	/// Position index: key -> index in insertion_order Vec
-	/// This enables O(1) position lookup, eliminating the O(n) linear search bottleneck
+
 	position_index: HashMap<EncodedKey, usize>,
-	/// Cached size estimation for batch size limits
+
 	estimated_size: u64,
 }
 
 impl PendingWrites {
-	/// Create a new empty pending writes manager
 	pub fn new() -> Self {
 		Self {
 			writes: BTreeMap::new(),
@@ -38,69 +35,56 @@ impl PendingWrites {
 		}
 	}
 
-	/// Returns true if there are no pending writes
 	#[inline]
 	pub fn is_empty(&self) -> bool {
 		self.writes.is_empty()
 	}
 
-	/// Returns the number of pending writes
 	#[inline]
 	pub fn len(&self) -> usize {
 		self.writes.len()
 	}
 
-	/// Returns the maximum batch size in bytes - set high for performance
 	#[inline]
 	pub fn max_batch_size(&self) -> u64 {
-		1024 * 1024 * 1024 // 1GB limit
+		1024 * 1024 * 1024
 	}
 
-	/// Returns the maximum number of entries in a batch
 	#[inline]
 	pub fn max_batch_entries(&self) -> u64 {
-		1_000_000 // 1M entries limit
+		1_000_000
 	}
 
-	/// Fast size estimation - uses cached value
 	#[inline]
 	pub fn estimate_size(&self, _entry: &DeltaEntry) -> u64 {
-		// Use fixed size estimation for speed
 		(size_of::<EncodedKey>() + size_of::<EncodedRow>()) as u64
 	}
 
-	/// Get a pending write by key - O(log n) performance
 	#[inline]
 	pub fn get(&self, key: &EncodedKey) -> Option<&DeltaEntry> {
 		self.writes.get(key)
 	}
 
-	/// Get key-value pair by key - O(log n) performance  
 	#[inline]
 	pub fn get_entry(&self, key: &EncodedKey) -> Option<(&EncodedKey, &DeltaEntry)> {
 		self.writes.get_key_value(key)
 	}
 
-	/// Check if key exists - O(log n) performance
 	#[inline]
 	pub fn contains_key(&self, key: &EncodedKey) -> bool {
 		self.writes.contains_key(key)
 	}
 
-	/// Insert a new pending write - O(log n) BTreeMap + O(1) HashMap performance
 	pub fn insert(&mut self, key: EncodedKey, value: DeltaEntry) {
 		let size_estimate = self.estimate_size(&value);
 
 		if let Some(pre) = self.writes.insert(key.clone(), value) {
-			// Update existing - might change size
 			let pre_size = self.estimate_size(&pre);
 			if size_estimate != pre_size {
 				self.estimated_size =
 					self.estimated_size.saturating_sub(pre_size).saturating_add(size_estimate);
 			}
-			// Key already exists in insertion_order and position_index, don't add again
 		} else {
-			// New entry - track insertion order and position
 			let position = self.insertion_order.len();
 			self.insertion_order.push(key.clone());
 			self.position_index.insert(key, position);
@@ -108,7 +92,6 @@ impl PendingWrites {
 		}
 	}
 
-	/// Remove an entry by key - O(log n) BTreeMap + O(1) HashMap lookup + O(1) swap removal
 	pub fn remove_entry(&mut self, key: &EncodedKey) -> Option<(EncodedKey, DeltaEntry)> {
 		if let Some((removed_key, removed_value)) = self.writes.remove_entry(key) {
 			if let Some(position) = self.position_index.remove(key)
@@ -131,19 +114,15 @@ impl PendingWrites {
 		}
 	}
 
-	/// Iterate over all pending writes - returns BTreeMap iterator for sorted access
 	pub fn iter(&self) -> BTreeMapIter<'_, EncodedKey, DeltaEntry> {
 		self.writes.iter()
 	}
 
-	/// Consume and iterate over pending writes in insertion order
-	/// Uses the insertion_order Vec to maintain original insertion sequence
 	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (EncodedKey, DeltaEntry)> {
 		let mut writes = self.writes;
 		self.insertion_order.into_iter().filter_map(move |key| writes.remove_entry(&key))
 	}
 
-	/// Clear all pending writes
 	pub fn rollback(&mut self) {
 		self.writes.clear();
 		self.insertion_order.clear();
@@ -151,13 +130,11 @@ impl PendingWrites {
 		self.estimated_size = 0;
 	}
 
-	/// Get estimated total size of all pending writes
 	#[inline]
 	pub fn total_estimated_size(&self) -> u64 {
 		self.estimated_size
 	}
 
-	/// Range query support - BTreeMap provides efficient range queries
 	pub fn range<R>(&self, range: R) -> BTreeMapRange<'_, EncodedKey, DeltaEntry>
 	where
 		R: RangeBounds<EncodedKey>,
@@ -165,7 +142,6 @@ impl PendingWrites {
 		self.writes.range(range)
 	}
 
-	/// Range query with comparable bounds (same as range for compatibility)
 	pub fn range_comparable<R>(&self, range: R) -> BTreeMapRange<'_, EncodedKey, DeltaEntry>
 	where
 		R: RangeBounds<EncodedKey>,
@@ -173,7 +149,6 @@ impl PendingWrites {
 		self.writes.range(range)
 	}
 
-	/// Optimized get methods for compatibility (same as regular methods)
 	#[inline]
 	pub fn get_comparable(&self, key: &EncodedKey) -> Option<&DeltaEntry> {
 		self.get(key)
@@ -199,7 +174,6 @@ impl IntoIterator for PendingWrites {
 	type Item = (EncodedKey, DeltaEntry);
 	type IntoIter = BTreeMapIntoIter<EncodedKey, DeltaEntry>;
 
-	/// Consume and iterate over all pending writes in sorted order
 	fn into_iter(self) -> Self::IntoIter {
 		self.writes.into_iter()
 	}

@@ -15,9 +15,6 @@ use crate::{
 	vm::{stack::Variable, vm::Vm},
 };
 
-/// Returns true when `value` is considered truthy for conditional branches.
-/// None and zero numerics are falsy; non-empty strings and any other non-zero
-/// value are truthy.
 pub(crate) fn value_is_truthy(value: &Value) -> bool {
 	match value {
 		Value::Boolean(true) => true,
@@ -34,59 +31,45 @@ pub(crate) fn value_is_truthy(value: &Value) -> bool {
 	}
 }
 
-/// Tracks mask state for an IF/ELSE conditional in columnar mode.
-///
-/// Created when `JumpIfFalsePop` encounters a mixed boolean Column.
-/// The VM executes the then-branch with `then_mask` active, then switches
-/// to the else-branch with `else_mask` active, and finally merges results.
 #[derive(Debug)]
 pub(crate) struct MaskFrame {
-	/// Mask active before this conditional (restored on merge).
 	pub parent_mask: BitVec,
-	/// Rows where condition was true - active during then-branch.
+
 	pub then_mask: BitVec,
-	/// Rows where condition was false - active during else-branch.
+
 	pub else_mask: BitVec,
-	/// IP of the else branch start (the JumpIfFalsePop target).
+
 	pub else_addr: usize,
-	/// IP past the entire if/else construct (captured from Jump(end) at then-boundary).
+
 	pub end_addr: usize,
-	/// Current execution phase.
+
 	pub phase: MaskPhase,
-	/// Stack depth at mask entry - for knowing how many values the branch produced.
+
 	pub stack_depth: usize,
-	/// Stack value(s) produced by then-branch, saved at phase transition.
+
 	pub then_stack_delta: Vec<Variable>,
-	/// Variables modified during then-branch (name -> snapshot at transition).
+
 	pub then_var_snapshots: HashMap<String, Variable>,
 }
 
-/// Which phase of a masked conditional is currently executing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MaskPhase {
-	/// Executing the then-branch with then_mask active.
 	Then,
-	/// Executing the else-branch with else_mask active.
+
 	Else,
 }
 
-/// Tracks mask state for a WHILE loop in columnar mode.
-///
-/// Rows progressively exit the loop as their conditions become false.
 #[derive(Debug)]
 pub(crate) struct LoopMaskState {
-	/// Mask inherited from enclosing context.
 	pub parent_mask: BitVec,
-	/// Rows still iterating (narrows each iteration).
+
 	pub active_mask: BitVec,
-	/// Rows that exited via BREAK (accumulated across iterations).
+
 	pub broken_mask: BitVec,
-	/// The loop_end address (JumpIfFalsePop target). Used to identify
-	/// re-entry into this loop's condition check.
+
 	pub loop_end_addr: usize,
 }
 
-/// Selective update: row i gets `new_value[i]` if `mask[i]`, keeps `existing[i]` otherwise.
 pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitVec) -> Result<Columns> {
 	let len = existing.row_count();
 	debug_assert_eq!(new_value.row_count(), len);
@@ -114,7 +97,6 @@ pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitV
 	Ok(Columns::new(merged_columns))
 }
 
-/// Merge two Variables by scattering their columns according to then/else masks.
 pub(crate) fn scatter_merge_variables(
 	then_var: &Variable,
 	else_var: &Variable,
@@ -139,7 +121,6 @@ pub(crate) fn scatter_merge_variables(
 	Variable::columns(Columns::new(merged))
 }
 
-/// Convert any Variable to Columns for merging purposes.
 fn variable_to_columns(var: &Variable) -> Columns {
 	match var {
 		Variable::Columns {
@@ -154,11 +135,6 @@ fn variable_to_columns(var: &Variable) -> Columns {
 	}
 }
 
-/// Extract a boolean BitVec from a Variable.
-///
-/// For a boolean Column, returns a BitVec where each bit is the truth value of that row.
-/// For Option<Bool>, None is treated as false.
-/// For a scalar boolean, returns a single-element BitVec.
 pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
 	let cols = match var {
 		Variable::Columns {
@@ -189,7 +165,6 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
 			}
 		}
 		_ => {
-			// Non-boolean: evaluate truthiness per row
 			let len = col.len();
 			Ok(BitVec::from_fn(len, |i| value_is_truthy(&col.get_value(i))))
 		}
@@ -197,25 +172,19 @@ pub(crate) fn extract_bool_bitvec(var: &Variable) -> Result<BitVec> {
 }
 
 impl<'a> Vm<'a> {
-	/// Returns the current effective mask as a BitVec.
-	/// If no mask is active, returns an all-true BitVec of batch_size.
 	pub(crate) fn effective_mask(&self) -> BitVec {
 		self.active_mask.clone().unwrap_or_else(|| BitVec::repeat(self.batch_size, true))
 	}
 
-	/// Returns true if the VM is currently inside a masked execution context.
 	pub(crate) fn is_masked(&self) -> bool {
 		self.active_mask.is_some()
 	}
 
-	/// Intersect a boolean BitVec with the current effective mask,
-	/// handling scalar broadcast.
 	pub(crate) fn intersect_condition(&self, bool_bv: &BitVec) -> BitVec {
 		let parent = self.effective_mask();
 		if bool_bv.len() == parent.len() {
 			parent.and(bool_bv)
 		} else if bool_bv.len() == 1 {
-			// Scalar condition in columnar context: broadcast
 			if bool_bv.get(0) {
 				parent
 			} else {
@@ -226,28 +195,16 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	/// Columnar JumpIfFalsePop: handles boolean Columns with mixed true/false values.
-	///
-	/// Returns `Ok(true)` if the jump was taken (all-false fast path or loop exit),
-	/// `Ok(false)` if execution should continue to the next instruction.
-	///
-	/// Handles two cases:
-	/// - **WHILE loop re-entry**: if a LoopMaskState with matching loop_end_addr exists, narrows the loop mask
-	///   instead of creating a MaskFrame.
-	/// - **IF/ELSE or first WHILE entry**: creates a MaskFrame or LoopMaskState for mixed conditions.
 	pub(crate) fn exec_jump_if_false_pop_columnar(&mut self, target_addr: usize) -> Result<bool> {
 		let var = self.stack.pop()?;
 		let bool_bv = extract_bool_bitvec(&var)?;
 
-		// Check if this is a WHILE loop re-entry (LoopMaskState already active for this loop)
 		if let Some(loop_state) = self.loop_mask_stack.last_mut()
 			&& loop_state.loop_end_addr == target_addr
 		{
-			// Re-entering the loop condition: narrow the active mask
 			let candidate = loop_state.active_mask.and(&bool_bv);
 
 			if candidate.none() {
-				// All remaining rows are done - exit the loop
 				let state = self.loop_mask_stack.pop().unwrap();
 				self.active_mask = if self.loop_mask_stack.is_empty() && self.mask_stack.is_empty() {
 					None
@@ -258,28 +215,23 @@ impl<'a> Vm<'a> {
 				return Ok(true);
 			}
 
-			// Some rows still iterating
 			loop_state.active_mask = candidate.clone();
 			self.active_mask = Some(candidate);
-			return Ok(false); // continue into loop body
+			return Ok(false);
 		}
 
-		// Not a loop re-entry - standard IF/ELSE or first WHILE entry
 		let parent = self.effective_mask();
 		let candidate = self.intersect_condition(&bool_bv);
 
-		// Fast path: all true (within the active mask)
 		if candidate == parent {
-			return Ok(false); // don't jump, no mask frame needed
+			return Ok(false);
 		}
 
-		// Fast path: all false
 		if candidate.none() {
 			self.ip = target_addr;
-			return Ok(true); // jump taken
+			return Ok(true);
 		}
 
-		// Mixed: push mask frame for IF/ELSE, execute then-branch
 		let else_mask = parent.and(&candidate.not());
 
 		self.mask_stack.push(MaskFrame {
@@ -295,36 +247,26 @@ impl<'a> Vm<'a> {
 		});
 
 		self.active_mask = Some(candidate);
-		Ok(false) // don't jump, execute then-branch
+		Ok(false)
 	}
 
-	/// Columnar `JumpIfTruePop`: the dual of `exec_jump_if_false_pop_columnar`.
-	/// Rows whose condition is true jump to `target_addr`; rows whose condition is
-	/// false continue executing the intermediate block.
-	///
-	/// Returns `Ok(true)` if the jump was taken for all active rows (caller should
-	/// `continue` after setting ip). Returns `Ok(false)` otherwise.
 	pub(crate) fn exec_jump_if_true_pop_columnar(&mut self, target_addr: usize) -> Result<bool> {
 		let var = self.stack.pop()?;
 		let bool_bv = extract_bool_bitvec(&var)?;
 
 		let parent = self.effective_mask();
-		// "Jumping rows" = rows where condition is true (within parent mask).
+
 		let jumping = self.intersect_condition(&bool_bv);
 
-		// Fast path: no rows jump (all false) - continue normally.
 		if jumping.none() {
 			return Ok(false);
 		}
 
-		// Fast path: all active rows jump (all true within parent).
 		if jumping == parent {
 			self.ip = target_addr;
 			return Ok(true);
 		}
 
-		// Mixed: then-branch (continuing here) runs on false rows; else-branch (at
-		// target_addr) runs on true rows.
 		let continuing = parent.and(&jumping.not());
 
 		self.mask_stack.push(MaskFrame {
@@ -343,11 +285,6 @@ impl<'a> Vm<'a> {
 		Ok(false)
 	}
 
-	/// Enter a WHILE loop in columnar mode. Called when the first
-	/// JumpIfFalsePop of a WHILE loop produces a mixed boolean Column.
-	///
-	/// This should be called instead of the standard MaskFrame push when
-	/// we know we're at a WHILE loop (detected by the EnterScope(Loop) following).
 	pub(crate) fn enter_loop_mask(&mut self, loop_end_addr: usize, active_rows: BitVec) {
 		let parent = self.effective_mask();
 		self.loop_mask_stack.push(LoopMaskState {
@@ -359,18 +296,15 @@ impl<'a> Vm<'a> {
 		self.active_mask = Some(active_rows);
 	}
 
-	/// Masked Break: rows hitting BREAK exit the loop.
 	pub(crate) fn exec_break_masked(&mut self, exit_scopes: usize, addr: usize) -> Result<()> {
 		let breaking_rows = self.effective_mask();
 		if let Some(loop_state) = self.loop_mask_stack.last_mut() {
 			loop_state.broken_mask = loop_state.broken_mask.or(&breaking_rows);
 
-			// Remove breaking rows from active mask
 			let remaining = loop_state.active_mask.and(&breaking_rows.not());
 			loop_state.active_mask = remaining.clone();
 
 			if remaining.none() {
-				// All rows have broken - actually exit the loop
 				for _ in 0..exit_scopes {
 					self.symbols.exit_scope()?;
 				}
@@ -385,7 +319,6 @@ impl<'a> Vm<'a> {
 				self.active_mask = Some(remaining);
 			}
 		} else {
-			// Not in a loop mask - use normal break
 			for _ in 0..exit_scopes {
 				self.symbols.exit_scope()?;
 			}
@@ -394,19 +327,16 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	/// Masked Continue: rows hitting CONTINUE skip the rest of the body.
 	pub(crate) fn exec_continue_masked(&mut self, exit_scopes: usize, addr: usize) -> Result<()> {
 		let continuing_rows = self.effective_mask();
 		if let Some(loop_state) = self.loop_mask_stack.last_mut() {
-			// Remove continuing rows from active mask for rest of body
 			let remaining = loop_state.active_mask.and(&continuing_rows.not());
 
 			if remaining.none() {
-				// All remaining rows have continued - jump to condition
 				for _ in 0..exit_scopes {
 					self.symbols.exit_scope()?;
 				}
-				// Restore loop's active mask for next iteration (all non-broken rows)
+
 				loop_state.active_mask = loop_state.parent_mask.and(&loop_state.broken_mask.not());
 				self.active_mask = Some(loop_state.active_mask.clone());
 				self.ip = addr;
@@ -423,16 +353,10 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	/// Masked Jump: at the then/else boundary, switches to the else-branch.
-	/// At all other times, behaves like a normal jump.
-	///
-	/// Returns `true` if this was a mask phase transition (caller should `continue`
-	/// to skip normal IP increment), `false` for normal jump behavior.
 	pub(crate) fn exec_jump_masked(&mut self, addr: usize) -> Result<bool> {
 		if let Some(frame) = self.mask_stack.last_mut()
 			&& frame.phase == MaskPhase::Then
 		{
-			// Finishing the then-branch: capture results
 			let stack_delta: Vec<Variable> = {
 				let mut delta = Vec::new();
 				while self.stack.len() > frame.stack_depth {
@@ -443,17 +367,13 @@ impl<'a> Vm<'a> {
 			};
 			frame.then_stack_delta = stack_delta;
 
-			// Snapshot modified variables is handled incrementally by
-			// exec_store_var_masked, which records into then_var_snapshots.
-
 			frame.end_addr = addr;
 			frame.phase = MaskPhase::Else;
 			self.active_mask = Some(frame.else_mask.clone());
 			self.ip = frame.else_addr;
-			return Ok(true); // redirect to else-branch
+			return Ok(true);
 		}
 
-		// Normal jump (not at a then/else boundary)
 		self.iteration_count += 1;
 		if self.iteration_count > 10_000 {
 			return Err(TypeError::Runtime {
@@ -465,11 +385,9 @@ impl<'a> Vm<'a> {
 			.into());
 		}
 		self.ip = addr;
-		Ok(true) // normal jump, caller should continue
+		Ok(true)
 	}
 
-	/// Check if the current IP is a mask merge point. If so, merge then/else results.
-	/// Must be called at the top of the dispatch loop, before instruction execution.
 	pub(crate) fn check_mask_merge_point(&mut self) -> Result<bool> {
 		let should_merge =
 			self.mask_stack.last().is_some_and(|f| f.phase == MaskPhase::Else && self.ip == f.end_addr);
@@ -480,14 +398,12 @@ impl<'a> Vm<'a> {
 
 		let frame = self.mask_stack.pop().unwrap();
 
-		// Capture else-branch stack delta
 		let mut else_stack_delta = Vec::new();
 		while self.stack.len() > frame.stack_depth {
 			else_stack_delta.push(self.stack.pop()?);
 		}
 		else_stack_delta.reverse();
 
-		// Merge stack results (for IF expressions)
 		let total_len = self.batch_size;
 		for (then_var, else_var) in frame.then_stack_delta.iter().zip(else_stack_delta.iter()) {
 			let merged = scatter_merge_variables(
@@ -500,7 +416,6 @@ impl<'a> Vm<'a> {
 			self.stack.push(merged);
 		}
 
-		// Merge modified variables
 		for (name, then_snapshot) in &frame.then_var_snapshots {
 			if let Some(current) = self.symbols.get(name) {
 				let then_cols = variable_to_columns(then_snapshot);
@@ -524,7 +439,6 @@ impl<'a> Vm<'a> {
 			}
 		}
 
-		// Restore parent mask
 		if self.mask_stack.is_empty() {
 			self.active_mask = None;
 		} else {
@@ -534,8 +448,6 @@ impl<'a> Vm<'a> {
 		Ok(true)
 	}
 
-	/// Masked StoreVar: only updates rows where the active mask is true.
-	/// Also tracks the variable in the current MaskFrame for merge.
 	pub(crate) fn exec_store_var_masked(&mut self, name: &str, new_value: Variable) -> Result<()> {
 		let mask = self.effective_mask();
 
@@ -547,12 +459,10 @@ impl<'a> Vm<'a> {
 				self.symbols.reassign(name.to_string(), Variable::columns(merged))?;
 			}
 			None => {
-				// Variable doesn't exist yet - store directly
 				self.symbols.reassign(name.to_string(), new_value)?;
 			}
 		}
 
-		// Track in then_var_snapshots if we're in the Then phase
 		if let Some(frame) = self.mask_stack.last_mut()
 			&& frame.phase == MaskPhase::Then
 			&& let Some(current) = self.symbols.get(name)

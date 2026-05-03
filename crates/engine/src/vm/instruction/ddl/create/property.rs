@@ -24,14 +24,11 @@ pub(crate) fn create_column_property(
 	let namespace_id = plan.namespace.def().id();
 	let table_name = plan.table.text();
 
-	// Find the table
 	let table = services.catalog.find_table_by_name(&mut Transaction::Admin(txn), namespace_id, table_name)?;
 
 	if let Some(table) = table {
-		// Save pre-state for materialized catalog update
 		let pre_table = table.clone();
 
-		// Find the column
 		let column_name = plan.column.text();
 		let Some(column) = services.catalog.find_column_by_name(
 			&mut Transaction::Admin(txn),
@@ -42,13 +39,10 @@ pub(crate) fn create_column_property(
 			return_error!(column_not_found(plan.column.clone()));
 		};
 
-		// Apply each property to the column
 		for property in &plan.properties {
 			services.catalog.create_column_property(txn, column.id, property.clone())?;
 		}
 
-		// Re-read columns from the KV store to get updated properties, then track the
-		// table change so the MaterializedCatalogInterceptor refreshes its cache.
 		let updated_columns = services.catalog.list_columns(&mut Transaction::Admin(txn), pre_table.id)?;
 		let post_table = Table {
 			columns: updated_columns,
@@ -63,7 +57,6 @@ pub(crate) fn create_column_property(
 			("column", Value::Utf8(column.name)),
 		]))
 	} else {
-		// Try series
 		let Some(series) =
 			services.catalog.find_series_by_name(&mut Transaction::Admin(txn), namespace_id, table_name)?
 		else {
@@ -86,7 +79,6 @@ pub(crate) fn create_column_property(
 			services.catalog.create_column_property(txn, column.id, property.clone())?;
 		}
 
-		// Re-read series def to get updated column properties
 		let post_series = services.catalog.get_series(&mut Transaction::Admin(txn), series.id)?;
 		txn.track_series_updated(pre_series, post_series)?;
 

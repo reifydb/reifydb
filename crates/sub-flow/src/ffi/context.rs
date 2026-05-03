@@ -9,7 +9,6 @@ use reifydb_engine::vm::executor::Executor;
 
 use crate::transaction::FlowTransaction;
 
-/// Create a new FFI context
 pub(crate) fn new_ffi_context(
 	txn: &mut FlowTransaction,
 	executor: &Executor,
@@ -26,10 +25,6 @@ pub(crate) fn new_ffi_context(
 	}
 }
 
-/// Get mutable reference to the transaction from an FFI context
-///
-/// # Safety
-/// Caller must ensure the context's txn_ptr is valid and points to a FlowTransaction
 pub(crate) unsafe fn get_transaction_mut(ctx: &mut ContextFFI) -> &mut FlowTransaction {
 	unsafe { &mut *(ctx.txn_ptr as *mut FlowTransaction) }
 }

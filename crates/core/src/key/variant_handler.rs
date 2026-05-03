@@ -12,8 +12,6 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for looking up handlers by the variant they handle.
-/// Supports range scans for DISPATCH to find all handlers for a given (namespace, sumtype, variant_tag).
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariantHandlerKey {
 	pub namespace: NamespaceId,
@@ -41,7 +39,6 @@ impl VariantHandlerKey {
 		Self::new(namespace.into(), sumtype.into(), variant_tag, handler.into()).encode()
 	}
 
-	/// Range scan for all handlers of a specific variant.
 	pub fn variant_scan(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
 			Some(Self::variant_start(namespace, sumtype, variant_tag)),

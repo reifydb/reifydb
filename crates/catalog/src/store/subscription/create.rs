@@ -35,7 +35,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		to_create: SubscriptionToCreate,
 	) -> Result<Subscription> {
-		// Use the flow sequence to generate subscription ID (FlowId == SubscriptionId for subscription flows)
+
 		let flow_id = next_flow_id(txn)?;
 		let subscription_id = SubscriptionId(flow_id.0);
 		Self::store_subscription(txn, subscription_id)?;
@@ -102,7 +102,7 @@ impl CatalogStore {
 			});
 		}
 
-		// Sort by column ID (which is the index)
+
 		columns.sort_by_key(|c| c.id.0);
 
 		Ok(columns)

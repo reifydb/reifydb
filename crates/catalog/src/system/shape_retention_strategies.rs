@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::shape_retention_strategies::*, vtable::PRIMITIVE_RETENTION_STRATEGIES};
 
-/// Returns the static definition for the system.shape_retention_strategies virtual table
-/// This table exposes retention strategy information for primitives (tables, views, ring buffers)
 pub fn shape_retention_strategies() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

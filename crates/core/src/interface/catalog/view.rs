@@ -135,10 +135,6 @@ impl View {
 		}
 	}
 
-	/// Returns the ShapeId of the underlying backing primitive.
-	///
-	/// All view data is stored under the underlying primitive's key space,
-	/// not under `ShapeId::View`.
 	pub fn underlying_id(&self) -> ShapeId {
 		match self {
 			View::Table(t) => ShapeId::Table(t.underlying),

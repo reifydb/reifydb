@@ -12,8 +12,6 @@ use super::decode_retention_strategy;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Find a retention strategy for a shape (table, view, or ring buffer)
-	/// Returns None if no retention strategy is set
 	pub(crate) fn find_shape_retention_strategy(
 		rx: &mut Transaction<'_>,
 		shape: ShapeId,
@@ -22,8 +20,6 @@ impl CatalogStore {
 		Ok(value.and_then(|v| decode_retention_strategy(&v.row)))
 	}
 
-	/// Find a retention strategy for an operator
-	/// Returns None if no retention strategy is set
 	pub(crate) fn find_operator_retention_strategy(
 		rx: &mut Transaction<'_>,
 		operator: FlowNodeId,

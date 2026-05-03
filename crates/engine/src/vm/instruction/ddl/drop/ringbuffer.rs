@@ -25,7 +25,6 @@ pub(crate) fn drop_ringbuffer(
 
 	let def = services.catalog.get_ringbuffer(&mut Transaction::Admin(txn), ringbuffer_id)?;
 
-	// Check for flows that reference this ring buffer
 	let nodes = services.catalog.list_flow_nodes_all(&mut Transaction::Admin(txn))?;
 	let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 	let dependents = find_flow_dependents(

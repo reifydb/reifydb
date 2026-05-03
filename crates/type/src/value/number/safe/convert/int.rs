@@ -29,7 +29,7 @@ macro_rules! impl_safe_convert_int_to_signed {
                     } else if let Some(val) = self.0.to_i128() {
                         val as $dst
                     } else {
-                        // For values larger than i128, fall back to saturating
+
                         self.saturating_convert()
                     }
                 }

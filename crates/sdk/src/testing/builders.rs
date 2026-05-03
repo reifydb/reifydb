@@ -13,7 +13,6 @@ use reifydb_core::{
 };
 use reifydb_type::value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type};
 
-/// Builder for creating test rows
 pub struct TestRowBuilder {
 	row_number: RowNumber,
 	values: Vec<Value>,
@@ -21,7 +20,6 @@ pub struct TestRowBuilder {
 }
 
 impl TestRowBuilder {
-	/// Create a new row builder with the given row number
 	pub fn new(row_number: impl Into<RowNumber>) -> Self {
 		Self {
 			row_number: row_number.into(),
@@ -30,31 +28,25 @@ impl TestRowBuilder {
 		}
 	}
 
-	/// Set the values for the row
 	pub fn with_values(mut self, values: Vec<Value>) -> Self {
 		self.values = values;
 		self
 	}
 
-	/// Add a single value to the row
 	pub fn add_value(mut self, value: Value) -> Self {
 		self.values.push(value);
 		self
 	}
 
-	/// Set the shape for the row (inferred from values if not set)
 	pub fn with_shape(mut self, shape: RowShape) -> Self {
 		self.shape = Some(shape);
 		self
 	}
 
-	/// Build the row
 	pub fn build(self) -> Row {
-		// Use provided shape or infer from values
 		let shape = if let Some(shape) = self.shape {
 			shape
 		} else {
-			// Infer types from values and create shape
 			let fields: Vec<RowShapeField> = self
 				.values
 				.iter()
@@ -75,7 +67,6 @@ impl TestRowBuilder {
 	}
 }
 
-/// Builder for creating test flow changes
 pub struct TestChangeBuilder {
 	origin: ChangeOrigin,
 	diffs: Diffs,
@@ -90,7 +81,6 @@ impl Default for TestChangeBuilder {
 }
 
 impl TestChangeBuilder {
-	/// Create a new flow change builder with default origin and version
 	pub fn new() -> Self {
 		Self {
 			origin: ChangeOrigin::Shape(ShapeId::Table(TableId(1))),
@@ -100,49 +90,41 @@ impl TestChangeBuilder {
 		}
 	}
 
-	/// Set the origin as an external source
 	pub fn changed_by_shape(mut self, shape: ShapeId) -> Self {
 		self.origin = ChangeOrigin::Shape(shape);
 		self
 	}
 
-	/// Set the origin as an internal node
 	pub fn changed_by_node(mut self, node: FlowNodeId) -> Self {
 		self.origin = ChangeOrigin::Flow(node);
 		self
 	}
 
-	/// Set the version
 	pub fn with_version(mut self, version: CommitVersion) -> Self {
 		self.version = version;
 		self
 	}
 
-	/// Set the changed_at timestamp
 	pub fn with_changed_at(mut self, changed_at: DateTime) -> Self {
 		self.changed_at = changed_at;
 		self
 	}
 
-	/// Add an insert diff
 	pub fn insert(mut self, row: Row) -> Self {
 		self.diffs.push(Diff::insert(Columns::from_row(&row)));
 		self
 	}
 
-	/// Add an insert diff with values (convenience method)
 	pub fn insert_row(self, row_number: impl Into<RowNumber>, values: Vec<Value>) -> Self {
 		let row = TestRowBuilder::new(row_number).with_values(values).build();
 		self.insert(row)
 	}
 
-	/// Add an update diff
 	pub fn update(mut self, pre: Row, post: Row) -> Self {
 		self.diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 		self
 	}
 
-	/// Add an update diff with values (convenience method)
 	pub fn update_row(
 		self,
 		row_number: impl Into<RowNumber>,
@@ -155,19 +137,16 @@ impl TestChangeBuilder {
 		self.update(pre, post)
 	}
 
-	/// Add a remove diff
 	pub fn remove(mut self, row: Row) -> Self {
 		self.diffs.push(Diff::remove(Columns::from_row(&row)));
 		self
 	}
 
-	/// Add a remove diff with values (convenience method)
 	pub fn remove_row(self, row_number: impl Into<RowNumber>, values: Vec<Value>) -> Self {
 		let row = TestRowBuilder::new(row_number).with_values(values).build();
 		self.remove(row)
 	}
 
-	/// Build the flow change
 	pub fn build(self) -> Change {
 		Change {
 			origin: self.origin,
@@ -178,7 +157,6 @@ impl TestChangeBuilder {
 	}
 }
 
-/// Builder for creating test shapes
 pub struct TestLayoutBuilder {
 	fields: Vec<RowShapeField>,
 }
@@ -190,82 +168,68 @@ impl Default for TestLayoutBuilder {
 }
 
 impl TestLayoutBuilder {
-	/// Create a new shape builder
 	pub fn new() -> Self {
 		Self {
 			fields: Vec::new(),
 		}
 	}
 
-	/// Add a type to the shape with auto-generated name
 	pub fn add_type(mut self, ty: Type) -> Self {
 		let field_name = format!("field{}", self.fields.len());
 		self.fields.push(RowShapeField::unconstrained(field_name, ty));
 		self
 	}
 
-	/// Add a named field to the shape
 	pub fn add_field(mut self, name: impl Into<String>, ty: Type) -> Self {
 		self.fields.push(RowShapeField::unconstrained(name, ty));
 		self
 	}
 
-	/// Build the shape
 	pub fn build(self) -> RowShape {
 		RowShape::new(self.fields)
 	}
 
-	/// Build the shape (alias for backwards compatibility)
 	pub fn build_named(self) -> RowShape {
 		self.build()
 	}
 }
 
-/// Helper functions for common test data patterns
 pub mod helpers {
 	use reifydb_core::{encoded::shape::RowShape, interface::change::Change, row::Row};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::*;
 
-	/// Create a simple counter shape (single int8 field)
 	pub fn counter_layout() -> RowShape {
 		TestLayoutBuilder::new().add_type(Type::Int8).build()
 	}
 
-	/// Create a key-value shape (utf8 key, int8 value)
 	pub fn key_value_layout() -> RowShape {
 		TestLayoutBuilder::new().add_type(Type::Utf8).add_type(Type::Int8).build()
 	}
 
-	/// Create a named key-value shape
 	pub fn named_key_value_layout() -> RowShape {
 		TestLayoutBuilder::new().add_field("key", Type::Utf8).add_field("value", Type::Int8).build_named()
 	}
 
-	/// Create a test row with a single int8 value
 	pub fn int_row(row_number: impl Into<RowNumber>, value: i8) -> Row {
 		TestRowBuilder::new(row_number).with_values(vec![Value::Int8(value as i64)]).build()
 	}
 
-	/// Create a test row with a UTF8 key and int8 value
 	pub fn key_value_row(row_number: impl Into<RowNumber>, key: &str, value: i8) -> Row {
 		TestRowBuilder::new(row_number)
 			.with_values(vec![Value::Utf8(key.into()), Value::Int8(value as i64)])
 			.build()
 	}
 
-	/// Create an empty flow change from a table source
 	pub fn empty_change() -> Change {
 		TestChangeBuilder::new().build()
 	}
 
-	/// Create a flow change with a single insert
 	pub fn insert_change(row: Row) -> Change {
 		TestChangeBuilder::new().insert(row).build()
 	}
 
-	/// Create a flow change with multiple inserts
 	pub fn batch_insert_change(rows: Vec<Row>) -> Change {
 		let mut builder = TestChangeBuilder::new();
 		for row in rows {

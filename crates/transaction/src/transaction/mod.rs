@@ -98,11 +98,6 @@ use crate::{
 	},
 };
 
-/// Trait for executing RQL within a transaction.
-///
-/// This trait decouples RQL execution from the transaction layer, allowing
-/// any component (procedures, ProcedureContext, tests, etc.) to execute
-/// RQL through a transaction without a direct dependency on the engine crate.
 pub trait RqlExecutor: Send + Sync {
 	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> ExecutionResult;
 }
@@ -116,7 +111,6 @@ pub mod write;
 
 use crate::multi::{pending::PendingWrites, transaction::write::MultiWriteTransaction};
 
-/// Collect transaction writes from pending writes for use in `PreCommitContext`.
 #[inline]
 pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(EncodedKey, Option<EncodedRow>)> {
 	pending.iter()
@@ -130,7 +124,6 @@ pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(Encode
 		.collect()
 }
 
-/// Apply pending writes produced by pre-commit interceptors to the multi transaction.
 #[inline]
 pub(super) fn apply_pre_commit_writes(
 	multi: &mut MultiWriteTransaction,
@@ -145,7 +138,6 @@ pub(super) fn apply_pre_commit_writes(
 	Ok(())
 }
 
-/// Opaque savepoint for per-test transaction isolation.
 pub struct Savepoint {
 	write: WriteSavepoint,
 	row_changes_len: usize,
@@ -195,7 +187,6 @@ impl<'a> TestTransaction<'a> {
 		}
 	}
 
-	/// Restore transaction state to the savepoint captured at construction.
 	pub fn restore(&mut self) {
 		if let Some(sp) = self.savepoint.take() {
 			self.inner.cmd.as_mut().unwrap().restore_savepoint(sp.write);
@@ -206,9 +197,6 @@ impl<'a> TestTransaction<'a> {
 		}
 	}
 
-	/// Re-borrow this test transaction with a shorter lifetime,
-	/// producing a TestTransaction suitable for embedding in a
-	/// `Transaction::Test` variant without consuming `self`.
 	pub fn reborrow(&mut self) -> TestTransaction<'_> {
 		TestTransaction {
 			inner: &mut *self.inner,
@@ -223,25 +211,11 @@ impl<'a> TestTransaction<'a> {
 		}
 	}
 
-	/// Read accumulator entries since the baseline.
-	/// Used by testing helpers to inspect mutations within the current test.
 	pub fn accumulator_entries_from(&self) -> &[(ShapeId, Diff)] {
 		self.inner.accumulator.entries_from(self.baseline)
 	}
 
-	/// Execute test-only pre-commit style processing without committing.
-	///
-	/// If a `test_pre_commit` hook is registered on the interceptors, it is
-	/// called first to ensure uncommitted flows are registered in the shared
-	/// flow engine.  Then the pre-commit interceptor chain runs (which
-	/// includes transactional flow processing) over accumulator entries from
-	/// the baseline onwards.
-	///
-	/// Used by testing helpers that need commit-time flow work materialized
-	/// while still staying inside the test savepoint.
 	pub fn capture_testing_pre_commit(&mut self) -> Result<()> {
-		// Only process if there are non-view source changes; view-only entries
-		// are flow output from a previous call and must not be re-consumed.
 		let has_source_changes = self
 			.inner
 			.accumulator
@@ -253,7 +227,6 @@ impl<'a> TestTransaction<'a> {
 			return Ok(());
 		}
 
-		// Clone the hook before re-borrowing self.
 		let hook = self.inner.interceptors.test_pre_commit.clone();
 
 		if let Some(hook) = hook {
@@ -303,8 +276,6 @@ impl<'a> TestTransaction<'a> {
 	}
 }
 
-/// An enum that can hold either a command, admin, query, or subscription transaction
-/// for flexible execution
 pub enum Transaction<'a> {
 	Command(&'a mut CommandTransaction),
 	Admin(&'a mut AdminTransaction),
@@ -314,7 +285,6 @@ pub enum Transaction<'a> {
 }
 
 impl<'a> Transaction<'a> {
-	/// Get the transaction version
 	pub fn version(&self) -> CommitVersion {
 		match self {
 			Self::Command(txn) => txn.version(),
@@ -325,7 +295,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Get the transaction ID
 	pub fn id(&self) -> TransactionId {
 		match self {
 			Self::Command(txn) => txn.id(),
@@ -336,7 +305,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Get a value by key (async method)
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		match self {
 			Self::Command(txn) => txn.get(key),
@@ -347,10 +315,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Read the committed value at the transaction's read version, ignoring
-	/// pending intra-tx writes. For read-only transaction variants (Query,
-	/// Replica) this is equivalent to `get` since they hold no pending
-	/// writes.
 	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		match self {
 			Self::Command(txn) => txn.get_committed(key),
@@ -361,7 +325,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Check if a key exists (async method)
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		match self {
 			Self::Command(txn) => txn.contains_key(key),
@@ -372,7 +335,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Get a prefix batch (async method)
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		match self {
 			Self::Command(txn) => txn.prefix(prefix),
@@ -383,7 +345,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Get a reverse prefix batch (async method)
 	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		match self {
 			Self::Command(txn) => txn.prefix_rev(prefix),
@@ -394,7 +355,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Read as of version exclusive (async method)
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		match self {
 			Transaction::Command(txn) => txn.read_as_of_version_exclusive(version),
@@ -407,7 +367,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Create a streaming iterator for forward range queries.
 	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
@@ -422,7 +381,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Create a streaming iterator for reverse range queries.
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
@@ -463,7 +421,6 @@ impl<'a> From<&'a mut ReplicaTransaction> for Transaction<'a> {
 }
 
 impl<'a> Transaction<'a> {
-	/// Get the identity associated with this transaction.
 	pub fn identity(&self) -> IdentityId {
 		match self {
 			Self::Command(txn) => txn.identity,
@@ -474,7 +431,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Set the identity associated with this transaction.
 	pub fn set_identity(&mut self, identity: IdentityId) {
 		match self {
 			Self::Command(txn) => txn.identity = identity,
@@ -485,7 +441,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Clone the RQL executor, if one is set.
 	fn executor_clone(&self) -> Option<Arc<dyn RqlExecutor>> {
 		match self {
 			Self::Command(txn) => txn.executor.clone(),
@@ -496,9 +451,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Execute RQL within this transaction using the attached executor.
-	///
-	/// Panics if no `RqlExecutor` has been set on the underlying transaction.
 	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
 		let executor = self.executor_clone().expect("RqlExecutor not set");
 		let mut tx = self.reborrow();
@@ -509,8 +461,6 @@ impl<'a> Transaction<'a> {
 		result
 	}
 
-	/// Mark this transaction as poisoned, storing the original error diagnostic.
-	/// No-op for Query and Replica transactions.
 	fn poison(&mut self, cause: Diagnostic) {
 		match self {
 			Transaction::Command(txn) => txn.poison(cause),
@@ -521,8 +471,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Re-borrow this transaction with a shorter lifetime, enabling
-	/// multiple sequential uses of the same transaction binding.
 	pub fn reborrow(&mut self) -> Transaction<'_> {
 		match self {
 			Transaction::Command(cmd) => Transaction::Command(cmd),
@@ -543,8 +491,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Extract the underlying CommandTransaction, panics if this is
-	/// not a Command transaction
 	pub fn command(self) -> &'a mut CommandTransaction {
 		match self {
 			Self::Command(txn) => txn,
@@ -552,8 +498,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Extract the underlying AdminTransaction, panics if this is
-	/// not an Admin transaction
 	pub fn admin(self) -> &'a mut AdminTransaction {
 		match self {
 			Self::Admin(txn) => txn,
@@ -562,8 +506,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Extract the underlying QueryTransaction, panics if this is
-	/// not a Query transaction
 	pub fn query(self) -> &'a mut QueryTransaction {
 		match self {
 			Self::Query(txn) => txn,
@@ -571,8 +513,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Extract the underlying ReplicaTransaction, panics if this is
-	/// not a Replica transaction
 	pub fn replica(self) -> &'a mut ReplicaTransaction {
 		match self {
 			Self::Replica(txn) => txn,
@@ -580,8 +520,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Get a mutable reference to the underlying
-	/// CommandTransaction, panics if this is not a Command transaction
 	pub fn command_mut(&mut self) -> &mut CommandTransaction {
 		match self {
 			Self::Command(txn) => txn,
@@ -589,8 +527,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Get a mutable reference to the underlying
-	/// AdminTransaction, panics if this is not an Admin transaction
 	pub fn admin_mut(&mut self) -> &mut AdminTransaction {
 		match self {
 			Self::Admin(txn) => txn,
@@ -599,8 +535,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Get a mutable reference to the underlying QueryTransaction,
-	/// panics if this is not a Query transaction
 	pub fn query_mut(&mut self) -> &mut QueryTransaction {
 		match self {
 			Self::Query(txn) => txn,
@@ -608,8 +542,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Get a mutable reference to the underlying ReplicaTransaction,
-	/// panics if this is not a Replica transaction
 	pub fn replica_mut(&mut self) -> &mut ReplicaTransaction {
 		match self {
 			Self::Replica(txn) => txn,
@@ -617,7 +549,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Begin a single-version query transaction for specific keys
 	pub fn begin_single_query<'b, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'b EncodedKey>,
@@ -631,8 +562,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Begin a single-version write transaction for specific keys.
-	/// Panics on Query and Replica transactions.
 	pub fn begin_single_command<'b, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'b EncodedKey>,
@@ -646,8 +575,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Resolve to the underlying `WriteOps` impl. Panics on `Query`,
-	/// matching the prior per-method panic site.
 	fn write_ops(&mut self) -> &mut dyn Write {
 		match self {
 			Transaction::Command(txn) => &mut **txn,
@@ -658,17 +585,14 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Set a key-value pair. Panics on Query transactions.
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		Write::set(self.write_ops(), key, row)
 	}
 
-	/// Unset (delete with tombstone) a key-value pair. Panics on Query transactions.
 	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		Write::unset(self.write_ops(), key, row)
 	}
 
-	/// Remove a key. Panics on Query transactions.
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		Write::remove(self.write_ops(), key)
 	}
@@ -677,19 +601,14 @@ impl<'a> Transaction<'a> {
 		Write::mark_preexisting(self.write_ops(), key)
 	}
 
-	/// Track a row change for post-commit event emission.
-	/// No-op on Replica transactions. Panics on Query transactions.
 	pub fn track_row_change(&mut self, change: RowChange) {
 		Write::track_row_change(self.write_ops(), change)
 	}
 
-	/// Track a flow change for transactional view pre-commit processing.
-	/// No-op on Replica transactions. Panics on Query transactions.
 	pub fn track_flow_change(&mut self, change: Change) {
 		Write::track_flow_change(self.write_ops(), change)
 	}
 
-	/// Record a test event dispatch. No-op for non-Test transactions.
 	pub fn record_test_event(
 		&mut self,
 		namespace: String,
@@ -711,9 +630,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Record a test handler invocation. No-op for non-Test transactions.
-	///
-	/// The `sequence` field of `invocation` will be overwritten with the next handler sequence number.
 	pub fn record_test_handler(&mut self, mut invocation: CapturedInvocation) {
 		if let Transaction::Test(t) = self {
 			*t.handler_seq += 1;

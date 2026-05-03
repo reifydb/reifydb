@@ -39,10 +39,6 @@ impl SnapshotReader {
 		}
 	}
 
-	// Attach a predicate evaluated per-batch with full pushdown: the predicate
-	// runs against a sliced view of each batch's chunks (encoding-respecting),
-	// then `compute::filter` runs per chunk on the compressed/encoded slices,
-	// and only surviving rows get canonicalized into the output `ColumnBuffer`.
 	pub fn with_predicate(mut self, predicate: Predicate) -> Self {
 		self.predicate = Some(predicate);
 		self
@@ -74,7 +70,6 @@ impl SnapshotReader {
 	}
 }
 
-// Materialize a contiguous batch range without filtering (no-predicate path).
 fn materialize_full(block: &ColumnBlock, start: usize, end: usize) -> Result<Columns> {
 	let len = end - start;
 	let mut columns: Vec<ColumnWithName> = Vec::with_capacity(block.schema.len());
@@ -87,9 +82,6 @@ fn materialize_full(block: &ColumnBlock, start: usize, end: usize) -> Result<Col
 	Ok(Columns::with_system_columns(columns, row_numbers, vec![ts; len], vec![ts; len]))
 }
 
-// Materialize a precomputed batch view when the predicate selected every row
-// (`Selection::All`). Skips the redundant re-slice that `materialize_full`
-// would do on the source block.
 fn materialize_view_full(schema: &Schema, view: &ColumnBlock, start: usize, end: usize) -> Result<Columns> {
 	let len = end - start;
 	let mut columns: Vec<ColumnWithName> = Vec::with_capacity(schema.len());
@@ -102,11 +94,6 @@ fn materialize_view_full(schema: &Schema, view: &ColumnBlock, start: usize, end:
 	Ok(Columns::with_system_columns(columns, row_numbers, vec![ts; len], vec![ts; len]))
 }
 
-// Pushdown materialization: for each user column, walk the view's already-sliced
-// chunks and apply `compute::filter` per chunk (encoding-specialized - compressed
-// encodings can filter without canonicalizing the chunk first); only the survivors
-// get canonicalized into the output `ColumnBuffer`. System columns are filtered
-// in tandem using the same mask so all column lengths agree.
 fn materialize_filtered(schema: &Schema, view: &ColumnBlock, batch_start: usize, mask: &RowMask) -> Result<Columns> {
 	let mut columns: Vec<ColumnWithName> = Vec::with_capacity(schema.len());
 	for (i, (name, _ty, _nullable)) in schema.iter().enumerate() {
@@ -125,11 +112,6 @@ fn materialize_filtered(schema: &Schema, view: &ColumnBlock, batch_start: usize,
 	Ok(Columns::with_system_columns(columns, row_numbers, vec![ts; kept], vec![ts; kept]))
 }
 
-// Filter one view-column chunk-by-chunk using the batch-wide mask. Each chunk
-// gets the corresponding slice of the mask; `compute::filter` runs on the
-// encoded chunk (not the full canonical block), and the surviving canonicalized
-// rows extend the output buffer. The caller (Selection::Mask path) guarantees
-// at least one bit is set across the whole mask, so `out` is always populated.
 fn filter_view_column(view_chunks: &ColumnChunks, mask: &RowMask) -> Result<ColumnBuffer> {
 	let mut chunk_offset = 0usize;
 	let mut out: Option<ColumnBuffer> = None;
@@ -150,8 +132,6 @@ fn filter_view_column(view_chunks: &ColumnChunks, mask: &RowMask) -> Result<Colu
 	Ok(out.expect("Selection::Mask guarantees at least one row survives"))
 }
 
-// Concatenate all chunks of a view-column into a single ColumnBuffer (no
-// filtering). Used by the `Selection::All` path.
 fn concat_view_chunks(view_chunks: &ColumnChunks) -> Result<ColumnBuffer> {
 	let mut iter = view_chunks.chunks.iter();
 	let first =
@@ -163,12 +143,6 @@ fn concat_view_chunks(view_chunks: &ColumnChunks) -> Result<ColumnBuffer> {
 	Ok(out)
 }
 
-// Materialize the [start, end) range across however many chunks contribute.
-// Per chunk: `Column::slice` honors encoding-specific slice paths (compressed
-// encodings can produce a compressed slice without canonicalizing the whole
-// chunk); we only canonicalize each slice at the projection boundary, where
-// `ColumnBuffer` is the required output type. `ColumnBuffer::extend` handles
-// promoting a bare buffer to `Option` when later chunks introduce nones.
 fn read_range(column_chunks: &ColumnChunks, start: usize, end: usize) -> Result<ColumnBuffer> {
 	let ranges = column_chunks.iter_range_chunks(start, end);
 	let mut iter = ranges.into_iter();

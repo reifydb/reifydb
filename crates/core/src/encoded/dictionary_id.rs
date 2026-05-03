@@ -31,7 +31,7 @@ impl RowShape {
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DictionaryId);
 		let id_type = match field.constraint.constraint() {
 			Some(Constraint::Dictionary(_, id_type)) => id_type.clone(),
-			_ => Type::Uint4, // fallback
+			_ => Type::Uint4,
 		};
 		unsafe {
 			let ptr = row.as_ptr().add(field.offset as usize);

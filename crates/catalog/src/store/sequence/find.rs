@@ -34,7 +34,6 @@ impl CatalogStore {
 			),
 		};
 
-		// Read current value from single storage
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
 		let value = match rx.get(&sequence_key)? {

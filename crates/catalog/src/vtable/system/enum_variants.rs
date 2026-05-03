@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes variant and field information for enum sumtypes
 pub struct SystemEnumVariants {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

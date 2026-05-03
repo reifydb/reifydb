@@ -15,7 +15,6 @@ use tracing::instrument;
 
 use crate::{CatalogStore, Result, catalog::Catalog, store::handler::create::HandlerToCreate as StoreHandlerToCreate};
 
-/// Handler creation specification for the Catalog API.
 #[derive(Debug, Clone)]
 pub struct HandlerToCreate {
 	pub name: Fragment,
@@ -35,17 +34,14 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(handler) = TransactionalHandlerChanges::find_handler_by_id(admin, id) {
 					return Ok(Some(handler.clone()));
 				}
 
-				// 2. Check if deleted in this transaction
 				if TransactionalHandlerChanges::is_handler_deleted(admin, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(handler) = self.materialized.find_handler_at(id, admin.version()) {
 					return Ok(Some(handler));
 				}
@@ -59,17 +55,14 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Test(t) => {
-				// 1. Check transactional changes first
 				if let Some(handler) = TransactionalHandlerChanges::find_handler_by_id(t.inner, id) {
 					return Ok(Some(handler.clone()));
 				}
 
-				// 2. Check if deleted in this transaction
 				if TransactionalHandlerChanges::is_handler_deleted(t.inner, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(handler) = self.materialized.find_handler_at(id, t.inner.version()) {
 					return Ok(Some(handler));
 				}
@@ -102,19 +95,16 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(handler) =
 					TransactionalHandlerChanges::find_handler_by_name(admin, namespace, name)
 				{
 					return Ok(Some(handler.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalHandlerChanges::is_handler_deleted_by_name(admin, namespace, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(handler) =
 					self.materialized.find_handler_by_name_at(namespace, name, admin.version())
 				{
@@ -132,19 +122,16 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Test(t) => {
-				// 1. Check transactional changes first
 				if let Some(handler) =
 					TransactionalHandlerChanges::find_handler_by_name(t.inner, namespace, name)
 				{
 					return Ok(Some(handler.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalHandlerChanges::is_handler_deleted_by_name(t.inner, namespace, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(handler) =
 					self.materialized.find_handler_by_name_at(namespace, name, t.inner.version())
 				{
@@ -175,11 +162,9 @@ impl Catalog {
 				Ok(self.materialized.list_handlers_for_variant_at(variant, cmd.version()))
 			}
 			Transaction::Admin(admin) => {
-				// Check materialized catalog + transactional additions
 				let mut handlers =
 					self.materialized.list_handlers_for_variant_at(variant, admin.version());
 
-				// Also check transactional changes for newly created handlers
 				for change in &admin.changes.handler {
 					if let Some(h) = &change.post
 						&& h.variant == variant && !handlers
@@ -196,11 +181,9 @@ impl Catalog {
 				Ok(self.materialized.list_handlers_for_variant_at(variant, qry.version()))
 			}
 			Transaction::Test(t) => {
-				// Check materialized catalog + transactional additions
 				let mut handlers =
 					self.materialized.list_handlers_for_variant_at(variant, t.inner.version());
 
-				// Also check transactional changes for newly created handlers
 				for change in &t.inner.changes.handler {
 					if let Some(h) = &change.post
 						&& h.variant == variant && !handlers

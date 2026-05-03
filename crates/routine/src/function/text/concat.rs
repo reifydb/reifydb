@@ -45,7 +45,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 			});
 		}
 
-		// Unwrap options for each column individually
 		let mut unwrapped: Vec<(&ColumnBuffer, Option<&BitVec>)> = Vec::with_capacity(args.len());
 		for col in args.iter() {
 			unwrapped.push(col.data().unwrap_option());
@@ -53,7 +52,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 
 		let row_count = unwrapped[0].0.len();
 
-		// Validate all arguments are Utf8
 		for (idx, (data, _)) in unwrapped.iter().enumerate() {
 			match data {
 				ColumnBuffer::Utf8 {
@@ -103,7 +101,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 			max_bytes: MaxBytes::MAX,
 		};
 
-		// Combine all bitvecs
 		let mut combined_bv: Option<BitVec> = None;
 		for (_, bv) in unwrapped.iter() {
 			if let Some(bv) = bv {

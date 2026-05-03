@@ -24,7 +24,6 @@ impl<'a> Vm<'a> {
 				columns: c,
 			}) if c.is_scalar() => {
 				if self.batch_size > 1 {
-					// Broadcast scalar to batch_size rows
 					let value = c.scalar_value();
 					let mut data = ColumnBuffer::with_capacity(value.get_type(), self.batch_size);
 					for _ in 0..self.batch_size {
@@ -43,7 +42,6 @@ impl<'a> Vm<'a> {
 				columns: c,
 			}) => {
 				if self.batch_size > 1 {
-					// In columnar mode, Columns variables are valid on the stack
 					self.stack.push(Variable::columns(c.clone()));
 				} else {
 					return Err(TypeError::Runtime {

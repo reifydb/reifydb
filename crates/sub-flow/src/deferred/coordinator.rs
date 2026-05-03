@@ -62,7 +62,6 @@ impl CdcConsume for FlowConsumeRef {
 		});
 
 		if let Err(send_err) = result {
-			// Extract the reply callback from the failed message and call it with an error
 			if let FlowCoordinatorMessage::Consume {
 				reply,
 				..
@@ -86,7 +85,6 @@ fn record_version_range_span(cdcs: &[Cdc]) {
 	}
 }
 
-/// Context needed to resume processing after an async pool reply.
 struct ConsumeContext {
 	state_version: CommitVersion,
 	current_version: CommitVersion,
@@ -95,22 +93,17 @@ struct ConsumeContext {
 	checkpoints: Vec<(FlowId, CommitVersion)>,
 	original_reply: Box<dyn FnOnce(Result<()>) + Send>,
 	consume_start: Instant,
-	/// All flow changes derived from CDCs (computed once during Consume)
+
 	all_changes: Vec<Change>,
-	/// Latest CDC version
+
 	latest_version: Option<CommitVersion>,
-	/// Flows downstream of view-producing flows in this batch.
-	/// These flows will have new CDC events in the next cycle from view changes,
-	/// so their checkpoints should NOT be advanced yet.
+
 	downstream_flows: collections::HashSet<FlowId>,
-	/// View changes accumulated from flow workers for cascading to transactional flows.
+
 	view_changes: Vec<Change>,
 }
 
 impl ConsumeContext {
-	/// True when this consume produced no work for the multi store.
-	/// `finish_consume` short-circuits on this to avoid an empty
-	/// transaction whose only effect is to bump `current_version`.
 	fn is_empty(&self) -> bool {
 		self.combined.iter_sorted().next().is_none()
 			&& self.view_changes.is_empty()
@@ -120,27 +113,26 @@ impl ConsumeContext {
 }
 
 enum Phase {
-	/// Idle, ready for new work
 	Idle,
-	/// Registering flows with the pool one at a time
+
 	RegisteringFlows {
 		flows: Vec<FlowDag>,
 		ctx: ConsumeContext,
 	},
-	/// Submitting batches to the pool
+
 	SubmittingBatches {
 		ctx: ConsumeContext,
 	},
-	/// Advancing backfill flows one at a time
+
 	AdvancingBackfill {
 		flows: Vec<FlowId>,
 		ctx: ConsumeContext,
 	},
-	/// Rebalancing flow assignments across workers
+
 	Rebalancing {
 		ctx: ConsumeContext,
 	},
-	/// Waiting for tick results from pool
+
 	Ticking,
 }
 
@@ -149,7 +141,6 @@ struct TickSchedule {
 	last_tick: Instant,
 }
 
-/// Helper to create an error result for coordinator replies.
 fn coordinator_error(msg: impl fmt::Display) -> Result<()> {
 	Err(Error(Box::new(internal!("{}", msg))))
 }
@@ -169,8 +160,6 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 		match pw {
 			PendingWrite::Set(value) => transaction.set(key, value.clone())?,
 			PendingWrite::Remove => {
-				// Preserve deleted row values so CDC can emit Diff::Remove for
-				// downstream deferred flows that source from views.
 				if matches!(Key::kind(key), Some(KeyKind::Row)) {
 					match transaction.get(key)? {
 						Some(existing) => transaction.unset(key, existing.row)?,
@@ -243,7 +232,6 @@ fn filter_changes_by_sources(changes: &[Change], flow_sources: &collections::Has
 		.collect()
 }
 
-/// Coordinator actor - processes CDC and coordinates flow workers.
 pub struct CoordinatorActor {
 	engine: StandardEngine,
 	catalog: FlowCatalog,
@@ -276,13 +264,12 @@ impl CoordinatorActor {
 	}
 }
 
-/// Actor state - holds flow states and analyzer
 pub struct CoordinatorState {
 	states: FlowStates,
 	analyzer: FlowGraphAnalyzer,
 	phase: Phase,
 	tick_schedules: BTreeMap<FlowId, TickSchedule>,
-	/// Current worker assignment for each flow, kept in sync with the pool.
+
 	flow_assignments: BTreeMap<FlowId, usize>,
 }
 
@@ -330,7 +317,6 @@ impl Actor for CoordinatorActor {
 }
 
 impl CoordinatorActor {
-	/// Handle Consume message - start of the multi-phase pipeline.
 	#[instrument(name = "flow::coordinator::consume", level = "debug", skip(self, state, ctx, cdcs, reply), fields(
 		cdc_count = cdcs.len(),
 		version_start = field::Empty,
@@ -417,16 +403,8 @@ impl CoordinatorActor {
 					if is_new {
 						new_flows.push(flow);
 					} else {
-						// Flow was already cached (e.g. by the dispatcher for
-						// transactional views). Add it to the analyzer so the
-						// dependency graph includes its source/sink info - this
-						// lets filter_cdc_for_flow resolve transitive dependencies
-						// through transactional views.
 						state.analyzer.add(flow);
-						// Remove from FlowCatalog so the lag provider doesn't
-						// include this non-deferred flow in its calculations.
-						// Transactional flows have no CDC checkpoint and would
-						// report perpetual lag, blocking `await` indefinitely.
+
 						self.catalog.remove(flow_id);
 					}
 				}
@@ -735,8 +713,6 @@ impl CoordinatorActor {
 			Span::current().record("batch_count", 0usize);
 		}
 
-		// No batches to submit or no latest_version, skip to backfill
-		// Collect checkpoints for active flows, skipping downstream flows.
 		if let Some(to_version) = consume_ctx.latest_version {
 			for flow_id in state.states.active_flow_ids() {
 				if !consume_ctx.downstream_flows.contains(&flow_id) {
@@ -748,7 +724,6 @@ impl CoordinatorActor {
 		self.proceed_to_backfill(state, ctx, consume_ctx);
 	}
 
-	/// Transition to the backfill phase.
 	fn proceed_to_backfill(
 		&self,
 		state: &mut CoordinatorState,
@@ -756,16 +731,12 @@ impl CoordinatorActor {
 		mut consume_ctx: ConsumeContext,
 	) {
 		if consume_ctx.latest_version.is_none() {
-			// No CDC data - finish immediately
 			self.finish_consume(state, consume_ctx);
 			return;
 		}
 
 		let backfilling_flows: Vec<_> = state.states.backfilling_flow_ids();
 
-		// Identify backfilling flows downstream of other backfilling view-producers.
-		// These flows would read stale (uncommitted) view data if processed now,
-		// so they should be skipped and will backfill in the next cycle.
 		let dependency_graph = state.analyzer.get_dependency_graph();
 		for (view_id, producer_flow_id) in &dependency_graph.sink_views {
 			if backfilling_flows.contains(producer_flow_id)
@@ -1015,15 +986,6 @@ impl CoordinatorActor {
 			return;
 		}
 
-		// Consumer-level checkpoint is persisted by the upstream PollActor after
-		// this consume reply succeeds (see crates/cdc/src/consume/actor.rs
-		// `finish_consume`). Persisting it here too produced a redundant write
-		// to the same `CdcConsumer` key, which is filtered from CDC by
-		// `should_exclude_from_cdc` but still bumps `current_version` and broke
-		// version-sensitive cdc-snapshot tests. The view writes above are
-		// idempotent (set/unset/remove on user keys), so no atomicity is lost
-		// by leaving the consumer checkpoint to the upstream actor.
-
 		match transaction.commit() {
 			Ok(_) => (original_reply)(Ok(())),
 			Err(e) => (original_reply)(coordinator_error(e)),
@@ -1051,21 +1013,12 @@ impl CoordinatorActor {
 		flow_sources: &mut collections::HashSet<ShapeId>,
 		view_sources: Vec<ViewId>,
 	) {
-		// Resolve transitive dependencies through views only for non-deferred
-		// producer flows. Deferred views publish their own CDC, so waking a
-		// downstream deferred flow from the producer's base-table CDC creates
-		// a race where the consumer runs before the upstream view commit lands.
-		// Transactional views never publish CDC for derived view rows, so their
-		// downstream consumers must be triggered from the producer's primitive
-		// sources instead.
 		for view_id in view_sources {
 			let Some(producer_flow_id) = dependency_graph.sink_views.get(&view_id) else {
 				continue;
 			};
 
 			if state.states.contains(producer_flow_id) {
-				// Deferred producer: route via the view's underlying primitive
-				// shape (resolved on demand) so CDC keys match.
 				if let Some(view) = self.catalog.find_view(view_id) {
 					flow_sources.insert(view.underlying_id());
 				}
@@ -1090,7 +1043,6 @@ impl CoordinatorActor {
 		}
 	}
 
-	/// Route CDC changes to flows and group by worker.
 	#[instrument(name = "flow::coordinator::route_and_group", level = "debug", skip(self, state, changes), fields(
 		changes = changes.len(),
 		active_flows = field::Empty,
@@ -1110,7 +1062,6 @@ impl CoordinatorActor {
 		let active_flow_ids: Vec<_> = state.states.active_flow_ids();
 		Span::current().record("active_flows", active_flow_ids.len());
 
-		// Build instructions for all active flows with relevant changes
 		let mut flow_instructions: BTreeMap<FlowId, FlowInstruction> = BTreeMap::new();
 		for flow_id in active_flow_ids {
 			let flow_changes = self.filter_cdc_for_flow(state, flow_id, changes);
@@ -1121,7 +1072,6 @@ impl CoordinatorActor {
 		}
 		let submitted: collections::HashSet<FlowId> = flow_instructions.keys().copied().collect();
 
-		// Use existing execution levels for topological ordering
 		let levels = state.analyzer.calculate_execution_levels(dependency_graph);
 		let ordered: Vec<FlowId> = levels
 			.iter()
@@ -1207,7 +1157,6 @@ impl CoordinatorActor {
 		};
 	}
 
-	/// Register a tick schedule for a flow if it has a tick duration configured.
 	fn maybe_register_tick_schedule(&self, state: &mut CoordinatorState, flow: &FlowDag) {
 		if let Some(tick) = flow.tick() {
 			state.tick_schedules.insert(
@@ -1297,7 +1246,6 @@ impl CoordinatorActor {
 			}
 		}
 
-		// Persist pending shapes
 		if let Err(e) =
 			self.catalog.persist_pending_shapes(&mut Transaction::Command(&mut transaction), pending_shapes)
 		{
@@ -1312,10 +1260,6 @@ impl CoordinatorActor {
 	}
 }
 
-/// Extract new flow IDs from CDC events.
-///
-/// This is a helper to detect flow registrations
-/// so the coordinator can load them from the catalog before processing.
 pub fn extract_new_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
 	let mut flow_ids = Vec::new();
 

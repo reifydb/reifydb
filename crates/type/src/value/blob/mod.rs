@@ -16,13 +16,11 @@ pub mod base64;
 pub mod hex;
 pub mod utf8;
 
-/// A binary large object (BLOB) wrapper type
 #[repr(transparent)]
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Blob(Vec<u8>);
 
 impl Blob {
-	/// Create a new BLOB from raw bytes
 	pub fn new(bytes: Vec<u8>) -> Self {
 		Self(bytes)
 	}
@@ -31,27 +29,22 @@ impl Blob {
 		Self(Vec::with_capacity(0))
 	}
 
-	/// Create a BLOB from a byte slice
 	pub fn from_slice(bytes: &[u8]) -> Self {
 		Self(bytes.to_vec())
 	}
 
-	/// Get the raw bytes
 	pub fn as_bytes(&self) -> &[u8] {
 		&self.0
 	}
 
-	/// Get the length in bytes
 	pub fn len(&self) -> usize {
 		self.0.len()
 	}
 
-	/// Check if the BLOB is empty
 	pub fn is_empty(&self) -> bool {
 		self.0.is_empty()
 	}
 
-	/// Convert into the inner bytes
 	pub fn into_bytes(self) -> Vec<u8> {
 		self.0.to_vec()
 	}

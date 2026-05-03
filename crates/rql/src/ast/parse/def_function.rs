@@ -12,17 +12,14 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `udf name ($param: type, ...) : return_type { body }`
 	pub(crate) fn parse_def_function(&mut self) -> Result<AstDefFunction<'bump>> {
 		let token = self.consume_keyword(Keyword::Udf)?;
 		let name = self.parse_as_identifier()?;
 
-		// Parse parameters: ($a: type, $b: type)
 		self.consume_operator(Operator::OpenParen)?;
 		let parameters = self.parse_function_parameters()?;
 		self.consume_operator(Operator::CloseParen)?;
 
-		// Optional return type: : type
 		let return_type = if !self.is_eof() && self.current()?.is_operator(Operator::Colon) {
 			self.advance()?;
 			Some(self.parse_type_annotation()?)
@@ -41,25 +38,21 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse function parameters: $var: type, $var2: type
 	fn parse_function_parameters(&mut self) -> Result<Vec<AstFunctionParameter<'bump>>> {
 		let mut parameters = Vec::new();
 
 		loop {
 			self.skip_new_line()?;
 
-			// Check for closing paren (empty params or trailing comma)
 			if self.current()?.is_operator(Operator::CloseParen) {
 				break;
 			}
 
-			// Parse parameter: $name or $name: type
 			let param_token = self.consume(TokenKind::Variable)?;
 			let variable = AstVariable {
 				token: param_token,
 			};
 
-			// Optional type annotation: : type
 			let type_annotation = if !self.is_eof() && self.current()?.is_operator(Operator::Colon) {
 				self.consume_operator(Operator::Colon)?;
 				Some(self.parse_type_annotation()?)
@@ -75,12 +68,10 @@ impl<'bump> Parser<'bump> {
 
 			self.skip_new_line()?;
 
-			// Check for comma to continue, or break if no comma
 			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
 				continue;
 			}
 
-			// Check for closing paren
 			if self.current()?.is_operator(Operator::CloseParen) {
 				break;
 			}
@@ -89,11 +80,9 @@ impl<'bump> Parser<'bump> {
 		Ok(parameters)
 	}
 
-	/// Parse a type annotation (identifier with optional parameters)
 	pub(crate) fn parse_type_annotation(&mut self) -> Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
-		// Check for Option(T) syntax
 		if ty_token.fragment.text().eq_ignore_ascii_case("option") {
 			self.consume_operator(Operator::OpenParen)?;
 			let inner = self.parse_type_annotation()?;
@@ -101,15 +90,12 @@ impl<'bump> Parser<'bump> {
 			return Ok(AstType::Optional(Box::new(inner)));
 		}
 
-		// Check for type with parameters like DECIMAL(10,2)
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
 			self.consume_operator(Operator::OpenParen)?;
 			let mut params = Vec::new();
 
-			// Parse first parameter
 			params.push(self.parse_literal_number()?);
 
-			// Parse additional parameters if comma-separated
 			while self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
 				params.push(self.parse_literal_number()?);
 			}
@@ -125,11 +111,9 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	/// Parse `RETURN` or `RETURN expr`
 	pub(crate) fn parse_return(&mut self) -> Result<AstReturn<'bump>> {
 		let token = self.consume_keyword(Keyword::Return)?;
 
-		// Check if there's a value to return (not at EOF, semicolon, or closing brace)
 		let value = if !self.is_eof() {
 			let current = self.current()?;
 			if current.is_separator(Separator::Semicolon)

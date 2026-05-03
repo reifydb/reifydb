@@ -41,7 +41,6 @@ pub(crate) fn dispatch(
 		));
 	}
 
-	// Find the variant in the sumtype to get the tag
 	let sumtype = {
 		let mut tx_tmp = tx.reborrow();
 		services.catalog.get_sumtype(&mut tx_tmp, plan.on_sumtype_id)?
@@ -62,7 +61,6 @@ pub(crate) fn dispatch(
 		variant_tag,
 	};
 
-	// List all procedures with event binding for this variant
 	let procedures = {
 		let mut tx_tmp = tx.reborrow();
 		services.catalog.list_procedures_for_variant(&mut tx_tmp, variant_ref)?
@@ -70,7 +68,6 @@ pub(crate) fn dispatch(
 
 	let handler_count = procedures.len();
 
-	// Evaluate dispatch fields into a Columns payload
 	let base = EvalContext {
 		params,
 		symbols: &vm.symbols,
@@ -100,7 +97,6 @@ pub(crate) fn dispatch(
 		event_payload.clone(),
 	);
 
-	// Fire each catalog (RQL) procedure in declaration order
 	for procedure in &procedures {
 		let compiled = services.compiler.compile(tx, procedure.body().unwrap_or_default())?;
 
@@ -109,7 +105,6 @@ pub(crate) fn dispatch(
 				let handler_start = services.runtime_context.clock.instant();
 				let saved_ip = vm.ip;
 
-				// Enter handler scope
 				vm.symbols.enter_scope(ScopeType::Function);
 				for (idx, name) in event_payload.names.iter().enumerate() {
 					let var_name = format!("event_{}", name.text());
@@ -160,11 +155,9 @@ pub(crate) fn dispatch(
 		}
 	}
 
-	// Fire native (runtime-registered) handlers
 	let native_handlers = services.get_handlers(variant_ref);
 	let native_count = native_handlers.len();
 	if !native_handlers.is_empty() {
-		// Build named params from event payload (single-row columns → scalar values)
 		let mut named_map = HashMap::new();
 		for (idx, name) in event_payload.names.iter().enumerate() {
 			let key = name.text().to_string();

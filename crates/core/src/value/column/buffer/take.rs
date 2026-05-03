@@ -87,8 +87,7 @@ impl ColumnBuffer {
 				bitvec,
 			} => {
 				let new_bitvec = DataBitVec::take(bitvec, num);
-				// If all bits in the taken bitvec are set (all defined),
-				// unwrap the Option and return the bare inner data.
+
 				if DataBitVec::count_ones(&new_bitvec) == DataBitVec::len(&new_bitvec)
 					&& DataBitVec::len(&new_bitvec) > 0
 				{
@@ -104,7 +103,6 @@ impl ColumnBuffer {
 		}
 	}
 
-	// Contiguous-range slice: returns rows [start, end).
 	pub fn slice(&self, start: usize, end: usize) -> ColumnBuffer {
 		match self {
 			ColumnBuffer::Option {
@@ -126,7 +124,6 @@ impl ColumnBuffer {
 		}
 	}
 
-	// Gather rows at the given indices.
 	pub fn gather(&self, indices: &[usize]) -> ColumnBuffer {
 		match self {
 			ColumnBuffer::Option {

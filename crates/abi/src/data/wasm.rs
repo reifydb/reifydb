@@ -4,18 +4,8 @@
 /// Size of the ColumnsWasm header in bytes.
 pub const COLUMNS_WASM_HEADER_SIZE: usize = 16;
 
-/// Size of each ColumnWasm entry in bytes.
 pub const COLUMN_WASM_SIZE: usize = 40;
 
-/// Flat binary header for a columnar batch, using u32 offsets instead of pointers.
-///
-/// Layout (16 bytes, all little-endian u32):
-/// ```text
-/// [0..4]   row_count
-/// [4..8]   column_count
-/// [8..12]  row_numbers_offset  (from buffer start, 0 = absent)
-/// [12..16] row_numbers_len     (bytes)
-/// ```
 pub struct ColumnsWasm {
 	pub row_count: u32,
 	pub column_count: u32,
@@ -42,21 +32,6 @@ impl ColumnsWasm {
 	}
 }
 
-/// Flat binary column descriptor, using u32 offsets instead of pointers.
-///
-/// Layout (40 bytes, all little-endian u32):
-/// ```text
-/// [0..4]   name_offset
-/// [4..8]   name_len
-/// [8..12]  type_code  (ColumnTypeCode discriminant)
-/// [12..16] data_row_count
-/// [16..20] data_offset
-/// [20..24] data_len
-/// [24..28] bitvec_offset
-/// [28..32] bitvec_len
-/// [32..36] offsets_offset
-/// [36..40] offsets_len
-/// ```
 pub struct ColumnWasm {
 	pub name_offset: u32,
 	pub name_len: u32,
@@ -100,7 +75,6 @@ impl ColumnWasm {
 		buf.extend_from_slice(&self.offsets_len.to_le_bytes());
 	}
 
-	/// Write this column descriptor at a specific position in the buffer.
 	pub fn write_at(&self, buf: &mut [u8], offset: usize) {
 		let b = &mut buf[offset..offset + COLUMN_WASM_SIZE];
 		b[0..4].copy_from_slice(&self.name_offset.to_le_bytes());

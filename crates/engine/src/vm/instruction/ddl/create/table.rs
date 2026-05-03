@@ -23,7 +23,6 @@ use reifydb_type::{
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan: CreateTableNode) -> Result<Columns> {
-	// Check if table already exists using the catalog
 	if let Some(existing) = services.catalog.find_table_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
@@ -36,8 +35,6 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 			("table", Value::Utf8(plan.table.text().to_string())),
 			("created", Value::Boolean(false)),
 		]));
-		// The error will be returned by create_table if the
-		// table exists
 	}
 
 	let columns = expand_sumtype_columns(services, txn, plan.columns)?;

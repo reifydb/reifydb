@@ -80,7 +80,6 @@ impl Operator for PrimitiveTableOperator {
 		let shape: RowShape = (&self.table.columns).into();
 		let fields = shape.fields();
 
-		// Pre-allocate columns with capacity
 		let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
 		for field in fields.iter() {
 			columns_vec.push(ColumnWithName {
@@ -98,7 +97,7 @@ impl Operator for PrimitiveTableOperator {
 				row_numbers.push(*row_num);
 				created_at.push(DateTime::from_nanos(encoded.created_at_nanos()));
 				updated_at.push(DateTime::from_nanos(encoded.updated_at_nanos()));
-				// Decode each column value directly
+
 				for (i, _field) in fields.iter().enumerate() {
 					let value = shape.get_value(&encoded, i);
 					columns_vec[i].data.push_value(value);

@@ -116,7 +116,6 @@ impl_push!(DateTime, DateTime, datetime);
 impl_push!(Time, Time, time);
 impl_push!(Duration, Duration, duration);
 
-// Signed integer push impls with cross-type SafeConvert
 impl_numeric_push!(
 	i8,
 	Int1,
@@ -217,7 +216,6 @@ impl_numeric_push!(
 	]
 );
 
-// Unsigned integer push impls with cross-type SafeConvert
 impl_numeric_push!(
 	u8,
 	Uint1,

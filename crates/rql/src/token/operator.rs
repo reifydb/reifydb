@@ -103,7 +103,6 @@ static WORD_OPERATORS: LazyLock<HashMap<&'static str, Operator>> = LazyLock::new
 	map
 });
 
-/// Scan for an operator token
 pub fn scan_operator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();
@@ -111,7 +110,6 @@ pub fn scan_operator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 	let ch = cursor.peek()?;
 
-	// Check for multi-character operators first based on first character
 	let multi_char_op = match ch {
 		'<' => {
 			if cursor.peek_str(2) == "<<" {
@@ -199,7 +197,6 @@ pub fn scan_operator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		});
 	}
 
-	// Check word operators for alphabetic characters
 	if ch.is_ascii_alphabetic() {
 		let remaining = cursor.remaining_input();
 		let word_len =
@@ -222,7 +219,6 @@ pub fn scan_operator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		return None;
 	}
 
-	// Single character operators
 	if let Some(&op) = SINGLE_CHAR_OPERATORS.get(&ch) {
 		cursor.consume();
 		Some(Token {

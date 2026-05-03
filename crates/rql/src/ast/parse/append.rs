@@ -13,10 +13,9 @@ use crate::{
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_append(&mut self) -> Result<AstAppend<'bump>> {
 		let token = self.current()?;
-		// Consume APPEND keyword
+
 		self.advance()?;
 
-		// Check if next token is '{' - if so, this is the query form (APPEND { subquery })
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
 			let with = self.parse_sub_query()?;
 			return Ok(AstAppend::Query {
@@ -25,8 +24,6 @@ impl<'bump> Parser<'bump> {
 			});
 		}
 
-		// Otherwise, imperative form: APPEND $target FROM <source>
-		// Parse target variable ($name)
 		let variable_token = self.current()?;
 		if !matches!(variable_token.kind, TokenKind::Variable) {
 			let fragment = variable_token.fragment.to_owned();
@@ -47,15 +44,11 @@ impl<'bump> Parser<'bump> {
 			token: var_token,
 		};
 
-		// Consume FROM keyword
 		self.consume_keyword(Keyword::From)?;
 
-		// Dispatch on next token
 		let source = if !self.is_eof() && self.current()?.is_operator(Operator::OpenBracket) {
-			// Inline: APPEND $x FROM [{...}]
 			AstAppendSource::Inline(self.parse_list()?)
 		} else if !self.is_eof() && matches!(self.current()?.kind, TokenKind::Variable) {
-			// Variable source: always treat as frame source, then parse any pipe continuation
 			let src_token = self.advance()?;
 			let variable = AstVariable {
 				token: src_token,
@@ -68,7 +61,6 @@ impl<'bump> Parser<'bump> {
 			let mut nodes = vec![first_node];
 			let mut has_pipes = false;
 
-			// Check for pipe continuation (e.g., $data | filter { ... })
 			while !self.is_eof() {
 				if let Ok(current) = self.current()
 					&& current.is_separator(Separator::Semicolon)
@@ -76,7 +68,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 				if self.current()?.is_operator(Operator::Pipe) {
-					self.advance()?; // consume the pipe
+					self.advance()?;
 					has_pipes = true;
 					nodes.push(self.parse_node(Precedence::None)?);
 				} else {
@@ -88,10 +80,9 @@ impl<'bump> Parser<'bump> {
 				nodes,
 				has_pipes,
 				is_output: false,
-				rql: "", // Internal statement
+				rql: "",
 			})
 		} else {
-			// Statement: APPEND $x FROM table | FILTER ...
 			let statement = self.parse_statement_content()?;
 			AstAppendSource::Statement(statement)
 		};

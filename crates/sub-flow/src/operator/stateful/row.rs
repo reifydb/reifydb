@@ -21,22 +21,12 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-/// Provides stable encoded numbers for keys with automatic Insert/Update detection
-///
-/// This component maintains:
-/// - A sequential counter for generating new encoded numbers
-/// - A mapping from keys to their assigned encoded numbers
-///
-/// When a key is seen for the first time, it gets a new encoded number and returns
-/// true. When a key is seen again, it returns the existing encoded number and
-/// false.
 pub struct RowNumberProvider {
 	node: FlowNodeId,
 	counter: Counter,
 }
 
 impl RowNumberProvider {
-	/// Create a new RowNumberProvider for the given operator
 	pub fn new(node: FlowNodeId) -> Self {
 		Self {
 			node,
@@ -44,9 +34,6 @@ impl RowNumberProvider {
 		}
 	}
 
-	/// Get or create RowNumbers for multiple keys
-	/// Returns Vec<(RowNumber, is_new)> in the same order as input keys
-	/// where is_new indicates if the row number was newly created
 	pub fn get_or_create_row_numbers<'a, I>(
 		&self,
 		txn: &mut FlowTransaction,
@@ -74,11 +61,9 @@ impl RowNumberProvider {
 
 			let new_row_number = self.counter.next(txn)?;
 
-			// Save the mapping from key to encoded number
 			let row_num_bytes = new_row_number.0.to_be_bytes().to_vec();
 			internal_state_set(self.node, txn, &map_key, EncodedRow(CowVec::new(row_num_bytes)))?;
 
-			// Save the reverse mapping from row_number to key
 			let reverse_key = self.make_reverse_map_key(new_row_number);
 			internal_state_set(
 				self.node,
@@ -93,9 +78,6 @@ impl RowNumberProvider {
 		Ok(results)
 	}
 
-	/// Get or create a RowNumber for a given key
-	/// Returns (RowNumber, is_new) where is_new indicates if it was newly
-	/// created
 	pub fn get_or_create_row_number(
 		&self,
 		txn: &mut FlowTransaction,
@@ -104,7 +86,6 @@ impl RowNumberProvider {
 		Ok(self.get_or_create_row_numbers(txn, once(key))?.into_iter().next().unwrap())
 	}
 
-	/// Get the original key for a given row number (reverse lookup)
 	pub fn get_key_for_row_number(
 		&self,
 		txn: &mut FlowTransaction,
@@ -118,29 +99,24 @@ impl RowNumberProvider {
 		}
 	}
 
-	/// Create a mapping key for a given encoded key (node_id added by FlowNodeInternalStateKey wrapper)
 	fn make_map_key(&self, key: &EncodedKey) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'M'); // 'M' for mapping
+		serializer.extend_u8(b'M');
 		serializer.extend_bytes(key.as_ref());
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Create a reverse mapping key for a given row number (node_id added by FlowNodeInternalStateKey wrapper)
 	fn make_reverse_map_key(&self, row_number: RowNumber) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'R'); // 'R' for reverse mapping
+		serializer.extend_u8(b'R');
 		serializer.extend_u64(row_number.0);
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Remove all encoded number mappings with the given prefix
-	/// This is useful for cleaning up all join results from a specific left encoded
 	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> Result<()> {
-		// Create the prefix for scanning
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'M'); // 'M' for mapping
+		serializer.extend_u8(b'M');
 		prefix.extend_from_slice(&serializer.finish());
 		prefix.extend_from_slice(key_prefix);
 

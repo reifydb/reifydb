@@ -33,7 +33,6 @@ pub struct DictionaryScanNode {
 
 impl DictionaryScanNode {
 	pub fn new(dictionary: ResolvedDictionary, context: Arc<QueryContext>) -> Result<Self> {
-		// Create column headers for dictionary scan: (id, value)
 		let headers = ColumnHeaders {
 			columns: vec![Fragment::internal("id"), Fragment::internal("value")],
 		};
@@ -51,7 +50,6 @@ impl DictionaryScanNode {
 impl QueryNode for DictionaryScanNode {
 	#[instrument(name = "volcano::scan::dictionary::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
-		// Already has context from constructor
 		Ok(())
 	}
 
@@ -67,34 +65,27 @@ impl QueryNode for DictionaryScanNode {
 		let batch_size = stored_ctx.batch_size;
 		let dict_def = self.dictionary.def();
 
-		// Create scan range for dictionary entries
 		let range = DictionaryEntryIndexKey::full_scan(dict_def.id);
 
-		// Collect entries for this batch
 		let mut ids: Vec<DictionaryEntryId> = Vec::new();
 		let mut values: Vec<Value> = Vec::new();
 		let mut new_last_key = None;
 
-		// Get entries from storage using stream
 		let stream = rx.range(range, batch_size as usize)?;
 		let mut count = 0;
 
 		for entry in stream {
 			let entry = entry?;
 
-			// Skip entries we've already seen
 			if let Some(ref last) = self.last_key
 				&& &entry.key <= last
 			{
 				continue;
 			}
 
-			// Decode the key to get the entry ID
 			if let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) {
-				// Create DictionaryEntryId with proper type
 				let entry_id = DictionaryEntryId::from_u128(key.id as u128, dict_def.id_type.clone())?;
 
-				// Decode the value from the entry
 				let value: Value = from_bytes(&entry.row).map_err(|e| {
 					internal_error!("Failed to deserialize dictionary value: {}", e)
 				})?;
@@ -113,7 +104,6 @@ impl QueryNode for DictionaryScanNode {
 		if ids.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				// Empty dictionary: return empty columns with correct types to preserve shape
 				let columns = Columns::new(vec![
 					ColumnWithName {
 						name: Fragment::internal("id"),
@@ -131,7 +121,6 @@ impl QueryNode for DictionaryScanNode {
 
 		self.last_key = new_last_key;
 
-		// Build columns based on dictionary types
 		let id_column = build_id_column(&ids, dict_def.id_type.clone())?;
 		let value_column = build_value_column(&values, dict_def.value_type.clone())?;
 
@@ -145,7 +134,6 @@ impl QueryNode for DictionaryScanNode {
 	}
 }
 
-/// Build the ID column based on the dictionary's id_type
 fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> Result<ColumnWithName> {
 	let data = match id_type {
 		Type::Uint1 => {
@@ -177,7 +165,6 @@ fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> Result<ColumnWit
 	})
 }
 
-/// Build the value column based on the dictionary's value_type
 fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithName> {
 	let data = match value_type {
 		Type::Utf8 => {
@@ -185,7 +172,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.iter()
 				.map(|v| match v {
 					Value::Utf8(s) => s.clone(),
-					_ => format!("{:?}", v), // Fallback representation
+					_ => format!("{:?}", v),
 				})
 				.collect();
 			ColumnBuffer::utf8(vals)
@@ -271,7 +258,6 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 			ColumnBuffer::uint8(vals)
 		}
 		_ => {
-			// For other types, convert to string representation
 			let vals: Vec<String> = values.iter().map(|v| format!("{:?}", v)).collect();
 			ColumnBuffer::utf8(vals)
 		}

@@ -258,7 +258,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::DeleteTable(delete) => {
 			output.push_str(&format!("{}{} DeleteTable\n", prefix, branch));
 
-			// Show target table if specified
 			if let Some(table) = &delete.target {
 				let namespace = table.namespace.first().map(|n| n.text()).unwrap_or("default");
 				output.push_str(&format!(
@@ -271,7 +270,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				output.push_str(&format!("{}├── target table: <inferred from input>\n", child_prefix));
 			}
 
-			// Explain the input pipeline if present
 			if let Some(input) = &delete.input {
 				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
 				let pipeline_prefix = format!("{}    ", child_prefix);
@@ -281,7 +279,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::DeleteRingBuffer(delete) => {
 			output.push_str(&format!("{}{} DeleteRingBuffer\n", prefix, branch));
 
-			// Show target ring buffer
 			let namespace = delete.target.namespace.first().map(|n| n.text()).unwrap_or("default");
 			output.push_str(&format!(
 				"{}├── target ring buffer: {}.{}\n",
@@ -290,7 +287,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				delete.target.name.text()
 			));
 
-			// Explain the input pipeline if present
 			if let Some(input) = &delete.input {
 				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
 				let pipeline_prefix = format!("{}    ", child_prefix);
@@ -322,7 +318,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::Update(update) => {
 			output.push_str(&format!("{}{} Update\n", prefix, branch));
 
-			// Show target table if specified
 			if let Some(target) = &update.target {
 				let namespace = target.namespace.first().map(|n| n.text()).unwrap_or("default");
 				output.push_str(&format!(
@@ -335,7 +330,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				output.push_str(&format!("{}├── target table: <inferred from input>\n", child_prefix));
 			}
 
-			// Explain the input pipeline if present
 			if let Some(input) = &update.input {
 				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
 				let pipeline_prefix = format!("{}    ", child_prefix);
@@ -345,7 +339,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::UpdateRingBuffer(update_rb) => {
 			output.push_str(&format!("{}{} UpdateRingBuffer\n", prefix, branch));
 
-			// Show target ring buffer
 			let namespace = update_rb.target.namespace.first().map(|n| n.text()).unwrap_or("default");
 			output.push_str(&format!(
 				"{}├── target ring buffer: {}.{}\n",
@@ -354,7 +347,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				update_rb.target.name.text()
 			));
 
-			// Explain the input pipeline if present
 			if let Some(input) = &update_rb.input {
 				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
 				let pipeline_prefix = format!("{}    ", child_prefix);
@@ -464,7 +456,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		}) => {
 			output.push_str(&format!("{}{} Aggregate\n", prefix, branch));
 
-			// Show Map branch
 			if !map.is_empty() {
 				output.push_str(&format!("{}├── Map\n", child_prefix));
 				let map_prefix = format!("{}│   ", child_prefix);
@@ -483,7 +474,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				}
 			}
 
-			// Show By branch (even if empty for consistency)
 			if !by.is_empty() {
 				output.push_str(&format!("{}└── By\n", child_prefix));
 				let by_prefix = format!("{}    ", child_prefix);
@@ -501,7 +491,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 					));
 				}
 			} else {
-				// Show empty By for global aggregations
 				output.push_str(&format!("{}└── By\n", child_prefix));
 			}
 		}
@@ -781,7 +770,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::Conditional(conditional_node) => {
 			output.push_str(&format!("{}{} Conditional\n", prefix, branch));
 
-			// Show condition
 			output.push_str(&format!(
 				"{}{}   If: {}\n",
 				child_prefix,
@@ -793,7 +781,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				conditional_node.condition
 			));
 
-			// Show then branch
 			output.push_str(&format!(
 				"{}{}   Then:\n",
 				child_prefix,
@@ -820,7 +807,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				output,
 			);
 
-			// Show else if branches
 			for (i, else_if) in conditional_node.else_ifs.iter().enumerate() {
 				let is_last_else_if = i == conditional_node.else_ifs.len() - 1
 					&& conditional_node.else_branch.is_none();
@@ -860,7 +846,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				);
 			}
 
-			// Show else branch if present
 			if let Some(else_branch) = &conditional_node.else_branch {
 				output.push_str(&format!("{}└──   Else:\n", child_prefix));
 				render_logical_plan_inner(
@@ -875,7 +860,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::Scalarize(scalarize) => {
 			output.push_str(&format!("{}{} Scalarize (convert 1x1 frame to scalar)\n", prefix, branch));
 
-			// Render the input plan
 			let child_prefix = format!(
 				"{}{}",
 				prefix,
@@ -922,7 +906,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				return_str
 			));
 
-			// Render body statements
 			let child_prefix = format!(
 				"{}{}",
 				prefix,

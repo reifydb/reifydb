@@ -8,34 +8,25 @@ use reifydb_type::error::Error;
 
 #[derive(Debug)]
 pub enum FFIError {
-	/// Configuration error
 	Configuration(String),
 
-	/// Required configuration key is missing
 	MissingConfiguration {
 		operator: &'static str,
 		key: &'static str,
 	},
 
-	/// State operation error
 	StateError(String),
 
-	/// Serialization error
 	Serialization(String),
 
-	/// Invalid input parameters
 	InvalidInput(String),
 
-	/// Memory allocation error
 	MemoryError(String),
 
-	/// Operation timeout
 	Timeout,
 
-	/// Operation not implemented or not supported
 	NotImplemented(String),
 
-	/// Generic error
 	Other(String),
 }
 

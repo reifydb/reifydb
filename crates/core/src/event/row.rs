@@ -9,7 +9,7 @@ use crate::{
 };
 
 define_event! {
-	/// Emitted after a row TTL scan cycle completes.
+
 	pub struct RowsExpiredEvent {
 		pub shapes_scanned: u64,
 		pub shapes_skipped: u64,
@@ -21,7 +21,7 @@ define_event! {
 }
 
 define_event! {
-	/// Emitted after an operator-state TTL scan cycle completes.
+
 	pub struct OperatorRowsExpiredEvent {
 		pub operators_scanned: u64,
 		pub operators_skipped: u64,

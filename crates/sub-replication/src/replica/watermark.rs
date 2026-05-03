@@ -8,10 +8,6 @@ use std::sync::{
 
 use reifydb_core::common::CommitVersion;
 
-/// Highest commit version that the replica applier has successfully applied.
-///
-/// Cloneable handle backed by an `Arc<AtomicU64>`, so the applier and any
-/// observers (e.g. `db.watermarks().replica()`) share the same atomic.
 #[derive(Clone, Default)]
 pub struct ReplicaWatermark(Arc<AtomicU64>);
 

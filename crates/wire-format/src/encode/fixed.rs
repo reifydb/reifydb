@@ -37,8 +37,6 @@ macro_rules! try_rle_fixed {
 	}};
 }
 
-/// Try RLE encoding for fixed-width types.
-/// Returns None if the column type is not supported or RLE doesn't save space.
 pub(crate) fn try_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 	match inner {
 		FrameColumnData::Int1(c) => try_rle_fixed!(c, Type::Int1, 1),
@@ -99,8 +97,6 @@ pub(crate) fn try_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 	}
 }
 
-/// Try delta encoding for fixed-width types.
-/// Returns None if the column type is not supported or delta doesn't save space.
 pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 	match inner {
 		FrameColumnData::Int1(c) => {
@@ -305,8 +301,6 @@ pub(crate) fn try_delta_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> 
 	}
 }
 
-/// Try delta-RLE encoding for fixed-width types.
-/// Returns None if the column type is not supported or delta-RLE doesn't save space.
 pub(crate) fn try_delta_rle_fixed(inner: &FrameColumnData) -> Option<EncodedColumn> {
 	match inner {
 		FrameColumnData::Int1(c) => {

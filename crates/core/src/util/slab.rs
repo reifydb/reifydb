@@ -5,17 +5,12 @@ use std::sync::Arc;
 
 use reifydb_runtime::sync::mutex::Mutex;
 
-/// Reusable pool of `Arc<T>` slabs.
-///
-/// `T` must be `Default` so the pool can mint fresh empty slabs when its
-/// reserve is exhausted.
 pub struct Slab<T> {
 	pool: Mutex<Vec<Arc<T>>>,
 	cap: usize,
 }
 
 impl<T: Default> Slab<T> {
-	/// Create a new `Slab` that retains at most `cap` reusable slabs.
 	pub fn new(cap: usize) -> Self {
 		Self {
 			pool: Mutex::new(Vec::new()),
@@ -23,30 +18,17 @@ impl<T: Default> Slab<T> {
 		}
 	}
 
-	/// Pull a slab from the pool, or allocate a fresh one if the pool
-	/// is empty (or every retained slab is still referenced elsewhere).
-	///
-	/// Returned slabs always have `strong_count == 1`, so the caller
-	/// can mutate them in place via `Arc::make_mut` without the COW
-	/// fork penalty.
 	pub fn acquire(&self) -> Arc<T> {
 		let mut pool = self.pool.lock();
 		while let Some(slab) = pool.pop() {
 			if Arc::strong_count(&slab) == 1 {
 				return slab;
 			}
-			// Slab is still referenced (e.g. an in-flight consumer
-			// has not dropped its clone yet). Drop our local
-			// reference and try the next pool entry; eventually we
-			// either find a unique one or fall through to allocating
-			// fresh.
 		}
 		drop(pool);
 		Arc::new(T::default())
 	}
 
-	/// Return a slab to the pool. If the pool is at its cap the slab is
-	/// dropped instead so memory pressure does not grow without bound.
 	pub fn release(&self, slab: Arc<T>) {
 		let mut pool = self.pool.lock();
 		if pool.len() < self.cap {
@@ -56,12 +38,10 @@ impl<T: Default> Slab<T> {
 }
 
 impl<T> Slab<T> {
-	/// Number of slabs currently held in the pool. Primarily for tests.
 	pub fn len(&self) -> usize {
 		self.pool.lock().len()
 	}
 
-	/// `true` if the pool is empty. Primarily for tests.
 	pub fn is_empty(&self) -> bool {
 		self.len() == 0
 	}

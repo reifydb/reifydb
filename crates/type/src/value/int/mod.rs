@@ -14,28 +14,23 @@ use serde::{Deserialize, Serialize};
 
 pub mod parse;
 
-/// A wrapper type for arbitrary-precision signed integers (Int)
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Int(pub StdBigInt);
 
 impl Int {
-	/// Create a new Int from an i64
 	pub fn from_i64(value: i64) -> Self {
 		Int(StdBigInt::from(value))
 	}
 
-	/// Create a new Int from an i128
 	pub fn from_i128(value: i128) -> Self {
 		Int(StdBigInt::from(value))
 	}
 
-	/// Create a Int representing zero
 	pub fn zero() -> Self {
 		Int(StdBigInt::from(0))
 	}
 
-	/// Create a Int representing one
 	pub fn one() -> Self {
 		Int(StdBigInt::from(1))
 	}

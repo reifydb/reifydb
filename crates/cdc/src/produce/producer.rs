@@ -50,38 +50,21 @@ use super::decode::{
 };
 use crate::{consume::host::CdcHost, produce::watermark::CdcProducerWatermark, storage::CdcStorage};
 
-/// Cap on how many `Columns` slabs `CdcProducerActor` keeps in its reuse
-/// pool. With ~5 KB per slab the cap bounds steady-state pool memory at
-/// ~1.3 MB while still satisfying typical per-call burst demand.
 const MAX_POOL_SLABS: usize = 256;
 
-/// Default interval between CDC cleanup attempts (30 seconds)
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 
 use reifydb_core::actors::cdc::{CdcProduceHandle, CdcProduceMessage};
 
-/// Actor that processes CDC work items.
-///
-/// Receives commit data and generates CDC entries, writing them to storage.
-/// Uses the shared ActorRuntime, so it works in both native and WASM.
-/// Also performs periodic cleanup of old CDC entries based on consumer watermarks.
 pub struct CdcProducerActor<S, T, H> {
 	storage: Arc<S>,
 	transaction_store: Arc<T>,
 	host: H,
 	event_bus: EventBus,
 	clock: Clock,
-	/// Reuse pool of `Columns` slabs. The actor pulls slabs at the start
-	/// of each `process()` row-delta iteration, fills them via
-	/// `Columns::reset_from_row`, hands `Arc::clone`s into the resulting
-	/// `Diff`s for dispatch, and pushes the original `Arc`s back here at
-	/// the end of `process()` once dispatch has completed and consumer
-	/// references have dropped.
+
 	slab_pool: Slab<Columns>,
-	/// Per-`Type` reuse pool of inner `ColumnBuffer`s. Threaded through
-	/// the `_with_pool` decode helpers so a slab whose previous shape
-	/// differs from the new row's shape can swap out individual column
-	/// buffers without allocating a fresh inner `Vec` per column.
+
 	pool: ColumnBufferPool,
 	watermark: CdcProducerWatermark,
 }
@@ -115,11 +98,7 @@ where
 	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
 		let mut diffs_by_shape: BTreeMap<ShapeId, Vec<Diff>> = BTreeMap::new();
 		let mut system_changes: Vec<SystemChange> = Vec::new();
-		// Slabs pulled from the pool for this call. Each entry is an
-		// `Arc<Columns>` that was filled in place by `build_*_diff_into`
-		// and Arc-cloned into a `Diff`. After dispatch we release them
-		// back to the pool; their `strong_count` will be 1 once the
-		// dispatched `Diff`s have been dropped.
+
 		let mut acquired_slabs: Vec<Arc<Columns>> = Vec::new();
 		let catalog = self.host.materialized_catalog();
 
@@ -324,11 +303,6 @@ where
 			}
 			Err(e) => error!(version = version.0, "CDC write failed: {:?}", e),
 		}
-		// `cdc` (and therefore the dispatched `Diff`s and their `Arc<Columns>`
-		// clones) drops here, returning each acquired slab's strong_count to 1.
-		// After this point each slab in `acquired_slabs` has strong_count == 1
-		// unless an event-bus consumer kept its own clone alive - in which case
-		// `Slab::acquire` will skip it on a future pop.
 	}
 
 	#[inline]
@@ -362,9 +336,6 @@ where
 		}
 	}
 
-	/// Returns the cutoff version below which all CDC entries should be evicted,
-	/// or `None` if eviction should be skipped (no TTL configured, no entries
-	/// match, or cutoff_version is zero).
 	#[inline]
 	fn find_eviction_target(&self) -> Result<Option<CommitVersion>> {
 		let Some(ttl) = self.host.materialized_catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration)
@@ -404,10 +375,7 @@ where
 	#[inline]
 	fn on_produce(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
 		self.process(version, changed_at, deltas);
-		// Advance the watermark AFTER process completes (whether or not a CDC
-		// entry was written). The compactor reads this watermark as a hard cap
-		// to guarantee that no later producer write can land at a version
-		// already covered by a packed block.
+
 		self.watermark.advance(version);
 	}
 
@@ -417,9 +385,6 @@ where
 	}
 }
 
-/// Push a raw SystemChange for a delta, preserving the encoded key-value
-/// data alongside the decoded columnar form. This enables replication consumers
-/// to access the original bytes without re-encoding.
 fn push_raw_system_change(
 	delta: &Delta,
 	transaction_store: &dyn MultiVersionGetPrevious,
@@ -431,10 +396,6 @@ fn push_raw_system_change(
 	}
 }
 
-/// Build a `SystemChange` for the part of `delta` that is part of CDC's raw
-/// stream (Set, Unset). `Delta::Remove` and `Delta::Drop` are handled by the
-/// caller; this helper covers only the shape both `push_raw_system_change`
-/// and `delta_to_system_change` agree on.
 #[inline]
 fn delta_to_raw_system_change(
 	delta: &Delta,
@@ -475,8 +436,6 @@ fn delta_to_raw_system_change(
 	}
 }
 
-/// Merge diffs that share the same variant (Insert/Update/Remove) by appending
-/// their `Columns`. Different kinds remain as separate diffs in the output.
 pub(crate) fn merge_diffs(diffs: Vec<Diff>) -> Vec<Diff> {
 	let mut insert_post: Option<Arc<Columns>> = None;
 	let mut update_pre: Option<Arc<Columns>> = None;
@@ -576,12 +535,10 @@ where
 	}
 
 	fn config(&self) -> ActorConfig {
-		// Use a larger mailbox for CDC events which can come in bursts
 		ActorConfig::new().mailbox_capacity(256)
 	}
 }
 
-/// Event listener that forwards PostCommitEvent to the CDC producer actor.
 pub struct CdcProducerEventListener {
 	actor_ref: ActorRef<CdcProduceMessage>,
 	clock: Clock,
@@ -610,10 +567,6 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	}
 }
 
-/// Spawn a CDC producer actor on the given actor system.
-///
-/// Returns a handle to the actor. The actor_ref from this handle should be used
-/// to create a `CdcProducerEventListener` which is then registered on the EventBus.
 pub fn spawn_cdc_producer<S, T, H>(
 	system: &ActorSystem,
 	storage: S,
@@ -743,5 +696,3 @@ pub mod tests {
 		assert_eq!(cdc.system_changes.len(), 1);
 	}
 }
-
-// TTL behaviour is exercised by the integration suite at `crates/cdc/tests/row_ttl`.

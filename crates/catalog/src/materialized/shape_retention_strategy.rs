@@ -6,7 +6,6 @@ use reifydb_core::{common::CommitVersion, interface::catalog::shape::ShapeId, re
 use crate::materialized::{MaterializedCatalog, MultiVersionRetentionStrategy};
 
 impl MaterializedCatalog {
-	/// Find a retention strategy for a shape at a specific version
 	pub fn find_shape_retention_strategy_at(
 		&self,
 		shape: ShapeId,
@@ -18,7 +17,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a retention strategy for a shape (returns latest version)
 	pub fn find_shape_retention_strategy(&self, shape: ShapeId) -> Option<RetentionStrategy> {
 		self.shape_retention_strategies.get(&shape).and_then(|entry| {
 			let multi = entry.value();
@@ -26,7 +24,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Set a retention strategy for a shape at a specific version
 	pub fn set_shape_retention_strategy(
 		&self,
 		shape: ShapeId,

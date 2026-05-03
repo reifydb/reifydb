@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::vtable::FLOW_NODE_TYPES;
 
-/// Returns the static definition for the system.flow_node_types virtual table
-/// This table exposes information about all FlowNodeType variants
 pub fn flow_node_types() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

@@ -78,7 +78,6 @@ impl Display for Frame {
 		let has_created_at = !self.created_at.is_empty();
 		let has_updated_at = !self.updated_at.is_empty();
 
-		// Calculate column widths
 		let mut col_widths: Vec<usize> = Vec::new();
 
 		if has_row_numbers {
@@ -97,7 +96,6 @@ impl Display for Frame {
 			col_widths.push(header_width.max(max_val_width));
 		}
 
-		// Regular column widths
 		for col in &self.columns {
 			let header_width = escape_control_chars(&col.name).width();
 			let mut max_val_width = 0;
@@ -107,12 +105,10 @@ impl Display for Frame {
 			col_widths.push(header_width.max(max_val_width));
 		}
 
-		// Add padding
 		for w in &mut col_widths {
 			*w += 2;
 		}
 
-		// Build separator
 		let sep: String = if col_widths.is_empty() {
 			"++".to_string()
 		} else {
@@ -121,7 +117,6 @@ impl Display for Frame {
 
 		writeln!(f, "{}", sep)?;
 
-		// Build header
 		let mut header_parts = Vec::new();
 		let mut col_idx = 0;
 		if has_row_numbers {
@@ -163,7 +158,6 @@ impl Display for Frame {
 		writeln!(f, "|{}|", header_parts.join("|"))?;
 		writeln!(f, "{}", sep)?;
 
-		// Build rows
 		for row_idx in 0..row_count {
 			let mut row_parts = Vec::new();
 			let mut col_idx = 0;

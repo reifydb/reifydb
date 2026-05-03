@@ -29,7 +29,6 @@ fn reload_parent_columns(catalog: &Catalog, txn: &mut Transaction<'_>, key: &Enc
 	let shape_id = if let Some(ck) = ColumnKey::decode(key) {
 		Some(ck.shape)
 	} else if let Some(_ck) = ColumnsKey::decode(key) {
-		// ColumnsKey only has column_id, no parent shape - cannot determine parent
 		return Ok(());
 	} else {
 		None

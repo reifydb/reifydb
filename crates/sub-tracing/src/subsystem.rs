@@ -12,22 +12,11 @@ use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
 use tracing::{info, instrument};
 
-/// Tracing subsystem that integrates tracing_subscriber with ReifyDB
-///
-/// This subsystem acts as a thin wrapper around tracing_subscriber,
-/// providing lifecycle management compatible with the ReifyDB subsystem
-/// architecture. The actual log processing is handled by tracing_subscriber's
-/// built-in mechanisms.
 pub struct TracingSubsystem {
-	/// Whether the subsystem is running
 	running: AtomicBool,
 }
 
 impl TracingSubsystem {
-	/// Create a new tracing subsystem
-	///
-	/// Note: The tracing subscriber should already be initialized before
-	/// calling this. This is typically done in TracingBuilder::build().
 	#[instrument(name = "tracing::subsystem::new", level = "debug")]
 	pub fn new() -> Self {
 		Self {
@@ -49,8 +38,6 @@ impl Subsystem for TracingSubsystem {
 
 	#[instrument(name = "tracing::subsystem::start", level = "debug", skip(self))]
 	fn start(&mut self) -> Result<()> {
-		// Set running flag - tracing_subscriber is already initialized
-		// by the builder
 		self.running.store(true, Ordering::Release);
 
 		info!("Tracing subsystem started");
@@ -61,15 +48,11 @@ impl Subsystem for TracingSubsystem {
 	#[instrument(name = "tracing::subsystem::shutdown", level = "debug", skip(self))]
 	fn shutdown(&mut self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
-			// Already shutdown
 			return Ok(());
 		}
 
 		info!("Tracing subsystem shutting down");
 
-		// Flush stdout/stderr to ensure all log output is written before
-		// the process exits. The global tracing subscriber is not dropped
-		// on shutdown, so we must flush manually.
 		let _ = stdout().flush();
 		let _ = stderr().flush();
 

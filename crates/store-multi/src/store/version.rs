@@ -6,42 +6,34 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::tier::TierStorage;
 
-/// Result of a versioned get operation
 #[derive(Debug, Clone)]
 pub enum VersionedGetResult {
-	/// Found a value at this version
 	Value {
 		value: CowVec<u8>,
 		version: CommitVersion,
 	},
-	/// Found a tombstone (deletion) at this version
+
 	Tombstone,
-	/// Key not found at or before the requested version
+
 	NotFound,
 }
 
-/// Get the latest version of a key at or before the given version.
 pub fn get_at_version<S: TierStorage>(
 	storage: &S,
 	table: EntryKind,
 	key: &[u8],
 	version: CommitVersion,
 ) -> Result<VersionedGetResult> {
-	// The storage layer now handles version lookups directly
 	match storage.get(table, key, version)? {
 		Some(value) => Ok(VersionedGetResult::Value {
 			value,
 			version,
 		}),
 		None => {
-			// Need to determine if it's a tombstone or not found
-			// Get all versions and check if any version <= requested exists
 			let all_versions = storage.get_all_versions(table, key)?;
 
-			// Find the latest version <= requested
 			for (v, value) in all_versions {
 				if v <= version {
-					// Found a version at or before requested
 					return match value {
 						Some(val) => Ok(VersionedGetResult::Value {
 							value: val,
@@ -52,7 +44,6 @@ pub fn get_at_version<S: TierStorage>(
 				}
 			}
 
-			// No version exists at or before requested version
 			Ok(VersionedGetResult::NotFound)
 		}
 	}

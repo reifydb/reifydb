@@ -19,8 +19,6 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 	let fn_fragment = call.func.0.clone();
 	let result_label = display_label(&Expression::Call(call.clone()));
 
-	// UDFs are hoisted to UdfEvalNode during volcano initialization.
-	// If one reaches here, it's a bug in the query plan.
 	assert!(
 		ctx.symbols.get_function(function_name).is_none(),
 		"UDF '{}' should have been hoisted to UdfEvalNode",
@@ -42,9 +40,6 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 		runtime_context: ctx.runtime_context,
 	};
 
-	// Aggregate scalar-context fast path (e.g. `sum(x)` inside a SELECT projection
-	// during GROUP-BY-less aggregation). Mirrors today's behaviour: build a single
-	// group, run the accumulator, return the finalised value.
 	if ctx.is_aggregate_context && routine.kinds().contains(&FunctionKind::Aggregate) {
 		let mut accumulator =
 			routine.accumulator(&mut fn_ctx).ok_or_else(|| RoutineError::FunctionExecutionFailed {
@@ -76,7 +71,6 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 
 	let result_columns = routine.call(&mut fn_ctx, &arguments).map_err(|e| e.with_context(fn_fragment, false))?;
 
-	// For scalar, we expect 1 column. For generator in scalar context, we take the first column.
 	if result_columns.is_empty() {
 		return Err(RoutineError::FunctionExecutionFailed {
 			function: call.func.0.clone(),

@@ -24,7 +24,6 @@ cfg_if! {
 	}
 }
 
-/// A mutual exclusion primitive for protecting shared data.
 pub struct Mutex<T> {
 	inner: MutexInnerImpl<T>,
 }

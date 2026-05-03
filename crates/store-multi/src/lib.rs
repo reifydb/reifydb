@@ -58,7 +58,6 @@ impl HasVersion for MultiStoreVersion {
 #[derive(Clone)]
 pub enum MultiStore {
 	Standard(StandardMultiStore) = 0,
-	// Other(Box<dyn MultiVersionStore>) = 254,
 }
 
 impl MultiStore {
@@ -86,35 +85,24 @@ impl MultiStore {
 		MultiStore::Standard(StandardMultiStore::testing_memory_with_warm_sqlite_with_eventbus(event_bus))
 	}
 
-	/// Block until the actor has drained its accumulated `pending` map of
-	/// dirty keys (the same code the periodic Tick runs), and the result is
-	/// in warm. No-op when the warm tier is not configured.
 	pub fn flush_pending_blocking(&self) {
 		match self {
 			MultiStore::Standard(store) => store.flush_pending_blocking(),
 		}
 	}
 
-	/// Get access to the hot storage tier.
-	///
-	/// Returns `None` if the hot tier is not configured.
 	pub fn hot(&self) -> Option<&hot::storage::HotStorage> {
 		match self {
 			MultiStore::Standard(store) => store.hot(),
 		}
 	}
 
-	/// Get access to the warm storage tier.
-	///
-	/// Returns `None` if the warm tier is not configured.
 	pub fn warm(&self) -> Option<&warm::WarmStorage> {
 		match self {
 			MultiStore::Standard(store) => store.warm(),
 		}
 	}
 }
-
-// MultiVersion trait implementations
 
 impl MultiVersionGet for MultiStore {
 	#[inline]
@@ -156,15 +144,9 @@ impl MultiVersionGetPrevious for MultiStore {
 	}
 }
 
-/// Iterator type for multi-version range results.
 pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>;
 
 impl MultiStore {
-	/// Create an iterator for forward range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The iterator yields individual entries
-	/// and maintains cursor state internally.
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
@@ -176,11 +158,6 @@ impl MultiStore {
 		}
 	}
 
-	/// Create an iterator for reverse range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The iterator yields individual entries
-	/// in reverse key order and maintains cursor state internally.
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
@@ -193,5 +170,4 @@ impl MultiStore {
 	}
 }
 
-// High-level trait implementations
 impl MultiVersionStore for MultiStore {}

@@ -79,10 +79,8 @@ impl<'a> Vm<'a> {
 		let compile_result = services.compiler.compile(tx, rql);
 
 		if node.expect_error {
-			// ASSERT ERROR: success if compilation or execution errors
 			match compile_result {
 				Err(e) => {
-					// Compilation error -> assertion passes, push diagnostic
 					self.stack.push(Variable::columns(diagnostic_to_columns(&e.0)));
 				}
 				Ok(CompilationResult::Ready(units)) => {
@@ -121,7 +119,6 @@ impl<'a> Vm<'a> {
 				}
 			}
 		} else {
-			// Multi-statement ASSERT: compile body, execute, check last result
 			let units = match compile_result {
 				Err(e) => return Err(e),
 				Ok(CompilationResult::Ready(units)) => units,
@@ -162,8 +159,6 @@ impl<'a> Vm<'a> {
 	}
 }
 
-/// Convert a `Diagnostic` into a single-row `Columns` with fields:
-/// `code`, `message`, `rql`, `label`, `help`.
 fn diagnostic_to_columns(diag: &Diagnostic) -> Columns {
 	let code_col = ColumnWithName::new("code", ColumnBuffer::utf8([diag.code.as_str()]));
 	let message_col = ColumnWithName::new("message", ColumnBuffer::utf8([diag.message.as_str()]));

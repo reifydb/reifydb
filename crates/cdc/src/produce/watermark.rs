@@ -8,14 +8,6 @@ use std::sync::{
 
 use reifydb_core::common::CommitVersion;
 
-/// Monotonic watermark of "highest CDC-producer-processed commit version".
-///
-/// Once `get() >= V`, every `PostCommitEvent` for versions `<= V` has been
-/// fully handled by the producer actor, so the cdc table contains the
-/// complete set of CDC entries for those versions (with holes only for
-/// system-only commits that produced no entry). The compactor reads this
-/// watermark to ensure it never packs a block that could have a "hole"
-/// later filled in by an in-flight producer write.
 #[derive(Clone, Default)]
 pub struct CdcProducerWatermark {
 	inner: Arc<AtomicU64>,

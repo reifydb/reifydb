@@ -10,16 +10,13 @@ use reifydb_type::value::{
 
 use crate::common::CommitVersion;
 
-/// Error returned by `ConfigKey::accept`. Callers map this to their domain error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AcceptError {
-	/// The value's Type is not in `expected_types()` and no lossless coercion succeeded.
 	TypeMismatch {
 		expected: Vec<Type>,
 		actual: Type,
 	},
-	/// Coercion succeeded (or wasn't needed) but the canonical value violated
-	/// the key's domain rules (e.g., zero where positive is required).
+
 	InvalidValue(String),
 }
 
@@ -213,10 +210,6 @@ impl ConfigKey {
 		}
 	}
 
-	/// Whether this key may be unset to a typed-null `Value::None`.
-	///
-	/// Optional keys treat `Value::None { inner }` as valid as long as `inner` matches
-	/// `expected_types`. Non-optional keys reject any `Value::None`.
 	pub fn is_optional(&self) -> bool {
 		match self {
 			Self::OracleWindowSize => false,
@@ -241,10 +234,6 @@ impl ConfigKey {
 		}
 	}
 
-	/// Domain-rule check that assumes the value is already in canonical form
-	/// (its Type is in `expected_types()`). Called only by `accept` after
-	/// coercion. Bespoke variant matches such as `Value::Uint8(0)` are safe
-	/// here because non-canonical inputs cannot reach this point.
 	fn validate_canonical(&self, value: &Value) -> Result<(), String> {
 		match self {
 			Self::CdcTtlDuration => match value {
@@ -455,33 +444,24 @@ impl FromStr for ConfigKey {
 	}
 }
 
-/// A configuration definition for a runtime-tunable database setting.
-///
-/// `value` is the currently active value (either the persisted override or the default).
-/// `default_value`, `description`, and `requires_restart` are compile-time constants
-/// provided at registration time - they are never stored to disk.
 #[derive(Debug, Clone)]
 pub struct Config {
-	/// System configuration key
 	pub key: ConfigKey,
-	/// Currently active value (persisted override or default)
+
 	pub value: Value,
-	/// Compile-time default value
+
 	pub default_value: Value,
-	/// Human-readable description
+
 	pub description: &'static str,
-	/// Whether changing this setting requires a database restart
+
 	pub requires_restart: bool,
 }
 
-/// Trait for fetching configuration values.
 pub trait GetConfig: Send + Sync {
-	/// Get the configuration value at the current snapshot.
 	fn get_config(&self, key: ConfigKey) -> Value;
-	/// Get the configuration value at a specific snapshot version.
+
 	fn get_config_at(&self, key: ConfigKey, version: CommitVersion) -> Value;
 
-	/// Get the current value as a u64. Panics if the value is not Value::Uint8.
 	fn get_config_uint8(&self, key: ConfigKey) -> u64 {
 		let val = self.get_config(key);
 		match val {
@@ -490,7 +470,6 @@ pub trait GetConfig: Send + Sync {
 		}
 	}
 
-	/// Get the current value as a u8. Panics if the value is not Value::Uint1.
 	fn get_config_uint1(&self, key: ConfigKey) -> u8 {
 		let val = self.get_config(key);
 		match val {
@@ -499,7 +478,6 @@ pub trait GetConfig: Send + Sync {
 		}
 	}
 
-	/// Get the current value as a u16. Panics if the value is not Value::Uint2.
 	fn get_config_uint2(&self, key: ConfigKey) -> u16 {
 		let val = self.get_config(key);
 		match val {
@@ -508,7 +486,6 @@ pub trait GetConfig: Send + Sync {
 		}
 	}
 
-	/// Get the current value as a std::time::Duration. Panics if the value is not Value::Duration.
 	fn get_config_duration(&self, key: ConfigKey) -> StdDuration {
 		let val = self.get_config(key);
 		match val {
@@ -521,8 +498,6 @@ pub trait GetConfig: Send + Sync {
 		}
 	}
 
-	/// Get the current value as an `Option<StdDuration>` for keys that may be unset.
-	/// `None` for `Value::None`, `Some(d)` for `Value::Duration(d)`. Panics on any other variant.
 	fn get_config_duration_opt(&self, key: ConfigKey) -> Option<StdDuration> {
 		match self.get_config(key) {
 			Value::None {

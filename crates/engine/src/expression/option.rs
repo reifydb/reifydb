@@ -6,7 +6,6 @@ use reifydb_type::{fragment::Fragment, util::bitvec::BitVec, value::r#type::Type
 
 use crate::Result;
 
-/// Returns true if the bitvec is Some and has zero ones (all false = all None).
 fn is_all_none(bv: Option<&BitVec>) -> bool {
 	match bv {
 		Some(bv) => bv.count_ones() == 0,
@@ -51,7 +50,6 @@ pub(crate) fn binary_op_unwrap_option(
 	let (left_data, left_bv) = left.data().unwrap_option();
 	let (right_data, right_bv) = right.data().unwrap_option();
 
-	// Short-circuit: if either operand is all-None, return an all-None result
 	if is_all_none(left_bv) || is_all_none(right_bv) {
 		let len = left_data.len();
 		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(Type::Boolean, len)));
@@ -76,7 +74,6 @@ pub(crate) fn unary_op_unwrap_option(
 ) -> Result<ColumnWithName> {
 	let (inner_data, bv) = col.data().unwrap_option();
 
-	// Short-circuit: if all-None, return an all-None result
 	if is_all_none(bv) {
 		let len = inner_data.len();
 		return Ok(ColumnWithName::new(col.name().clone(), ColumnBuffer::none_typed(Type::Boolean, len)));

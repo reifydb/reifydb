@@ -46,7 +46,6 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNow {
 		let dt = DateTime::from_timestamp_millis(millis)?;
 		let time = dt.time();
 
-		// For zero-arg functions, we produce a single row
 		let mut container = TemporalContainer::with_capacity(1);
 		container.push(time);
 

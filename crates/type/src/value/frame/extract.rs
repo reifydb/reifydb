@@ -9,19 +9,17 @@ use std::{
 use super::{column::FrameColumn, frame::Frame};
 use crate::value::try_from::{FromValueError, TryFromValue, TryFromValueCoerce};
 
-/// Error type for Frame extraction operations
 #[derive(Debug, Clone, PartialEq)]
 pub enum FrameError {
-	/// Column not found by name
 	ColumnNotFound {
 		name: String,
 	},
-	/// Row index out of bounds
+
 	RowOutOfBounds {
 		row: usize,
 		len: usize,
 	},
-	/// Value extraction error
+
 	ValueError {
 		column: String,
 		row: usize,
@@ -57,27 +55,20 @@ impl Display for FrameError {
 impl error::Error for FrameError {}
 
 impl Frame {
-	/// Get a column by name
 	pub fn column(&self, name: &str) -> Option<&FrameColumn> {
 		self.columns.iter().find(|c| c.name == name)
 	}
 
-	/// Get a column by name, returning an error if not found
 	pub fn try_column(&self, name: &str) -> Result<&FrameColumn, FrameError> {
 		self.column(name).ok_or_else(|| FrameError::ColumnNotFound {
 			name: name.to_string(),
 		})
 	}
 
-	/// Get the number of rows in the frame
 	pub fn row_count(&self) -> usize {
 		self.columns.first().map(|c| c.data.len()).unwrap_or(0)
 	}
 
-	/// Extract a single value by column name and row index (strict type matching).
-	///
-	/// Returns `Ok(None)` for Undefined values.
-	/// Returns `Err` for missing columns, out of bounds rows, or type mismatches.
 	pub fn get<T: TryFromValue>(&self, column: &str, row: usize) -> Result<Option<T>, FrameError> {
 		let col = self.try_column(column)?;
 		let len = col.data.len();
@@ -89,7 +80,6 @@ impl Frame {
 			});
 		}
 
-		// Check if value is undefined
 		if !col.data.is_defined(row) {
 			return Ok(None);
 		}
@@ -102,9 +92,6 @@ impl Frame {
 		})
 	}
 
-	/// Extract a single value with widening coercion.
-	///
-	/// Returns `Ok(None)` for Undefined values.
 	pub fn get_coerce<T: TryFromValueCoerce>(&self, column: &str, row: usize) -> Result<Option<T>, FrameError> {
 		let col = self.try_column(column)?;
 		let len = col.data.len();
@@ -116,7 +103,6 @@ impl Frame {
 			});
 		}
 
-		// Check if value is undefined
 		if !col.data.is_defined(row) {
 			return Ok(None);
 		}
@@ -129,9 +115,6 @@ impl Frame {
 		})
 	}
 
-	/// Extract an entire column as `Vec<Option<T>>` (strict type matching).
-	///
-	/// Undefined values become `None`, type mismatches return an error.
 	pub fn column_values<T: TryFromValue>(&self, name: &str) -> Result<Vec<Option<T>>, FrameError> {
 		let col = self.try_column(name)?;
 		(0..col.data.len())
@@ -150,9 +133,6 @@ impl Frame {
 			.collect()
 	}
 
-	/// Extract an entire column with widening coercion.
-	///
-	/// Undefined values become `None`, incompatible types return an error.
 	pub fn column_values_coerce<T: TryFromValueCoerce>(&self, name: &str) -> Result<Vec<Option<T>>, FrameError> {
 		let col = self.try_column(name)?;
 		(0..col.data.len())

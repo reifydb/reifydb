@@ -8,7 +8,6 @@ use std::{
 
 use parking_lot::{Mutex, MutexGuard};
 
-/// Native mutex implementation wrapping Mutex.
 pub struct MutexInner<T> {
 	inner: Mutex<T>,
 }
@@ -20,21 +19,18 @@ impl<T: fmt::Debug> fmt::Debug for MutexInner<T> {
 }
 
 impl<T> MutexInner<T> {
-	/// Creates a new mutex.
 	pub fn new(value: T) -> Self {
 		Self {
 			inner: Mutex::new(value),
 		}
 	}
 
-	/// Acquires the mutex, blocking until it's available.
 	pub fn lock(&self) -> MutexGuardInner<'_, T> {
 		MutexGuardInner {
 			inner: self.inner.lock(),
 		}
 	}
 
-	/// Attempts to acquire the mutex without blocking.
 	pub fn try_lock(&self) -> Option<MutexGuardInner<'_, T>> {
 		self.inner.try_lock().map(|guard| MutexGuardInner {
 			inner: guard,
@@ -42,7 +38,6 @@ impl<T> MutexInner<T> {
 	}
 }
 
-/// Native guard providing mutable access to the data protected by a Mutex.
 pub struct MutexGuardInner<'a, T> {
 	pub(in crate::sync) inner: MutexGuard<'a, T>,
 }

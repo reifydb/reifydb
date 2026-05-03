@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes procedures with trigger = Event (event handlers)
 pub struct SystemHandlers {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,

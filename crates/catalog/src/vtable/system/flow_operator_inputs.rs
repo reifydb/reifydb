@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes input column vtables for FFI operators
 pub struct SystemFlowOperatorInputs {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
@@ -45,20 +44,16 @@ impl BaseVTable for SystemFlowOperatorInputs {
 			return Ok(None);
 		}
 
-		// Access the flow operator store
 		let infos = self.flow_operator_store.list();
 
-		// Count total input columns across all operators for capacity
 		let capacity: usize = infos.iter().map(|op| op.input_columns.len()).sum();
 
-		// Pre-allocate vectors for column data
 		let mut operators = ColumnBuffer::utf8_with_capacity(capacity);
 		let mut positions = ColumnBuffer::uint1_with_capacity(capacity);
 		let mut names = ColumnBuffer::utf8_with_capacity(capacity);
 		let mut column_types = ColumnBuffer::uint1_with_capacity(capacity);
 		let mut descriptions = ColumnBuffer::utf8_with_capacity(capacity);
 
-		// Populate column data from loaded operators
 		for info in infos {
 			for (position, col) in info.input_columns.iter().enumerate() {
 				operators.push(info.operator.as_str());

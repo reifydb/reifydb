@@ -31,7 +31,6 @@ impl AuthenticationProvider for SolanaProvider {
 	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
 		let public_key = config.get("public_key").ok_or_else(|| Error::from(AuthError::MissingPublicKey))?;
 
-		// Validate that the public key is valid base58 and decodes to 32 bytes
 		let bytes = bs58_decode(public_key).into_vec().map_err(|e| {
 			Error::from(AuthError::InvalidPublicKey {
 				reason: e.to_string(),
@@ -55,7 +54,6 @@ impl AuthenticationProvider for SolanaProvider {
 		let public_key_b58 =
 			stored.get("public_key").ok_or_else(|| Error::from(AuthError::MissingPublicKey))?;
 
-		// Step 2: Verify signature (credentials contain "signature" + "signed_message" merged from challenge)
 		if let Some(signature_b58) = credentials.get("signature") {
 			let signed_message = credentials.get("signed_message").ok_or_else(|| {
 				Error::from(AuthError::InvalidSignature {
@@ -63,7 +61,6 @@ impl AuthenticationProvider for SolanaProvider {
 				})
 			})?;
 
-			// Decode public key
 			let pk_bytes: [u8; 32] = bs58_decode(public_key_b58)
 				.into_vec()
 				.map_err(|e| {
@@ -84,7 +81,6 @@ impl AuthenticationProvider for SolanaProvider {
 				})
 			})?;
 
-			// Decode signature
 			let sig_bytes: [u8; 64] = bs58_decode(signature_b58)
 				.into_vec()
 				.map_err(|e| {
@@ -101,18 +97,15 @@ impl AuthenticationProvider for SolanaProvider {
 
 			let signature = Signature::from_bytes(&sig_bytes);
 
-			// Verify
 			match verifying_key.verify(signed_message.as_bytes(), &signature) {
 				Ok(()) => return Ok(AuthStep::Authenticated),
 				Err(_) => return Ok(AuthStep::Failed),
 			}
 		}
 
-		// Step 1: Generate challenge - build SIWS message with nonce
 		let nonce_bytes = Rng::Os.bytes_32();
 		let nonce: String = nonce_bytes.iter().map(|b| format!("{:02x}", b)).collect();
 
-		// Get optional domain and statement from credentials (caller can provide context)
 		let domain = credentials.get("domain").cloned().unwrap_or_else(|| "reifydb".to_string());
 		let statement =
 			credentials.get("statement").cloned().unwrap_or_else(|| "Sign in to ReifyDB".to_string());
@@ -120,7 +113,6 @@ impl AuthenticationProvider for SolanaProvider {
 		let issued_at =
 			credentials.get("issued_at").cloned().unwrap_or_else(|| self.clock.now_secs().to_string());
 
-		// Build SIWS-standard message
 		let message = format!(
 			"{domain} wants you to sign in with your Solana account:\n\
 			 {address}\n\

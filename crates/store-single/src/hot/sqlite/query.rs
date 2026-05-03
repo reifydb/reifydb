@@ -3,7 +3,6 @@
 
 use std::ops::Bound;
 
-/// Build a range query with the given bounds and limit.
 pub(super) fn build_range_query(
 	table_name: &str,
 	start: Bound<&[u8]>,

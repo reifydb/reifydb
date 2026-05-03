@@ -16,8 +16,6 @@ use crate::value::column::{
 	buffer::ColumnBuffer, encoding::EncodingId, mask::RowMask, nones::NoneBitmap, stats::StatsSet,
 };
 
-// Comparison operator used by `ColumnData::compare`. Kept next to the trait
-// because the read-side kernels (filter, compare) live on the trait itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompareOp {
 	Eq,
@@ -34,14 +32,6 @@ pub enum SearchResult {
 	NotFound(usize),
 }
 
-// Polymorphic read interface for any column representation. `Canonical` is the
-// identity-encoded impl (holds a `ColumnBuffer` directly); compressed encodings
-// defined in `reifydb-column` (`ColumnConstant`, `ColumnRle`, etc.) implement
-// this trait with encoding-specific specializations for the read operators.
-//
-// All read operators have default impls that materialize via `to_canonical`
-// then delegate to the canonical implementation on the inner `ColumnBuffer` -
-// compressed encodings override for fast paths that avoid materialization.
 pub trait ColumnData: Send + Sync + 'static {
 	fn ty(&self) -> Type;
 	fn len(&self) -> usize;
@@ -72,8 +62,6 @@ pub trait ColumnData: Send + Sync + 'static {
 
 	fn to_canonical(&self) -> Result<Arc<Canonical>>;
 
-	// Default read operators: materialize then run the canonical algorithm over
-	// the inner `ColumnBuffer`. Compressed encodings override these for fast paths.
 	fn filter(&self, mask: &RowMask) -> Result<Column> {
 		let canon = self.to_canonical()?;
 		Ok(Column::from_canonical(canonical_filter(&canon, mask)?))
@@ -179,7 +167,6 @@ impl Column {
 		self.0.slice(start, end)
 	}
 
-	// Return `&mut Canonical`, materializing from a compressed encoding if needed.
 	pub fn materialize(&mut self) -> Result<&mut Canonical> {
 		if Arc::get_mut(&mut self.0).map(|d| d.as_any().is::<Canonical>()).unwrap_or(false) {
 			let d = Arc::get_mut(&mut self.0).unwrap();
@@ -192,10 +179,6 @@ impl Column {
 		Ok(d.as_any_mut().downcast_mut::<Canonical>().unwrap())
 	}
 }
-
-// Default compute primitives for canonical columns. These are used by the
-// default `filter`/`take`/`slice` impls on the `ColumnData` trait and are
-// self-contained within reifydb-core (no dependency on reifydb-column).
 
 fn canonical_filter(canon: &Canonical, mask: &RowMask) -> Result<Canonical> {
 	assert_eq!(canon.len(), mask.len(), "filter: length mismatch");

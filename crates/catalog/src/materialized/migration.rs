@@ -12,12 +12,10 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionMigration, MultiVersionMigrationEvent};
 
 impl MaterializedCatalog {
-	/// Find a migration by ID at a specific version
 	pub fn find_migration_at(&self, id: MigrationId, version: CommitVersion) -> Option<Migration> {
 		self.migrations.get(&id).and_then(|entry| entry.value().get(version))
 	}
 
-	/// Find a migration by name at a specific version
 	pub fn find_migration_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Migration> {
 		self.migrations_by_name.get(&name.to_string()).and_then(|entry| {
 			let migration_id = *entry.value();
@@ -25,7 +23,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a migration by name (latest version)
 	pub fn find_migration_by_name(&self, name: &str) -> Option<Migration> {
 		self.migrations_by_name.get(&name.to_string()).and_then(|entry| {
 			let migration_id = *entry.value();
@@ -33,12 +30,10 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// List all migrations (latest version of each)
 	pub fn list_migrations(&self) -> Vec<Migration> {
 		self.migrations.iter().filter_map(|entry| entry.value().get_latest()).collect()
 	}
 
-	/// Set a migration definition at a specific version
 	pub fn set_migration(&self, id: MigrationId, version: CommitVersion, migration: Option<Migration>) {
 		if let Some(entry) = self.migrations.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
@@ -55,17 +50,14 @@ impl MaterializedCatalog {
 		}
 	}
 
-	/// Find a migration event by ID at a specific version
 	pub fn find_migration_event_at(&self, id: MigrationEventId, version: CommitVersion) -> Option<MigrationEvent> {
 		self.migration_events.get(&id).and_then(|entry| entry.value().get(version))
 	}
 
-	/// List all migration events (latest version of each)
 	pub fn list_migration_events(&self) -> Vec<MigrationEvent> {
 		self.migration_events.iter().filter_map(|entry| entry.value().get_latest()).collect()
 	}
 
-	/// Set a migration event at a specific version
 	pub fn set_migration_event(&self, id: MigrationEventId, version: CommitVersion, event: Option<MigrationEvent>) {
 		let multi = self.migration_events.get_or_insert_with(id, MultiVersionMigrationEvent::new);
 		if let Some(new) = event {

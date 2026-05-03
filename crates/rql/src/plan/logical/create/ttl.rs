@@ -6,11 +6,6 @@ use reifydb_core::row::{Ttl, TtlAnchor, TtlCleanupMode};
 use crate::{Result, ast::ast::AstTtl, diagnostic::AstError, plan::logical::Compiler};
 
 impl<'bump> Compiler<'bump> {
-	/// Compile a TTL config attached to a streaming operator (DISTINCT, JOIN, ...).
-	///
-	/// Reuses `compile_ttl` for the shared `{ duration, on, mode }` shape but rejects
-	/// `mode: delete` since operator state cleanup is silent by design (no CDC tombstones,
-	/// no `Diff::Remove`). Only `drop` is valid on operator TTL.
 	pub(crate) fn compile_operator_ttl(ast: AstTtl<'bump>) -> Result<Ttl> {
 		if let Some(token) = &ast.mode
 			&& token.fragment.text().to_lowercase() == "delete"

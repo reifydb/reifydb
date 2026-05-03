@@ -6,12 +6,6 @@ use crate::{
 	plan::physical::{AppendPhysicalNode, AppendPhysicalSource, AssignValue, LetValue, PhysicalPlan},
 };
 
-/// Visit every `Expression` contained in `plan` (recursively, including child plans).
-///
-/// `internal` is invoked for expressions whose label is not user-visible (filter conditions,
-/// join keys, control-flow conditions, function arguments, etc.). `projection` is invoked
-/// for expressions that produce a user-visible output column (Map.map, Extend.extend,
-/// Aggregate.map, Aggregate.by, Window.aggregations, Window.group_by, DML returning clauses).
 pub fn walk_expressions_mut(
 	plan: &mut PhysicalPlan<'_>,
 	internal: &mut dyn FnMut(&mut Expression),
@@ -28,9 +22,6 @@ pub fn walk_expressions_mut(
 			walk_expressions_mut(&mut n.input, internal, projection);
 		}
 		PhysicalPlan::Assert(n) => {
-			// Skip folding assert conditions: the runtime error reports the
-			// original expression text (e.g. "this expression is false: 1 == 2").
-			// Folding would replace 1 == 2 with false and lose that detail.
 			if let Some(input) = n.input.as_mut() {
 				walk_expressions_mut(input, internal, projection);
 			}
@@ -86,10 +77,6 @@ pub fn walk_expressions_mut(
 			}
 		}
 		PhysicalPlan::Patch(n) => {
-			// Skip folding UPDATE SET assignments: saturation / coercion errors
-			// reference the original source span when assigning to typed columns.
-			// Folding 0 - 1 to -1 would relocate the diagnostic to a synthesized
-			// fragment with no source position.
 			if let Some(input) = n.input.as_mut() {
 				walk_expressions_mut(input, internal, projection);
 			}
@@ -190,9 +177,7 @@ pub fn walk_expressions_mut(
 				internal(e);
 			}
 		}
-		// DML nodes: the .returning slot's source spans matter for column-coercion errors,
-		// so leave those expressions alone. Recurse into the input subtree where any
-		// nested Map / Filter / etc. is fair game.
+
 		PhysicalPlan::Delete(n) => {
 			if let Some(input) = n.input.as_mut() {
 				walk_expressions_mut(input, internal, projection);
@@ -224,7 +209,7 @@ pub fn walk_expressions_mut(
 				walk_expressions_mut(as_clause, internal, projection);
 			}
 		}
-		// Variants that carry no Expression and no child PhysicalPlan worth descending into.
+
 		PhysicalPlan::AssertBlock(_)
 		| PhysicalPlan::IndexScan(_)
 		| PhysicalPlan::RowPointLookup(_)

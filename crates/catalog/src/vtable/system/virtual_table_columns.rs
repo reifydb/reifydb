@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext, VTableRegistry},
 };
 
-/// Virtual table that exposes column information for all virtual tables
 pub struct SystemVirtualTableColumns {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
@@ -51,7 +50,6 @@ impl BaseVTable for SystemVirtualTableColumns {
 		let mut types = Vec::new();
 		let mut positions = Vec::new();
 
-		// Add columns from system virtual tables
 		for vtable in VTableRegistry::list_vtables(txn)? {
 			for col in &vtable.columns {
 				column_ids.push(col.id.0);
@@ -62,7 +60,6 @@ impl BaseVTable for SystemVirtualTableColumns {
 			}
 		}
 
-		// Add columns from user-defined virtual tables
 		for vtable in self.catalog.list_user_vtables() {
 			for col in &vtable.columns {
 				column_ids.push(col.id.0);

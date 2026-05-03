@@ -43,7 +43,7 @@ impl PolicyOpKey {
 		end.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(policy);
 		let start_key = start.to_encoded_key();
 		let mut end_bytes = end.to_encoded_key().to_vec();
-		// Append 8 0xFF bytes to cover the full op_index field range
+
 		end_bytes.extend_from_slice(&[0xFF; 8]);
 		EncodedKeyRange::start_end(Some(start_key), Some(EncodedKey::new(end_bytes)))
 	}

@@ -19,45 +19,38 @@ use crate::{
 	query::QueryPlan,
 };
 
-/// Address in the instruction stream (for jumps)
 pub type Addr = usize;
 
-/// A compiled user-defined function with pre-compiled body instructions
 #[derive(Debug, Clone)]
 pub struct CompiledFunction {
-	/// Function name
 	pub name: Fragment,
-	/// Function parameters
+
 	pub parameters: Vec<FunctionParameter>,
-	/// Optional return type constraint
+
 	pub return_type: Option<TypeConstraint>,
-	/// Pre-compiled function body instructions
+
 	pub body: Vec<Instruction>,
 }
 
-/// A compiled closure with captured environment
 #[derive(Debug, Clone)]
 pub struct CompiledClosure {
-	/// Closure parameters
 	pub parameters: Vec<FunctionParameter>,
-	/// Pre-compiled closure body instructions
+
 	pub body: Vec<Instruction>,
-	/// Variable names referenced from the enclosing scope (free variables)
+
 	pub captures: Vec<Fragment>,
 }
 
-/// Different types of scopes for variable management
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScopeType {
-	/// Global scope (cannot be exited)
 	Global,
-	/// Function scope
+
 	Function,
-	/// Block scope
+
 	Block,
-	/// Conditional scope (if/else)
+
 	Conditional,
-	/// Loop scope
+
 	Loop,
 }
 
@@ -71,7 +64,7 @@ pub enum Instruction {
 	LoadVar(Fragment),
 	StoreVar(Fragment),
 	DeclareVar(Fragment),
-	/// Load a field from a variable (e.g., $row.name)
+
 	FieldAccess {
 		object: Fragment,
 		field: Fragment,

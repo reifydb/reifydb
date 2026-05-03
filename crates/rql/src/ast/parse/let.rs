@@ -18,7 +18,6 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_let(&mut self) -> Result<AstLet<'bump>> {
 		let token = self.current()?;
 
-		// Expect 'let' keyword
 		if !self.current()?.is_keyword(Keyword::Let) {
 			let fragment = self.current()?.fragment.to_owned();
 			return Err(Error::from(TypeError::Ast {
@@ -33,9 +32,8 @@ impl<'bump> Parser<'bump> {
 				fragment,
 			}));
 		}
-		self.advance()?; // consume 'let'
+		self.advance()?;
 
-		// Parse the variable name (must start with $)
 		let variable_token = self.current()?;
 		if !matches!(variable_token.kind, TokenKind::Variable) {
 			let fragment = variable_token.fragment.to_owned();
@@ -54,14 +52,10 @@ impl<'bump> Parser<'bump> {
 
 		let var_token = self.advance()?;
 
-		// Use the variable token directly but create an identifier with the '$' prefix
-		// The UnqualifiedIdentifier will store the full token but we'll extract the name later
 		let name = UnqualifiedIdentifier::new(var_token);
 
-		// Consume the '=' operator
 		self.consume_operator(Operator::Equal)?;
 
-		// Check if the RHS is a statement or an expression
 		let value = if self.is_statement()? {
 			let statement = self.parse_statement_content()?;
 			LetValue::Statement(statement)
@@ -77,8 +71,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Check if the current token starts a statement (FROM, MAP, EXTEND, etc.)
-	/// Also checks for variables followed by pipes ($var | ...)
 	fn is_statement(&self) -> Result<bool> {
 		if let Ok(token) = self.current() {
 			Ok(matches!(

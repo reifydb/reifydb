@@ -105,8 +105,6 @@ impl RowMask {
 		}
 	}
 
-	// Extract a sub-mask covering rows `[start, end)`. Used by predicate
-	// pushdown to align a batch-wide mask with each individual chunk slice.
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		debug_assert!(start <= end, "RowMask::slice: start {start} > end {end}");
 		debug_assert!(end <= self.len, "RowMask::slice: end {end} > len {}", self.len);
@@ -120,9 +118,6 @@ impl RowMask {
 		out
 	}
 
-	// Concatenate per-chunk masks into a single block-wide mask. Used by
-	// multi-chunk predicate evaluation to assemble a column-spanning mask from
-	// independent per-chunk evaluations.
 	pub fn concat(parts: &[Self]) -> Self {
 		let total: usize = parts.iter().map(|m| m.len).sum();
 		let mut out = Self::none_set(total);

@@ -51,7 +51,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal numeric data
 	pub(super) fn unmarshal_numeric_data<T: Copy + Default + IsNumber>(
 		&self,
 		ffi: &ColumnDataFFI,
@@ -69,7 +68,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal UTF8 data with offsets
 	pub(super) fn unmarshal_utf8_data(&self, ffi: &ColumnDataFFI) -> Utf8Container {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
@@ -92,7 +90,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal date data
 	pub(super) fn unmarshal_date_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Date> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -111,7 +108,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal datetime data
 	pub(super) fn unmarshal_datetime_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<DateTime> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -128,7 +124,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal time data
 	pub(super) fn unmarshal_time_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Time> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -147,7 +142,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal duration data (deserialize with postcard since Duration has 3 fields)
 	pub(super) fn unmarshal_duration_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Duration> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
@@ -170,7 +164,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal identity ID data
 	pub(super) fn unmarshal_identity_id_data(&self, ffi: &ColumnDataFFI) -> IdentityIdContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -184,7 +177,7 @@ impl Arena {
 				.map(|chunk| {
 					let mut arr = [0u8; 16];
 					arr.copy_from_slice(chunk);
-					// IdentityId wraps Uuid7 which wraps StdUuid
+
 					IdentityId(Uuid7(Uuid::from_bytes(arr)))
 				})
 				.collect();
@@ -192,7 +185,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal UUID4 data
 	pub(super) fn unmarshal_uuid4_data(&self, ffi: &ColumnDataFFI) -> UuidContainer<Uuid4> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -213,7 +205,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal UUID7 data
 	pub(super) fn unmarshal_uuid7_data(&self, ffi: &ColumnDataFFI) -> UuidContainer<Uuid7> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -234,7 +225,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal blob data with offsets
 	pub(super) fn unmarshal_blob_data(&self, ffi: &ColumnDataFFI) -> BlobContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
@@ -256,7 +246,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal serialized data with offsets
 	pub(super) fn unmarshal_serialized_data<T: Default + Clone + DeserializeOwned + IsNumber>(
 		&self,
 		ffi: &ColumnDataFFI,
@@ -282,7 +271,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal Any data with offsets
 	pub(super) fn unmarshal_any_data(&self, ffi: &ColumnDataFFI) -> AnyContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
@@ -305,8 +293,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal DictionaryId data with offsets - postcard-per-element
-	/// preserves the U1/U2/U4/U8/U16 enum variant.
 	pub(super) fn unmarshal_dictionary_id_data(&self, ffi: &ColumnDataFFI) -> DictionaryContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
@@ -330,7 +316,6 @@ impl Arena {
 		}
 	}
 
-	/// Helper: read offsets array from FFI buffer
 	pub(super) fn read_offsets(&self, ffi: &BufferFFI) -> Vec<u64> {
 		if ffi.is_empty() {
 			return Vec::new();

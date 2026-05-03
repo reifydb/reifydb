@@ -11,7 +11,6 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_policy(txn: &mut AdminTransaction, policy: PolicyId) -> Result<()> {
-		// Remove all operation rows for this policy
 		{
 			let range = PolicyOpKey::policy_scan(policy);
 			let mut stream = txn.range(range, 1024)?;

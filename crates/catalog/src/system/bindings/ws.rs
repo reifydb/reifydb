@@ -15,7 +15,6 @@ use crate::system::{
 	ids::{columns::bindings::ws::*, vtable::BINDINGS_WS},
 };
 
-/// Returns the static definition for the `system::bindings::ws` virtual table.
 pub fn bindings_ws() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

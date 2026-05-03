@@ -12,16 +12,6 @@ use reifydb_type::{Result, value::r#type::Type};
 
 use crate::error::SubColumnError;
 
-// Concatenate a sequence of scan-emitted `Columns` batches into a single-chunk
-// `ColumnBlock` aligned to `schema`. Layout: for each `(name, ty)` in schema,
-// collect the column's `ColumnBuffer` from every batch, extend into one combined
-// `ColumnBuffer`, then `Canonical::from_column_buffer → Compressor::compress →
-// ColumnChunks::single`. Output columns appear in the order given by `schema`,
-// not the scan's emission order.
-//
-// `schema` uses `(String, Type)` because nullability is derived from the
-// resulting `Canonical.nullable` (which in turn reflects whether the
-// underlying `ColumnBuffer` was wrapped as `Option { inner, bitvec }`).
 pub fn column_block_from_batches(
 	schema: Vec<(String, Type)>,
 	batches: Vec<Columns>,

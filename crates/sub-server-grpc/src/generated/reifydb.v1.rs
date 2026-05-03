@@ -21,7 +21,7 @@ pub struct AdminResponse {
     #[prost(oneof = "admin_response::Payload", tags = "1, 2")]
     pub payload: ::core::option::Option<admin_response::Payload>,
 }
-/// Nested message and enum types in `AdminResponse`.
+
 pub mod admin_response {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Payload {
@@ -45,7 +45,7 @@ pub struct CommandResponse {
     #[prost(oneof = "command_response::Payload", tags = "1, 2")]
     pub payload: ::core::option::Option<command_response::Payload>,
 }
-/// Nested message and enum types in `CommandResponse`.
+
 pub mod command_response {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Payload {
@@ -69,7 +69,7 @@ pub struct QueryResponse {
     #[prost(oneof = "query_response::Payload", tags = "1, 2")]
     pub payload: ::core::option::Option<query_response::Payload>,
 }
-/// Nested message and enum types in `QueryResponse`.
+
 pub mod query_response {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Payload {
@@ -93,7 +93,7 @@ pub struct OperationResponse {
     #[prost(oneof = "operation_response::Payload", tags = "1, 2")]
     pub payload: ::core::option::Option<operation_response::Payload>,
 }
-/// Nested message and enum types in `OperationResponse`.
+
 pub mod operation_response {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Payload {
@@ -115,7 +115,7 @@ pub struct SubscriptionEvent {
     #[prost(oneof = "subscription_event::Event", tags = "1, 2")]
     pub event: ::core::option::Option<subscription_event::Event>,
 }
-/// Nested message and enum types in `SubscriptionEvent`.
+
 pub mod subscription_event {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Event {
@@ -135,7 +135,7 @@ pub struct ChangeEvent {
     #[prost(oneof = "change_event::Payload", tags = "1, 2")]
     pub payload: ::core::option::Option<change_event::Payload>,
 }
-/// Nested message and enum types in `ChangeEvent`.
+
 pub mod change_event {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Payload {
@@ -167,7 +167,7 @@ pub struct BatchSubscriptionEvent {
     #[prost(oneof = "batch_subscription_event::Event", tags = "1, 2, 3")]
     pub event: ::core::option::Option<batch_subscription_event::Event>,
 }
-/// Nested message and enum types in `BatchSubscriptionEvent`.
+
 pub mod batch_subscription_event {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Event {
@@ -278,7 +278,7 @@ pub struct Params {
     #[prost(oneof = "params::Params", tags = "1, 2")]
     pub params: ::core::option::Option<params::Params>,
 }
-/// Nested message and enum types in `Params`.
+
 pub mod params {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Params {
@@ -327,7 +327,7 @@ pub struct FrameColumn {
     #[prost(bytes = "vec", tag = "4")]
     pub bitvec: ::prost::alloc::vec::Vec<u8>,
 }
-/// Generated client implementations.
+
 pub mod reify_db_client {
     #![allow(
         unused_variables,
@@ -343,7 +343,7 @@ pub mod reify_db_client {
         inner: tonic::client::Grpc<T>,
     }
     impl ReifyDbClient<tonic::transport::Channel> {
-        /// Attempt to create a new client by connecting to a given endpoint.
+
         pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
         where
             D: TryInto<tonic::transport::Endpoint>,
@@ -387,32 +387,32 @@ pub mod reify_db_client {
         {
             ReifyDbClient::new(InterceptedService::new(inner, interceptor))
         }
-        /// Compress requests with the given encoding.
-        ///
-        /// This requires the server to support it otherwise it might respond with an
-        /// error.
+
+
+
+
         #[must_use]
         pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
             self.inner = self.inner.send_compressed(encoding);
             self
         }
-        /// Enable decompressing responses.
+
         #[must_use]
         pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
             self.inner = self.inner.accept_compressed(encoding);
             self
         }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
+
+
+
         #[must_use]
         pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
             self.inner = self.inner.max_decoding_message_size(limit);
             self
         }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
+
+
+
         #[must_use]
         pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
             self.inner = self.inner.max_encoding_message_size(limit);
@@ -624,7 +624,7 @@ pub mod reify_db_client {
         }
     }
 }
-/// Generated server implementations.
+
 pub mod reify_db_server {
     #![allow(
         unused_variables,
@@ -634,7 +634,7 @@ pub mod reify_db_server {
         clippy::let_unit_value,
     )]
     use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with ReifyDbServer.
+
     #[async_trait]
     pub trait ReifyDb: std::marker::Send + std::marker::Sync + 'static {
         async fn admin(
@@ -649,7 +649,7 @@ pub mod reify_db_server {
             &self,
             request: tonic::Request<super::QueryRequest>,
         ) -> std::result::Result<tonic::Response<super::QueryResponse>, tonic::Status>;
-        /// Server streaming response type for the Subscribe method.
+
         type SubscribeStream: tonic::codegen::tokio_stream::Stream<
                 Item = std::result::Result<super::SubscriptionEvent, tonic::Status>,
             >
@@ -663,7 +663,7 @@ pub mod reify_db_server {
             &self,
             request: tonic::Request<super::UnsubscribeRequest>,
         ) -> std::result::Result<tonic::Response<super::UnsubscribeResponse>, tonic::Status>;
-        /// Server streaming response type for the BatchSubscribe method.
+
         type BatchSubscribeStream: tonic::codegen::tokio_stream::Stream<
                 Item = std::result::Result<super::BatchSubscriptionEvent, tonic::Status>,
             >
@@ -720,29 +720,29 @@ pub mod reify_db_server {
         {
             InterceptedService::new(Self::new(inner), interceptor)
         }
-        /// Enable decompressing requests with the given encoding.
+
         #[must_use]
         pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
             self.accept_compression_encodings.enable(encoding);
             self
         }
-        /// Compress responses with the given encoding, if the client supports it.
+
         #[must_use]
         pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
             self.send_compression_encodings.enable(encoding);
             self
         }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
+
+
+
         #[must_use]
         pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
             self.max_decoding_message_size = Some(limit);
             self
         }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
+
+
+
         #[must_use]
         pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
             self.max_encoding_message_size = Some(limit);
@@ -1236,7 +1236,7 @@ pub mod reify_db_server {
             }
         }
     }
-    /// Generated gRPC service name
+
     pub const SERVICE_NAME: &str = "reifydb.v1.ReifyDB";
     impl<T> tonic::server::NamedService for ReifyDbServer<T> {
         const NAME: &'static str = SERVICE_NAME;

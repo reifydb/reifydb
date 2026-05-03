@@ -19,7 +19,6 @@ use crate::{
 	store::namespace::create::NamespaceToCreate as StoreNamespaceToCreate,
 };
 
-/// Namespace creation specification for the Catalog API.
 #[derive(Debug, Clone)]
 pub struct NamespaceToCreate {
 	pub namespace_fragment: Option<Fragment>,
@@ -48,12 +47,10 @@ impl Catalog {
 	pub fn find_namespace(&self, txn: &mut Transaction<'_>, id: NamespaceId) -> Result<Option<Namespace>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
 				if let Some(namespace) = self.materialized.find_namespace_at(id, cmd.version()) {
 					return Ok(Some(namespace));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(namespace) =
 					CatalogStore::find_namespace(&mut Transaction::Command(&mut *cmd), id)?
 				{
@@ -67,22 +64,18 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(namespace) = TransactionalNamespaceChanges::find_namespace(admin, id) {
 					return Ok(Some(namespace.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalNamespaceChanges::is_namespace_deleted(admin, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(namespace) = self.materialized.find_namespace_at(id, admin.version()) {
 					return Ok(Some(namespace));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(namespace) =
 					CatalogStore::find_namespace(&mut Transaction::Admin(&mut *admin), id)?
 				{
@@ -96,12 +89,10 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(namespace) = self.materialized.find_namespace_at(id, qry.version()) {
 					return Ok(Some(namespace));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(namespace) =
 					CatalogStore::find_namespace(&mut Transaction::Query(&mut *qry), id)?
 				{
@@ -151,14 +142,12 @@ impl Catalog {
 	pub fn find_namespace_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Namespace>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
 				if let Some(namespace) =
 					self.materialized.find_namespace_by_name_at(name, cmd.version())
 				{
 					return Ok(Some(namespace));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(namespace) = CatalogStore::find_namespace_by_name(
 					&mut Transaction::Command(&mut *cmd),
 					name,
@@ -170,26 +159,22 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(namespace) =
 					TransactionalNamespaceChanges::find_namespace_by_name(admin, name)
 				{
 					return Ok(Some(namespace.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalNamespaceChanges::is_namespace_deleted_by_name(admin, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(namespace) =
 					self.materialized.find_namespace_by_name_at(name, admin.version())
 				{
 					return Ok(Some(namespace));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(namespace) = CatalogStore::find_namespace_by_name(
 					&mut Transaction::Admin(&mut *admin),
 					name,
@@ -201,14 +186,12 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(namespace) =
 					self.materialized.find_namespace_by_name_at(name, qry.version())
 				{
 					return Ok(Some(namespace));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(namespace) =
 					CatalogStore::find_namespace_by_name(&mut Transaction::Query(&mut *qry), name)?
 				{
@@ -320,8 +303,6 @@ impl Catalog {
 		}
 	}
 
-	/// Resolve namespace from path segments (e.g. `["system", "config"]`).
-	/// Returns the "default" namespace when segments is empty.
 	pub fn find_namespace_by_segments(
 		&self,
 		txn: &mut Transaction<'_>,
@@ -346,8 +327,6 @@ impl Catalog {
 		Ok(Some(current))
 	}
 
-	/// Resolve a `::` separated path (e.g. `"system::config"`) to a `Namespace` by walking
-	/// parent → child hierarchically.
 	pub fn find_namespace_by_path(&self, txn: &mut Transaction<'_>, path: &str) -> Result<Option<Namespace>> {
 		let segments: Vec<&str> = path.split("::").collect();
 		self.find_namespace_by_segments(txn, &segments)
@@ -388,7 +367,6 @@ impl Catalog {
 		Ok(namespace)
 	}
 
-	/// Create a namespace with a specific ID. Used for bootstrapping system namespaces.
 	pub fn create_namespace_with_id(
 		&self,
 		txn: &mut AdminTransaction,
@@ -420,7 +398,7 @@ impl Catalog {
 		grpc: Option<String>,
 	) -> Result<()> {
 		CatalogStore::update_namespace_grpc(txn, namespace_id, grpc)?;
-		// Re-read the updated namespace and track the change
+
 		let updated = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 		txn.track_namespace_created(updated)?;
 		Ok(())

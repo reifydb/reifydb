@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system column policy information
 pub struct SystemColumnProperties {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

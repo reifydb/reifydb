@@ -21,7 +21,6 @@ use tracing::debug;
 #[allow(unused_imports)]
 use tracing::error;
 
-/// Error type for subscription creation.
 pub enum CreateSubscriptionError {
 	Execute(ExecuteError),
 	ExtractionFailed,
@@ -51,7 +50,6 @@ impl From<ExecuteError> for CreateSubscriptionError {
 	}
 }
 
-/// Result of creating a subscription: either local or remote.
 pub enum CreateSubscriptionResult {
 	Local(SubscriptionId),
 	Remote {
@@ -74,7 +72,6 @@ use crate::{
 	state::AppState,
 };
 
-/// Execute `CREATE SUBSCRIPTION AS { query }` and extract the subscription ID from the result.
 #[cfg(not(reifydb_single_threaded))]
 pub async fn create_subscription(
 	state: &AppState,
@@ -159,10 +156,6 @@ fn first_utf8_value(col: &FrameColumn) -> Option<String> {
 	}
 }
 
-/// Extract the subscription ID from frames returned by `engine.subscribe_as`.
-///
-/// The engine returns a single-row frame with a `subscription_id` column
-/// containing a `Value::Uint8(id)`.
 pub fn extract_subscription_id(frames: &[Frame]) -> Option<SubscriptionId> {
 	let frame = frames.first()?;
 	frame.columns
@@ -181,14 +174,12 @@ pub fn extract_subscription_id(frames: &[Frame]) -> Option<SubscriptionId> {
 		})
 }
 
-/// Synchronous cleanup: drop subscription via DDL.
 pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
 	let rql = format!("drop subscription if exists subscription_{};", subscription_id.0);
 	engine.admin_as(IdentityId::system(), &rql, Params::None).check()?;
 	Ok(())
 }
 
-/// Async cleanup via a blocking task.
 #[cfg(not(reifydb_single_threaded))]
 pub async fn cleanup_subscription(state: &AppState, subscription_id: SubscriptionId) -> TypeResult<()> {
 	let engine = state.engine_clone();

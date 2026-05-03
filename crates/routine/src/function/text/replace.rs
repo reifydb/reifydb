@@ -89,7 +89,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextReplace {
 					max_bytes: MaxBytes::MAX,
 				};
 
-				// Combine all three bitvecs
 				let mut combined_bv: Option<BitVec> = None;
 				for bv in [str_bv, from_bv, to_bv].into_iter().flatten() {
 					combined_bv = Some(match combined_bv {

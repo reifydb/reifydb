@@ -51,9 +51,6 @@ impl StandardSingleStore {
 		})))
 	}
 
-	/// Get access to the hot storage tier.
-	///
-	/// Returns `None` if the hot tier is not configured.
 	pub fn hot(&self) -> Option<&HotTier> {
 		self.hot.as_ref()
 	}
@@ -117,12 +114,10 @@ impl SingleVersionContains for StandardSingleStore {
 impl SingleVersionCommit for StandardSingleStore {
 	#[instrument(name = "store::single::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
 	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
-		// Get the hot storage tier (warm and cold are placeholders for now)
 		let Some(storage) = &self.hot else {
 			return Ok(());
 		};
 
-		// Process deltas as a batch
 		let entries: Vec<_> = deltas
 			.iter()
 			.map(|delta| match delta {
@@ -159,7 +154,6 @@ impl SingleVersionRange for StandardSingleStore {
 
 		let (start, end) = make_range_bounds(&range);
 
-		// Process hot tier
 		if let Some(hot) = &self.hot {
 			let mut cursor = RangeCursor::new();
 
@@ -177,7 +171,6 @@ impl SingleVersionRange for StandardSingleStore {
 			}
 		}
 
-		// Convert to SingleVersionRow, filtering out tombstones
 		let items: Vec<SingleVersionRow> = all_entries
 			.into_iter()
 			.filter_map(|(key_bytes, value)| {
@@ -205,7 +198,6 @@ impl SingleVersionRangeRev for StandardSingleStore {
 
 		let (start, end) = make_range_bounds(&range);
 
-		// Process hot tier
 		if let Some(hot) = &self.hot {
 			let mut cursor = RangeCursor::new();
 
@@ -227,10 +219,9 @@ impl SingleVersionRangeRev for StandardSingleStore {
 			}
 		}
 
-		// Convert to SingleVersionRow in reverse order, filtering out tombstones
 		let items: Vec<SingleVersionRow> = all_entries
 			.into_iter()
-			.rev() // Reverse for descending order
+			.rev()
 			.filter_map(|(key_bytes, value)| {
 				value.map(|val| SingleVersionRow {
 					key: EncodedKey(key_bytes),
@@ -251,7 +242,6 @@ impl SingleVersionRangeRev for StandardSingleStore {
 
 impl SingleVersionStore for StandardSingleStore {}
 
-/// Helper to convert owned Bound to ref
 fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	match bound {
 		Bound::Included(v) => Bound::Included(v.as_slice()),
@@ -260,7 +250,6 @@ fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	}
 }
 
-/// Convert EncodedKeyRange to primitive storage bounds (owned for )
 fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<Vec<u8>>, Bound<Vec<u8>>) {
 	let start = match &range.start {
 		Bound::Included(key) => Bound::Included(key.as_ref().to_vec()),

@@ -16,21 +16,20 @@ use reifydb_type::{
 	},
 };
 
-/// Encodes a constraint to a byte vector for storage
 fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 	match constraint {
-		None => vec![0], // Type 0: No constraint
+		None => vec![0],
 		Some(Constraint::MaxBytes(max_bytes)) => {
-			let mut bytes = vec![1]; // Type 1: MaxBytes
+			let mut bytes = vec![1];
 			let max_value: u32 = (*max_bytes).into();
 			bytes.extend_from_slice(&max_value.to_le_bytes());
 			bytes
 		}
 		Some(Constraint::PrecisionScale(precision, scale)) => {
-			vec![2, (*precision).into(), (*scale).into()] // Type 2: PrecisionScale
+			vec![2, (*precision).into(), (*scale).into()]
 		}
 		Some(Constraint::Dictionary(dict_id, id_type)) => {
-			let mut bytes = vec![3]; // Type 3: Dictionary
+			let mut bytes = vec![3];
 			bytes.extend_from_slice(&dict_id.to_u64().to_le_bytes());
 			bytes.push(id_type.to_u8());
 			bytes
@@ -95,7 +94,6 @@ impl CatalogStore {
 			.into());
 		}
 
-		// Validate auto_increment is only used with integer types
 		if column_to_create.auto_increment {
 			let base_type = column_to_create.constraint.get_type();
 			let is_integer_type = matches!(
@@ -126,12 +124,10 @@ impl CatalogStore {
 		column::SHAPE.set_u8(&mut row, INDEX, column_to_create.index);
 		column::SHAPE.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
 
-		// Store constraint as encoded blob
 		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
 		let blob = Blob::from(constraint_bytes);
 		column::SHAPE.set_blob(&mut row, CONSTRAINT, &blob);
 
-		// Store dictionary_id (0 means no dictionary)
 		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
 		column::SHAPE.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
 
@@ -158,8 +154,6 @@ impl CatalogStore {
 		})
 	}
 
-	/// Create a column with a specific ID. Used for bootstrapping system shapes.
-	/// Skips duplicate check - caller must ensure uniqueness.
 	pub(crate) fn create_column_with_id(
 		txn: &mut AdminTransaction,
 		id: ColumnId,

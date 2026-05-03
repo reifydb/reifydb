@@ -13,7 +13,6 @@ impl CatalogStore {
 	pub(crate) fn list_tables_all(rx: &mut Transaction<'_>) -> Result<Vec<Table>> {
 		let mut result = Vec::new();
 
-		// Collect table IDs first, then fetch details (to avoid holding stream borrow)
 		let mut table_ids = Vec::new();
 		{
 			let stream = rx.range(TableKey::full_scan(), 1024)?;
@@ -32,7 +31,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Now fetch details for each table
 		for (table_id, namespace_id, name, underlying) in table_ids {
 			let primary_key = Self::find_primary_key(rx, table_id)?;
 			let columns = Self::list_columns(rx, table_id)?;

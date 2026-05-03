@@ -28,11 +28,6 @@ use tracing::instrument;
 
 use super::actor::{WatermarkActor, WatermarkShared};
 
-/// WaterMark is used to keep track of the minimum un-finished index. Typically,
-/// an index k becomes finished or "done" according to a WaterMark once
-/// `done(k)` has been called
-///  1. as many times as `begin(k)` has, AND
-///  2. a positive number of times.
 pub struct WaterMark {
 	actor: ActorRef<WatermarkMessage>,
 	shared: Arc<WatermarkShared>,
@@ -48,7 +43,6 @@ impl Debug for WaterMark {
 }
 
 impl WaterMark {
-	/// Create a new WaterMark with given name and actor system.
 	#[instrument(name = "transaction::watermark::new", level = "debug", skip(system), fields(task_name = %task_name))]
 	pub fn new(task_name: String, system: &ActorSystem) -> Self {
 		let shared = Arc::new(WatermarkShared {
@@ -67,8 +61,6 @@ impl WaterMark {
 		}
 	}
 
-	/// Register `version` as in-flight. Must be paired with a later
-	/// `mark_finished(version)` call so `done_until` can advance past it.
 	#[instrument(name = "transaction::watermark::register_in_flight", level = "trace", skip(self), fields(version = version.0))]
 	pub fn register_in_flight(&self, version: CommitVersion) {
 		self.shared.last_index.fetch_max(version.0, Ordering::SeqCst);
@@ -78,9 +70,6 @@ impl WaterMark {
 		});
 	}
 
-	/// Mark `version` as finished. Pairs with an earlier
-	/// `register_in_flight(version)`. `done_until` advances when every
-	/// version up through some `V` has been marked finished.
 	#[instrument(name = "transaction::watermark::mark_finished", level = "trace", skip(self), fields(index = version.0))]
 	pub fn mark_finished(&self, version: CommitVersion) {
 		let _ = self.actor.send(WatermarkMessage::Done {
@@ -88,37 +77,23 @@ impl WaterMark {
 		});
 	}
 
-	/// Returns the maximum index that has the property that all indices
-	/// less than or equal to it are done.
 	pub fn done_until(&self) -> CommitVersion {
 		CommitVersion(self.shared.done_until.load(Ordering::SeqCst))
 	}
 
-	/// Returns the last index that was begun.
 	pub fn last_index(&self) -> CommitVersion {
 		CommitVersion(self.shared.last_index.load(Ordering::SeqCst))
 	}
 
-	/// Advance the watermark to the given version for replica replication.
-	///
-	/// Directly sets `done_until` and `last_index` atomically, bypassing the
-	/// gap-based watermark logic. This is correct for replicas because they
-	/// apply entries sequentially with no concurrent transactions, and the
-	/// primary's version space is independent from the replica's.
 	pub fn advance_to(&self, version: CommitVersion) {
 		self.shared.last_index.fetch_max(version.0, Ordering::SeqCst);
 		self.shared.done_until.fetch_max(version.0, Ordering::SeqCst);
 	}
 
-	/// Waits until the given index is marked as done with a default
-	/// timeout.
 	pub fn wait_for_mark(&self, index: u64) {
 		self.wait_for_mark_timeout(CommitVersion(index), Duration::from_secs(30));
 	}
 
-	/// Waits until the given index is marked as done with a specified
-	/// timeout.
-	// #[cfg(feature = "native")]
 	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
 		let current_done = self.shared.done_until.load(Ordering::SeqCst);
 		if current_done >= index.0 {
@@ -134,11 +109,8 @@ impl WaterMark {
 			})
 			.is_err()
 		{
-			// Actor stopped
 			return false;
 		}
-
-		// Wait with timeout using condvar
 
 		waiter.wait_timeout(timeout)
 	}

@@ -20,7 +20,6 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateSourceNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		// Resolve source namespace
 		let ns_segments: Vec<&str> = create.name.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.name.namespace.first() {
@@ -38,7 +37,6 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		};
 
-		// Resolve target namespace
 		let target_ns_segments: Vec<&str> = create.target.namespace.iter().map(|n| n.text()).collect();
 		let Some(target_namespace) = self.catalog.find_namespace_by_segments(rx, &target_ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.target.namespace.first() {
@@ -56,7 +54,6 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		};
 
-		// Resolve config pairs
 		let config = create
 			.config
 			.iter()

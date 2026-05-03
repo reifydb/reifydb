@@ -7,28 +7,24 @@ use crate::value::column::columns::Columns;
 
 impl Columns {
 	pub fn take(&mut self, n: usize) -> Result<()> {
-		// Take the first n encoded numbers
 		if !self.row_numbers.is_empty() {
 			let actual_n = n.min(self.row_numbers.len());
 			let new_row_numbers: Vec<_> = self.row_numbers.iter().take(actual_n).copied().collect();
 			self.row_numbers = CowVec::new(new_row_numbers);
 		}
 
-		// Take the first n created_at timestamps
 		if !self.created_at.is_empty() {
 			let actual_n = n.min(self.created_at.len());
 			let new_created_at: Vec<_> = self.created_at.iter().take(actual_n).copied().collect();
 			self.created_at = CowVec::new(new_created_at);
 		}
 
-		// Take the first n updated_at timestamps
 		if !self.updated_at.is_empty() {
 			let actual_n = n.min(self.updated_at.len());
 			let new_updated_at: Vec<_> = self.updated_at.iter().take(actual_n).copied().collect();
 			self.updated_at = CowVec::new(new_updated_at);
 		}
 
-		// Take the first n rows from columns
 		let mut new_buffers = Vec::with_capacity(self.len());
 
 		for data in self.columns.iter() {

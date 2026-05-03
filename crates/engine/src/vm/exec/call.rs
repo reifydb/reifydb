@@ -43,16 +43,12 @@ use crate::{
 	},
 };
 
-/// Groups the shared (services, tx) pair passed to call-family methods.
 pub(crate) struct CallContext<'a, 'b> {
 	pub services: &'a Arc<Services>,
 	pub tx: &'a mut Transaction<'b>,
 }
 
 impl<'a> Vm<'a> {
-	/// Coerce every column inside `result` to the declared function return type.
-	/// Used by call sites so that mixed-width scalar execution paths collapse to a
-	/// single column type before the result flows back to the caller.
 	pub(crate) fn coerce_return_value(
 		&self,
 		result: Variable,
@@ -83,9 +79,6 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	/// Coerce a single scalar `Value` to `target` by wrapping in a 1-row column,
-	/// casting, and extracting. Slow-path helper used by the per-row fallback so
-	/// that the accumulator column's element type stays uniform.
 	fn coerce_value(&self, value: Value, target: &Type) -> Result<Value> {
 		let mut data = ColumnBuffer::with_capacity(value.get_type(), 1);
 		data.push_value(value);
@@ -137,10 +130,6 @@ impl<'a> Vm<'a> {
 		let arity = arity as usize;
 		let func_name = name.text();
 
-		// Columnar dispatch: user functions and closures can take a column
-		// per argument (either a batch path for vectorizable bodies or a
-		// per-row fallback). Procedures don't run inside UDF bodies, so
-		// they stay on the scalar path.
 		if self.batch_size > 1 {
 			if let Some(func_def) = self.symbols.get_function(func_name).cloned() {
 				return self.call_user_function_columnar(services, tx, &func_def, arity, name);
@@ -158,19 +147,16 @@ impl<'a> Vm<'a> {
 		}
 		args.reverse();
 
-		// 1. User-defined function (DEF)
 		if let Some(func_def) = self.symbols.get_function(func_name).cloned() {
 			return self.call_user_function(services, tx, &func_def, args, name);
 		}
 
-		// 2. Closure variable
 		if let Some(closure_val) = self.symbols.get(strip_dollar_prefix(func_name)).cloned()
 			&& let Variable::Closure(closure) = closure_val
 		{
 			return self.call_closure(services, tx, closure, args);
 		}
 
-		// 3. Catalog procedure
 		let proc_def = {
 			let mut tx_tmp = tx.reborrow();
 			services.catalog.find_procedure_by_qualified_name(&mut tx_tmp, func_name)?
@@ -385,10 +371,6 @@ impl<'a> Vm<'a> {
 			results.push(value);
 		}
 
-		// Determine the accumulator column's element type.
-		// - If the function declares a return type, every scalar result is coerced to it so the accumulator
-		//   stays uniform (and mixed-width scalar paths don't panic inside `push_value`).
-		// - Otherwise, promote all result types to a common supertype.
 		let col_type = match return_type {
 			Some(tc) => tc.get_type(),
 			None => Type::super_type_of(results.iter().map(|v| v.get_type())),
@@ -470,7 +452,6 @@ impl<'a> Vm<'a> {
 		name: &Fragment,
 		func_name: &str,
 	) -> Result<()> {
-		// Enforce procedure call policy
 		let (pol_ns, pol_name) = if let Some((ns, n)) = Catalog::split_qualified_name(func_name) {
 			(ns, n.to_string())
 		} else {
@@ -542,7 +523,6 @@ impl<'a> Vm<'a> {
 				params,
 				..
 			} => {
-				// Catalog-stored RQL procedure
 				let source = body.clone();
 				let params = params.clone();
 				let compiled = ctx.services.compiler.compile(ctx.tx, &source)?;
@@ -592,7 +572,6 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	/// Shared logic for executing a compiled procedure body (used by both Local and Test procedures).
 	fn execute_procedure_body(
 		&mut self,
 		ctx: CallContext<'_, '_>,
@@ -671,7 +650,6 @@ impl<'a> Vm<'a> {
 		func_name: &str,
 		is_procedure_call: bool,
 	) -> Result<()> {
-		// Runtime-registered native procedure (no catalog entry needed)
 		if let Some(routine) = ctx.services.routines.get_procedure(func_name) {
 			let call_params = Params::Positional(Arc::new(args));
 			let identity = ctx.tx.identity();
@@ -690,7 +668,6 @@ impl<'a> Vm<'a> {
 				routine.call(&mut proc_ctx, &empty).map_err(|e| e.with_context(name.clone(), true))?;
 			let columns = assign_row_numbers_if_absent(columns);
 
-			// Special handling: identity::inject updates the transaction's identity
 			if func_name == "identity::inject"
 				&& let Some(col) = columns.first()
 				&& let Value::IdentityId(id) = col.data().get_value(0)
@@ -702,7 +679,6 @@ impl<'a> Vm<'a> {
 			return Ok(());
 		}
 
-		// Generator function
 		if let Some(generator) = ctx.services.routines.get_generator_function(func_name) {
 			let arg_columns: Vec<ColumnWithName> = args
 				.into_iter()
@@ -728,7 +704,6 @@ impl<'a> Vm<'a> {
 			return Ok(());
 		}
 
-		// Procedure call to an unknown procedure
 		if is_procedure_call {
 			return Err(TypeError::Procedure {
 				kind: ProcedureErrorKind::UndefinedProcedure {

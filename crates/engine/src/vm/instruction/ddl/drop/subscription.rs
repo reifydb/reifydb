@@ -18,7 +18,6 @@ pub(crate) fn drop_subscription(
 ) -> Result<Columns> {
 	let name = plan.subscription_name.text();
 
-	// Parse the subscription ID from the name (convention: "subscription_<id>")
 	let id = name.strip_prefix("subscription_").and_then(|s| s.parse::<u64>().ok()).map(SubscriptionId);
 
 	let dropped = match (id, services.ioc.resolve::<SubscriptionServiceRef>().ok()) {

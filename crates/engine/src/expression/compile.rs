@@ -137,9 +137,6 @@ macro_rules! compile_compare {
 	}};
 }
 
-/// Compile an `Expression` into a `CompiledExpr`.
-///
-/// All execution logic is baked into closures at compile time - no match dispatch at runtime.
 pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<CompiledExpr> {
 	Ok(match expr {
 		Expression::Constant(e) => {
@@ -209,7 +206,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					}
 					.into()),
 					None => {
-						// Fallback: check named params (for remote pushdown)
 						if let Some(value) = ctx.params.get_named(variable_name) {
 							let mut data = ColumnBuffer::with_capacity(
 								value.get_type(),
@@ -562,14 +558,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			CompiledExpr::new(move |ctx| {
 				let value_col = value.execute(ctx)?;
 
-				// Empty list → vacuous truth (all elements trivially contained)
 				if list.is_empty() {
 					let len = value_col.data().len();
 					let result = vec![true; len];
 					return Ok(ColumnWithName::new(fragment.clone(), ColumnBuffer::bool(result)));
 				}
 
-				// For each list element, check if it's contained in the set value
 				let first_col = list[0].execute(ctx)?;
 				let mut result = list_contains_element(&value_col, &first_col, &fragment)?;
 
@@ -718,7 +712,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 
 		Expression::FieldAccess(e) => {
 			let field_name = e.field.text().to_string();
-			// Extract variable name at compile time if the object is a variable
+
 			let var_name = match e.object.as_ref() {
 				Expression::Variable(var_expr) => Some(var_expr.name().to_string()),
 				_ => None,
@@ -809,7 +803,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						.into()),
 					}
 				} else {
-					// For non-variable objects, evaluate the object and try to interpret result
 					let _obj_col = object.execute(ctx)?;
 					Err(TypeError::Runtime {
 						kind: RuntimeErrorKind::FieldNotFound {
@@ -985,7 +978,7 @@ fn build_homogeneous_buffer(items: &[Value]) -> Option<ColumnBuffer> {
 		Value::Uint(_) => collect!(Uint, uint, |x| x.clone()),
 		Value::Decimal(_) => collect!(Decimal, decimal, |x| x.clone()),
 		Value::DictionaryId(_) => collect!(DictionaryId, dictionary_id, |x| *x),
-		// Any, List, Record, Tuple, Type, None: fall back to per-item.
+
 		_ => None,
 	}
 }
@@ -1103,7 +1096,6 @@ fn execute_if_multi(
 			}
 		};
 
-		// Handle empty branch results (from empty blocks like `{}` or no-branch-taken)
 		let is_empty_result = branch_results.is_empty();
 		if is_empty_result {
 			if let Some(data) = result_data.as_mut() {
@@ -1114,7 +1106,6 @@ fn execute_if_multi(
 			continue;
 		}
 
-		// Initialize from first non-empty branch, backfilling previous empty rows
 		if result_data.is_none() {
 			let mut data: Vec<ColumnBuffer> = branch_results
 				.iter()

@@ -66,7 +66,6 @@ static BINDING_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(B
 
 pub(crate) struct SystemSequence {}
 
-/// IDs 1–16384 (2^14) are reserved for system objects across all sequences.
 const SYSTEM_RESERVED: u64 = 16385;
 
 impl SystemSequence {

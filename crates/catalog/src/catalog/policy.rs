@@ -23,22 +23,18 @@ impl Catalog {
 	pub fn find_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(policy) = TransactionalPolicyChanges::find_policy_by_name(admin, name) {
 					return Ok(Some(policy.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalPolicyChanges::is_policy_deleted_by_name(admin, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(policy) = self.materialized.find_policy_by_name_at(name, admin.version()) {
 					return Ok(Some(policy));
 				}
 
-				// 4. Fall back to storage
 				if let Some(policy) =
 					CatalogStore::find_policy_by_name(&mut Transaction::Admin(&mut *admin), name)?
 				{
@@ -125,12 +121,10 @@ impl Catalog {
 
 	#[instrument(name = "catalog::policy::alter", level = "debug", skip(self, txn))]
 	pub fn alter_policy(&self, txn: &mut AdminTransaction, policy_id: PolicyId, enabled: bool) -> Result<()> {
-		// Read pre-state
 		let pre = CatalogStore::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)?;
 
 		CatalogStore::alter_policy_enabled(txn, policy_id, enabled)?;
 
-		// Read post-state
 		let post = CatalogStore::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)?;
 
 		if let (Some(pre), Some(post)) = (pre, post) {
@@ -142,7 +136,6 @@ impl Catalog {
 
 	#[instrument(name = "catalog::policy::drop", level = "debug", skip(self, txn))]
 	pub fn drop_policy(&self, txn: &mut AdminTransaction, policy_id: PolicyId) -> Result<()> {
-		// Get the policy def before dropping for change tracking
 		if let Some(policy) = CatalogStore::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)? {
 			CatalogStore::drop_policy(txn, policy_id)?;
 			txn.track_policy_deleted(policy)?;

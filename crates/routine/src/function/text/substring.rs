@@ -37,7 +37,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		// Validate exactly 3 arguments
 		if args.len() != 3 {
 			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
@@ -74,11 +73,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 						let start_pos = start_container.get(i).copied().unwrap_or(0);
 						let length = length_container.get(i).copied().unwrap_or(0);
 
-						// Get the substring with proper Unicode handling
 						let chars: Vec<char> = original_str.chars().collect();
 						let chars_len = chars.len();
 
-						// Convert negative start to positive index from end
 						let start_idx = if start_pos < 0 {
 							chars_len.saturating_sub((-start_pos) as usize)
 						} else {
@@ -91,7 +88,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 						};
 
 						let substring = if start_idx >= chars_len {
-							// Start position is beyond string length
 							String::new()
 						} else {
 							let end_idx = (start_idx + length_usize).min(chars_len);
@@ -109,7 +105,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 					max_bytes: *max_bytes,
 				};
 
-				// Combine all three bitvecs
 				let mut combined_bv: Option<BitVec> = None;
 				for bv in [text_bv, start_bv, length_bv].into_iter().flatten() {
 					combined_bv = Some(match combined_bv {
@@ -127,7 +122,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 				};
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			// Handle cases where start/length are different integer types
+
 			(
 				ColumnBuffer::Utf8 {
 					container: text_container,
@@ -142,7 +137,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 					if text_container.is_defined(i) {
 						let original_str = text_container.get(i).unwrap();
 
-						// Extract start position from various integer types
 						let start_pos = match start_d {
 							ColumnBuffer::Int1(container) => {
 								container.get(i).map(|&v| v as i32).unwrap_or(0)
@@ -159,7 +153,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 							_ => 0,
 						};
 
-						// Extract length from various integer types
 						let length = match length_d {
 							ColumnBuffer::Int1(container) => {
 								container.get(i).map(|&v| v as i32).unwrap_or(0)
@@ -176,11 +169,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 							_ => 0,
 						};
 
-						// Get the substring with proper Unicode handling
 						let chars: Vec<char> = original_str.chars().collect();
 						let chars_len = chars.len();
 
-						// Convert negative start to positive index from end
 						let start_idx = if start_pos < 0 {
 							chars_len.saturating_sub((-start_pos) as usize)
 						} else {
@@ -193,7 +184,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 						};
 
 						let substring = if start_idx >= chars_len {
-							// Start position is beyond string length
 							String::new()
 						} else {
 							let end_idx = (start_idx + length_usize).min(chars_len);
@@ -211,7 +201,6 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 					max_bytes: *max_bytes,
 				};
 
-				// Combine all three bitvecs
 				let mut combined_bv: Option<BitVec> = None;
 				for bv in [text_bv, start_bv, length_bv].into_iter().flatten() {
 					combined_bv = Some(match combined_bv {

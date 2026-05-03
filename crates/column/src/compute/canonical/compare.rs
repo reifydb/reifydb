@@ -11,10 +11,6 @@ use reifydb_type::{
 
 use crate::compute::CompareOp;
 
-// Produce a boolean canonical array where each row is `true` iff
-// `array[row] <op> rhs`. None values in the input propagate to None in the
-// output (RQL three-valued logic). The output buffer is a `ColumnBuffer::Bool`
-// and the `ty` is `Type::Boolean`.
 pub fn compare(array: &Canonical, rhs: &Value, op: CompareOp) -> Result<Canonical> {
 	let len = array.len();
 	let mut out = Vec::with_capacity(len);

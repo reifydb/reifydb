@@ -102,16 +102,12 @@ fn uuid_to_bump<'bump, T: IsUuid + Clone + Debug + Default, S: Storage>(
 }
 
 fn utf8_to_cow<S: Storage>(src: &Utf8Container<S>) -> Utf8Container<Cow> {
-	// Copy bytes + offsets into Cow storage. Layout is preserved exactly,
-	// so reading the result via the FFI marshal path is still zero-copy
-	// against the Cow buffers.
 	let data = vec_to_cow::<u8, S>(src.data_storage());
 	let offsets = vec_to_cow::<u64, S>(src.offsets_storage());
 	Utf8Container::from_storage_parts(data, offsets)
 }
 
 fn utf8_to_bump<'bump, S: Storage>(src: &Utf8Container<S>, bump: &'bump BumpAlloc) -> Utf8Container<Bump<'bump>> {
-	// Bump-storage variant: copy bytes + offsets into bump-allocated vecs.
 	let data = vec_to_bump::<u8, S>(src.data_storage(), bump);
 	let offsets = vec_to_bump::<u64, S>(src.offsets_storage(), bump);
 	Utf8Container::from_storage_parts(data, offsets)
@@ -309,8 +305,6 @@ pub fn column_to_cow(src: &ColumnWithName) -> ColumnWithName {
 }
 
 pub fn column_to_bump(src: &ColumnWithName, _bump: &BumpAlloc) -> ColumnWithName {
-	// Column no longer carries a storage generic; this helper stays
-	// as a Cow-returning alias during the Phase 6 migration.
 	ColumnWithName::new(src.name().clone(), column_data_to_cow::<Cow>(src.data()))
 }
 

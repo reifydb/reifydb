@@ -4,11 +4,6 @@
 use crate::value::r#type::Type;
 
 impl Type {
-	/// Returns the widest `Type` that losslessly accommodates every input,
-	/// reducing via `Type::promote`.
-	///
-	/// Returns `Type::Any` for an empty input (matches the fallback that
-	/// `ColumnBuffer::with_capacity` uses when no type is known).
 	pub fn super_type_of<I>(iter: I) -> Type
 	where
 		I: IntoIterator<Item = Type>,

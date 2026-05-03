@@ -45,11 +45,9 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 	let row_count = columns.row_count();
 	let column_count = columns.len();
 
-	// Pre-allocate with header + column descriptors
 	let header_total = COLUMNS_WASM_HEADER_SIZE + column_count * COLUMN_WASM_SIZE;
 	let mut buf: Vec<u8> = vec![0u8; header_total];
 
-	// Marshal row numbers
 	let (rn_offset, rn_len) = if !columns.row_numbers.is_empty() {
 		let offset = header_total as u32;
 		for rn in columns.row_numbers.iter() {
@@ -62,11 +60,9 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 		(0u32, 0u32)
 	};
 
-	// Marshal each column
 	let mut col_descriptors: Vec<ColumnWasm> = Vec::with_capacity(column_count);
 
 	for col in columns.iter() {
-		// Name
 		let name_bytes = col.name().text().as_bytes();
 		let name_offset = buf.len() as u32;
 		buf.extend_from_slice(name_bytes);
@@ -76,21 +72,17 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 		let data_row_count = data.len() as u32;
 		let type_code = column_data_to_type_code(data) as u32;
 
-		// Unwrap Option to get inner data + bitvec
 		let (inner_data, opt_bitvec) = data.unwrap_option();
 
-		// Bitvec
 		let (bitvec_offset, bitvec_len) = if let Some(bv) = opt_bitvec {
 			marshal_bitvec_to_buf(&mut buf, bv)
 		} else if data_row_count > 0 {
-			// All defined - write all-ones bitvec
 			let all_ones = BitVec::repeat(data_row_count as usize, true);
 			marshal_bitvec_to_buf(&mut buf, &all_ones)
 		} else {
 			(0u32, 0u32)
 		};
 
-		// Data + offsets
 		let (data_offset, data_len, offsets_offset, offsets_len) =
 			marshal_column_data_bytes_to_buf(&mut buf, inner_data);
 
@@ -108,19 +100,17 @@ pub fn marshal_columns_to_bytes(columns: &Columns) -> Vec<u8> {
 		});
 	}
 
-	// Write ColumnsWasm header at position 0
 	let header = ColumnsWasm {
 		row_count: row_count as u32,
 		column_count: column_count as u32,
 		row_numbers_offset: rn_offset,
 		row_numbers_len: rn_len,
 	};
-	// Overwrite bytes 0..16
+
 	let mut hdr_buf = Vec::with_capacity(COLUMNS_WASM_HEADER_SIZE);
 	header.write_to_bytes(&mut hdr_buf);
 	buf[..COLUMNS_WASM_HEADER_SIZE].copy_from_slice(&hdr_buf);
 
-	// Write column descriptors at positions 16..16+N*40
 	for (i, desc) in col_descriptors.iter().enumerate() {
 		let offset = COLUMNS_WASM_HEADER_SIZE + i * COLUMN_WASM_SIZE;
 		desc.write_at(&mut buf, offset);
@@ -142,7 +132,6 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 		return Columns::empty();
 	}
 
-	// Unmarshal row numbers
 	let row_numbers: Vec<RowNumber> = if header.row_numbers_offset > 0 && header.row_numbers_len > 0 {
 		let start = header.row_numbers_offset as usize;
 		let end = start + header.row_numbers_len as usize;
@@ -159,13 +148,11 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 		Vec::new()
 	};
 
-	// Unmarshal columns
 	let mut columns: Vec<ColumnWithName> = Vec::with_capacity(column_count);
 	for i in 0..column_count {
 		let desc_start = COLUMNS_WASM_HEADER_SIZE + i * COLUMN_WASM_SIZE;
 		let desc = ColumnWasm::read_from_bytes(&bytes[desc_start..]);
 
-		// Name
 		let name = if desc.name_len > 0 {
 			let start = desc.name_offset as usize;
 			let end = start + desc.name_len as usize;
@@ -178,7 +165,6 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 		let data_row_count = desc.data_row_count as usize;
 		let type_code = type_code_from_u32(desc.type_code);
 
-		// Bitvec
 		let bitvec = if desc.bitvec_len > 0 {
 			let start = desc.bitvec_offset as usize;
 			let end = start + desc.bitvec_len as usize;
@@ -187,7 +173,6 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 			BitVec::repeat(data_row_count, true)
 		};
 
-		// Data slice
 		let data_slice = if desc.data_len > 0 {
 			let start = desc.data_offset as usize;
 			let end = start + desc.data_len as usize;
@@ -196,7 +181,6 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 			&[]
 		};
 
-		// Offsets slice
 		let offsets_slice = if desc.offsets_len > 0 {
 			let start = desc.offsets_offset as usize;
 			let end = start + desc.offsets_len as usize;
@@ -228,7 +212,6 @@ fn marshal_bitvec_to_buf(buf: &mut Vec<u8>, bitvec: &BitVec) -> (u32, u32) {
 	let byte_count = len.div_ceil(8);
 	let offset = buf.len() as u32;
 
-	// Zero-initialize
 	buf.resize(buf.len() + byte_count, 0);
 	let start = offset as usize;
 
@@ -573,7 +556,6 @@ fn unmarshal_column_data(
 		ColumnTypeCode::Undefined => return ColumnBuffer::none_typed(Type::Any, row_count),
 	};
 
-	// Wrap in Option if bitvec has any false (null) values
 	maybe_wrap_option(inner, bitvec)
 }
 

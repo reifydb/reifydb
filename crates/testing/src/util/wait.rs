@@ -5,22 +5,10 @@ use std::time::{Duration, Instant};
 
 use tokio::time::sleep;
 
-/// Default timeout for wait operations (5 seconds)
 pub const DEFAULT_TIMEOSVT: Duration = Duration::from_secs(5);
 
-/// Default poll interval (1 millisecond)
 pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
-/// Wait for a condition to become true, polling at regular intervals
-///
-/// # Arguments
-/// * `condition` - A closure that returns true when the wait should end
-/// * `timeout` - Maximum time to wait before panicking
-/// * `poll_interval` - How often to check the condition
-/// * `timeout_message` - Message to display if timeout occurs
-///
-/// # Panics
-/// Panics if the condition doesn't become true within the timeout period
 pub async fn wait_for_condition<F>(condition: F, timeout: Duration, poll_interval: Duration, timeout_message: &str)
 where
 	F: Fn() -> bool,
@@ -52,9 +40,6 @@ where
 	);
 }
 
-/// Wait for a condition with default timeout and poll interval
-///
-/// Uses a 1-second timeout and 1ms poll interval
 pub async fn wait_for<F>(condition: F, message: &str)
 where
 	F: Fn() -> bool,

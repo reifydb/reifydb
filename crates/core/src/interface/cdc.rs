@@ -32,8 +32,6 @@ impl AsRef<str> for CdcConsumerId {
 	}
 }
 
-/// Internal system/metadata change (flow registrations, catalog ops, etc.)
-/// Kept in encoded form for key-level inspection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SystemChange {
 	Insert {
@@ -52,7 +50,6 @@ pub enum SystemChange {
 }
 
 impl SystemChange {
-	/// Get the key for this change.
 	pub fn key(&self) -> &EncodedKey {
 		match self {
 			SystemChange::Insert {
@@ -70,7 +67,6 @@ impl SystemChange {
 		}
 	}
 
-	/// Calculate the approximate value bytes for this change (pre + post values).
 	pub fn value_bytes(&self) -> usize {
 		match self {
 			SystemChange::Insert {
@@ -90,14 +86,13 @@ impl SystemChange {
 	}
 }
 
-/// Structure for storing CDC data with shared metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cdc {
 	pub version: CommitVersion,
 	pub timestamp: DateTime,
-	/// Row-data changes in columnar format
+
 	pub changes: Vec<Change>,
-	/// Internal system changes
+
 	pub system_changes: Vec<SystemChange>,
 }
 
@@ -117,24 +112,20 @@ impl Cdc {
 	}
 }
 
-/// Represents the state of a CDC consumer
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsumerState {
 	pub consumer_id: CdcConsumerId,
 	pub checkpoint: CommitVersion,
 }
 
-/// A batch of CDC entries with continuation info.
 #[derive(Debug, Clone)]
 pub struct CdcBatch {
-	/// The CDC entries in this batch.
 	pub items: Vec<Cdc>,
-	/// Whether there are more items after this batch.
+
 	pub has_more: bool,
 }
 
 impl CdcBatch {
-	/// Creates an empty batch with no more results.
 	pub fn empty() -> Self {
 		Self {
 			items: Vec::new(),
@@ -142,7 +133,6 @@ impl CdcBatch {
 		}
 	}
 
-	/// Returns true if this batch contains no items.
 	pub fn is_empty(&self) -> bool {
 		self.items.is_empty()
 	}

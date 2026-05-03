@@ -10,9 +10,6 @@ use crate::value::{
 	try_from::{TryFromValue, TryFromValueCoerce},
 };
 
-/// Index for O(1) column lookup by name.
-///
-/// Built once when iterating over rows, then shared by all FrameRow references.
 #[derive(Debug)]
 struct ColumnIndex {
 	by_name: HashMap<String, usize>,
@@ -34,9 +31,6 @@ impl ColumnIndex {
 	}
 }
 
-/// A reference to a single row in a Frame.
-///
-/// Provides ergonomic access to column values by name.
 #[derive(Debug)]
 pub struct FrameRow<'a> {
 	frame: &'a Frame,
@@ -45,9 +39,6 @@ pub struct FrameRow<'a> {
 }
 
 impl<'a> FrameRow<'a> {
-	/// Get a typed value from this row by column name (strict type matching).
-	///
-	/// Returns `Ok(None)` for Undefined values.
 	pub fn get<T: TryFromValue>(&self, column: &str) -> Result<Option<T>, FrameError> {
 		let col_idx = self.index.get(column).ok_or_else(|| FrameError::ColumnNotFound {
 			name: column.to_string(),
@@ -67,9 +58,6 @@ impl<'a> FrameRow<'a> {
 		})
 	}
 
-	/// Get a typed value with widening coercion.
-	///
-	/// Returns `Ok(None)` for Undefined values.
 	pub fn get_coerce<T: TryFromValueCoerce>(&self, column: &str) -> Result<Option<T>, FrameError> {
 		let col_idx = self.index.get(column).ok_or_else(|| FrameError::ColumnNotFound {
 			name: column.to_string(),
@@ -89,33 +77,23 @@ impl<'a> FrameRow<'a> {
 		})
 	}
 
-	/// Get the raw Value by column name.
-	///
-	/// Returns the owned Value, or None if the column doesn't exist.
 	pub fn get_value(&self, column: &str) -> Option<Value> {
 		self.index.get(column).map(|col_idx| self.frame.columns[col_idx].data.get_value(self.row_idx))
 	}
 
-	/// Get the row index (0-based position in the frame).
 	pub fn index(&self) -> usize {
 		self.row_idx
 	}
 
-	/// Get the row number from frame metadata, if available.
 	pub fn row_number(&self) -> Option<RowNumber> {
 		self.frame.row_numbers.get(self.row_idx).copied()
 	}
 
-	/// Check if a column value is defined (not Undefined).
 	pub fn is_defined(&self, column: &str) -> Option<bool> {
 		self.index.get(column).map(|col_idx| self.frame.columns[col_idx].data.is_defined(self.row_idx))
 	}
 }
 
-/// Iterator over rows in a Frame.
-///
-/// Created by calling `frame.rows()`. Yields `FrameRow` references that
-/// provide ergonomic access to column values.
 pub struct FrameRows<'a> {
 	frame: &'a Frame,
 	index: Rc<ColumnIndex>,
@@ -178,17 +156,6 @@ impl<'a> DoubleEndedIterator for FrameRows<'a> {
 }
 
 impl Frame {
-	/// Iterate over rows in the frame.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// for row in frame.rows() {
-	///     let id: Option<i64> = row.get("id")?;
-	///     let name: Option<String> = row.get("name")?;
-	///     println!("{:?}: {:?}", id, name);
-	/// }
-	/// ```
 	pub fn rows(&self) -> FrameRows<'_> {
 		FrameRows::new(self)
 	}

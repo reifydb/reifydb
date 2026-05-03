@@ -68,8 +68,6 @@ impl FilterOperator {
 		}
 	}
 
-	/// Evaluate filter on all rows in Columns
-	/// Returns a boolean mask indicating which rows pass the filter
 	fn evaluate(&self, columns: &Columns) -> Result<Vec<bool>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -91,7 +89,6 @@ impl FilterOperator {
 		};
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 
-		// Start with all rows passing
 		let mut mask = vec![true; row_count];
 
 		for compiled_condition in &self.compiled_conditions {
@@ -116,7 +113,6 @@ impl FilterOperator {
 		Ok(mask)
 	}
 
-	/// Filter Columns to only include rows that pass the filter
 	fn filter_passing(&self, columns: &Columns, mask: &[bool]) -> Columns {
 		let passing_indices: Vec<usize> =
 			mask.iter().enumerate().filter(|&(_, pass)| *pass).map(|(idx, _)| idx).collect();
@@ -183,12 +179,6 @@ impl FilterOperator {
 
 	#[inline]
 	fn apply_filter_update(&self, pre: &Columns, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
-		// Updates partition into 4 buckets by (pre_mask, post_mask):
-		//   (T, T) -> Update      (still visible)
-		//   (F, T) -> Insert      (became visible)
-		//   (T, F) -> Remove      (became invisible)
-		//   (F, F) -> drop        (never visible)
-		// The subscriber only ever saw rows whose pre matched the predicate.
 		let pre_mask = self.evaluate(pre)?;
 		let post_mask = self.evaluate(post)?;
 

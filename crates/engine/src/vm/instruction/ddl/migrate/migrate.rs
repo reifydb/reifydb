@@ -47,8 +47,6 @@ fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a mut AdminTra
 	}
 }
 
-/// List all migrations sorted by name and filter to those not yet `Applied`.
-/// Migrations with no events are treated as pending.
 #[inline]
 fn list_pending_migrations(services: &Arc<Services>, txn: &mut AdminTransaction) -> Result<Vec<Migration>> {
 	let mut migrations = services.catalog.list_migrations(&mut Transaction::Admin(&mut *txn))?;
@@ -65,8 +63,6 @@ fn list_pending_migrations(services: &Arc<Services>, txn: &mut AdminTransaction)
 		.collect())
 }
 
-/// If `target` is set, return all pending migrations up to and including the
-/// one whose name matches; otherwise return all pending.
 #[inline]
 fn pick_migrations_to_apply(pending: Vec<Migration>, target: Option<&str>) -> Vec<Migration> {
 	let Some(target) = target else {

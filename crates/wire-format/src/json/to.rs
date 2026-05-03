@@ -6,7 +6,6 @@ use serde_json::{Error, to_string};
 
 use crate::json::types::{ResponseColumn, ResponseFrame};
 
-/// Convert database result frames to the JSON wire shape.
 pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 	let mut result = Vec::new();
 
@@ -48,7 +47,6 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 	result
 }
 
-/// Serialize frames to a JSON string of `[ResponseFrame, ...]`.
 pub fn frames_to_json(frames: &[Frame]) -> Result<String, Error> {
 	let response_frames = convert_frames(frames);
 	to_string(&response_frames)

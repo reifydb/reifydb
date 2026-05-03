@@ -26,14 +26,9 @@ use super::{
 	VariableExpression, XorExpression,
 };
 
-/// JSON-serializable expression for query builders.
-///
-/// This enum mirrors the `Expression` type but uses simple owned types
-/// instead of lifetimed `Fragment`s, making it suitable for JSON serialization.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum JsonExpression {
-	// Constants
 	None,
 	Bool {
 		value: String,
@@ -48,7 +43,6 @@ pub enum JsonExpression {
 		value: String,
 	},
 
-	// Identifiers
 	Column {
 		namespace: String,
 		shape: String,
@@ -71,7 +65,6 @@ pub enum JsonExpression {
 		name: String,
 	},
 
-	// Comparison
 	GreaterThan {
 		left: Box<JsonExpression>,
 		right: Box<JsonExpression>,
@@ -97,7 +90,6 @@ pub enum JsonExpression {
 		right: Box<JsonExpression>,
 	},
 
-	// Logical
 	And {
 		left: Box<JsonExpression>,
 		right: Box<JsonExpression>,
@@ -111,7 +103,6 @@ pub enum JsonExpression {
 		right: Box<JsonExpression>,
 	},
 
-	// Arithmetic
 	Add {
 		left: Box<JsonExpression>,
 		right: Box<JsonExpression>,
@@ -133,7 +124,6 @@ pub enum JsonExpression {
 		right: Box<JsonExpression>,
 	},
 
-	// Complex
 	Alias {
 		alias: String,
 		expression: Box<JsonExpression>,
@@ -192,14 +182,12 @@ pub enum JsonExpression {
 	},
 }
 
-/// JSON representation of an else-if branch.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct JsonElseIf {
 	pub condition: Box<JsonExpression>,
 	pub then: Box<JsonExpression>,
 }
 
-// Helper to extract namespace and primitive from ColumnShape
 fn extract_shape(cp: &ColumnShape) -> (String, String) {
 	match cp {
 		ColumnShape::Qualified {
@@ -210,7 +198,6 @@ fn extract_shape(cp: &ColumnShape) -> (String, String) {
 	}
 }
 
-// Helper to create an internal fragment
 fn internal_fragment(text: &str) -> Fragment {
 	Fragment::Internal {
 		text: Arc::from(text),
@@ -220,7 +207,6 @@ fn internal_fragment(text: &str) -> Fragment {
 impl From<&Expression> for JsonExpression {
 	fn from(expr: &Expression) -> Self {
 		match expr {
-			// Constants
 			Expression::Constant(constant) => match constant {
 				ConstantExpression::None {
 					..
@@ -247,7 +233,6 @@ impl From<&Expression> for JsonExpression {
 				},
 			},
 
-			// Identifiers
 			Expression::Column(ColumnExpression(col)) => {
 				let (namespace, shape) = extract_shape(&col.shape);
 				JsonExpression::Column {
@@ -273,16 +258,15 @@ impl From<&Expression> for JsonExpression {
 				ParameterExpression::Positional {
 					fragment,
 				} => JsonExpression::ParameterPositional {
-					position: fragment.text()[1..].to_string(), // Skip '$'
+					position: fragment.text()[1..].to_string(),
 				},
 				ParameterExpression::Named {
 					fragment,
 				} => JsonExpression::ParameterNamed {
-					name: fragment.text()[1..].to_string(), // Skip '$'
+					name: fragment.text()[1..].to_string(),
 				},
 			},
 
-			// Comparison
 			Expression::GreaterThan(e) => JsonExpression::GreaterThan {
 				left: Box::new((&*e.left).into()),
 				right: Box::new((&*e.right).into()),
@@ -308,7 +292,6 @@ impl From<&Expression> for JsonExpression {
 				right: Box::new((&*e.right).into()),
 			},
 
-			// Logical
 			Expression::And(e) => JsonExpression::And {
 				left: Box::new((&*e.left).into()),
 				right: Box::new((&*e.right).into()),
@@ -322,7 +305,6 @@ impl From<&Expression> for JsonExpression {
 				right: Box::new((&*e.right).into()),
 			},
 
-			// Arithmetic
 			Expression::Add(e) => JsonExpression::Add {
 				left: Box::new((&*e.left).into()),
 				right: Box::new((&*e.right).into()),
@@ -344,7 +326,6 @@ impl From<&Expression> for JsonExpression {
 				right: Box::new((&*e.right).into()),
 			},
 
-			// Complex
 			Expression::Alias(e) => JsonExpression::Alias {
 				alias: e.alias.name().to_string(),
 				expression: Box::new((&*e.expression).into()),
@@ -429,7 +410,6 @@ impl TryFrom<JsonExpression> for Expression {
 
 	fn try_from(json: JsonExpression) -> Result<Self> {
 		Ok(match json {
-			// Constants
 			JsonExpression::None => Expression::Constant(ConstantExpression::None {
 				fragment: Fragment::None,
 			}),
@@ -454,7 +434,6 @@ impl TryFrom<JsonExpression> for Expression {
 				fragment: internal_fragment(&value),
 			}),
 
-			// Identifiers
 			JsonExpression::Column {
 				namespace,
 				shape,
@@ -495,7 +474,6 @@ impl TryFrom<JsonExpression> for Expression {
 				fragment: internal_fragment(&format!("${}", name)),
 			}),
 
-			// Comparison
 			JsonExpression::GreaterThan {
 				left,
 				right,
@@ -545,7 +523,6 @@ impl TryFrom<JsonExpression> for Expression {
 				fragment: Fragment::None,
 			}),
 
-			// Logical
 			JsonExpression::And {
 				left,
 				right,
@@ -571,7 +548,6 @@ impl TryFrom<JsonExpression> for Expression {
 				fragment: Fragment::None,
 			}),
 
-			// Arithmetic
 			JsonExpression::Add {
 				left,
 				right,
@@ -613,7 +589,6 @@ impl TryFrom<JsonExpression> for Expression {
 				fragment: Fragment::None,
 			}),
 
-			// Complex
 			JsonExpression::Alias {
 				alias,
 				expression,
@@ -777,9 +752,7 @@ impl TryFrom<JsonExpression> for Expression {
 	}
 }
 
-// Helper to parse type strings back to Type enum
 fn parse_type(s: &str) -> Result<Type> {
-	// Handle type debug representations
 	let ty = match s.to_lowercase().as_str() {
 		"boolean" => Type::Boolean,
 		"bool" => Type::Boolean,
@@ -821,22 +794,16 @@ fn parse_type(s: &str) -> Result<Type> {
 	Ok(ty)
 }
 
-/// Serialize an Expression to a JSON string.
-///
-/// The output skips Fragment source location metadata and preserves only
-/// semantic data suitable for frontend query builders.
 pub fn to_json(expr: &Expression) -> String {
 	let json_expr: JsonExpression = expr.into();
 	to_string(&json_expr).expect("JsonExpression should always serialize")
 }
 
-/// Serialize an Expression to a pretty-printed JSON string.
 pub fn to_json_pretty(expr: &Expression) -> String {
 	let json_expr: JsonExpression = expr.into();
 	to_string_pretty(&json_expr).expect("JsonExpression should always serialize")
 }
 
-/// Deserialize an Expression from a JSON string.
 pub fn from_json(json: &str) -> Result<Expression> {
 	let json_expr: JsonExpression = from_str(json).map_err(|e| {
 		Error::from(TypeError::SerdeDeserialize {

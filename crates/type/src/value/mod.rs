@@ -54,75 +54,73 @@ use r#type::Type;
 use uint::Uint;
 use uuid::{Uuid4, Uuid7};
 
-/// A RQL value, represented as a native Rust type.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Value {
-	/// Value is none (think null in common programming languages)
 	None {
 		#[serde(skip, default = "default_none_inner")]
 		inner: Type,
 	},
-	/// A boolean: true or false.
+
 	Boolean(bool),
-	/// A 4-byte floating point
+
 	Float4(OrderedF32),
-	/// An 8-byte floating point
+
 	Float8(OrderedF64),
-	/// A 1-byte signed integer
+
 	Int1(i8),
-	/// A 2-byte signed integer
+
 	Int2(i16),
-	/// A 4-byte signed integer
+
 	Int4(i32),
-	/// An 8-byte signed integer
+
 	Int8(i64),
-	/// A 16-byte signed integer
+
 	Int16(i128),
-	/// A UTF-8 encoded text. Maximum 255 bytes
+
 	Utf8(String),
-	/// A 1-byte unsigned integer
+
 	Uint1(u8),
-	/// A 2-byte unsigned integer
+
 	Uint2(u16),
-	/// A 4-byte unsigned integer
+
 	Uint4(u32),
-	/// A 8-byte unsigned integer
+
 	Uint8(u64),
-	/// A 16-byte unsigned integer
+
 	Uint16(u128),
-	/// A date value (year, month, day)
+
 	Date(Date),
-	/// A date and time value with nanosecond precision in SVTC
+
 	DateTime(DateTime),
-	/// A time value (hour, minute, second, nanosecond)
+
 	Time(Time),
-	/// A duration representing a duration
+
 	Duration(Duration),
-	/// An identity identifier (UUID v7)
+
 	IdentityId(IdentityId),
-	/// A UUID version 4 (random)
+
 	Uuid4(Uuid4),
-	/// A UUID version 7 (timestamp-based)
+
 	Uuid7(Uuid7),
-	/// A binary large object (BLOB)
+
 	Blob(Blob),
-	/// An arbitrary-precision signed integer
+
 	Int(Int),
-	/// An arbitrary-precision unsigned integer
+
 	Uint(Uint),
-	/// An arbitrary-precision decimal
+
 	Decimal(Decimal),
-	/// A container that can hold any value type
+
 	Any(Box<Value>),
-	/// A dictionary entry identifier
+
 	DictionaryId(DictionaryEntryId),
-	/// A type value (first-class type identifier)
+
 	Type(Type),
-	/// An ordered list of values
+
 	List(Vec<Value>),
-	/// A record (named fields with values)
+
 	Record(Vec<(String, Value)>),
-	/// A tuple of heterogeneous values
+
 	Tuple(Vec<Value>),
 }
 
@@ -352,7 +350,7 @@ impl hash::Hash for Value {
 		match self {
 			Value::None {
 				..
-			} => {} // All Nones hash identically
+			} => {}
 			Value::Boolean(v) => v.hash(state),
 			Value::Float4(v) => v.hash(state),
 			Value::Float8(v) => v.hash(state),

@@ -85,12 +85,10 @@ impl FlowEngine {
 		}
 	}
 
-	/// Get access to the clock for timestamp generation
 	pub fn clock(&self) -> &Clock {
 		&self.runtime_context.clock
 	}
 
-	/// Create an FFI operator instance from the global singleton loader
 	#[cfg(reifydb_target = "native")]
 	#[instrument(name = "flow::engine::create_ffi_operator", level = "debug", skip(self, config), fields(operator = %operator, node_id = ?node_id))]
 	pub(crate) fn create_ffi_operator(
@@ -112,7 +110,6 @@ impl FlowEngine {
 		Ok(Box::new(FFIOperator::new(descriptor, instance, node_id, self.executor.clone())))
 	}
 
-	/// Check if an operator name corresponds to an FFI operator
 	#[cfg(reifydb_target = "native")]
 	pub(crate) fn is_ffi_operator(&self, operator: &str) -> bool {
 		let loader = ffi_operator_loader();
@@ -120,19 +117,16 @@ impl FlowEngine {
 		loader_read.has_operator(operator)
 	}
 
-	/// FFI operators are not supported in WASM
 	#[cfg(not(reifydb_target = "native"))]
 	#[allow(dead_code)]
 	pub(crate) fn is_ffi_operator(&self, _operator: &str) -> bool {
 		false
 	}
 
-	/// Returns a set of all currently registered flow IDs
 	pub fn flow_ids(&self) -> BTreeSet<FlowId> {
 		self.flows.keys().copied().collect()
 	}
 
-	/// Clears all registered flows, operators, sources, sinks, dependency graph, and backfill versions
 	pub fn clear(&mut self) {
 		self.operators.clear();
 		self.flows.clear();
@@ -142,33 +136,26 @@ impl FlowEngine {
 		self.flow_creation_versions.clear();
 	}
 
-	/// Remove a single flow by ID, cleaning up all associated operators, sources, sinks, and analyzer state
 	pub fn remove_flow(&mut self, flow_id: FlowId) {
-		// Collect node IDs for this flow before removing it
 		let node_ids: Vec<FlowNodeId> =
 			self.flows.get(&flow_id).map(|flow| flow.get_node_ids().collect()).unwrap_or_default();
 
-		// Remove operators for all nodes in this flow
 		for node_id in node_ids {
 			self.operators.remove(&node_id);
 		}
 
-		// Clean up source mappings
 		for entries in self.sources.values_mut() {
 			entries.retain(|(fid, _)| *fid != flow_id);
 		}
 		self.sources.retain(|_, v| !v.is_empty());
 
-		// Clean up sink mappings
 		for entries in self.sinks.values_mut() {
 			entries.retain(|(fid, _)| *fid != flow_id);
 		}
 		self.sinks.retain(|_, v| !v.is_empty());
 
-		// Remove flow DAG
 		self.flows.remove(&flow_id);
 
-		// Remove from analyzer (rebuilds dependency_graph)
 		self.analyzer.remove(flow_id);
 	}
 

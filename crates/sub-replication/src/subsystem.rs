@@ -44,11 +44,11 @@ pub struct ReplicationSubsystem {
 	runtime: SharedRuntime,
 	running: Arc<AtomicBool>,
 	actual_addr: RwLock<Option<SocketAddr>>,
-	// Primary mode
+
 	shutdown_tx: Option<oneshot::Sender<()>>,
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
 	stream_shutdown_tx: Option<watch::Sender<bool>>,
-	// Replica mode
+
 	replica_shutdown_tx: Option<watch::Sender<bool>>,
 	replica_complete_rx: Option<oneshot::Receiver<()>>,
 }
@@ -258,9 +258,6 @@ impl Subsystem for ReplicationSubsystem {
 	fn shutdown(&mut self) -> Result<()> {
 		match &self.config {
 			ReplicationConfig::Primary(_) => {
-				// Signal streaming tasks to exit first, so they drop their
-				// channel senders and allow the gRPC server's graceful
-				// shutdown to complete without waiting on open streams.
 				if let Some(tx) = self.stream_shutdown_tx.take() {
 					let _ = tx.send(true);
 				}

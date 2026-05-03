@@ -35,11 +35,6 @@ impl Default for StorageSubsystemFactory {
 }
 
 impl SubsystemFactory for StorageSubsystemFactory {
-	// Resolves `SharedRuntime` + `StandardEngine` from the IoC container and
-	// spawns both materialization actors on the runtime's actor system. The
-	// returned `StorageSubsystem` holds the ref clones needed for an explicit
-	// shutdown signal; actor-system shutdown on `Database::stop()` performs
-	// the actual join.
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let runtime = ioc.resolve::<SharedRuntime>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;

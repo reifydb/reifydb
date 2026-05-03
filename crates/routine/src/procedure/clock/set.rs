@@ -15,9 +15,6 @@ use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::Rou
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("clock::set"));
 
-/// Native procedure that sets the mock clock to a specific time.
-///
-/// Accepts 1 positional argument: a DateTime, Duration (since epoch), or integer milliseconds.
 pub struct ClockSetProcedure;
 
 impl Default for ClockSetProcedure {
@@ -67,7 +64,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
 						mock.set_nanos(dt.to_nanos());
 					}
 					Value::Duration(dur) => {
-						let epoch = DateTime::default(); // 1970-01-01T00:00:00Z
+						let epoch = DateTime::default();
 						let target = epoch.add_duration(dur)?;
 						mock.set_nanos(target.to_nanos());
 					}

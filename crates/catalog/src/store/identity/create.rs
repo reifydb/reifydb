@@ -13,8 +13,6 @@ use crate::{
 };
 
 impl CatalogStore {
-	/// Create an identity with a specific IdentityId. Used for bootstrapping system identities (e.g. root).
-	/// Skips duplicate check - caller must ensure uniqueness.
 	pub(crate) fn create_identity_with_id(
 		txn: &mut AdminTransaction,
 		name: &str,

@@ -22,7 +22,6 @@ pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &MaterializedCata
 	}
 	drop(stream);
 
-	// Load policy operations
 	let op_range = PolicyOpKey::full_scan();
 	let op_stream = rx.range(op_range, 1024)?;
 

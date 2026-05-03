@@ -16,7 +16,6 @@ use reifydb_type::{
 
 use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
-/// Identifies the primitive type category for a `testing::*::changed()` procedure.
 pub struct TestingChanged {
 	pub shape_type: &'static str,
 	info: RoutineInfo,
@@ -50,13 +49,10 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingChanged {
 
 		let filter_arg = extract_optional_string_param(ctx.params);
 
-		// Materialize view rows from pending source changes so that
-		// changed() sees transactional view mutations.
 		if self.shape_type == "views" {
 			let _ = t.capture_testing_pre_commit();
 		}
 
-		// Read individual mutations from the accumulator
 		let entries: Vec<_> =
 			t.accumulator_entries_from().iter().map(|(id, diff)| (*id, diff.clone())).collect();
 

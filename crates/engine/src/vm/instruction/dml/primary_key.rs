@@ -13,36 +13,25 @@ use reifydb_type::value::r#type::Type;
 
 use crate::Result;
 
-/// Extract primary key values from a encoded and encode them as an index key
 pub fn encode_primary_key(
 	pk_def: &PrimaryKey,
 	row: &EncodedRow,
 	table: &Table,
 	shape: &RowShape,
 ) -> Result<EncodedIndexKey> {
-	// Create index layout for PK columns
 	let types: Vec<Type> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
 	let directions = vec![SortDirection::Asc; types.len()];
 	let index_shape = IndexShape::new(&types, &directions)?;
 
 	let mut index_key = index_shape.allocate_key();
 
-	// Extract values from encoded for each PK column
 	for (pk_idx, pk_column) in pk_def.columns.iter().enumerate() {
-		// Find column index in table
 		let table_idx = table
 			.columns
 			.iter()
 			.position(|c| c.id == pk_column.id)
 			.expect("Primary key column not found in table");
 
-		// Check if value is defined
-		// Note: RowShape doesn't have is_defined for individual
-		// fields, so we'll check by trying to get the value and
-		// seeing if it's undefined For now, we'll assume all values
-		// are defined
-
-		// Copy value based on type
 		match pk_column.constraint.get_type() {
 			Type::Boolean => {
 				let val = shape.get_bool(row, table_idx);
@@ -97,13 +86,9 @@ pub fn encode_primary_key(
 				index_shape.set_f64(&mut index_key, pk_idx, val);
 			}
 			Type::Utf8 => {
-				// UTF8 strings can't be used in indexes
-				// currently This would require implementing
-				// variable-length encoding
 				panic!("UTF8 columns in primary keys not yet supported");
 			}
 			Type::Blob => {
-				// Blobs can't be used in indexes
 				panic!("Blob columns cannot be used in primary keys");
 			}
 			Type::Date => {
@@ -135,23 +120,15 @@ pub fn encode_primary_key(
 				index_shape.set_identity_id(&mut index_key, pk_idx, val);
 			}
 			Type::Int => {
-				// Int columns in primary keys not yet
-				// supported
 				panic!("Int columns in primary keys not yet supported");
 			}
 			Type::Uint => {
-				// Uint columns in primary keys not yet
-				// supported
 				panic!("Uint columns in primary keys not yet supported");
 			}
 			Type::Decimal => {
-				// Decimal columns in primary keys not yet
-				// supported
 				panic!("Decimal columns in primary keys not yet supported");
 			}
 			Type::Option(_) => {
-				// None values in primary key will be
-				// handled later with constraints
 				index_shape.set_none(&mut index_key, pk_idx);
 			}
 			Type::DictionaryId => {
@@ -175,7 +152,6 @@ pub fn encode_primary_key(
 	Ok(index_key)
 }
 
-/// Helper to load the primary key definition if the table has one
 pub fn get_primary_key(catalog: &Catalog, txn: &mut Transaction<'_>, table: &Table) -> Result<Option<PrimaryKey>> {
 	if let Some(_pk_id) = catalog.get_table_pk_id(txn, table.id)? {
 		catalog.find_primary_key(txn, table.id)

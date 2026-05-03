@@ -133,14 +133,10 @@ fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Res
 	let mut out = ColumnBuffer::with_capacity(Type::Boolean, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
-			// Parse with internal fragment, then replace with
-			// proper source fragment if error
 			let temp_fragment = Fragment::internal(container.get(idx).unwrap());
 			match parse_bool(temp_fragment) {
 				Ok(b) => out.push(b),
 				Err(mut e) => {
-					// Replace the error's fragment with the
-					// proper source fragment
 					e.0.with_fragment(lazy_fragment.fragment());
 					return Err(e);
 				}

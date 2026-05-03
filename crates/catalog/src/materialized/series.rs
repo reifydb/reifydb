@@ -12,7 +12,6 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionSeries};
 
 impl MaterializedCatalog {
-	/// Find a series by ID at a specific version
 	pub fn find_series_at(&self, series: SeriesId, version: CommitVersion) -> Option<Series> {
 		self.series.get(&series).and_then(|entry| {
 			let multi = entry.value();
@@ -20,7 +19,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a series by name in a namespace at a specific version
 	pub fn find_series_by_name_at(
 		&self,
 		namespace: NamespaceId,
@@ -33,7 +31,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a series by ID (returns latest version)
 	pub fn find_series(&self, series: SeriesId) -> Option<Series> {
 		self.series.get(&series).and_then(|entry| {
 			let multi = entry.value();
@@ -41,7 +38,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a series by name in a namespace (returns latest version)
 	pub fn find_series_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Series> {
 		self.series_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let series_id = *entry.value();
@@ -49,7 +45,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// List the latest version of all series.
 	pub fn list_series(&self) -> Vec<Series> {
 		self.series.iter().filter_map(|entry| entry.value().get_latest()).collect()
 	}

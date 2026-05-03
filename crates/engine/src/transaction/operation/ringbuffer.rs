@@ -107,9 +107,6 @@ pub trait RingBufferOperations {
 
 impl RingBufferOperations for CommandTransaction {
 	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedRow) -> Result<RowNumber> {
-		// For ring buffers, the row_number is determined by the caller based on ring buffer metadata
-		// This is different from tables which use RowSequence::next_row_number
-		// The caller must provide the correct row_number based on head/tail position
 		unimplemented!(
 			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
 		)
@@ -124,13 +121,11 @@ impl RingBufferOperations for CommandTransaction {
 	) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, row_number);
 
-		// Check if we're overwriting existing data (for ring buffer circular behavior)
 		let pre = self.get(&key)?.map(|v| v.row);
 
-		// If there's an existing encoded, we need to delete it first with interceptors
 		if let Some(ref existing) = pre {
 			RingBufferRowInterceptor::pre_delete(self, ringbuffer, row_number)?;
-			// Don't actually remove, we'll overwrite
+
 			RingBufferRowInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
 		}
 

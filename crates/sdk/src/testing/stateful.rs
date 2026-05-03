@@ -142,7 +142,7 @@ impl KeyedStatefulTestHelper {
 
 pub struct WindowStatefulTestHelper {
 	shape: RowShape,
-	windows: HashMap<i64, HashMap<EncodedKey, EncodedRow>>, // window_id -> key -> state
+	windows: HashMap<i64, HashMap<EncodedKey, EncodedRow>>,
 	window_size: i64,
 }
 

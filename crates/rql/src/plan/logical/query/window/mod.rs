@@ -22,7 +22,6 @@ use crate::{
 	plan::logical::{Compiler, LogicalPlan},
 };
 
-/// Raw parsed config values from WITH clause (before constructing WindowKind)
 #[derive(Debug, Default)]
 struct ParsedConfig {
 	pub interval: Option<Duration>,
@@ -48,25 +47,21 @@ impl<'bump> Compiler<'bump> {
 		let mut parsed = ParsedConfig::default();
 		let mut group_by = Vec::new();
 
-		// Parse configuration parameters
 		for config_item in &ast.config {
 			Self::parse_config_item(config_item, &mut parsed)?;
 		}
 
-		// Compile group by expressions from AST
 		for group_ast in ast.group_by {
 			let group_expr = ExpressionCompiler::compile(group_ast)?;
 			group_by.push(group_expr);
 		}
 
-		// Compile aggregation expressions
 		let mut aggregations = Vec::new();
 		for agg_ast in ast.aggregations {
 			let agg_expr = ExpressionCompiler::compile(agg_ast)?;
 			aggregations.push(agg_expr);
 		}
 
-		// Determine WindowKind from explicit kind keyword
 		let kind = match ast.kind {
 			AstWindowKind::Tumbling => {
 				let size = Self::build_measure(&parsed)?;
@@ -120,7 +115,6 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::Window(window_node))
 	}
 
-	/// Build a WindowSize from parsed config (interval or count)
 	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize> {
 		if let Some(d) = parsed.interval {
 			Ok(WindowSize::Duration(d))

@@ -13,34 +13,27 @@ use crate::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 
-/// Metadata for a column in a lazy batch
 #[derive(Debug, Clone)]
 pub struct LazyColumnMeta {
-	/// Column name
 	pub name: Fragment,
-	/// Type as stored in encoded form (e.g., Uint2 for dictionary ID)
+
 	pub storage_type: Type,
-	/// Type after decoding (e.g., Utf8 for dictionary value)
+
 	pub output_type: Type,
-	/// Dictionary definition if this column uses dictionary encoding
+
 	pub dictionary: Option<Dictionary>,
 }
 
-/// A batch of rows that defers column materialization until needed.
-///
-/// This allows filters to evaluate predicates on encoded data and only
-/// materialize the rows that pass the filter.
 #[derive(Debug, Clone)]
 pub struct LazyBatch {
-	/// Encoded row data
 	rows: Vec<EncodedRow>,
-	/// Row numbers from storage
+
 	row_numbers: Vec<RowNumber>,
-	/// RowShape for interpreting encoded rows
+
 	shape: RowShape,
-	/// Column metadata (names, types, dictionary defs)
+
 	column_metas: Vec<LazyColumnMeta>,
-	/// Validity bitmap - rows that passed filters (true = valid)
+
 	validity: BitVec,
 }
 
@@ -64,51 +57,40 @@ impl LazyBatch {
 		}
 	}
 
-	/// Total number of rows (before filtering)
 	pub fn total_row_count(&self) -> usize {
 		self.rows.len()
 	}
 
-	/// Number of valid (non-filtered) rows
 	pub fn valid_row_count(&self) -> usize {
 		self.validity.count_ones()
 	}
 
-	/// Check if a specific row is valid (not filtered out)
 	#[inline]
 	pub fn is_row_valid(&self, row_idx: usize) -> bool {
 		self.validity.get(row_idx)
 	}
 
-	/// Number of columns
 	pub fn column_count(&self) -> usize {
 		self.column_metas.len()
 	}
 
-	/// Get column metadata by index
 	pub fn column_meta(&self, col_idx: usize) -> Option<&LazyColumnMeta> {
 		self.column_metas.get(col_idx)
 	}
 
-	/// Find column index by name
 	pub fn column_index(&self, name: &str) -> Option<usize> {
 		self.column_metas.iter().position(|m| m.name.text() == name)
 	}
 
-	/// Get a value from encoded row without full materialization
 	pub fn get_value(&self, row_idx: usize, col_idx: usize) -> Value {
 		self.shape.get_value(&self.rows[row_idx], col_idx)
 	}
 
-	/// Check if a value is defined (not null) without materializing
 	#[inline]
 	pub fn is_defined(&self, row_idx: usize, col_idx: usize) -> bool {
 		self.rows[row_idx].is_defined(col_idx)
 	}
 
-	/// Apply a filter mask to this batch.
-	/// Only keeps rows where the mask bit is true.
-	/// ANDs with the existing validity mask.
 	pub fn apply_filter(&mut self, filter: &BitVec) {
 		debug_assert_eq!(filter.len(), self.rows.len());
 
@@ -119,12 +101,9 @@ impl LazyBatch {
 		}
 	}
 
-	/// Materialize to Columns, only including valid rows.
-	/// Does NOT decode dictionary columns - call decode_dictionaries separately if needed.
 	pub fn into_columns(self) -> Columns {
 		let valid_count = self.valid_row_count();
 
-		// Collect valid row numbers and timestamps
 		let mut result_row_numbers = Vec::with_capacity(valid_count);
 		let mut result_created_at = Vec::with_capacity(valid_count);
 		let mut result_updated_at = Vec::with_capacity(valid_count);
@@ -136,7 +115,6 @@ impl LazyBatch {
 			}
 		}
 
-		// Materialize each column
 		let mut result_columns = Vec::with_capacity(self.column_metas.len());
 		for (col_idx, meta) in self.column_metas.iter().enumerate() {
 			let mut data = ColumnBuffer::with_capacity(meta.storage_type.clone(), valid_count);
@@ -157,12 +135,10 @@ impl LazyBatch {
 		Columns::with_system_columns(result_columns, result_row_numbers, result_created_at, result_updated_at)
 	}
 
-	/// Get column names for headers
 	pub fn column_names(&self) -> Vec<Fragment> {
 		self.column_metas.iter().map(|m| m.name.clone()).collect()
 	}
 
-	/// Get the shape
 	pub fn shape(&self) -> &RowShape {
 		&self.shape
 	}
@@ -172,22 +148,18 @@ impl LazyBatch {
 		&self.shape
 	}
 
-	/// Get the column metas
 	pub fn column_metas(&self) -> &[LazyColumnMeta] {
 		&self.column_metas
 	}
 
-	/// Iterator over valid row indices
 	pub fn valid_row_indices(&self) -> impl Iterator<Item = usize> + '_ {
 		(0..self.rows.len()).filter(|&i| self.is_row_valid(i))
 	}
 
-	/// Get encoded row by index
 	pub fn encoded_row(&self, row_idx: usize) -> &EncodedRow {
 		&self.rows[row_idx]
 	}
 
-	/// Get row number by index
 	pub fn row_number(&self, row_idx: usize) -> RowNumber {
 		self.row_numbers[row_idx]
 	}

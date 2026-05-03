@@ -37,7 +37,6 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		to_create: PrimaryKeyToCreate,
 	) -> Result<PrimaryKeyId> {
-		// Validate that primary key has at least one column
 		if to_create.column_ids.is_empty() {
 			return Err(CatalogError::PrimaryKeyEmpty {
 				fragment: Fragment::None,
@@ -45,12 +44,9 @@ impl CatalogStore {
 			.into());
 		}
 
-		// Get the columns for the table/view and validate all primary
-		// key columns belong to it
 		let source_columns = Self::list_columns(&mut Transaction::Admin(&mut *txn), to_create.shape)?;
 		let source_column_ids: HashSet<_> = source_columns.iter().map(|c| c.id).collect();
 
-		// Validate that all columns belong to the table/view
 		for column_id in &to_create.column_ids {
 			if !source_column_ids.contains(column_id) {
 				return Err(CatalogError::PrimaryKeyColumnNotFound {
@@ -63,16 +59,13 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_primary_key_id(txn)?;
 
-		// Create primary key encoded
 		let mut row = SHAPE.allocate();
 		SHAPE.set_u64(&mut row, primary_key::ID, id.0);
 		SHAPE.set_u64(&mut row, primary_key::SOURCE, to_create.shape.as_u64());
 		SHAPE.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
-		// Store the primary key
 		txn.set(&PrimaryKeyKey::encoded(id), row)?;
 
-		// Update the table or view to reference this primary key
 		match to_create.shape {
 			ShapeId::Table(table_id) => {
 				Self::set_table_primary_key(txn, table_id, id)?;
@@ -81,7 +74,6 @@ impl CatalogStore {
 				Self::set_view_primary_key(txn, view_id, id)?;
 			}
 			ShapeId::TableVirtual(_) => {
-				// Virtual tables don't support primary keys
 				return_internal_error!(
 					"Cannot create primary key for virtual table. Virtual tables do not support primary keys."
 				);
@@ -90,13 +82,11 @@ impl CatalogStore {
 				Self::set_ringbuffer_primary_key(txn, ringbuffer_id, id)?;
 			}
 			ShapeId::Dictionary(_) => {
-				// Dictionaries don't support traditional primary keys
 				return_internal_error!(
 					"Cannot create primary key for dictionary. Dictionaries have their own key structure."
 				);
 			}
 			ShapeId::Series(_) => {
-				// Series don't support traditional primary keys
 				return_internal_error!(
 					"Cannot create primary key for series. Series use timestamp-based key ordering."
 				);

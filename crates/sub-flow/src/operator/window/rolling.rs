@@ -15,7 +15,6 @@ use super::{WindowEvent, WindowLayout, WindowOperator, WindowState};
 use crate::transaction::FlowTransaction;
 
 impl WindowOperator {
-	/// Evict old events from rolling window to maintain size limit
 	pub fn evict_old_events(&self, state: &mut WindowState, current_timestamp: u64) {
 		match &self.kind {
 			WindowKind::Rolling {
@@ -41,8 +40,6 @@ impl WindowOperator {
 		}
 	}
 
-	/// Tick-based eviction for duration-based rolling windows.
-	/// Scans all operator state, finds "win:" keys, and evicts old events.
 	pub fn tick_rolling_eviction(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 
@@ -104,8 +101,6 @@ impl WindowOperator {
 	}
 }
 
-/// Process inserts for a single group in rolling windows.
-/// Rolling windows use a single window (id=0) per group and load state once per group.
 fn process_rolling_group_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -182,7 +177,6 @@ fn process_rolling_group_insert(
 	Ok(result)
 }
 
-/// Apply changes for rolling windows (no expiration - eviction handles cleanup)
 pub fn apply_rolling_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let changed_at = change.changed_at;
 	let diffs = operator.apply_window_change(txn, &change, false, |op, txn, columns| {

@@ -11,7 +11,6 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	/// Compile a closure expression
 	pub(crate) fn compile_closure(
 		&self,
 		ast: AstClosure<'bump>,

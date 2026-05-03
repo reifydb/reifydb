@@ -38,11 +38,10 @@ use crate::{
 };
 
 pub struct TransactionalFlowPreCommitInterceptor {
-	/// The flow engine containing only transactional view flows.
 	pub flow_engine: Arc<RwLock<FlowEngine>>,
-	/// The standard engine used to create read transactions for flow processing.
+
 	pub engine: StandardEngine,
-	/// The catalog for metadata access inside flow transactions.
+
 	pub catalog: Catalog,
 }
 
@@ -144,11 +143,6 @@ fn build_base_pending(transaction_writes: &[(EncodedKey, Option<EncodedRow>)]) -
 
 #[inline]
 fn build_view_overlay(available_changes: &[Change]) -> Arc<Vec<Change>> {
-	// Snapshot of view-origin changes from previous levels (or the original
-	// `flow_changes`). Shared read-only with every flow txn in the next level so
-	// pull paths on a view parent can overlay these on top of their `read_version`
-	// storage scan. See the regression at
-	// `testsuite/flow/tests/scripts/transactional/regression/004_left_join_between_views`.
 	Arc::new(
 		available_changes
 			.iter()
@@ -214,8 +208,6 @@ fn run_flow_in_level(
 		flow_engine.process(flow_txn, change, flow_id)?;
 	}
 
-	// Flush cached operator state so its writes go into `pending` and commit
-	// atomically with the rest of this transactional flow's outputs.
 	flow_txn.flush_operator_states()?;
 
 	Ok(FlowResult {
@@ -255,10 +247,6 @@ fn merge_level_results(
 	Ok(())
 }
 
-/// Returns true if the given change is relevant to the given flow.
-///
-/// Uses the flow engine's `sources` map which records which primitives
-/// (tables/views) each flow listens to.
 fn flow_is_interested_in(change: &Change, flow_id: FlowId, engine: &FlowEngine) -> bool {
 	if let ChangeOrigin::Shape(source) = change.origin {
 		engine.sources
@@ -276,12 +264,6 @@ struct FlowResult {
 	pending_shapes: Vec<RowShape>,
 }
 
-/// Post-commit interceptor that eagerly registers transactional flows.
-///
-/// When an admin transaction that creates a new flow commits, this interceptor
-/// loads the flow DAG and registers it in the transactional `FlowEngine` so it
-/// is available for the very next transaction's pre-commit phase - without
-/// waiting for CDC polling to discover it.
 pub struct TransactionalFlowPostCommitInterceptor {
 	pub registrar: TransactionalFlowRegistry,
 }

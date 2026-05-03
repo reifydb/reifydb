@@ -24,7 +24,7 @@ impl EncodableKey for RowKey {
 	const KIND: KeyKind = KeyKind::Row;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(19); // 1 + 1 + 9 + 8
+		let mut serializer = KeySerializer::with_capacity(19);
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
@@ -82,12 +82,6 @@ impl RowKeyRange {
 		})
 	}
 
-	/// Create a range for scanning rows from a shape
-	///
-	/// If `last_key` is provided, creates a range that continues from after that key.
-	/// Otherwise, creates a range that includes all rows for the shape.
-	///
-	/// The caller is responsible for limiting the number of results returned.
 	pub fn scan_range(shape: ShapeId, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
 		let range = RowKeyRange {
 			shape,
@@ -108,7 +102,7 @@ impl EncodableKeyRange for RowKeyRange {
 	const KIND: KeyKind = KeyKind::Row;
 
 	fn start(&self) -> Option<EncodedKey> {
-		let mut serializer = KeySerializer::with_capacity(11); // 1 + 1 + 9
+		let mut serializer = KeySerializer::with_capacity(11);
 		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
 		Some(serializer.to_encoded_key())
 	}

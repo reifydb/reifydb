@@ -18,7 +18,6 @@ use crate::{operator::join::state::JoinSide, transaction::FlowTransaction};
 pub(crate) struct LeftHashJoin;
 
 impl LeftHashJoin {
-	/// Handle insert for rows with undefined join keys (emits unmatched left row)
 	pub(crate) fn handle_insert_undefined(
 		&self,
 		txn: &mut FlowTransaction,
@@ -28,18 +27,13 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
 			JoinSide::Left => {
-				// Undefined key in left join still emits the row
 				let unmatched = ctx.operator.unmatched_left_columns(txn, post, row_idx)?;
 				Ok(vec![Diff::insert(unmatched)])
 			}
-			JoinSide::Right => {
-				// Right side inserts with undefined keys don't produce output
-				Ok(Vec::new())
-			}
+			JoinSide::Right => Ok(Vec::new()),
 		}
 	}
 
-	/// Handle remove for rows with undefined join keys
 	pub(crate) fn handle_remove_undefined(
 		&self,
 		txn: &mut FlowTransaction,
@@ -51,19 +45,14 @@ impl LeftHashJoin {
 
 		match ctx.side {
 			JoinSide::Left => {
-				// Undefined key - remove the unmatched row
 				let unmatched = ctx.operator.unmatched_left_columns(txn, pre, row_idx)?;
 				ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
 				Ok(vec![Diff::remove(unmatched)])
 			}
-			JoinSide::Right => {
-				// Right side removes with undefined keys don't produce output
-				Ok(Vec::new())
-			}
+			JoinSide::Right => Ok(Vec::new()),
 		}
 	}
 
-	/// Handle update for rows with undefined join keys
 	pub(crate) fn handle_update_undefined(
 		&self,
 		txn: &mut FlowTransaction,
@@ -74,15 +63,11 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
 			JoinSide::Left => {
-				// Both keys are undefined - update the row
 				let unmatched_pre = ctx.operator.unmatched_left_columns(txn, pre, row_idx)?;
 				let unmatched_post = ctx.operator.unmatched_left_columns(txn, post, row_idx)?;
 				Ok(vec![Diff::update(unmatched_pre, unmatched_post)])
 			}
-			JoinSide::Right => {
-				// Right side updates with undefined keys don't produce output
-				Ok(Vec::new())
-			}
+			JoinSide::Right => Ok(Vec::new()),
 		}
 	}
 
@@ -141,10 +126,7 @@ impl LeftHashJoin {
 		add_to_state_entry_batch(txn, &mut ctx.state.right, key_hash, post, indices)?;
 
 		let mut result = Vec::new();
-		// First right row(s): remove previously emitted unmatched left rows.
-		// Pull via `pull_from_store` so we read the state's cached column snapshot;
-		// `parent.pull` fails for transactional cross-view joins because the parent
-		// view's rows aren't committed yet.
+
 		if is_first && ctx.state.left.get(txn, key_hash)?.is_some() {
 			let left_columns =
 				pull_left_columns(txn, &ctx.state.left, key_hash, &ctx.operator.left_parent)?;
@@ -280,7 +262,6 @@ impl LeftHashJoin {
 			return Ok(Vec::new());
 		}
 
-		// Key changed: treat as remove + insert.
 		if keys.pre != keys.post {
 			let mut result = self.handle_remove(txn, pre, indices, keys.pre, ctx)?;
 			result.extend(self.handle_insert(txn, post, indices, keys.post, ctx)?);

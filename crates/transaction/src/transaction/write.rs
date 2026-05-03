@@ -15,9 +15,7 @@ pub trait Write {
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
 	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()>;
 
-	/// Replicas implement this as a no-op (no CDC).
 	fn track_row_change(&mut self, change: RowChange);
 
-	/// Replicas implement this as a no-op (no transactional view processing).
 	fn track_flow_change(&mut self, change: Change);
 }

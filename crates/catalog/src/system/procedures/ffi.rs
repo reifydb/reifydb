@@ -12,7 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use crate::system::ids::{columns::procedures::ffi::*, vtable::PROCEDURES_FFI};
 
-/// Returns the static definition for the `system::procedures::ffi` virtual table.
 pub fn procedures_ffi() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

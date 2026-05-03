@@ -3,9 +3,6 @@
 
 use super::{factory::InterceptorFactory, interceptors::Interceptors};
 
-/// Builder for configuring interceptors using factory functions
-/// This allows building a Send+Sync factory that creates non-Send/Sync
-/// interceptors
 pub struct InterceptorBuilder {
 	factory: InterceptorFactory,
 }

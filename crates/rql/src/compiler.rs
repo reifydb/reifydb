@@ -40,9 +40,6 @@ use crate::{
 
 const DEFAULT_CAPACITY: usize = 1024 * 8;
 
-/// Identity function that constrains a closure to satisfy the HRTB bound required by
-/// `compile_with_policy` / `compile_next_with_policy`. Use this when storing the policy
-/// closure in a variable before passing it, since Rust cannot infer `for<'a>` on bindings.
 pub fn constrain_policy<F>(f: F) -> F
 where
 	F: for<'a> Fn(
@@ -63,13 +60,11 @@ pub struct Compiled {
 	pub normalized_rql: String,
 }
 
-/// Result of compiling a query.
 pub enum CompilationResult {
 	Ready(Arc<Vec<Compiled>>),
 	Incremental(IncrementalCompilation),
 }
 
-/// Opaque state for incremental compilation.
 pub struct IncrementalCompilation {
 	query: String,
 	total_statements: usize,
@@ -152,8 +147,6 @@ impl Compiler {
 		Ok(plans)
 	}
 
-	/// Compile the next statement in an incremental compilation.
-	/// Returns `None` when all statements have been compiled.
 	pub fn compile_next(
 		&self,
 		tx: &mut Transaction<'_>,
@@ -185,8 +178,6 @@ impl Compiler {
 		}
 	}
 
-	/// Compile with a policy closure that can modify logical plans before physical compilation.
-	/// Results are NOT cached since plans are identity-specific.
 	pub fn compile_with_policy<F>(
 		&self,
 		tx: &mut Transaction<'_>,
@@ -235,8 +226,6 @@ impl Compiler {
 		Ok(CompilationResult::Ready(Arc::new(plans)))
 	}
 
-	/// Compile the next statement in an incremental compilation with a policy closure.
-	/// Returns `None` when all statements have been compiled.
 	pub fn compile_next_with_policy<F>(
 		&self,
 		tx: &mut Transaction<'_>,
@@ -277,22 +266,18 @@ impl Compiler {
 		}
 	}
 
-	/// Clear all cached plans.
 	pub fn clear(&self) {
 		self.0.cache.clear();
 	}
 
-	/// Return the number of cached plans.
 	pub fn len(&self) -> usize {
 		self.0.cache.len()
 	}
 
-	/// Return true if the cache is empty.
 	pub fn is_empty(&self) -> bool {
 		self.0.cache.is_empty()
 	}
 
-	/// Return the cache capacity.
 	pub fn capacity(&self) -> usize {
 		self.0.cache.capacity()
 	}
@@ -336,11 +321,8 @@ fn compile_tick_duration(std_dur: time::Duration) -> Duration {
 	Duration::from_nanoseconds(std_dur.as_nanos() as i64).unwrap()
 }
 
-/// Recursively convert a bump-allocated query PhysicalPlan into an owned QueryPlan.
-/// Panics if the plan contains non-query nodes (DDL, DML, control flow, etc.).
 fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 	match plan {
-		// Leaf nodes - reuse directly (already owned types from nodes.rs)
 		PhysicalPlan::TableScan(node) => QueryPlan::TableScan(node),
 		PhysicalPlan::TableVirtualScan(node) => QueryPlan::TableVirtualScan(node),
 		PhysicalPlan::ViewScan(node) => QueryPlan::ViewScan(node),
@@ -357,7 +339,6 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		PhysicalPlan::Variable(node) => QueryPlan::Variable(node),
 		PhysicalPlan::Environment(node) => QueryPlan::Environment(node),
 
-		// Nodes with recursive children - materialize BumpBox to Box
 		PhysicalPlan::Aggregate(node) => QueryPlan::Aggregate(nodes::AggregateNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 			by: node.by,
@@ -456,7 +437,6 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			is_procedure_call: node.is_procedure_call,
 		}),
 
-		// Non-query nodes cannot be materialized to QueryPlan
 		other => panic!(
 			"cannot materialize non-query PhysicalPlan to QueryPlan: {:?}",
 			mem::discriminant(&other)
@@ -476,18 +456,14 @@ fn needs_incremental_compile(statements: &[AstStatement<'_>], has_ddl: bool) -> 
 	statements.len() > 1 && has_ddl
 }
 
-/// Context for tracking loop information during compilation
 struct LoopContext {
-	/// Address of the condition check / ForNext (target for Continue)
 	continue_addr: Addr,
-	/// Placeholder indices in `instructions` where the loop-end address must be backpatched
+
 	break_patches: Vec<usize>,
-	/// Scope depth at the point the loop was entered (used to compute exit_scopes)
+
 	scope_depth: usize,
 }
 
-/// Scan compiled closure body instructions for variable references not in the parameter list.
-/// Returns the list of free variable names (as Fragments) that need to be captured.
 fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]) -> Vec<Fragment> {
 	let param_names: HashSet<&str> = params
 		.iter()
@@ -497,9 +473,6 @@ fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]
 		})
 		.collect();
 
-	// First pass: collect locally-declared variables.
-	// These should NOT be propagated upward even if a nested closure captures them,
-	// because they'll be available at runtime in the outer closure's scope.
 	let mut local_vars = HashSet::new();
 	for instr in body {
 		if let Instruction::DeclareVar(name) = instr {
@@ -545,8 +518,6 @@ fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]
 				}
 			}
 			Instruction::DefineClosure(closure_def) => {
-				// Propagate nested closure captures upward.
-				// Inner closures are compiled bottom-up, so their captures are already populated.
 				for cap in &closure_def.captures {
 					let stripped = if cap.text().starts_with('$') {
 						&cap.text()[1..]
@@ -566,7 +537,6 @@ fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]
 	free_vars
 }
 
-/// Instruction compiler that transforms PhysicalPlan to Instructions
 struct InstructionCompiler {
 	instructions: Vec<Instruction>,
 	loop_stack: Vec<LoopContext>,
@@ -592,7 +562,6 @@ impl InstructionCompiler {
 		self.instructions.len()
 	}
 
-	/// Compile an expression to bytecode and emit a JumpIfFalsePop, returning its index for backpatching.
 	fn emit_conditional_jump(&mut self, condition: Expression) -> usize {
 		self.compile_expression(&condition);
 		self.emit(Instruction::JumpIfFalsePop(0))
@@ -717,12 +686,11 @@ impl InstructionCompiler {
 			}
 			Expression::In(i) => {
 				self.compile_expression(&i.value);
-				// The list is a Tuple or List expression
+
 				let items = match i.list.as_ref() {
 					Expression::Tuple(t) => &t.expressions,
 					Expression::List(l) => &l.expressions,
 					_ => {
-						// Single-item list
 						self.compile_expression(&i.list);
 						self.emit(Instruction::InList {
 							count: 1,
@@ -741,19 +709,15 @@ impl InstructionCompiler {
 				});
 			}
 			Expression::If(i) => {
-				// Conditional expression via jumps
 				self.compile_expression(&i.condition);
 				let false_jump = self.emit(Instruction::JumpIfFalsePop(0));
 
-				// Then branch
 				self.compile_expression(&i.then_expr);
 				let end_jump = self.emit(Instruction::Jump(0));
 
-				// Patch false jump to else-if/else
 				let else_start = self.current_addr();
 				self.patch_jump_if_false_pop(false_jump, else_start);
 
-				// Else-if chains
 				let mut end_patches = vec![end_jump];
 				for else_if in &i.else_ifs {
 					self.compile_expression(&else_if.condition);
@@ -765,7 +729,6 @@ impl InstructionCompiler {
 					self.patch_jump_if_false_pop(false_jump, next_start);
 				}
 
-				// Else branch or none
 				if let Some(else_expr) = &i.else_expr {
 					self.compile_expression(else_expr);
 				} else {
@@ -777,32 +740,27 @@ impl InstructionCompiler {
 					self.patch_jump(patch_idx, end_addr);
 				}
 			}
-			Expression::Parameter(p) => {
-				// Parameters resolve to LoadVar at runtime
-				match p {
-					ParameterExpression::Positional {
-						fragment,
-					} => {
-						self.emit(Instruction::LoadVar(fragment.clone()));
-					}
-					ParameterExpression::Named {
-						fragment,
-					} => {
-						self.emit(Instruction::LoadVar(fragment.clone()));
-					}
+			Expression::Parameter(p) => match p {
+				ParameterExpression::Positional {
+					fragment,
+				} => {
+					self.emit(Instruction::LoadVar(fragment.clone()));
 				}
-			}
-			// Tuple: parenthesized expressions
+				ParameterExpression::Named {
+					fragment,
+				} => {
+					self.emit(Instruction::LoadVar(fragment.clone()));
+				}
+			},
+
 			Expression::Tuple(t) => {
 				if t.expressions.len() == 1 {
-					// Single-element tuple = parenthesized expression, compile transparently
 					self.compile_expression(&t.expressions[0]);
 				} else {
-					// Multi-element tuple - not supported in scripting context
 					self.emit(Instruction::PushNone);
 				}
 			}
-			// List: bracketed expressions - not supported in scripting context
+
 			Expression::List(_) => {
 				self.emit(Instruction::PushNone);
 			}
@@ -823,27 +781,19 @@ impl InstructionCompiler {
 			Expression::Type(type_expr) => {
 				self.emit(Instruction::PushConst(Value::Type(type_expr.ty.clone())));
 			}
-			Expression::FieldAccess(fa) => {
-				// Extract variable name from the object expression
-				match fa.object.as_ref() {
-					Expression::Variable(var) => {
-						self.emit(Instruction::FieldAccess {
-							object: var.fragment.clone(),
-							field: fa.field.clone(),
-						});
-					}
-					_ => {
-						// Fallback: compile object, but field access on non-variables isn't
-						// supported yet
-						self.compile_expression(&fa.object);
-						self.emit(Instruction::PushNone);
-					}
+			Expression::FieldAccess(fa) => match fa.object.as_ref() {
+				Expression::Variable(var) => {
+					self.emit(Instruction::FieldAccess {
+						object: var.fragment.clone(),
+						field: fa.field.clone(),
+					});
 				}
-			}
+				_ => {
+					self.compile_expression(&fa.object);
+					self.emit(Instruction::PushNone);
+				}
+			},
 			Expression::Column(col) => {
-				// Bare identifiers (e.g., `event_x`) in bytecode context
-				// should resolve as variable lookups - mirrors the runtime
-				// evaluator's column_lookup() which falls back to the symbol table.
 				self.emit(Instruction::LoadVar(col.0.name.clone()));
 			}
 			Expression::AccessSource(_)
@@ -859,7 +809,6 @@ impl InstructionCompiler {
 
 	fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
 		match plan {
-			// DDL - leaf instructions (no query children to materialize)
 			PhysicalPlan::CreateNamespace(node) => {
 				self.emit(Instruction::CreateNamespace(node));
 				self.emit(Instruction::Emit);
@@ -950,7 +899,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
-			// DDL (Drop) - leaf instructions
 			PhysicalPlan::DropNamespace(node) => {
 				self.emit(Instruction::DropNamespace(node));
 				self.emit(Instruction::Emit);
@@ -1008,7 +956,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
-			// Auth/Permissions - leaf instructions
 			PhysicalPlan::CreateIdentity(node) => {
 				self.emit(Instruction::CreateIdentity(node));
 				self.emit(Instruction::Emit);
@@ -1054,7 +1001,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
-			// DDL - nodes with query subtrees that need materialization
 			PhysicalPlan::CreateDeferredView(node) => {
 				self.emit(Instruction::CreateDeferredView(nodes::CreateDeferredViewNode {
 					namespace: node.namespace,
@@ -1125,7 +1071,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
-			// DML - materialize query subtrees inline
 			PhysicalPlan::Delete(node) => {
 				self.emit(Instruction::Delete(nodes::DeleteTableNode {
 					input: node
@@ -1213,7 +1158,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 
-			// Variables
 			PhysicalPlan::Declare(node) => {
 				match node.value {
 					physical::LetValue::Expression(expr) => {
@@ -1222,7 +1166,6 @@ impl InstructionCompiler {
 					physical::LetValue::Statement(plan) => {
 						let inner = BumpBox::into_inner(plan);
 						if matches!(&inner, PhysicalPlan::DefineClosure(_)) {
-							// Closures push their value onto the stack directly
 							self.compile_plan(inner)?;
 						} else if let PhysicalPlan::AssertBlock(block) = inner {
 							self.emit(Instruction::AssertBlock(nodes::AssertBlockNode {
@@ -1273,7 +1216,6 @@ impl InstructionCompiler {
 				}
 			},
 
-			// Control flow
 			PhysicalPlan::Conditional(node) => {
 				self.compile_conditional(node)?;
 			}
@@ -1293,7 +1235,6 @@ impl InstructionCompiler {
 				self.compile_continue()?;
 			}
 
-			// User-defined functions
 			PhysicalPlan::DefineFunction(node) => {
 				let mut body_compiler = InstructionCompiler::new();
 				for plan in node.body {
@@ -1329,7 +1270,6 @@ impl InstructionCompiler {
 				}
 			}
 
-			// Closures
 			PhysicalPlan::DefineClosure(node) => {
 				let mut body_compiler = InstructionCompiler::new();
 				for plan in node.body {
@@ -1345,7 +1285,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::DefineClosure(compiled_closure));
 			}
 
-			// Query operations - materialize to QueryPlan and emit
 			PhysicalPlan::TableScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::TableScan(node)));
 				self.emit(Instruction::Emit);
@@ -1488,7 +1427,6 @@ impl InstructionCompiler {
 	fn compile_conditional(&mut self, node: physical::ConditionalNode<'_>) -> Result<()> {
 		let mut end_patches: Vec<usize> = Vec::new();
 
-		// IF cond THEN body
 		let false_jump = self.emit_conditional_jump(node.condition);
 		self.emit(Instruction::EnterScope(ScopeType::Conditional));
 		self.scope_depth += 1;
@@ -1501,7 +1439,6 @@ impl InstructionCompiler {
 		let else_if_start = self.current_addr();
 		self.patch_jump_if_false_pop(false_jump, else_if_start);
 
-		// ELSE IF branches
 		for else_if in node.else_ifs {
 			let false_jump = self.emit_conditional_jump(else_if.condition);
 			self.emit(Instruction::EnterScope(ScopeType::Conditional));
@@ -1516,7 +1453,6 @@ impl InstructionCompiler {
 			self.patch_jump_if_false_pop(false_jump, next_start);
 		}
 
-		// ELSE branch
 		if let Some(else_branch) = node.else_branch {
 			self.emit(Instruction::EnterScope(ScopeType::Conditional));
 			self.scope_depth += 1;
@@ -1638,11 +1574,8 @@ impl InstructionCompiler {
 		Ok(())
 	}
 
-	/// Compile a plan that will be used as an iterable (for FOR loops).
-	/// Query plans emit a Query instruction (no Emit); non-query plans delegate to compile_plan.
 	fn compile_plan_for_iterable(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
 		match plan {
-			// Query leaf nodes - emit directly without Emit
 			PhysicalPlan::TableScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::TableScan(node)));
 			}
@@ -1688,7 +1621,7 @@ impl InstructionCompiler {
 			PhysicalPlan::Environment(node) => {
 				self.emit(Instruction::Query(QueryPlan::Environment(node)));
 			}
-			// Query recursive nodes - materialize then emit
+
 			PhysicalPlan::Aggregate(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Aggregate(node))));
 			}
@@ -1744,7 +1677,7 @@ impl InstructionCompiler {
 			PhysicalPlan::Scalarize(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Scalarize(node))));
 			}
-			// Non-query plans (DDL, DML, control flow) - delegate to full compile_plan
+
 			other => {
 				self.compile_plan(other)?;
 			}
@@ -1760,7 +1693,6 @@ impl InstructionCompiler {
 			} => {
 				match source {
 					physical::AppendPhysicalSource::Statement(plans) => {
-						// Compile source plans as query (no Emit - we want the value on stack)
 						for plan in plans {
 							self.compile_plan_for_iterable(plan)?;
 						}

@@ -288,9 +288,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map
 });
 
-/// Scan for a keyword token
 pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
-	// Keywords must start with a letter, so check that first
 	let first_char = cursor.peek()?;
 	if !first_char.is_ascii_alphabetic() {
 		return None;
@@ -300,13 +298,11 @@ pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
-	// Consume identifier characters to get the potential keyword
 	let remaining = cursor.remaining_input();
 	let word_len = remaining.chars().take_while(|&c| is_identifier_char(c)).map(|c| c.len_utf8()).sum::<usize>();
 
 	let word = &remaining[..word_len];
 
-	// Check if it's a keyword (case-insensitive)
 	let uppercase_word;
 	let lookup_word = if word.chars().all(|c| c.is_uppercase()) {
 		word
@@ -316,11 +312,8 @@ pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	};
 
 	if let Some(&keyword) = KEYWORD_MAP.get(lookup_word) {
-		// Check that the next character is not an identifier
-		// continuation
 		let next_char = cursor.peek_ahead(word.chars().count());
 		if next_char.is_none_or(|ch| !is_identifier_char(ch) && ch != '.' && ch != ':') {
-			// Consume the keyword
 			for _ in 0..word.chars().count() {
 				cursor.consume();
 			}

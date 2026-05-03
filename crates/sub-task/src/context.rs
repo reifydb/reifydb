@@ -9,7 +9,6 @@ pub struct TaskContext {
 }
 
 impl TaskContext {
-	/// Create a new task context
 	pub fn new(engine: StandardEngine) -> Self {
 		Self {
 			engine,

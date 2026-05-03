@@ -24,11 +24,6 @@ use crate::{
 };
 
 impl Catalog {
-	/// Get an existing shape by fingerprint, or create and persist a new one.
-	///
-	/// This method is thread-safe with the following guarantees:
-	/// - Cache reads are lock-free (via SkipMap)
-	/// - Double-check pattern prevents duplicate creates
 	#[instrument(
 		name = "catalog::row_shape::get_or_create",
 		level = "debug",
@@ -44,12 +39,10 @@ impl Catalog {
 		let fingerprint = shape.fingerprint();
 		Span::current().record("fingerprint", field::debug(&fingerprint));
 
-		// Fast path: check materialized cache
 		if let Some(cached) = self.materialized.find_row_shape(fingerprint) {
 			return Ok(cached);
 		}
 
-		// Double-check after acquiring lock
 		if let Some(cached) = self.materialized.find_row_shape(fingerprint) {
 			return Ok(cached);
 		}
@@ -66,7 +59,6 @@ impl Catalog {
 		Ok(shape)
 	}
 
-	/// Look up a shape by fingerprint, checking storage if not cached.
 	#[instrument(
 		name = "catalog::row_shape::get_or_load",
 		level = "debug",
@@ -82,14 +74,12 @@ impl Catalog {
 		fingerprint: RowShapeFingerprint,
 		txn: &mut Transaction<'_>,
 	) -> Result<Option<RowShape>> {
-		// Check cache first
 		if let Some(shape) = self.materialized.find_row_shape(fingerprint) {
 			Span::current().record("cache_hit", true);
 			Span::current().record("field_count", shape.field_count());
 			return Ok(Some(shape));
 		}
 
-		// Read shape header
 		let header_key = RowShapeKey::encoded(fingerprint);
 		let header_entry = match txn.get(&header_key)? {
 			Some(entry) => entry,
@@ -146,16 +136,10 @@ impl Catalog {
 		Ok(Some(shape))
 	}
 
-	/// Look up a shape by fingerprint (cache only).
 	pub fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Option<RowShape> {
 		self.materialized.find_row_shape(fingerprint)
 	}
 
-	/// Get or create a row shape without persisting it.
-	///
-	/// If the shape is already cached, returns it. Otherwise creates it in memory,
-	/// caches it in the MaterializedCatalog, and pushes it to `pending` for
-	/// deferred persistence by the caller.
 	pub fn get_or_create_row_shape_pending(
 		&self,
 		pending: &mut Vec<RowShape>,
@@ -174,10 +158,6 @@ impl Catalog {
 		shape
 	}
 
-	/// Persist previously collected pending shapes to storage.
-	///
-	/// For each shape, checks if the shape already exists in storage (idempotent),
-	/// and writes it if not.
 	pub fn persist_pending_shapes(&self, txn: &mut Transaction<'_>, shapes: Vec<RowShape>) -> Result<()> {
 		for shape in shapes {
 			let fingerprint = shape.fingerprint();

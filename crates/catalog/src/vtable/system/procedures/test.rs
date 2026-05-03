@@ -20,7 +20,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes RQL test procedures.
 pub struct SystemProceduresTest {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

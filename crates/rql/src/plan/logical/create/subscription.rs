@@ -28,7 +28,6 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		// Compile the AS clause to logical plans
 		let as_clause = if let Some(as_statement) = ast.as_clause {
 			self.compile(as_statement, tx)?
 		} else {

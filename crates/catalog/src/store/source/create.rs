@@ -36,7 +36,6 @@ impl CatalogStore {
 	pub(crate) fn create_source(txn: &mut AdminTransaction, to_create: SourceToCreate) -> Result<Source> {
 		let namespace_id = to_create.namespace;
 
-		// Check if source already exists
 		if let Some(_source) = CatalogStore::find_source_by_name(
 			&mut Transaction::Admin(&mut *txn),
 			namespace_id,

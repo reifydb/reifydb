@@ -69,7 +69,6 @@ pub(crate) struct Compiler<'bump> {
 	pub bump: &'bump Bump,
 }
 
-/// Compile AST to logical plan using any transaction type that implements IntoTransaction
 #[instrument(name = "rql::compile::logical", level = "trace", skip(bump, catalog, tx, ast))]
 pub fn compile_logical<'b>(
 	bump: &'b Bump,
@@ -116,14 +115,9 @@ impl<'bump> Compiler<'bump> {
 
 		let ast_len = ast.len();
 		let has_pipes = ast.has_pipes;
-		let ast_vec = ast.nodes; // Extract the inner Vec
+		let ast_vec = ast.nodes;
 
-		// Note: UPDATE and DELETE no longer use pipeline syntax - they have self-contained syntax
-
-		// Check if this is a piped query that should be wrapped in
-		// Pipeline
 		if has_pipes && ast_len > 1 {
-			// This uses pipe operators - create a Pipeline operator
 			let mut pipeline_nodes = BumpVec::with_capacity_in(ast_len, self.bump);
 			for node in ast_vec {
 				pipeline_nodes.push(self.compile_single(node, tx)?);
@@ -135,7 +129,6 @@ impl<'bump> Compiler<'bump> {
 			return Ok(result);
 		}
 
-		// Normal compilation (not piped)
 		let mut result = BumpVec::with_capacity_in(ast_len, self.bump);
 		for node in ast_vec {
 			result.push(self.compile_single(node, tx)?);
@@ -143,7 +136,6 @@ impl<'bump> Compiler<'bump> {
 		Ok(result)
 	}
 
-	// Helper to compile a single AST operator
 	pub fn compile_single(&self, node: Ast<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		match node {
 			Ast::Create(node) => self.compile_create(node, tx),
@@ -162,68 +154,57 @@ impl<'bump> Compiler<'bump> {
 			Ast::Continue(_) => Ok(LogicalPlan::Continue),
 			Ast::Let(node) => self.compile_let(node, tx),
 			Ast::StatementExpression(node) => {
-				// Compile the inner expression and wrap it in a MAP
 				self.compile_scalar_as_map(BumpBox::into_inner(node.expression))
 			}
-			Ast::Prefix(node) => {
-				// Prefix operations as statements - wrap in MAP
-				self.compile_scalar_as_map(Ast::Prefix(node))
-			}
-			Ast::Infix(infix_node) => {
-				match infix_node.operator {
-					// Assignment operations - variable assignment with = operator
-					InfixOperator::Assign(_) => {
-						// This is a variable assignment statement
-						self.compile_infix(infix_node)
-					}
-					// Variable calls ($f(args)) - route through CallFunction for VM execution
-					InfixOperator::Call(_) if matches!(*infix_node.left, Ast::Variable(_)) => {
-						let Ast::Variable(var) = BumpBox::into_inner(infix_node.left) else {
-							unreachable!()
-						};
-						let right = BumpBox::into_inner(infix_node.right);
-						let args_nodes = match right {
-							Ast::Tuple(tuple) => tuple.nodes,
-							other => vec![other],
-						};
-						let mut arguments = Vec::new();
-						for arg in args_nodes {
-							arguments.push(ExpressionCompiler::compile(arg)?);
-						}
-						Ok(LogicalPlan::CallFunction(function::CallFunctionNode {
-							name: var.token.fragment,
-							arguments,
-							is_procedure_call: false,
-						}))
-					}
-					// Expression-like operations - wrap in MAP
-					InfixOperator::Add(_)
-					| InfixOperator::Subtract(_)
-					| InfixOperator::Multiply(_)
-					| InfixOperator::Divide(_)
-					| InfixOperator::Rem(_)
-					| InfixOperator::Equal(_)
-					| InfixOperator::NotEqual(_)
-					| InfixOperator::GreaterThan(_)
-					| InfixOperator::LessThan(_)
-					| InfixOperator::GreaterThanEqual(_)
-					| InfixOperator::LessThanEqual(_)
-					| InfixOperator::And(_)
-					| InfixOperator::Or(_)
-					| InfixOperator::Xor(_)
-					| InfixOperator::Call(_)
-					| InfixOperator::As(_)
-					| InfixOperator::TypeAscription(_)
-					| InfixOperator::In(_)
-					| InfixOperator::NotIn(_)
-					| InfixOperator::Contains(_) => self.compile_scalar_as_map(Ast::Infix(infix_node)),
+			Ast::Prefix(node) => self.compile_scalar_as_map(Ast::Prefix(node)),
+			Ast::Infix(infix_node) => match infix_node.operator {
+				InfixOperator::Assign(_) => self.compile_infix(infix_node),
 
-					// Statement-like operations - compile directly
-					InfixOperator::AccessTable(_) | InfixOperator::AccessNamespace(_) => {
-						self.compile_infix(infix_node)
+				InfixOperator::Call(_) if matches!(*infix_node.left, Ast::Variable(_)) => {
+					let Ast::Variable(var) = BumpBox::into_inner(infix_node.left) else {
+						unreachable!()
+					};
+					let right = BumpBox::into_inner(infix_node.right);
+					let args_nodes = match right {
+						Ast::Tuple(tuple) => tuple.nodes,
+						other => vec![other],
+					};
+					let mut arguments = Vec::new();
+					for arg in args_nodes {
+						arguments.push(ExpressionCompiler::compile(arg)?);
 					}
+					Ok(LogicalPlan::CallFunction(function::CallFunctionNode {
+						name: var.token.fragment,
+						arguments,
+						is_procedure_call: false,
+					}))
 				}
-			}
+
+				InfixOperator::Add(_)
+				| InfixOperator::Subtract(_)
+				| InfixOperator::Multiply(_)
+				| InfixOperator::Divide(_)
+				| InfixOperator::Rem(_)
+				| InfixOperator::Equal(_)
+				| InfixOperator::NotEqual(_)
+				| InfixOperator::GreaterThan(_)
+				| InfixOperator::LessThan(_)
+				| InfixOperator::GreaterThanEqual(_)
+				| InfixOperator::LessThanEqual(_)
+				| InfixOperator::And(_)
+				| InfixOperator::Or(_)
+				| InfixOperator::Xor(_)
+				| InfixOperator::Call(_)
+				| InfixOperator::As(_)
+				| InfixOperator::TypeAscription(_)
+				| InfixOperator::In(_)
+				| InfixOperator::NotIn(_)
+				| InfixOperator::Contains(_) => self.compile_scalar_as_map(Ast::Infix(infix_node)),
+
+				InfixOperator::AccessTable(_) | InfixOperator::AccessNamespace(_) => {
+					self.compile_infix(infix_node)
+				}
+			},
 			Ast::Aggregate(node) => self.compile_aggregate(node),
 			Ast::Assert(node) => self.compile_assert(node),
 			Ast::Filter(node) => self.compile_filter(node),
@@ -243,7 +224,7 @@ impl<'bump> Compiler<'bump> {
 				fragment: id.token.fragment.to_owned(),
 			}
 			.into()),
-			// Auto-wrap scalar expressions into MAP constructs
+
 			Ast::Literal(_) => self.compile_scalar_as_map(node),
 			Ast::Variable(var) => {
 				let name = var.token.fragment;
@@ -251,26 +232,21 @@ impl<'bump> Compiler<'bump> {
 					name,
 				}))
 			}
-			// Function calls: check if it's potentially a user-defined function
+
 			Ast::CallFunction(call_node) => {
 				if call_node.function.namespaces.is_empty() {
 					self.compile_call_function(call_node)
 				} else if call_node.function.namespaces.first().map(|ns| ns.text()) == Some("testing") {
-					// testing::* calls return Columns, route through call function path
 					self.compile_call_function(call_node)
 				} else {
-					// Other namespaced function calls are built-in scalar functions
 					self.compile_scalar_as_map(Ast::CallFunction(call_node))
 				}
 			}
-			Ast::Block(_) => {
-				// Blocks are handled by their parent constructs (IF, LOOP, etc.)
-				Err(AstError::UnsupportedAstNode {
-					node_type: "standalone block".to_string(),
-					fragment: node.token().fragment.to_owned(),
-				}
-				.into())
+			Ast::Block(_) => Err(AstError::UnsupportedAstNode {
+				node_type: "standalone block".to_string(),
+				fragment: node.token().fragment.to_owned(),
 			}
+			.into()),
 			Ast::DefFunction(node) => self.compile_def_function(node, tx),
 			Ast::Return(node) => self.compile_return(node),
 			Ast::Closure(node) => self.compile_closure(node, tx),
@@ -284,11 +260,7 @@ impl<'bump> Compiler<'bump> {
 				role: node.role,
 				user: node.user,
 			})),
-			Ast::Identity(_) | Ast::Require(_) => {
-				// Identity and Require are expression-level constructs, not standalone statements.
-				// They appear inside policy bodies and pipe chains, not as top-level plan nodes.
-				self.compile_scalar_as_map(node)
-			}
+			Ast::Identity(_) | Ast::Require(_) => self.compile_scalar_as_map(node),
 			Ast::Migrate(node) => Ok(LogicalPlan::Migrate(MigrateNode {
 				target: node.target,
 			})),
@@ -320,9 +292,6 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	// Helper to wrap a scalar expression in a MAP { "value": expression }
-	// Instead of creating synthetic AST nodes (which would require a bump allocator),
-	// this directly compiles the scalar and wraps the result in a MapNode.
 	fn compile_scalar_as_map(&self, scalar_node: Ast<'bump>) -> Result<LogicalPlan<'bump>> {
 		let fragment = scalar_node.token().fragment.to_owned();
 		let expr = ExpressionCompiler::compile(scalar_node)?;
@@ -341,8 +310,6 @@ impl<'bump> Compiler<'bump> {
 	fn compile_infix(&self, node: AstInfix<'bump>) -> Result<LogicalPlan<'bump>> {
 		match node.operator {
 			InfixOperator::Assign(_token) => {
-				// This is a variable assignment statement
-				// Extract the variable name from the left side
 				let variable = match BumpBox::into_inner(node.left) {
 					Ast::Variable(var) => var,
 					_ => {
@@ -354,11 +321,9 @@ impl<'bump> Compiler<'bump> {
 					}
 				};
 
-				// Convert the right side to an expression
 				let expr = ExpressionCompiler::compile(BumpBox::into_inner(node.right))?;
 				let value = AssignValue::Expression(expr);
 
-				// Extract variable name (remove $ prefix if present)
 				let name_text = variable.token.fragment.text();
 				let clean_name = name_text.strip_prefix('$').unwrap_or(name_text);
 
@@ -367,14 +332,11 @@ impl<'bump> Compiler<'bump> {
 					value,
 				}))
 			}
-			_ => {
-				// Other infix operations are not supported as standalone statements
-				Err(AstError::UnsupportedAstNode {
-					node_type: "infix operation as statement".to_string(),
-					fragment: node.token.fragment.to_owned(),
-				}
-				.into())
+			_ => Err(AstError::UnsupportedAstNode {
+				node_type: "infix operation as statement".to_string(),
+				fragment: node.token.fragment.to_owned(),
 			}
+			.into()),
 		}
 	}
 }
@@ -408,7 +370,7 @@ pub enum LogicalPlan<'bump> {
 	Migrate(MigrateNode),
 	RollbackMigration(RollbackMigrationNode),
 	Dispatch(DispatchNode<'bump>),
-	// Drop
+
 	DropNamespace(DropNamespaceNode<'bump>),
 	DropTable(DropTableNode<'bump>),
 	DropView(DropViewNode<'bump>),
@@ -423,11 +385,11 @@ pub enum LogicalPlan<'bump> {
 	DropHandler(DropHandlerNode<'bump>),
 	DropTest(DropTestNode<'bump>),
 	DropBinding(DropBindingNode<'bump>),
-	// Alter
+
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
 	AlterRemoteNamespace(AlterRemoteNamespaceNode<'bump>),
-	// Mutate
+
 	DeleteTable(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
 	InsertTable(InsertTableNode<'bump>),
@@ -438,18 +400,18 @@ pub enum LogicalPlan<'bump> {
 	Update(UpdateTableNode<'bump>),
 	UpdateRingBuffer(UpdateRingBufferNode<'bump>),
 	UpdateSeries(UpdateSeriesNode<'bump>),
-	// Variable assignment
+
 	Declare(DeclareNode<'bump>),
 	Assign(AssignNode<'bump>),
 	Append(AppendNode<'bump>),
-	// Control flow
+
 	Conditional(ConditionalNode<'bump>),
 	Loop(LoopNode<'bump>),
 	While(WhileNode<'bump>),
 	For(ForNode<'bump>),
 	Break,
 	Continue,
-	// Query
+
 	Aggregate(AggregateNode),
 	Distinct(DistinctNode<'bump>),
 	Assert(AssertNode),
@@ -472,17 +434,17 @@ pub enum LogicalPlan<'bump> {
 	Generator(GeneratorNode<'bump>),
 	VariableSource(VariableSourceNode<'bump>),
 	Environment(EnvironmentNode),
-	// Auto-scalarization for 1x1 frames in scalar contexts
+
 	Scalarize(ScalarizeNode<'bump>),
-	// Pipeline wrapper for piped operations
+
 	Pipeline(PipelineNode<'bump>),
-	// User-defined functions
+
 	DefineFunction(function::DefineFunctionNode<'bump>),
 	Return(function::ReturnNode),
 	CallFunction(function::CallFunctionNode<'bump>),
-	// Closures
+
 	DefineClosure(DefineClosureNode<'bump>),
-	// Auth/Permissions
+
 	CreateIdentity(CreateIdentityNode<'bump>),
 	CreateRole(CreateRoleNode<'bump>),
 	Grant(GrantNode<'bump>),
@@ -509,9 +471,9 @@ pub struct ScalarizeNode<'bump> {
 
 #[derive(Debug)]
 pub enum LetValue<'bump> {
-	Expression(Expression),                        // scalar/column expression
-	Statement(BumpVec<'bump, LogicalPlan<'bump>>), // query pipeline as logical plans
-	EmptyFrame,                                    // LET $x = [] → empty Frame
+	Expression(Expression),
+	Statement(BumpVec<'bump, LogicalPlan<'bump>>),
+	EmptyFrame,
 }
 
 impl<'bump> Display for LetValue<'bump> {
@@ -526,8 +488,8 @@ impl<'bump> Display for LetValue<'bump> {
 
 #[derive(Debug)]
 pub enum AssignValue<'bump> {
-	Expression(Expression),                        // scalar/column expression
-	Statement(BumpVec<'bump, LogicalPlan<'bump>>), // query pipeline as logical plans
+	Expression(Expression),
+	Statement(BumpVec<'bump, LogicalPlan<'bump>>),
 }
 
 impl<'bump> Display for AssignValue<'bump> {
@@ -951,11 +913,11 @@ pub struct CreateProcedureNode<'bump> {
 	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
 	pub params: Vec<AstProcedureParam<'bump>>,
 	pub body_source: String,
-	/// Set when this procedure is created via CREATE HANDLER (event binding)
+
 	pub on_event: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
-	/// Variant name for event-triggered procedures
+
 	pub on_variant: Option<BumpFragment<'bump>>,
-	/// Test procedures can only be called from test context
+
 	pub is_test: bool,
 }
 

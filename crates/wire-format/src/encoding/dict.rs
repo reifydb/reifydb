@@ -12,26 +12,22 @@ use reifydb_type::value::{
 use super::plain::PlainEncoded;
 use crate::{error::DecodeError, format::dict_index_width_to_flags};
 
-/// Result of dictionary encoding.
 pub struct DictEncoded {
-	/// Index array bytes.
 	pub data: Vec<u8>,
-	/// Dictionary table bytes.
+
 	pub extra: Vec<u8>,
-	/// Type code.
+
 	pub type_code: u8,
-	/// Column flags (includes dict index width bits).
+
 	pub flags_bits: u8,
 }
 
-/// Try to dictionary-encode a Utf8 column. Returns None if not beneficial.
 pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option<DictEncoded> {
 	let row_count = container.len();
 	if row_count == 0 {
 		return None;
 	}
 
-	// Build dictionary
 	let mut dict_map: HashMap<&str, u32> = HashMap::new();
 	let mut dict_entries: Vec<&str> = Vec::new();
 
@@ -45,12 +41,10 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 
 	let dict_count = dict_entries.len();
 
-	// Check cardinality ratio: dict is only worth it if distinct < row_count * min_ratio
 	if dict_count as f64 >= row_count as f64 * min_ratio {
 		return None;
 	}
 
-	// Determine index width
 	let (index_width, flags_bits) = if dict_count <= 255 {
 		(1usize, dict_index_width_to_flags(1))
 	} else if dict_count <= 65535 {
@@ -59,7 +53,6 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 		(4, dict_index_width_to_flags(4))
 	};
 
-	// Build index array
 	let mut data = Vec::with_capacity(row_count * index_width);
 	for s in container.iter_str() {
 		let idx = dict_map[s];
@@ -71,11 +64,9 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 		}
 	}
 
-	// Build dictionary table: dict_count + offsets + concatenated entries
 	let mut extra = Vec::new();
 	extra.extend_from_slice(&(dict_count as u32).to_le_bytes());
 
-	// Write offset array for dictionary entries
 	let mut offset: u32 = 0;
 	extra.extend_from_slice(&offset.to_le_bytes());
 	for entry in &dict_entries {
@@ -83,7 +74,6 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 		extra.extend_from_slice(&offset.to_le_bytes());
 	}
 
-	// Write concatenated dictionary entry bytes
 	for entry in &dict_entries {
 		extra.extend_from_slice(entry.as_bytes());
 	}
@@ -96,14 +86,12 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 	})
 }
 
-/// Try to dictionary-encode a Blob column. Returns None if not beneficial.
 pub fn try_dict_encode_blob(container: &BlobContainer, min_ratio: f64) -> Option<DictEncoded> {
 	let row_count = container.len();
 	if row_count == 0 {
 		return None;
 	}
 
-	// Build dictionary using byte slices
 	let mut dict_map: HashMap<&[u8], u32> = HashMap::new();
 	let mut dict_entries: Vec<&[u8]> = Vec::new();
 
@@ -161,7 +149,6 @@ pub fn try_dict_encode_blob(container: &BlobContainer, min_ratio: f64) -> Option
 	})
 }
 
-/// Try to dictionary-encode a sequence of byte vectors. Returns None if not beneficial.
 pub fn try_dict_encode_bytes(serialized: &[Vec<u8>], type_code: u8, min_ratio: f64) -> Option<DictEncoded> {
 	if serialized.is_empty() {
 		return None;
@@ -223,7 +210,6 @@ pub fn try_dict_encode_bytes(serialized: &[Vec<u8>], type_code: u8, min_ratio: f
 	})
 }
 
-/// Convert DictEncoded into a PlainEncoded (used by the encoder pipeline).
 impl DictEncoded {
 	pub fn into_plain_encoded(self) -> PlainEncoded {
 		PlainEncoded {
@@ -236,12 +222,6 @@ impl DictEncoded {
 	}
 }
 
-/// Decode a dictionary-encoded column back to strings.
-///
-/// - `data`: index array bytes
-/// - `extra`: dictionary table bytes
-/// - `row_count`: number of rows
-/// - `index_width`: 1, 2, or 4 (from column flags)
 pub fn decode_dict_utf8(
 	data: &[u8],
 	extra: &[u8],
@@ -266,7 +246,6 @@ pub fn decode_dict_utf8(
 	Ok(values)
 }
 
-/// Decode a dictionary-encoded column back to blobs.
 pub fn decode_dict_blob(
 	data: &[u8],
 	extra: &[u8],

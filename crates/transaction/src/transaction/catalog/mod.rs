@@ -29,5 +29,4 @@ pub mod table;
 pub mod test;
 pub mod view;
 
-// Implement the umbrella trait for AdminTransaction
 impl CatalogTrackChangeOperations for AdminTransaction {}

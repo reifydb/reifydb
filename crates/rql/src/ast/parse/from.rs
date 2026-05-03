@@ -25,7 +25,6 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_from(&mut self) -> Result<AstFrom<'bump>> {
 		let token = self.consume_keyword(Keyword::From)?;
 
-		// Check token type first
 		let is_inline = if let Ok(current) = self.current() {
 			current.is_operator(OpenBracket)
 		} else {
@@ -38,7 +37,6 @@ impl<'bump> Parser<'bump> {
 				list: self.parse_static()?,
 			})
 		} else {
-			// Check if this is a variable or identifier
 			let current = self.current()?;
 			match current.kind {
 				TokenKind::Variable => {
@@ -69,9 +67,6 @@ impl<'bump> Parser<'bump> {
 				}
 			}
 
-			// Parse the head of the FROM clause as a `::`-separated chain.
-			// Then decide: braces => generator function call (qualified or not),
-			// otherwise => source (qualified or not).
 			let mut segments = vec![self.parse_identifier_with_hyphens()?];
 			while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {
 				self.consume_operator(Operator::DoubleColon)?;
@@ -131,7 +126,6 @@ impl<'bump> Parser<'bump> {
 				source
 			};
 
-			// Check for index directive using USING keyword
 			let index_name = if !self.is_eof() {
 				if let Ok(current) = self.current() {
 					if current.is_keyword(Keyword::Using) {
@@ -163,7 +157,6 @@ impl<'bump> Parser<'bump> {
 		loop {
 			self.skip_new_line()?;
 
-			// Check if we've reached the closing bracket
 			let should_break = if let Ok(current) = self.current() {
 				current.is_operator(CloseBracket)
 			} else {

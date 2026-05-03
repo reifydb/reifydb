@@ -12,12 +12,6 @@ use reifydb_type::value::identity::IdentityId;
 use super::tracker::ShapeVersionTracker;
 use crate::catalog::FlowCatalog;
 
-/// Compute the current flow watermark rows.
-///
-/// Returns one row per (registered flow, source primitive) pair. Each row's
-/// `lag` is the difference between the source's last seen version and the
-/// flow's CDC checkpoint, so a value of 0 means the flow has caught up to
-/// that source.
 pub(crate) fn compute_flow_watermarks(
 	primitive_tracker: &Arc<ShapeVersionTracker>,
 	engine: &StandardEngine,

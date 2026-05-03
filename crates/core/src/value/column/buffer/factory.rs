@@ -788,9 +788,6 @@ impl ColumnBuffer {
 		}
 	}
 
-	/// Create a single-element None of the given type (bitvec=[false]).
-	/// This preserves the column type so comparisons
-	/// see the correct inner type rather than `Option<Boolean>`.
 	pub fn typed_none(ty: &Type) -> Self {
 		match ty {
 			Type::Option(inner) => Self::typed_none(inner),
@@ -798,10 +795,6 @@ impl ColumnBuffer {
 		}
 	}
 
-	/// Create typed column data with all none values (bitvec all false).
-	/// Always returns an Option-wrapped column to avoid the *_with_bitvec
-	/// optimization that strips the Option wrapper when the bitvec is all-ones
-	/// (which is vacuously true for empty bitvecs).
 	pub fn none_typed(ty: Type, len: usize) -> Self {
 		let bitvec = BitVec::repeat(len, false);
 		let inner = match ty {

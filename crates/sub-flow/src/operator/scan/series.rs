@@ -44,8 +44,6 @@ impl Operator for PrimitiveSeriesOperator {
 			return Ok(self.empty_columns());
 		}
 
-		// Series pull returns empty columns since series data is keyed differently
-		// than tables. Flow changes are pushed via apply() instead.
 		Ok(self.empty_columns())
 	}
 }
@@ -54,13 +52,11 @@ impl PrimitiveSeriesOperator {
 	fn empty_columns(&self) -> Columns {
 		let mut columns = Vec::with_capacity(1 + self.series.columns.len());
 
-		// Timestamp column
 		columns.push(ColumnWithName {
 			name: Fragment::internal("timestamp"),
 			data: ColumnBuffer::with_capacity(Type::Int8, 0),
 		});
 
-		// Data columns
 		for col in &self.series.columns {
 			columns.push(ColumnWithName {
 				name: Fragment::internal(&col.name),

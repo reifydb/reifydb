@@ -13,22 +13,13 @@ use crate::{
 	fragment::Fragment,
 };
 
-/// A time value representing time of day (hour, minute, second, nanosecond)
-/// without date information.
-///
-/// Internally stored as nanoseconds since midnight (00:00:00.000000000).
-///
-/// `#[repr(transparent)]` is required: the FFI ABI hands guests a borrow of
-/// `Vec<Time>` storage as a contiguous `[u64]` payload.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Time {
-	// Nanoseconds since midnight (0 to 86_399_999_999_999)
 	nanos_since_midnight: u64,
 }
 
 impl Time {
-	/// Maximum valid nanoseconds in a day
 	const MAX_NANOS_IN_DAY: u64 = 86_399_999_999_999;
 	const NANOS_PER_SECOND: u64 = 1_000_000_000;
 	const NANOS_PER_MINSVTE: u64 = 60 * Self::NANOS_PER_SECOND;
@@ -45,7 +36,6 @@ impl Time {
 	}
 
 	pub fn new(hour: u32, min: u32, sec: u32, nano: u32) -> Option<Self> {
-		// Validate inputs
 		if hour >= 24 || min >= 60 || sec >= 60 || nano >= Self::NANOS_PER_SECOND as u32 {
 			return None;
 		}
@@ -103,12 +93,10 @@ impl Time {
 		(self.nanos_since_midnight % Self::NANOS_PER_SECOND) as u32
 	}
 
-	/// Convert to nanoseconds since midnight for storage
 	pub fn to_nanos_since_midnight(&self) -> u64 {
 		self.nanos_since_midnight
 	}
 
-	/// Create from nanoseconds since midnight for storage
 	pub fn from_nanos_since_midnight(nanos: u64) -> Option<Self> {
 		if nanos > Self::MAX_NANOS_IN_DAY {
 			return None;
@@ -130,7 +118,6 @@ impl Display for Time {
 	}
 }
 
-// Serde implementation for ISO 8601 format
 impl Serialize for Time {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -153,7 +140,6 @@ impl<'de> Visitor<'de> for TimeVisitor {
 	where
 		E: de::Error,
 	{
-		// Parse ISO 8601 time format: HH:MM:SS[.nnnnnnnnn]
 		let (time_part, nano_part) = if let Some(dot_pos) = value.find('.') {
 			(&value[..dot_pos], Some(&value[dot_pos + 1..]))
 		} else {
@@ -176,7 +162,6 @@ impl<'de> Visitor<'de> for TimeVisitor {
 			.map_err(|_| E::custom(format!("invalid second: {}", time_parts[2])))?;
 
 		let nano = if let Some(nano_str) = nano_part {
-			// Pad or truncate to 9 digits
 			let padded = if nano_str.len() < 9 {
 				format!("{:0<9}", nano_str)
 			} else {

@@ -10,11 +10,6 @@ use crossbeam_channel::{
 
 use super::{ActorRef, RecvError, RecvTimeoutError, SendError, TryRecvError};
 
-/// Native implementation of ActorRef inner.
-///
-/// Uses `crossbeam-channel` for lock-free message passing.
-/// The notify callback is shared (via Arc) so that all clones of an ActorRef
-/// see the callback once it is set - even clones created before `set_notify`.
 pub struct ActorRefInner<M> {
 	pub(crate) tx: Sender<M>,
 	notify: Arc<sync::OnceLock<Arc<dyn Fn() + Send + Sync>>>,
@@ -36,7 +31,6 @@ impl<M> fmt::Debug for ActorRefInner<M> {
 }
 
 impl<M: Send> ActorRefInner<M> {
-	/// Create a new ActorRefInner from a sender.
 	pub(crate) fn new(tx: Sender<M>) -> Self {
 		Self {
 			tx,
@@ -44,12 +38,10 @@ impl<M: Send> ActorRefInner<M> {
 		}
 	}
 
-	/// Set the notify callback, called on successful send to wake the actor.
 	pub(crate) fn set_notify(&self, f: Arc<dyn Fn() + Send + Sync>) {
 		let _ = self.notify.set(f);
 	}
 
-	/// Send a message (non-blocking, may fail if mailbox full).
 	pub fn send(&self, msg: M) -> Result<(), SendError<M>> {
 		match self.tx.try_send(msg) {
 			Ok(()) => {
@@ -63,7 +55,6 @@ impl<M: Send> ActorRefInner<M> {
 		}
 	}
 
-	/// Send a message, blocking if the mailbox is full.
 	pub fn send_blocking(&self, msg: M) -> Result<(), SendError<M>> {
 		match self.tx.send(msg) {
 			Ok(()) => {
@@ -76,19 +67,16 @@ impl<M: Send> ActorRefInner<M> {
 		}
 	}
 
-	/// Check if the actor is still alive.
 	pub fn is_alive(&self) -> bool {
 		!self.tx.is_empty() || self.tx.capacity().is_some()
 	}
 }
 
-/// Internal receiver for the actor's mailbox.
 pub(crate) struct Mailbox<M> {
 	pub(crate) rx: Receiver<M>,
 }
 
 impl<M> Mailbox<M> {
-	/// Try to receive a message without blocking.
 	pub fn try_recv(&self) -> Result<M, TryRecvError> {
 		match self.rx.try_recv() {
 			Ok(msg) => Ok(msg),
@@ -97,7 +85,6 @@ impl<M> Mailbox<M> {
 		}
 	}
 
-	/// Receive a message, blocking if necessary.
 	pub fn recv(&self) -> Result<M, RecvError> {
 		match self.rx.recv() {
 			Ok(msg) => Ok(msg),
@@ -105,7 +92,6 @@ impl<M> Mailbox<M> {
 		}
 	}
 
-	/// Receive a message with a timeout.
 	pub fn recv_timeout(&self, timeout: Duration) -> Result<M, RecvTimeoutError> {
 		match self.rx.recv_timeout(timeout) {
 			Ok(msg) => Ok(msg),

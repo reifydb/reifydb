@@ -12,14 +12,6 @@ use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 use super::coerce::coerce_columns;
 use crate::{Result, error::EngineError};
 
-/// Validate and coerce all rows for a table in columnar batch mode.
-///
-/// Processes all rows at once by:
-/// 1. Collecting params into columnar format
-/// 2. Coercing each column's data in one batch using `cast_column_data`
-/// 3. Extracting coerced values back to row format
-///
-/// Returns `Vec<Vec<Value>>` where outer vec is rows, inner is column values in table column order.
 pub fn validate_and_coerce_rows(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
@@ -34,7 +26,6 @@ pub fn validate_and_coerce_rows(rows: &[Params], table: &Table) -> Result<Vec<Ve
 	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
 }
 
-/// Validate and coerce all rows for a ring buffer in columnar batch mode.
 pub fn validate_and_coerce_rows_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
@@ -49,11 +40,6 @@ pub fn validate_and_coerce_rows_rb(rows: &[Params], ringbuffer: &RingBuffer) -> 
 	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
 }
 
-/// Reorder all rows for a table without coercion.
-///
-/// Used by `Unchecked` mode when validation is skipped for pre-validated
-/// internal data. The caller is responsible for ensuring the rows already
-/// conform to the table's column types.
 pub fn reorder_rows_unvalidated(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
@@ -62,15 +48,11 @@ pub fn reorder_rows_unvalidated(rows: &[Params], table: &Table) -> Result<Vec<Ve
 	let num_cols = table.columns.len();
 	let num_rows = rows.len();
 
-	// Build columnar data from params (no coercion)
 	let column_data = collect_rows_to_columns(rows, &table.columns, &table.name)?;
 
-	// Convert directly to row format without coercion
 	Ok(columns_to_rows(&column_data, num_rows, num_cols))
 }
 
-/// Reorder all rows for a ring buffer without coercion. Companion to
-/// `reorder_rows_unvalidated` for ring buffers.
 pub fn reorder_rows_unvalidated_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
@@ -79,14 +61,11 @@ pub fn reorder_rows_unvalidated_rb(rows: &[Params], ringbuffer: &RingBuffer) -> 
 	let num_cols = ringbuffer.columns.len();
 	let num_rows = rows.len();
 
-	// Build columnar data from params (no coercion)
 	let column_data = collect_rows_to_columns(rows, &ringbuffer.columns, &ringbuffer.name)?;
 
-	// Convert directly to row format without coercion
 	Ok(columns_to_rows(&column_data, num_rows, num_cols))
 }
 
-/// Validate and coerce all rows for a series in columnar batch mode.
 pub fn validate_and_coerce_rows_series(rows: &[Params], series: &Series) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
@@ -101,8 +80,6 @@ pub fn validate_and_coerce_rows_series(rows: &[Params], series: &Series) -> Resu
 	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
 }
 
-/// Reorder all rows for a series without coercion. Companion to
-/// `reorder_rows_unvalidated` for series.
 pub fn reorder_rows_unvalidated_series(rows: &[Params], series: &Series) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
@@ -116,9 +93,6 @@ pub fn reorder_rows_unvalidated_series(rows: &[Params], series: &Series) -> Resu
 	Ok(columns_to_rows(&column_data, num_rows, num_cols))
 }
 
-/// Collect rows (params) into columnar format.
-///
-/// Returns `Vec<ColumnBuffer>` where each entry contains all values for that column.
 fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &str) -> Result<Vec<ColumnBuffer>> {
 	let num_cols = columns.len();
 	let mut column_data: Vec<ColumnBuffer> =
@@ -127,7 +101,6 @@ fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &st
 	for params in rows {
 		match params {
 			Params::Named(map) => {
-				// For each column, look up value in map or use Undefined
 				for (col_idx, col) in columns.iter().enumerate() {
 					let value = map.get(&col.name).cloned().unwrap_or(Value::none());
 					column_data[col_idx].push_value(value);
@@ -174,7 +147,6 @@ fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &st
 	Ok(column_data)
 }
 
-/// Convert columnar data back to row format.
 fn columns_to_rows(columns: &[ColumnBuffer], num_rows: usize, num_cols: usize) -> Vec<Vec<Value>> {
 	let mut result = Vec::with_capacity(num_rows);
 

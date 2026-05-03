@@ -25,11 +25,9 @@ use reifydb_runtime::{
 use reifydb_type::{util::hex::encode, value::datetime::DateTime};
 use tracing::{Span, field, instrument};
 
-/// Phase of the pool actor state machine
 enum Phase {
-	/// Idle, ready for new work
 	Idle,
-	/// Waiting for multiple workers to reply
+
 	WaitingForWorkers {
 		pending_count: usize,
 		results: Vec<Pending>,
@@ -38,7 +36,7 @@ enum Phase {
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 		started_at: Instant,
 	},
-	/// Waiting for a single worker to reply
+
 	WaitingForSingleWorker {
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 		is_register: bool,
@@ -58,7 +56,6 @@ fn reject_if_busy(
 	}
 }
 
-/// Pool actor - supervises worker actors and routes work.
 pub struct PoolActor {
 	refs: Vec<ActorRef<FlowMessage>>,
 	clock: Clock,
@@ -73,7 +70,6 @@ impl PoolActor {
 	}
 }
 
-/// Actor state
 pub struct PoolState {
 	phase: Phase,
 }
@@ -228,7 +224,6 @@ impl PoolActor {
 		};
 	}
 
-	/// Handle Submit by sending to workers asynchronously.
 	#[instrument(name = "flow::pool::submit", level = "debug", skip(self, state, ctx, batches, reply), fields(
 		batches = batches.len(),
 		instructions = field::Empty,
@@ -283,7 +278,6 @@ impl PoolActor {
 		};
 	}
 
-	/// Handle Rebalance by clearing all workers and re-registering assigned flows.
 	fn handle_rebalance_async(
 		&self,
 		state: &mut PoolState,
@@ -293,8 +287,6 @@ impl PoolActor {
 	) {
 		let worker_count = self.refs.len();
 
-		// Send Rebalance to every worker. Workers not in the assignments map
-		// receive an empty list (which just clears them).
 		for worker_id in 0..worker_count {
 			let flow_ids = assignments.get(&worker_id).cloned().unwrap_or_default();
 
@@ -328,7 +320,6 @@ impl PoolActor {
 		};
 	}
 
-	/// Handle Tick by sending to workers asynchronously.
 	fn handle_tick_async(
 		&self,
 		state: &mut PoolState,
@@ -489,20 +480,16 @@ impl PoolActor {
 				}
 			}
 			FlowResponse::Error(e) => {
-				// On first error, reply immediately. state.phase is already Idle so
-				// remaining late replies fall into the Idle arm and are dropped.
 				(reply)(PoolResponse::Error(format!("Worker {} error: {}", worker_id, e)));
 			}
 		}
 	}
 
-	/// Aggregate Pending from multiple workers with keyspace overlap detection.
 	fn aggregate_pending_writes(&self, writes: Vec<Pending>) -> Result<Pending, String> {
 		let mut combined = Pending::new();
 
 		for pending in writes {
 			for (key, value) in pending.iter_sorted() {
-				// Validate no keyspace overlap between workers
 				if combined.contains_key(key) {
 					return Err(internal!(
 						"keyspace overlap detected during worker aggregation: {}",
@@ -511,7 +498,6 @@ impl PoolActor {
 					.to_string());
 				}
 
-				// Safe to merge - disjoint keyspaces
 				match value {
 					PendingWrite::Set(v) => {
 						combined.insert(key.clone(), v.clone());

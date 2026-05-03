@@ -15,8 +15,6 @@ use crate::error::AuthError;
 
 pub struct PasswordProvider;
 
-/// OWASP-recommended Argon2id parameters:
-/// 19 MiB memory, 2 iterations, parallelism 1, 32-byte output.
 fn argon2_instance() -> Argon2<'static> {
 	let params = Params::new(19 * 1024, 2, 1, Some(32)).expect("valid Argon2 params");
 	Argon2::new(Algorithm::Argon2id, Version::V0x13, params)

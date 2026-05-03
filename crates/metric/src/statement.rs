@@ -3,10 +3,6 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Per-fingerprint query statistics with all-atomic fields.
-///
-/// One instance exists per unique statement fingerprint in the accumulator.
-/// All mutations are lock-free after initial insertion.
 pub struct StatementStats {
 	normalized_rql: String,
 	calls: AtomicU64,
@@ -42,7 +38,6 @@ impl StatementStats {
 			self.errors.fetch_add(1, Ordering::Relaxed);
 		}
 
-		// CAS loop for max
 		let mut current = self.max_duration_us.load(Ordering::Relaxed);
 		while duration_us > current {
 			match self.max_duration_us.compare_exchange_weak(
@@ -56,7 +51,6 @@ impl StatementStats {
 			}
 		}
 
-		// CAS loop for min
 		let mut current = self.min_duration_us.load(Ordering::Relaxed);
 		while duration_us < current {
 			match self.min_duration_us.compare_exchange_weak(

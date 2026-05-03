@@ -22,7 +22,6 @@ use crate::{Result, error::CastError};
 pub(crate) struct TextParser;
 
 impl TextParser {
-	/// Parse text to a specific target type with detailed error handling
 	pub(crate) fn from_text(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
 		match target {
 			Type::Boolean => Self::parse_bool(fragment, row_count),

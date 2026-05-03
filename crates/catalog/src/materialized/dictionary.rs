@@ -10,7 +10,6 @@ use reifydb_type::value::dictionary::DictionaryId;
 use crate::materialized::{MaterializedCatalog, MultiVersionDictionary};
 
 impl MaterializedCatalog {
-	/// Find a dictionary by ID at a specific version
 	pub fn find_dictionary_at(&self, dictionary: DictionaryId, version: CommitVersion) -> Option<Dictionary> {
 		self.dictionaries.get(&dictionary).and_then(|entry| {
 			let multi = entry.value();
@@ -18,7 +17,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a dictionary by name in a namespace at a specific version
 	pub fn find_dictionary_by_name_at(
 		&self,
 		namespace: NamespaceId,
@@ -31,7 +29,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a dictionary by ID (returns latest version)
 	pub fn find_dictionary(&self, dictionary: DictionaryId) -> Option<Dictionary> {
 		self.dictionaries.get(&dictionary).and_then(|entry| {
 			let multi = entry.value();
@@ -39,7 +36,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a dictionary by name in a namespace (returns latest version)
 	pub fn find_dictionary_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Dictionary> {
 		self.dictionaries_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let dictionary_id = *entry.value();
@@ -51,7 +47,6 @@ impl MaterializedCatalog {
 		if let Some(entry) = self.dictionaries.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{
-			// Remove old name from index
 			self.dictionaries_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 

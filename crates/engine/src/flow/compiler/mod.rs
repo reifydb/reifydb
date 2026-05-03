@@ -40,7 +40,6 @@ use crate::flow::compiler::{
 	},
 };
 
-/// Public API for compiling logical plans to Flows with an existing flow ID.
 pub fn compile_flow(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
@@ -52,10 +51,6 @@ pub fn compile_flow(
 	compiler.compile(&mut Transaction::Admin(txn), plan, sink)
 }
 
-/// Compile a subscription flow without persisting to the catalog.
-///
-/// Uses local ID counters and skips catalog writes. The resulting FlowDag
-/// is used for ephemeral in-memory subscription flow registration.
 pub fn compile_subscription_flow_ephemeral(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
@@ -67,26 +62,23 @@ pub fn compile_subscription_flow_ephemeral(
 	compiler.compile_with_subscription_id(txn, plan, subscription_id)
 }
 
-/// Compiler for converting RQL plans into executable Flows
 pub(crate) struct FlowCompiler {
-	/// The catalog for persisting flow nodes and edges
 	pub(crate) catalog: Catalog,
-	/// The flow builder being used for construction
+
 	builder: FlowBuilder,
-	/// The sink view shape (for terminal nodes)
+
 	pub(crate) sink: Option<View>,
-	/// When true, skip catalog persistence and use local ID counters.
+
 	ephemeral: bool,
-	/// Local node ID counter for ephemeral mode.
+
 	local_node_counter: u64,
-	/// Local edge ID counter for ephemeral mode.
+
 	local_edge_counter: u64,
-	/// Maximum ID value before overflow in ephemeral mode.
+
 	local_id_limit: u64,
 }
 
 impl FlowCompiler {
-	/// Creates a new FlowCompiler instance with an existing flow ID
 	pub fn new(catalog: Catalog, flow_id: FlowId) -> Self {
 		Self {
 			catalog,
@@ -99,11 +91,6 @@ impl FlowCompiler {
 		}
 	}
 
-	/// Creates a new ephemeral FlowCompiler that builds in-memory only.
-	///
-	/// Does not persist nodes/edges to the catalog and uses local ID counters.
-	/// Node/edge IDs are offset by `flow_id * 100` to avoid collisions when
-	/// multiple ephemeral flows share the same FlowEngine. Each flow is limited to 99 IDs.
 	pub fn new_ephemeral(catalog: Catalog, flow_id: FlowId) -> Self {
 		let base = flow_id.0 * 100;
 		Self {
@@ -117,7 +104,6 @@ impl FlowCompiler {
 		}
 	}
 
-	/// Gets the next available operator ID
 	fn next_node_id(&mut self, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
 		if self.ephemeral {
 			if self.local_node_counter >= self.local_id_limit {
@@ -130,7 +116,6 @@ impl FlowCompiler {
 		}
 	}
 
-	/// Gets the next available edge ID
 	fn next_edge_id(&mut self, txn: &mut Transaction<'_>) -> Result<FlowEdgeId> {
 		if self.ephemeral {
 			if self.local_edge_counter >= self.local_id_limit {
@@ -143,13 +128,11 @@ impl FlowCompiler {
 		}
 	}
 
-	/// Adds an edge between two nodes
 	pub(crate) fn add_edge(&mut self, txn: &mut Transaction<'_>, from: &FlowNodeId, to: &FlowNodeId) -> Result<()> {
 		let edge_id = self.next_edge_id(txn)?;
 		let flow_id = self.builder.id();
 
 		if !self.ephemeral {
-			// Create the catalog entry
 			let edge_def = FlowEdge {
 				id: edge_id,
 				flow: flow_id,
@@ -157,26 +140,21 @@ impl FlowCompiler {
 				target: *to,
 			};
 
-			// Persist to catalog
 			self.catalog.create_flow_edge(txn.admin_mut(), &edge_def)?;
 		}
 
-		// Add to in-memory builder
 		self.builder.add_edge(node::FlowEdge::new(edge_id, *from, *to))?;
 		Ok(())
 	}
 
-	/// Adds a operator to the flow graph
 	pub(crate) fn add_node(&mut self, txn: &mut Transaction<'_>, node_type: FlowNodeType) -> Result<FlowNodeId> {
 		let node_id = self.next_node_id(txn)?;
 		let flow_id = self.builder.id();
 
 		if !self.ephemeral {
-			// Serialize the node type to blob
 			let data = to_stdvec(&node_type)
 				.map_err(|e| Error(Box::new(internal!("Failed to serialize FlowNodeType: {}", e))))?;
 
-			// Create the catalog entry
 			let node_def = FlowNode {
 				id: node_id,
 				flow: flow_id,
@@ -184,23 +162,19 @@ impl FlowCompiler {
 				data: Blob::from(data),
 			};
 
-			// Persist to catalog
 			self.catalog.create_flow_node(txn.admin_mut(), &node_def)?;
 		}
 
-		// Add to in-memory builder
 		self.builder.add_node(node::FlowNode::new(node_id, node_type));
 		Ok(node_id)
 	}
 
-	/// Compiles a query plan into a FlowGraph
 	pub(crate) fn compile(
 		mut self,
 		txn: &mut Transaction<'_>,
 		plan: QueryPlan,
 		sink: Option<&View>,
 	) -> Result<FlowDag> {
-		// Store sink view for terminal nodes (if provided)
 		self.sink = sink.cloned();
 		let root_node_id = self.compile_plan(txn, plan)?;
 
@@ -243,7 +217,6 @@ impl FlowCompiler {
 	) -> Result<FlowDag> {
 		let root_node_id = self.compile_plan(txn, plan)?;
 
-		// Add SinkSubscription node
 		let result_node = self.add_node(
 			txn,
 			FlowNodeType::SinkSubscription {
@@ -262,7 +235,6 @@ impl FlowCompiler {
 		Ok(flow)
 	}
 
-	/// Compiles a query plan operator into the FlowGraph
 	pub(crate) fn compile_plan(&mut self, txn: &mut Transaction<'_>, plan: QueryPlan) -> Result<FlowNodeId> {
 		match plan {
 			QueryPlan::IndexScan(_index_scan) => {
@@ -340,8 +312,6 @@ impl FlowCompiler {
 	}
 }
 
-/// Returns true if the flow contains at least one real source node
-/// (i.e., not just inline data).
 fn has_real_source(flow: &FlowDag) -> bool {
 	flow.get_node_ids().any(|node_id| {
 		if let Some(node) = flow.get_node(&node_id) {
@@ -358,8 +328,6 @@ fn has_real_source(flow: &FlowDag) -> bool {
 	})
 }
 
-/// Trait for compiling operator from physical plans to flow nodes
 pub(crate) trait CompileOperator {
-	/// Compiles this operator into a flow operator
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId>;
 }

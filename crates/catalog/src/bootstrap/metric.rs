@@ -31,9 +31,6 @@ use crate::{
 const REQUEST_HISTORY_CAPACITY: u64 = 10_000;
 const STATEMENT_STATS_CAPACITY: u64 = 5_000;
 
-/// Bootstrap the `system::metrics` namespace and its ring buffers.
-///
-/// Idempotent: skips creation if the namespace or ring buffers already exist.
 pub fn bootstrap_metric_ringbuffers(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,

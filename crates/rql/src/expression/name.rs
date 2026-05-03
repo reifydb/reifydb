@@ -8,34 +8,10 @@ use reifydb_type::fragment::Fragment;
 
 use crate::expression::{AccessShapeExpression, ConstantExpression, Expression, ParameterExpression, PrefixOperator};
 
-/// Deterministic, normalized name for an expression.
-///
-/// Two expressions that are semantically equal modulo source whitespace
-/// produce the same `canonical_name`. Used as HashMap keys, for plan
-/// equality, and (when the optimizer lands) for common-subexpression
-/// elimination. Synthesized expressions use this name everywhere.
-///
-/// Format: single space around binary operators, lowercase keywords,
-/// parseable RQL, identifiers preserved verbatim. Precedence-driven
-/// parens on children only when their precedence is lower than the
-/// parent's.
-///
-/// Note: commutative-op sorting (e.g. `a + b` vs `b + a`) is intentionally
-/// NOT performed here. Sorting belongs in a future canonicalizer pass that
-/// runs after constant folding and CSE; doing it now would silently reorder
-/// user headers on every commutative op.
 pub fn canonical_name(expr: &Expression) -> Fragment {
 	Fragment::internal(canonical_text(expr))
 }
 
-/// User-visible label for an expression.
-///
-/// For parsed expressions whose top-level node carries a single source
-/// span (constants, columns, variables, parameters, types, aliases), the
-/// label is that source slice. For everything else, the label falls back
-/// to `canonical_name` - we deliberately do NOT merge child fragments,
-/// because adjacent literal text + operator fragments produce nonsense
-/// like `Hello +World` for `"Hello " + "World"`.
 pub fn display_label(expr: &Expression) -> Fragment {
 	match expr {
 		Expression::Alias(alias_expr) => alias_expr.alias.0.clone(),
@@ -56,7 +32,6 @@ pub fn display_label(expr: &Expression) -> Fragment {
 	}
 }
 
-/// Backwards-compat shim. New code should call `display_label`.
 #[deprecated(note = "use display_label for header naming or canonical_name for identity")]
 pub fn column_name_from_expression(expr: &Expression) -> Fragment {
 	display_label(expr)
@@ -305,7 +280,6 @@ fn constant_label(c: &ConstantExpression) -> Fragment {
 	}
 }
 
-/// Recursively collect all column names referenced in an expression.
 pub fn collect_column_names(expr: &Expression, names: &mut HashSet<String>) {
 	match expr {
 		Expression::Column(col) => {
@@ -433,7 +407,6 @@ pub fn collect_column_names(expr: &Expression, names: &mut HashSet<String>) {
 	}
 }
 
-/// Collect all column names referenced across a slice of expressions.
 pub fn collect_all_column_names(expressions: &[Expression]) -> HashSet<String> {
 	let mut names = HashSet::new();
 	for expr in expressions {

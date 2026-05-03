@@ -57,8 +57,6 @@ impl FFIOperator for EvenFilter {
 				None => continue,
 			};
 
-			// Two-pass without an intermediate kept-indices Vec:
-			// pass 1 counts; pass 2 writes into the host-pool buffer.
 			let kept_n: usize = int_slice.iter().filter(|&&v| v % 2 == 0).count();
 			if kept_n == 0 {
 				continue;

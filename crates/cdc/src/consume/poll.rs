@@ -20,16 +20,14 @@ use super::{
 };
 use crate::storage::CdcStore;
 
-/// Configuration for a CDC poll consumer
 #[derive(Debug, Clone)]
 pub struct PollConsumerConfig {
-	/// Unique identifier for this consumer
 	pub consumer_id: CdcConsumerId,
-	/// Thread name for the poll worker
+
 	pub thread_name: String,
-	/// How often to poll for new CDC events
+
 	pub poll_interval: Duration,
-	/// Maximum batch size for fetching CDC events (None = unbounded)
+
 	pub max_batch_size: Option<u64>,
 }
 
@@ -49,10 +47,6 @@ impl PollConsumerConfig {
 	}
 }
 
-/// Poll-based CDC consumer backed by an actor.
-///
-/// Implements the `CdcConsumer` trait for start/stop lifecycle management.
-/// Internally uses `PollActor` for the actual polling logic.
 pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
 	config: PollConsumerConfig,
 	host: Option<H>,
@@ -60,7 +54,7 @@ pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
 	store: Option<CdcStore>,
 	running: Arc<AtomicBool>,
 	actor_system: ActorSystem,
-	/// Handle to the poll actor - must be joined on stop for proper cleanup
+
 	handle: Option<CdcPollHandle>,
 }
 
@@ -83,8 +77,6 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> PollConsumer<H, C> {
 		}
 	}
 
-	/// Take ownership of the host/consumer/store from their `Option` slots.
-	/// Panics if called twice; `start`'s `running` swap guards against that.
 	fn take_resources(&mut self) -> (H, C, CdcStore) {
 		let host = self.host.take().expect("host already consumed");
 		let consumer = self.consumer.take().expect("consumer already consumed");
@@ -114,16 +106,11 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollCons
 
 	fn stop(&mut self) -> Result<()> {
 		if !self.running.swap(false, Ordering::AcqRel) {
-			return Ok(()); // Already stopped
+			return Ok(());
 		}
 
-		// Signal the actor system to shutdown - this will trigger cancellation
-		// which the actor checks before each poll
 		self.actor_system.shutdown();
 
-		// Join the poll actor thread to ensure proper cleanup
-		// This ensures the PollActor (and its consumer)
-		// are dropped cleanly before we return
 		if let Some(handle) = self.handle.take() {
 			let _ = handle.join();
 		}

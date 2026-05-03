@@ -6,10 +6,6 @@ use std::ops::Deref;
 use reifydb_runtime::hash::Hash128;
 use serde::{Deserialize, Serialize};
 
-/// Stable identity for a query pattern, independent of literal values.
-///
-/// Two executions of `FROM t FILTER {x == 1}` and
-/// `FROM t FILTER {x == 2}` produce the same fingerprint.
 #[repr(transparent)]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -68,10 +64,6 @@ impl From<u128> for StatementFingerprint {
 	}
 }
 
-/// Stable identity for an entire request (batch of statements).
-///
-/// Computed by combining the fingerprints of all individual statements
-/// in the request, preserving order.
 #[repr(transparent)]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -130,10 +122,6 @@ impl From<u128> for RequestFingerprint {
 	}
 }
 
-/// Stable identity for a compiled query, keyed by the raw source text.
-///
-/// Used as the cache key for compiled instruction sequences, allowing
-/// identical query strings to skip parsing and planning.
 #[repr(transparent)]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

@@ -61,7 +61,6 @@ impl ProcedureParamKey {
 		.encode()
 	}
 
-	/// Range covering all parameter rows for a single procedure.
 	pub fn full_scan(procedure: ProcedureId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::params_start(procedure)), Some(Self::params_end(procedure)))
 	}

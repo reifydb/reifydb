@@ -9,7 +9,6 @@ use reifydb_build::emit_target_cfg;
 fn main() {
 	emit_target_cfg();
 
-	// Only rebuild if webapp source changes
 	println!("cargo:rerun-if-changed=webapp/src");
 	println!("cargo:rerun-if-changed=webapp/package.json");
 
@@ -17,8 +16,6 @@ fn main() {
 	let webapp_dist = Path::new("webapp/dist");
 	let dest_path = Path::new(&out_dir).join("webapp");
 
-	// Only watch webapp/dist when it exists - watching a non-existent path
-	// causes Cargo to re-run the build script on every build.
 	if webapp_dist.exists() {
 		println!("cargo:rerun-if-changed=webapp/dist");
 		println!("cargo:warning=Found webapp/dist directory, copying to build output");
@@ -55,8 +52,6 @@ fn main() {
 		fs::write(dest_path.join("index.html"), placeholder_html)
 			.expect("Failed to write placeholder index.html");
 
-		// Generate an empty asset manifest so the include! macro
-		// doesn't fail
 		generate_empty_asset_manifest(&dest_path).expect("Failed to generate empty asset manifest");
 	}
 }
@@ -86,14 +81,11 @@ fn generate_asset_manifest(webapp_path: &Path) -> io::Result<()> {
 	writeln!(manifest, "// Auto-generated asset manifest")?;
 	writeln!(manifest, "pub const ASSETS: &[(&str, &[u8], &str)] = &[")?;
 
-	// Collect all files recursively
 	let mut assets = Vec::new();
 	collect_assets(webapp_path, webapp_path, &mut assets)?;
 
-	// Sort for consistent output
 	assets.sort_by(|a, b| a.0.cmp(&b.0));
 
-	// Write each asset entry
 	for (path, full_path, mime_type) in assets {
 		writeln!(
 			manifest,
@@ -118,15 +110,12 @@ fn collect_assets(base: &Path, dir: &Path, assets: &mut Vec<(String, path::PathB
 		} else if let Some(file_name) = path.file_name() {
 			let file_name = file_name.to_string_lossy();
 
-			// Skip the manifest file itself
 			if file_name == "asset_manifest.rs" {
 				continue;
 			}
 
-			// Get relative path from base
 			let rel_path = path.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
 
-			// Determine MIME type
 			let mime_type = get_mime_type(&rel_path);
 
 			assets.push((rel_path, path.clone(), mime_type.to_string()));
@@ -174,7 +163,6 @@ fn generate_empty_asset_manifest(webapp_path: &Path) -> io::Result<()> {
 	writeln!(manifest, "// Auto-generated asset manifest (placeholder)")?;
 	writeln!(manifest, "pub const ASSETS: &[(&str, &[u8], &str)] = &[")?;
 
-	// Include just the placeholder index.html
 	writeln!(manifest, "    (\"index.html\", include_bytes!(\"index.html\"), \"text/html; charset=utf-8\"),",)?;
 
 	writeln!(manifest, "];")?;

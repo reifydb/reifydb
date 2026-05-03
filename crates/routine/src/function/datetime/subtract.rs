@@ -61,19 +61,15 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeSubtract {
 							let mut month = date.month() as i32;
 							let mut day = date.day();
 
-							// Subtract months component
 							let total_months = month - dur.get_months();
 							year += (total_months - 1).div_euclid(12);
 							month = (total_months - 1).rem_euclid(12) + 1;
 
-							// Clamp day to valid range for the new month
 							let max_day = days_in_month(year, month as u32);
 							if day > max_day {
 								day = max_day;
 							}
 
-							// Convert to seconds since epoch and subtract day/nanos
-							// components
 							if let Some(base_date) = Date::new(year, month as u32, day) {
 								let base_days = base_date.to_days_since_epoch() as i64
 									- dur.get_days() as i64;

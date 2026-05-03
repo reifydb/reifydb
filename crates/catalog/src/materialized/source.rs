@@ -12,7 +12,6 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionSource};
 
 impl MaterializedCatalog {
-	/// Find a source by ID at a specific version
 	pub fn find_source_at(&self, source: SourceId, version: CommitVersion) -> Option<Source> {
 		self.sources.get(&source).and_then(|entry| {
 			let multi = entry.value();
@@ -20,7 +19,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a source by name in a namespace at a specific version
 	pub fn find_source_by_name_at(
 		&self,
 		namespace: NamespaceId,
@@ -33,7 +31,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a source by ID (returns latest version)
 	pub fn find_source(&self, source: SourceId) -> Option<Source> {
 		self.sources.get(&source).and_then(|entry| {
 			let multi = entry.value();
@@ -41,7 +38,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a source by name in a namespace (returns latest version)
 	pub fn find_source_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Source> {
 		self.sources_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let shape_id = *entry.value();
@@ -50,7 +46,6 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_source(&self, id: SourceId, version: CommitVersion, source: Option<Source>) {
-		// Look up the current source to update the index
 		if let Some(entry) = self.sources.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

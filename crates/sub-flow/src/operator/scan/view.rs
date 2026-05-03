@@ -20,21 +20,11 @@ use reifydb_type::{
 
 use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
 
-/// Final state of a single row according to the in-transaction view overlay.
-///
-/// `Present(columns, idx)` - the row exists with data at `columns[idx]`.
-/// `Removed` - the row was removed in this transaction and should be absent
-/// from the pull result.
 enum OverlayRow<'a> {
 	Present(&'a Columns, usize),
 	Removed,
 }
 
-/// Build a per-row lookup of the overlay's effect on the given view.
-///
-/// Walks `overlay` in order, collapsing multiple diffs for the same row_number
-/// so the final entry reflects the latest state (later diffs override earlier
-/// ones, Insert/Update write a Present entry, Remove writes a Removed entry).
 fn build_view_overlay<'a>(overlay: &'a [Change], view_id: u64) -> HashMap<RowNumber, OverlayRow<'a>> {
 	let mut map: HashMap<RowNumber, OverlayRow<'a>> = HashMap::new();
 	for change in overlay {
@@ -134,10 +124,6 @@ impl Operator for PrimitiveViewOperator {
 		let shape: RowShape = self.view.columns().into();
 		let fields = shape.fields();
 
-		// Hold the Arc in a local so the overlay HashMap (which borrows from it)
-		// stays alive across the subsequent mutable borrow for `txn.get`. The
-		// overlay reflects sibling views' outputs produced earlier in the same
-		// pre-commit; it's empty for Deferred / Ephemeral transactions.
 		let overlay_arc = txn.view_overlay();
 		let overlay = overlay_arc
 			.as_deref()
@@ -204,7 +190,6 @@ impl PrimitiveViewOperator {
 		created_at: &mut Vec<DateTime>,
 		updated_at: &mut Vec<DateTime>,
 	) -> bool {
-		// True iff this row was resolved via overlay (Removed -> skip, Present -> appended).
 		match overlay.get(&row_num) {
 			Some(OverlayRow::Removed) => true,
 			Some(OverlayRow::Present(src, idx)) => {

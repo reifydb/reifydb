@@ -27,9 +27,6 @@ use crate::{
 	},
 };
 
-/// PatchNode merges assignment values with original row values.
-/// Unlike ExtendNode which adds new columns, PatchNode replaces
-/// columns that have matching names in the assignments.
 pub(crate) struct PatchNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,

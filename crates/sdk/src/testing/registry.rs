@@ -126,7 +126,7 @@ thread_local! {
 
 pub fn with_registry<R>(registry: &TestBuilderRegistry, f: impl FnOnce() -> R) -> R {
 	// SAFETY: we only hold the pointer for the duration of `f`. The
-	// registry outlives `f`.
+
 	let extended: &'static TestBuilderRegistry = unsafe { mem::transmute(registry) };
 	let prev = REGISTRY.with(|cell| cell.replace(Some(extended)));
 	let r = f();
@@ -288,11 +288,8 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 		}
 	};
 
-	// Sync the underlying Vec lengths to match what the guest wrote
-	// through the raw pointers handed out by `data_ptr` / `offsets_ptr`.
 	let elem = elem_size_for(active.type_code);
-	// For var-len types: extend offsets first so `.last()` reflects the
-	// guest-written end-of-payload byte count.
+
 	if let Some(offsets) = active.offsets.as_mut() {
 		let offsets_len = written_count + 1;
 		if offsets_len > offsets.capacity() {
@@ -303,8 +300,6 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 		}
 	}
 	let data_byte_len = if is_var_len(active.type_code) {
-		// Var-len `written_count` is the element count; the byte count
-		// comes from the last offset.
 		match active.offsets.as_ref() {
 			Some(o) if !o.is_empty() => *o.last().unwrap() as usize,
 			_ => 0,
@@ -313,7 +308,6 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 		written_count.saturating_mul(elem)
 	};
 	if data_byte_len > active.data.capacity() {
-		// Guest claimed to write more bytes than the buffer can hold.
 		return -1;
 	}
 	unsafe {
@@ -472,7 +466,6 @@ fn assemble(
 	Ok(Columns::with_system_columns(cols, row_numbers, timestamps.clone(), timestamps))
 }
 
-/// Produce a native ColumnBuffer from raw bytes + offsets + bitvec.
 pub(crate) fn finalize_buffer(
 	type_code: ColumnTypeCode,
 	mut data: Vec<u8>,
@@ -631,7 +624,6 @@ fn to_numeric<T: Copy + IsNumber + fmt::Debug + Default>(
 	Some(wrap(NumberContainer::from_parts(CowVec::new(v))))
 }
 
-/// Convenience: drain `EmittedDiff`s into a `Diffs` collection.
 pub fn into_diffs(emitted: Vec<EmittedDiff>) -> Diffs {
 	emitted.into_iter()
 		.map(|d| match d.kind {

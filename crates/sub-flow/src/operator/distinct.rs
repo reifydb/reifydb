@@ -48,26 +48,23 @@ use crate::{
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
-/// Layout information shared across all rows
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctLayout {
 	names: Vec<String>,
 	types: Vec<Type>,
 }
 
-/// Serialized row data - stores column values directly without Row conversion
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SerializedRow {
 	number: RowNumber,
 	created_at: DateTime,
 	updated_at: DateTime,
-	/// Column values serialized with postcard
+
 	#[serde(with = "serde_bytes")]
 	values_bytes: Vec<u8>,
 }
 
 impl SerializedRow {
-	/// Create from Columns at a specific row index - no Row allocation
 	fn from_columns_at_index(columns: &Columns, row_idx: usize) -> Self {
 		let number = columns.row_numbers[row_idx];
 		let created_at = if columns.created_at.is_empty() {
@@ -83,7 +80,6 @@ impl SerializedRow {
 
 		let values: Vec<Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
 
-		// Serialize values directly with postcard
 		let values_bytes = to_stdvec(&values).expect("Failed to serialize column values");
 
 		Self {
@@ -94,9 +90,7 @@ impl SerializedRow {
 		}
 	}
 
-	/// Convert back to Columns - no Row allocation
 	fn to_columns(&self, layout: &DistinctLayout) -> Columns {
-		// Deserialize values
 		let values: Vec<Value> = from_bytes(&self.values_bytes).expect("Failed to deserialize column values");
 
 		let mut columns_vec = Vec::with_capacity(layout.names.len());
@@ -124,7 +118,6 @@ impl DistinctLayout {
 		}
 	}
 
-	/// Update the layout from Columns (uses first row if multiple)
 	fn update_from_columns(&mut self, columns: &Columns) {
 		if columns.is_empty() {
 			return;
@@ -154,25 +147,19 @@ impl DistinctLayout {
 	}
 }
 
-/// Entry for tracking distinct values
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctEntry {
-	/// Number of times this distinct value appears
 	count: usize,
-	/// The first row that had this distinct value
+
 	first_row: SerializedRow,
-	/// Nanos since epoch when this entry was last touched (insert or update).
-	/// Used by tick-driven row: entries older than `cutoff` are evicted.
+
 	last_seen_nanos: u64,
 }
 
-/// State for tracking distinct values
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctState {
-	/// Map from hash of distinct expressions to entry
-	/// Using IndexMap to preserve insertion order for "first occurrence" semantics
 	entries: IndexMap<Hash128, DistinctEntry>,
-	/// Shared layout information
+
 	layout: DistinctLayout,
 }
 
@@ -192,8 +179,7 @@ pub struct DistinctOperator {
 	shape: RowShape,
 	routines: Routines,
 	runtime_context: RuntimeContext,
-	/// TTL duration in nanos. `None` disables eviction (default; matches
-	/// row-TTL absent-clause semantics: unbounded growth, no surprise removal).
+
 	ttl_nanos: Option<u64>,
 }
 
@@ -227,7 +213,6 @@ impl DistinctOperator {
 		}
 	}
 
-	/// Compute hashes for all rows in Columns
 	fn compute_hashes(&self, columns: &Columns) -> Result<Vec<Hash128>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -235,7 +220,6 @@ impl DistinctOperator {
 		}
 
 		if self.compiled_expressions.is_empty() {
-			// Hash the entire row data for each row
 			let mut hashes = Vec::with_capacity(row_count);
 			for row_idx in 0..row_count {
 				let mut data = Vec::new();
@@ -310,7 +294,6 @@ impl DistinctOperator {
 		Ok(())
 	}
 
-	/// Process inserts - operates directly on Columns without Row conversion
 	fn process_insert(&self, state: &mut DistinctState, columns: &Columns) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
@@ -412,7 +395,6 @@ impl DistinctOperator {
 		Ok(result)
 	}
 
-	/// Process removes - operates directly on Columns without Row conversion
 	fn process_remove(&self, state: &mut DistinctState, columns: &Columns) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
@@ -522,9 +504,6 @@ impl Operator for DistinctOperator {
 		let node_id = self.node;
 		let shape = self.shape.clone();
 
-		// Load (or fetch from cache) the cached DistinctState for this txn.
-		// On first access we register the persist closure; subsequent batches
-		// reuse the in-memory state without re-decoding the postcard blob.
 		let state: &mut DistinctState = txn.operator_state(node_id, |txn| {
 			let s = self.load_distinct_state(txn)?;
 			let persist: PersistFn = Box::new(move |txn, value| {

@@ -13,9 +13,6 @@ use crate::{
 	return_internal_error,
 };
 
-/// Serialize a ShapeId for use in database keys
-/// Returns [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
-/// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x06 for Dictionary, 0x07 for Series
 pub fn serialize_shape_id(shape: &ShapeId) -> Vec<u8> {
 	let mut result = Vec::with_capacity(9);
 	match shape {
@@ -47,9 +44,6 @@ pub fn serialize_shape_id(shape: &ShapeId) -> Vec<u8> {
 	result
 }
 
-/// Deserialize a ShapeId from database key bytes
-/// Expects [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
-/// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x06 for Dictionary, 0x07 for Series
 pub fn deserialize_shape_id(bytes: &[u8]) -> Result<ShapeId> {
 	if bytes.len() != 9 {
 		return_internal_error!("Invalid ShapeId encoding: expected 9 bytes, got {}", bytes.len());
@@ -69,21 +63,17 @@ pub fn deserialize_shape_id(bytes: &[u8]) -> Result<ShapeId> {
 	}
 }
 
-/// Serialize an IndexId for use in database keys
-/// Returns [type_byte, ...id_bytes]
 pub fn serialize_index_id(index: &IndexId) -> Vec<u8> {
 	let mut result = Vec::with_capacity(9);
 	match index {
 		IndexId::Primary(PrimaryKeyId(id)) => {
 			result.push(0x01);
 			result.extend(&serialize(id));
-		} // Future: Secondary, Unique, etc.
+		}
 	}
 	result
 }
 
-/// Deserialize an IndexId from database key bytes
-/// Expects [type_byte, ...id_bytes]
 pub fn deserialize_index_id(bytes: &[u8]) -> Result<IndexId> {
 	if bytes.len() != 9 {
 		return_internal_error!("Invalid IndexId encoding: expected 9 bytes, got {}", bytes.len());
@@ -94,7 +84,7 @@ pub fn deserialize_index_id(bytes: &[u8]) -> Result<IndexId> {
 
 	match type_byte {
 		0x01 => Ok(IndexId::Primary(PrimaryKeyId(id))),
-		// Future: 0x02 => Ok(IndexId::Secondary(...)), etc.
+
 		_ => return_internal_error!("Invalid IndexId type byte: 0x{:02x}.", type_byte),
 	}
 }

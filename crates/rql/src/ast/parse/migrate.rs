@@ -16,7 +16,6 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parses `MIGRATE` or `MIGRATE TO 'migration_name'`
 	pub(crate) fn parse_migrate(&mut self) -> Result<AstMigrate<'bump>> {
 		let token = self.consume_keyword(Keyword::Migrate)?;
 
@@ -51,7 +50,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parses `ROLLBACK MIGRATION` or `ROLLBACK MIGRATION TO 'migration_name'`
 	pub(crate) fn parse_rollback_migration(&mut self) -> Result<AstRollbackMigration<'bump>> {
 		let token = self.consume_keyword(Keyword::Rollback)?;
 		self.consume_keyword(Keyword::Migration)?;

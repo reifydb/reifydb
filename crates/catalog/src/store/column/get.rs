@@ -15,27 +15,23 @@ use reifydb_type::{
 
 use crate::store::column::shape::column::SHAPE;
 
-/// Decodes a constraint from stored bytes
 fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 	if bytes.is_empty() {
 		return None;
 	}
 
 	match bytes[0] {
-		0 => None, // No constraint
+		0 => None,
 		1 if bytes.len() >= 5 => {
-			// MaxBytes constraint
 			let max_bytes = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
 			Some(Constraint::MaxBytes(max_bytes.into()))
 		}
 		2 if bytes.len() >= 3 => {
-			// PrecisionScale constraint
 			let precision = bytes[1];
 			let scale = bytes[2];
 			Some(Constraint::PrecisionScale(precision.into(), scale.into()))
 		}
 		3 if bytes.len() >= 10 => {
-			// Dictionary constraint
 			let dict_id = u64::from_le_bytes([
 				bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
 			]);
@@ -48,7 +44,7 @@ fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 			]);
 			Some(Constraint::SumType(SumTypeId(id)))
 		}
-		_ => None, // Unknown or invalid constraint type
+		_ => None,
 	}
 }
 
@@ -79,11 +75,9 @@ impl CatalogStore {
 		let index = ColumnIndex(SHAPE.get_u8(&row, INDEX));
 		let auto_increment = SHAPE.get_bool(&row, AUTO_INCREMENT);
 
-		// Reconstruct constraint from stored blob
 		let constraint_bytes = SHAPE.get_blob(&row, CONSTRAINT);
 		let decoded_constraint = decode_constraint(constraint_bytes.as_bytes());
 
-		// Read dictionary_id (0 means no dictionary)
 		let dict_id_raw = SHAPE.get_u64(&row, DICTIONARY_ID);
 		let dictionary_id = if dict_id_raw == 0 {
 			None
@@ -91,13 +85,11 @@ impl CatalogStore {
 			Some(DictionaryId(dict_id_raw))
 		};
 
-		// Reconstruct constraint, enriching with dictionary info when needed
 		let constraint = match (&decoded_constraint, dictionary_id) {
-			// Constraint blob already has dictionary info
 			(Some(c @ Constraint::Dictionary(..)), _) => {
 				TypeConstraint::with_constraint(base_type, c.clone())
 			}
-			// Dictionary column without dictionary in constraint blob (legacy data) - look up dictionary
+
 			(_, Some(dict_id)) => {
 				if let Some(dict) = Self::find_dictionary(rx, dict_id)? {
 					TypeConstraint::with_constraint(
@@ -111,9 +103,9 @@ impl CatalogStore {
 					}
 				}
 			}
-			// Non-dictionary column with constraint
+
 			(Some(c), None) => TypeConstraint::with_constraint(base_type, c.clone()),
-			// Non-dictionary column without constraint
+
 			(None, None) => TypeConstraint::unconstrained(base_type),
 		};
 

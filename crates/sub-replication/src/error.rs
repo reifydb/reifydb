@@ -6,10 +6,8 @@ use std::{error::Error as StdError, fmt, fmt::Display};
 use reifydb_core::common::CommitVersion;
 use reifydb_type::{error, error::Error};
 
-/// Error type for replication operations.
 #[derive(Debug, Clone)]
 pub enum ReplicationError {
-	/// A CDC entry was applied out of order or duplicated.
 	OutOfOrderVersion {
 		version: CommitVersion,
 		last_applied: CommitVersion,
@@ -44,12 +42,10 @@ impl From<ReplicationError> for Error {
 	}
 }
 
-/// Replication-specific diagnostics.
 pub mod diagnostic {
 	use reifydb_core::common::CommitVersion;
 	use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
-	/// A CDC entry was applied out of order or duplicated.
 	pub fn out_of_order_version(version: CommitVersion, last_applied: CommitVersion) -> Diagnostic {
 		Diagnostic {
 			code: "REPL_001".to_string(),

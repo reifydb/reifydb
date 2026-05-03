@@ -11,7 +11,6 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use super::encode_retention_strategy;
 use crate::Result;
 
-/// Store a retention strategy for a shape (table, view, or ring buffer)
 pub(crate) fn create_shape_retention_strategy(
 	txn: &mut AdminTransaction,
 	shape: ShapeId,
@@ -23,7 +22,6 @@ pub(crate) fn create_shape_retention_strategy(
 	Ok(())
 }
 
-/// Store a retention strategy for an operator (flow node)
 pub(crate) fn create_operator_retention_strategy(
 	txn: &mut AdminTransaction,
 	operator: FlowNodeId,

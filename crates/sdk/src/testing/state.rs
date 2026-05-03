@@ -76,7 +76,6 @@ impl TestStateStore {
 	pub fn set_named_value(&mut self, key: EncodedKey, values: &HashMap<String, Value>, shape: &RowShape) {
 		let mut encoded = shape.allocate();
 
-		// Convert HashMap to ordered values based on shape field names
 		let ordered_values: Vec<Value> =
 			shape.field_names().map(|name| values.get(name).cloned().unwrap_or(Value::none())).collect();
 

@@ -23,7 +23,7 @@ pub struct SystemChangeProto {
     #[prost(oneof = "system_change_proto::Change", tags = "1, 2, 3")]
     pub change: ::core::option::Option<system_change_proto::Change>,
 }
-/// Nested message and enum types in `SystemChangeProto`.
+
 pub mod system_change_proto {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Change {
@@ -71,7 +71,7 @@ pub struct GetVersionResponse {
     #[prost(uint64, tag = "3")]
     pub max_cdc_version: u64,
 }
-/// Generated client implementations.
+
 pub mod reify_db_replication_client {
     #![allow(
         unused_variables,
@@ -87,7 +87,7 @@ pub mod reify_db_replication_client {
         inner: tonic::client::Grpc<T>,
     }
     impl ReifyDbReplicationClient<tonic::transport::Channel> {
-        /// Attempt to create a new client by connecting to a given endpoint.
+
         pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
         where
             D: TryInto<tonic::transport::Endpoint>,
@@ -159,7 +159,7 @@ pub mod reify_db_replication_client {
         }
     }
 }
-/// Generated server implementations.
+
 pub mod reify_db_replication_server {
     #![allow(
         unused_variables,
@@ -169,10 +169,10 @@ pub mod reify_db_replication_server {
         clippy::let_unit_value,
     )]
     use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with ReifyDbReplicationServer.
+
     #[async_trait]
     pub trait ReifyDbReplication: std::marker::Send + std::marker::Sync + 'static {
-        /// Server streaming response type for the StreamCdc method.
+
         type StreamCdcStream: tonic::codegen::tokio_stream::Stream<
                 Item = std::result::Result<super::CdcEntry, tonic::Status>,
             >
@@ -369,7 +369,7 @@ pub mod reify_db_replication_server {
             }
         }
     }
-    /// Generated gRPC service name
+
     pub const SERVICE_NAME: &str = "reifydb.replication.v1.ReifyDBReplication";
     impl<T> tonic::server::NamedService for ReifyDbReplicationServer<T> {
         const NAME: &'static str = SERVICE_NAME;

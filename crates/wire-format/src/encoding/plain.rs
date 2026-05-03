@@ -25,7 +25,6 @@ use reifydb_type::{
 
 use crate::{encode::any::encode_any_value, error::EncodeError};
 
-/// Helper macro for encoding fixed-size numeric types via to_le_bytes.
 macro_rules! encode_fixed {
 	($container:expr, $ty:expr, $elem_size:expr) => {{
 		let slice = &**$container;
@@ -43,21 +42,18 @@ macro_rules! encode_fixed {
 	}};
 }
 
-/// Result of encoding a column's data in PLAIN format.
 pub struct PlainEncoded {
-	/// The encoded data bytes.
 	pub data: Vec<u8>,
-	/// Offset array bytes (for variable-length types), empty otherwise.
+
 	pub offsets: Vec<u8>,
-	/// Nones bitmap bytes (for Option columns), empty otherwise.
+
 	pub nones: Vec<u8>,
-	/// The base type code.
+
 	pub type_code: u8,
-	/// Whether this column has nones (is an Option type).
+
 	pub has_nones: bool,
 }
 
-/// Encode a FrameColumnData into PLAIN format.
 pub fn encode_plain(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError> {
 	match col {
 		FrameColumnData::Option {
@@ -234,7 +230,6 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 	Ok(result)
 }
 
-/// Encode variable-length data using offset array + concatenated bytes.
 fn encode_varlen(count: usize, get_bytes: impl Fn(usize) -> Vec<u8>, ty: Type) -> PlainEncoded {
 	let mut offsets = Vec::with_capacity((count + 1) * 4);
 	let mut data = Vec::new();
@@ -307,7 +302,6 @@ fn encode_dictionary_ids(c: &DictionaryContainer) -> PlainEncoded {
 	}
 }
 
-/// Encode a BitVec as packed bytes (LSB-first, no length prefix).
 pub fn encode_bitvec(bv: &BitVec) -> Vec<u8> {
 	let len = bv.len();
 	let byte_count = len.div_ceil(8);

@@ -55,22 +55,18 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(auth) = TransactionalAuthenticationChanges::find_authentication(admin, id) {
 					return Ok(Some(auth.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalAuthenticationChanges::is_authentication_deleted(admin, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(auth) = self.materialized.find_authentication_at(id, admin.version()) {
 					return Ok(Some(auth));
 				}
 
-				// 4. Fall back to storage
 				if let Some(auth) =
 					CatalogStore::find_authentication(&mut Transaction::Admin(&mut *admin), id)?
 				{
@@ -178,7 +174,6 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(auth) =
 					TransactionalAuthenticationChanges::find_authentication_by_identity_and_method(
 						admin, identity, method,
@@ -186,14 +181,12 @@ impl Catalog {
 					return Ok(Some(auth.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalAuthenticationChanges::is_authentication_deleted_by_identity_and_method(
 					admin, identity, method,
 				) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(auth) = self.materialized.find_authentication_by_identity_and_method_at(
 					identity,
 					method,
@@ -202,7 +195,6 @@ impl Catalog {
 					return Ok(Some(auth));
 				}
 
-				// 4. Fall back to storage
 				if let Some(auth) = CatalogStore::find_authentication_by_identity_and_method(
 					&mut Transaction::Admin(&mut *admin),
 					identity,

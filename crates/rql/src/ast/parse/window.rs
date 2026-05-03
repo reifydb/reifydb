@@ -20,7 +20,6 @@ impl<'bump> Parser<'bump> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Window)?;
 
-		// Parse mandatory window kind (tumbling, sliding, rolling, session)
 		let kind = if !self.is_eof() {
 			match self.current()?.fragment.text().to_lowercase().as_str() {
 				"tumbling" => {
@@ -56,11 +55,9 @@ impl<'bump> Parser<'bump> {
 			.into());
 		};
 
-		// Parse computation block
 		self.consume_operator(OpenCurly)?;
 		let mut aggregations = Vec::new();
 
-		// Parse aggregation expressions in main window block
 		loop {
 			if self.is_eof() {
 				return Err(AstError::UnexpectedToken {
@@ -74,10 +71,8 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Parse aggregation expression
 			aggregations.push(self.parse_node(Precedence::None)?);
 
-			// Handle comma separation
 			if self.current()?.is_separator(Comma) {
 				let _ = self.advance()?;
 			} else if self.current()?.is_operator(CloseCurly) {
@@ -93,11 +88,9 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(CloseCurly)?;
 
-		// Parse optional WITH and BY clauses in any order
 		let mut config = Vec::new();
 		let mut group_by = Vec::new();
 
-		// Keep parsing WITH and BY clauses until we don't find any more
 		loop {
 			if self.is_eof() {
 				break;
@@ -105,15 +98,14 @@ impl<'bump> Parser<'bump> {
 
 			let current = self.current()?;
 			if current.is_keyword(With) {
-				let _ = self.advance()?; // consume 'with'
+				let _ = self.advance()?;
 				let with_config = self.parse_with_clause()?;
 				config.extend(with_config);
 			} else if current.is_keyword(By) {
-				let _ = self.advance()?; // consume 'by'
+				let _ = self.advance()?;
 				let by_exprs = self.parse_by_clause()?;
 				group_by.extend(by_exprs);
 			} else {
-				// No more WITH or BY clauses
 				break;
 			}
 		}
@@ -128,7 +120,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse WITH { interval: "5m", slide: "1m" } clause
 	fn parse_with_clause(&mut self) -> Result<Vec<AstWindowConfig<'bump>>> {
 		self.consume_operator(OpenCurly)?;
 
@@ -147,7 +138,6 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Parse configuration parameter (identifier: value)
 			if !self.current()?.is_identifier() {
 				return Err(AstError::UnexpectedToken {
 					expected: "configuration parameter name".to_string(),
@@ -165,7 +155,6 @@ impl<'bump> Parser<'bump> {
 				value,
 			});
 
-			// Handle comma separation
 			if self.current()?.is_separator(Comma) {
 				let _ = self.advance()?;
 			} else if self.current()?.is_operator(CloseCurly) {
@@ -183,7 +172,6 @@ impl<'bump> Parser<'bump> {
 		Ok(config)
 	}
 
-	/// Parse BY { field1, field2 } clause
 	fn parse_by_clause(&mut self) -> Result<Vec<Ast<'bump>>> {
 		self.consume_operator(OpenCurly)?;
 
@@ -202,10 +190,8 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Parse grouping expression
 			group_by.push(self.parse_node(Precedence::None)?);
 
-			// Handle comma separation
 			if self.current()?.is_separator(Comma) {
 				let _ = self.advance()?;
 			} else if self.current()?.is_operator(CloseCurly) {

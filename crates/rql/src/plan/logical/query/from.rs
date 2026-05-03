@@ -17,8 +17,6 @@ use crate::{
 	},
 };
 
-// Note: Fragment is still imported for use at materialization boundaries (Expression types use owned Fragment)
-
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_from(&self, ast: AstFrom<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		match ast {
@@ -121,7 +119,6 @@ impl<'bump> Compiler<'bump> {
 				variable,
 				..
 			} => {
-				// Create a variable source node for regular variables
 				let variable_name = variable.token.fragment;
 				Ok(LogicalPlan::VariableSource(VariableSourceNode {
 					name: variable_name,

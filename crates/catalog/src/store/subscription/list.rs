@@ -12,7 +12,7 @@ use crate::{CatalogStore, Result, store::subscription::shape::subscription};
 
 impl CatalogStore {
 	pub(crate) fn list_subscriptions_all(rx: &mut Transaction<'_>) -> Result<Vec<Subscription>> {
-		// First, collect all subscription IDs and metadata
+
 		let mut subscription_data = Vec::new();
 		{
 			let mut stream = rx.range(SubscriptionKey::full_scan(), 1024)?;
@@ -33,19 +33,19 @@ impl CatalogStore {
 					}
 				}
 			}
-		} // stream dropped here, releasing the borrow on rx
+		}
 
-		// Now load columns for each subscription
+
 		let mut result = Vec::new();
 		for (subscription_id, acknowledged_version) in subscription_data {
-			// Load columns (works for all transaction types)
+
 			let columns = Self::list_subscription_columns(rx, subscription_id)?;
 
 			let subscription = Subscription {
 				id: subscription_id,
 				columns,
-				// Subscriptions don't have primary keys (they use UUID v7 as their
-				// identifier)
+
+
 				primary_key: None,
 				acknowledged_version,
 			};

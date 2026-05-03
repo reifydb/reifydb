@@ -72,7 +72,6 @@ impl ViewScanNode {
 impl QueryNode for ViewScanNode {
 	#[instrument(name = "volcano::scan::view::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
-		// Already has context from constructor
 		Ok(())
 	}
 
@@ -110,12 +109,10 @@ impl QueryNode for ViewScanNode {
 			}
 		}
 
-		// Drop the stream to release the borrow on rx
 		drop(stream);
 		if batch_rows.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				// Empty view: return empty columns with correct types to preserve shape
 				return Ok(Some(Columns::from_catalog_columns(self.view.columns())));
 			}
 			return Ok(None);

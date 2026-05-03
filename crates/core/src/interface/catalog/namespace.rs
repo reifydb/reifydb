@@ -4,8 +4,6 @@
 use crate::interface::catalog::id::NamespaceId;
 
 impl NamespaceId {
-	/// Root sentinel - all top-level namespaces have `parent_id: NamespaceId::ROOT`.
-	/// This is not a real namespace, just the tree root.
 	pub const ROOT: NamespaceId = NamespaceId(0);
 	pub const SYSTEM: NamespaceId = NamespaceId(1);
 	pub const DEFAULT: NamespaceId = NamespaceId(2);

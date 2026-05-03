@@ -26,14 +26,6 @@ impl Drop for PoolsInner {
 	}
 }
 
-/// Handle to the runtime's thread pools.
-///
-/// Wraps two rayon `ThreadPool` instances for workload isolation
-/// and an optional tokio `Runtime` for async I/O.
-///
-/// When `async_threads` is 0 in the config, no tokio runtime is created.
-/// Calling `spawn()`, `block_on()`, or `handle()` without a tokio runtime
-/// will panic.
 #[derive(Clone)]
 pub struct Pools {
 	inner: Arc<PoolsInner>,
@@ -46,9 +38,6 @@ impl Default for Pools {
 }
 
 impl Pools {
-	/// Create all thread pools from the given configuration.
-	///
-	/// If `async_threads` is 0, no tokio runtime is created.
 	pub fn new(config: PoolConfig) -> Self {
 		let system = Arc::new(
 			ThreadPoolBuilder::new()
@@ -85,17 +74,14 @@ impl Pools {
 		}
 	}
 
-	/// Get a reference to the system rayon pool.
 	pub fn system_pool(&self) -> &Arc<ThreadPool> {
 		&self.inner.system
 	}
 
-	/// Number of threads in the system pool.
 	pub fn system_thread_count(&self) -> usize {
 		self.inner.system.current_num_threads()
 	}
 
-	/// Get a reference to the query rayon pool.
 	pub fn query_pool(&self) -> &Arc<ThreadPool> {
 		&self.inner.query
 	}
@@ -104,12 +90,10 @@ impl Pools {
 		self.inner.tokio.as_ref().expect("no tokio runtime configured (async_threads = 0)")
 	}
 
-	/// Get a handle to the tokio runtime.
 	pub fn handle(&self) -> runtime::Handle {
 		self.tokio().handle().clone()
 	}
 
-	/// Spawn a future onto the tokio runtime.
 	pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
 	where
 		F: Future + Send + 'static,
@@ -118,7 +102,6 @@ impl Pools {
 		self.tokio().spawn(future)
 	}
 
-	/// Block the current thread until the future completes.
 	pub fn block_on<F>(&self, future: F) -> F::Output
 	where
 		F: Future,

@@ -12,11 +12,6 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for storing TTL configuration for a flow operator.
-///
-/// Sibling to [`crate::key::row_ttl::RowTtlKey`], which stores TTL configuration
-/// for data shapes (tables, ringbuffers, series). Operator TTL is keyed by
-/// `FlowNodeId` and read by the dedicated operator-state TTL eviction actor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorTtlKey {
 	pub node: FlowNodeId,
@@ -61,7 +56,6 @@ impl EncodableKey for OperatorTtlKey {
 	}
 }
 
-/// Range for scanning all operator TTL configurations.
 pub struct OperatorTtlKeyRange;
 
 impl OperatorTtlKeyRange {

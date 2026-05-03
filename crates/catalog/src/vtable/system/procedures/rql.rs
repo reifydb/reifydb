@@ -23,7 +23,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes RQL (user-defined) procedures.
 pub struct SystemProceduresRql {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

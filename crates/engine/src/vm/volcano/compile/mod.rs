@@ -47,9 +47,6 @@ use crate::vm::{
 	},
 };
 
-// Helpers
-
-/// Extract the source name from a query plan if it's a scan node.
 fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 	match plan {
 		RqlQueryPlan::TableScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
@@ -82,8 +79,6 @@ pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedSha
 		_ => None,
 	}
 }
-
-// Main compile function
 
 #[instrument(name = "volcano::compile", level = "debug", skip_all)]
 pub(crate) fn compile<'a>(
@@ -139,7 +134,7 @@ pub(crate) fn compile<'a>(
 					})
 					.unwrap_or_else(|| panic!("TAKE variable ${} must be a numeric value", name)),
 			};
-			// Optimize: TAKE over SORT becomes TopK
+
 			if let RqlQueryPlan::Sort(sort_node) = *input {
 				let input_node = compile(*sort_node.input, rx, context);
 				return Box::new(TopKNode::new(input_node, sort_node.by, limit));

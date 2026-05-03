@@ -12,11 +12,6 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for series data rows.
-///
-/// Layout without tag: `[Version | Row(0x03) | ShapeId::Series(id) | ordering_value(u64) | sequence(u64)]`
-/// Layout with tag:    `[Version | Row(0x03) | ShapeId::Series(id) | variant_tag(u8) | ordering_value(u64) |
-/// sequence(u64)]`
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeriesRowKey {
 	pub series: SeriesId,
@@ -63,9 +58,6 @@ impl EncodableKey for SeriesRowKey {
 			_ => return None,
 		};
 
-		// We need to know if there's a variant tag. We can tell by the remaining bytes:
-		// Without tag: u64(8) + u64(8) = 16 bytes remain
-		// With tag: u8(1) + u64(8) + u64(8) = 17 bytes remain
 		let remaining = de.remaining();
 		let variant_tag = if remaining > 16 {
 			Some(de.read_u8().ok()?)
@@ -85,7 +77,6 @@ impl EncodableKey for SeriesRowKey {
 	}
 }
 
-/// Range key for scanning series data rows.
 #[derive(Debug, Clone)]
 pub struct SeriesRowKeyRange {
 	pub series: SeriesId,
@@ -95,7 +86,6 @@ pub struct SeriesRowKeyRange {
 }
 
 impl SeriesRowKeyRange {
-	/// Create a range covering all rows for a series (optionally filtered by tag).
 	pub fn full_scan(series: SeriesId, variant_tag: Option<u8>) -> EncodedKeyRange {
 		let range = SeriesRowKeyRange {
 			series,
@@ -106,10 +96,6 @@ impl SeriesRowKeyRange {
 		EncodedKeyRange::new(Bound::Included(range.start_key()), Bound::Included(range.end_key()))
 	}
 
-	/// Create a range scan with optional key bounds. Semantics are half-open
-	/// `[key_start, key_end)` - `key_start` is inclusive, `key_end` is
-	/// exclusive. This matches `Bucket`'s convention so callers can pass
-	/// bucket bounds directly.
 	pub fn scan_range(
 		series: SeriesId,
 		variant_tag: Option<u8>,
@@ -117,8 +103,6 @@ impl SeriesRowKeyRange {
 		key_end: Option<u64>,
 		last_key: Option<&EncodedKey>,
 	) -> EncodedKeyRange {
-		// `[start, 0)` is empty regardless of `key_start`. Represent it as
-		// a range that yields no rows.
 		if matches!(key_end, Some(0)) {
 			let empty = EncodedKey::new(Vec::<u8>::new());
 			return EncodedKeyRange::new(Bound::Excluded(empty.clone()), Bound::Excluded(empty));
@@ -147,12 +131,7 @@ impl SeriesRowKeyRange {
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
-		// Descending key encoding: higher key values have lower encoded values.
-		// The start key (lower bound) uses key_end (exclusive) to begin
-		// scanning from the newest matching row. Under half-open
-		// `[start, end)` semantics the highest *included* key is
-		// `end - 1`, so serialize that. `key_end == Some(0)` is handled
-		// in `scan_range` before reaching here.
+
 		if let Some(key_val) = self.key_end {
 			serializer.extend_u64(key_val - 1);
 		}
@@ -160,9 +139,6 @@ impl SeriesRowKeyRange {
 	}
 
 	fn end_key(&self) -> EncodedKey {
-		// Descending key encoding: lower key values have higher encoded values.
-		// The end key (upper bound) uses key_start (the lowest key value in
-		// the desired range) to stop scanning after the oldest matching row.
 		if let Some(key_val) = self.key_start {
 			let object = ShapeId::Series(self.series);
 			let mut serializer = KeySerializer::with_capacity(28);
@@ -170,12 +146,10 @@ impl SeriesRowKeyRange {
 			if let Some(tag) = self.variant_tag {
 				serializer.extend_u8(tag);
 			}
-			// Use sequence 0 which encodes to max bytes in descending encoding,
-			// ensuring all rows at this key value are included.
+
 			serializer.extend_u64(key_val).extend_u64(0u64);
 			serializer.to_encoded_key()
 		} else {
-			// Use ShapeId ordering trick to get end of range
 			let object = ShapeId::Series(self.series);
 			let mut serializer = KeySerializer::with_capacity(11);
 			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_shape_id(object.prev());

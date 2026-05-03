@@ -22,7 +22,6 @@ cfg_if! {
 	}
 }
 
-/// A reader-writer lock for shared read access and exclusive write access.
 pub struct RwLock<T> {
 	inner: RwLockInnerImpl<T>,
 }
@@ -32,7 +31,6 @@ pub struct RwLock<T> {
 unsafe impl<T> Sync for RwLock<T> {}
 
 impl<T> RwLock<T> {
-	/// Creates a new reader-writer lock.
 	#[inline]
 	pub fn new(value: T) -> Self {
 		Self {
@@ -40,7 +38,6 @@ impl<T> RwLock<T> {
 		}
 	}
 
-	/// Acquires a read lock, blocking until it's available.
 	#[inline]
 	pub fn read(&self) -> RwLockReadGuard<'_, T> {
 		RwLockReadGuard {
@@ -48,7 +45,6 @@ impl<T> RwLock<T> {
 		}
 	}
 
-	/// Acquires a write lock, blocking until it's available.
 	#[inline]
 	pub fn write(&self) -> RwLockWriteGuard<'_, T> {
 		RwLockWriteGuard {
@@ -56,7 +52,6 @@ impl<T> RwLock<T> {
 		}
 	}
 
-	/// Attempts to acquire a read lock without blocking.
 	#[inline]
 	pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
 		self.inner.try_read().map(|inner| RwLockReadGuard {
@@ -64,7 +59,6 @@ impl<T> RwLock<T> {
 		})
 	}
 
-	/// Attempts to acquire a write lock without blocking.
 	#[inline]
 	pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T>> {
 		self.inner.try_write().map(|inner| RwLockWriteGuard {
@@ -73,7 +67,6 @@ impl<T> RwLock<T> {
 	}
 }
 
-/// A guard providing read access to the data protected by an RwLock.
 pub struct RwLockReadGuard<'a, T> {
 	inner: RwLockReadGuardInnerImpl<'a, T>,
 }
@@ -87,7 +80,6 @@ impl<'a, T> Deref for RwLockReadGuard<'a, T> {
 	}
 }
 
-/// A guard providing write access to the data protected by an RwLock.
 pub struct RwLockWriteGuard<'a, T> {
 	inner: RwLockWriteGuardInnerImpl<'a, T>,
 }

@@ -10,7 +10,6 @@ use reifydb_type::Result;
 use super::FlowSubsystem;
 use crate::builder::FlowConfigurator;
 
-/// Factory for creating FlowSubsystem with proper interceptor registration
 pub struct FlowSubsystemFactory {
 	configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send>>,
 }
@@ -40,7 +39,6 @@ impl Default for FlowSubsystemFactory {
 
 impl SubsystemFactory for FlowSubsystemFactory {
 	fn provide_interceptors(&self, builder: InterceptorBuilder, _ioc: &IocContainer) -> InterceptorBuilder {
-		// Independent flow consumer doesn't need interceptors
 		builder
 	}
 

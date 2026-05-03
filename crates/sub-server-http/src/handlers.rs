@@ -35,24 +35,19 @@ use tracing::{debug_span, instrument};
 
 use crate::{error::AppError, state::HttpServerState};
 
-/// Request body for query and command endpoints.
 #[derive(Debug, Deserialize)]
 pub struct StatementRequest {
-	/// RQL string to execute.
 	pub rql: String,
-	/// Optional query parameters.
+
 	#[serde(default)]
 	pub params: Option<WireParams>,
 }
 
-/// Response body for query and command endpoints.
 #[derive(Debug, Serialize)]
 pub struct QueryResponse {
-	/// Result frames from query execution.
 	pub frames: Vec<ResponseFrame>,
 }
 
-/// Query parameters for response format control.
 #[derive(Debug, Deserialize)]
 pub struct FormatParams {
 	#[serde(default)]
@@ -60,22 +55,11 @@ pub struct FormatParams {
 	pub unwrap: Option<bool>,
 }
 
-/// Health check response.
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
 	pub status: &'static str,
 }
 
-/// Health check endpoint.
-///
-/// Returns 200 OK if the server is running.
-/// This endpoint does not require authentication.
-///
-/// # Response
-///
-/// ```json
-/// {"status": "ok"}
-/// ```
 pub async fn health() -> impl IntoResponse {
 	(
 		StatusCode::OK,
@@ -85,40 +69,35 @@ pub async fn health() -> impl IntoResponse {
 	)
 }
 
-/// Response body for logout endpoint.
 #[derive(Debug, Serialize)]
 pub struct LogoutResponse {
 	pub status: String,
 }
 
-/// Request body for authentication endpoint.
 #[derive(Debug, Deserialize)]
 pub struct AuthenticateRequest {
-	/// Authentication method: "password", "solana", "token".
 	pub method: String,
-	/// Credentials (method-specific key-value pairs).
+
 	#[serde(default)]
 	pub credentials: HashMap<String, String>,
 }
 
-/// Response body for authentication endpoint.
 #[derive(Debug, Serialize)]
 pub struct AuthenticateResponse {
-	/// Authentication status: "authenticated", "challenge", "failed".
 	pub status: String,
-	/// Session token (present when status is "authenticated").
+
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub token: Option<String>,
-	/// Identity ID (present when status is "authenticated").
+
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub identity: Option<String>,
-	/// Challenge ID (present when status is "challenge").
+
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub challenge_id: Option<String>,
-	/// Challenge payload (present when status is "challenge").
+
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub payload: Option<HashMap<String, String>>,
-	/// Failure reason (present when status is "failed").
+
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub reason: Option<String>,
 }
@@ -234,7 +213,6 @@ pub async fn handle_logout(State(state): State<HttpServerState>, headers: Header
 	}
 }
 
-/// Build `RequestMetadata` from HTTP headers.
 fn build_metadata(headers: &HeaderMap) -> RequestMetadata {
 	let mut metadata = RequestMetadata::new(Protocol::Http);
 	for (name, value) in headers.iter() {
@@ -245,7 +223,6 @@ fn build_metadata(headers: &HeaderMap) -> RequestMetadata {
 	metadata
 }
 
-/// Execute a read-only query.
 #[instrument(name = "http::query", level = "debug", skip_all, fields(format = ?format_params.format))]
 pub async fn handle_query(
 	State(state): State<HttpServerState>,
@@ -256,7 +233,6 @@ pub async fn handle_query(
 	execute_and_respond(&state, Operation::Query, &headers, request, &format_params).await
 }
 
-/// Execute an admin operation.
 #[instrument(name = "http::admin", level = "debug", skip_all, fields(format = ?format_params.format))]
 pub async fn handle_admin(
 	State(state): State<HttpServerState>,
@@ -267,7 +243,6 @@ pub async fn handle_admin(
 	execute_and_respond(&state, Operation::Admin, &headers, request, &format_params).await
 }
 
-/// Execute a write command.
 #[instrument(name = "http::command", level = "debug", skip_all, fields(format = ?format_params.format))]
 pub async fn handle_command(
 	State(state): State<HttpServerState>,
@@ -278,11 +253,6 @@ pub async fn handle_command(
 	execute_and_respond(&state, Operation::Command, &headers, request, &format_params).await
 }
 
-/// Shared implementation for query, admin, and command handlers.
-///
-/// Dispatches to the ServerActor for engine execution via the shared
-/// `dispatch()` function which handles interceptors, timeout, and
-/// response conversion.
 #[instrument(name = "http::execute_and_respond", level = "debug", skip_all, fields(op = ?operation))]
 async fn execute_and_respond(
 	state: &HttpServerState,
@@ -339,30 +309,17 @@ async fn execute_and_respond(
 	Ok(response)
 }
 
-/// Extract identity from request headers.
-///
-/// Tries in order:
-/// 1. Authorization header (Bearer token)
-/// 2. Falls back to anonymous identity
 #[instrument(name = "http::extract_identity", level = "debug", skip_all)]
 fn extract_identity(state: &HttpServerState, headers: &HeaderMap) -> Result<IdentityId, AppError> {
-	// Try Authorization header
 	if let Some(auth_header) = headers.get("authorization") {
 		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
 
 		return extract_identity_from_auth_header(state.auth_service(), auth_str).map_err(AppError::Auth);
 	}
 
-	// No credentials provided - anonymous access
 	Ok(IdentityId::anonymous())
 }
 
-/// Handler for binding-driven requests mounted at `/api/{*path}`.
-///
-/// Resolves the HTTP method + remaining path to a `Binding` in the materialized
-/// catalog via linear scan, coerces path + query params against the bound
-/// procedure's declared parameter types, and dispatches through the shared
-/// `dispatch_binding` helper.
 pub async fn handle_binding(
 	State(state): State<HttpServerState>,
 	Path(path): Path<String>,
@@ -380,7 +337,6 @@ pub async fn handle_binding(
 	};
 	let request_path = format!("/{}", path);
 
-	// Resolve binding via linear scan over the HTTP-only index (path patterns require scanning).
 	let bindings = state.engine().materialized_catalog().list_http_bindings();
 	let mut any_path_match = false;
 	let mut matched: Option<(Binding, HashMap<String, String>)> = None;
@@ -411,7 +367,6 @@ pub async fn handle_binding(
 		None => return Err(AppError::NotFound(format!("no binding for `{}`", request_path))),
 	};
 
-	// Resolve procedure + namespace from the binding.
 	let procedure =
 		state.engine().materialized_catalog().find_procedure(binding.procedure_id).ok_or_else(|| {
 			AppError::Internal(format!(
@@ -474,8 +429,6 @@ fn insert_meta_headers(headers: &mut HeaderMap, metrics: &ExecutionMetrics) {
 	headers.insert("x-duration", HeaderValue::from_str(&metrics.total.to_string()).unwrap());
 }
 
-/// Match an HTTP binding path template against a concrete request path.
-/// Templates use `{var}` for path captures. Returns the captured map, or `None` if no match.
 fn match_http_path(template: &str, request: &str) -> Option<HashMap<String, String>> {
 	let t_segments: Vec<&str> = template.split('/').filter(|s| !s.is_empty()).collect();
 	let r_segments: Vec<&str> = request.split('/').filter(|s| !s.is_empty()).collect();

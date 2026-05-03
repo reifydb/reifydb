@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes WASM procedures loaded from compiled modules.
 pub struct SystemProceduresWasm {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,

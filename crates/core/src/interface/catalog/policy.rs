@@ -3,12 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
-// Security policy types
-
 pub type PolicyId = u64;
 
-/// CRUD verbs for data-shape targets (Table, View, Series, RingBuffer, Dictionary, Column,
-/// Namespace). Reads are `from` because `FROM` is the RQL read verb.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataOp {
 	From,
@@ -40,7 +36,6 @@ impl DataOp {
 	}
 }
 
-/// Procedure / Function invocation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CallableOp {
 	Call,
@@ -63,7 +58,6 @@ impl CallableOp {
 	}
 }
 
-/// Session-scoped transaction kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionOp {
 	Admin,
@@ -130,9 +124,6 @@ impl PolicyTargetType {
 		}
 	}
 
-	/// True iff `op` is a recognised operation name for this target type.
-	/// Routes through the per-category enum's `parse`, so the enum is the single source
-	/// of truth and drift is impossible.
 	pub fn is_valid_operation(&self, op: &str) -> bool {
 		match self {
 			Self::Table
@@ -148,8 +139,6 @@ impl PolicyTargetType {
 		}
 	}
 
-	/// Static list of canonical operation names for this target type. Used by the CA_086
-	/// error help text to tell callers what operations *are* accepted.
 	pub fn valid_operation_names(&self) -> &'static [&'static str] {
 		match self {
 			Self::Table

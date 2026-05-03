@@ -7,7 +7,6 @@ use reifydb_type::{Result, value::row_number::RowNumber};
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
-// PRE INSERT
 pub struct TableRowPreInsertContext<'a> {
 	pub table: &'a Table,
 	pub rn: RowNumber,
@@ -82,7 +81,6 @@ where
 	ClosureTableRowPreInsertInterceptor::new(f)
 }
 
-// POST INSERT
 pub struct TableRowPostInsertContext<'a> {
 	pub table: &'a Table,
 	pub id: RowNumber,
@@ -157,7 +155,6 @@ where
 	ClosureTableRowPostInsertInterceptor::new(f)
 }
 
-// PRE UPDATE
 pub struct TableRowPreUpdateContext<'a> {
 	pub table: &'a Table,
 	pub id: RowNumber,
@@ -232,7 +229,6 @@ where
 	ClosureTableRowPreUpdateInterceptor::new(f)
 }
 
-// POST UPDATE
 pub struct TableRowPostUpdateContext<'a> {
 	pub table: &'a Table,
 	pub id: RowNumber,
@@ -309,7 +305,6 @@ where
 	ClosureTableRowPostUpdateInterceptor::new(f)
 }
 
-// PRE DELETE
 pub struct TableRowPreDeleteContext<'a> {
 	pub table: &'a Table,
 	pub id: RowNumber,
@@ -382,7 +377,6 @@ where
 	ClosureTableRowPreDeleteInterceptor::new(f)
 }
 
-// POST DELETE
 pub struct TableRowPostDeleteContext<'a> {
 	pub table: &'a Table,
 	pub id: RowNumber,
@@ -457,7 +451,6 @@ where
 	ClosureTableRowPostDeleteInterceptor::new(f)
 }
 
-/// Helper struct for executing table interceptors via static methods.
 pub struct TableRowInterceptor;
 
 impl TableRowInterceptor {

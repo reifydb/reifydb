@@ -29,211 +29,174 @@ use crate::{
 	interface::catalog::{id::IndexId, shape::ShapeId},
 };
 
-/// A builder for constructing binary keys using keycode encoding
 pub struct KeySerializer {
 	buffer: Vec<u8>,
 }
 
 impl KeySerializer {
-	/// Create new serializer with default capacity
 	pub fn new() -> Self {
 		Self {
 			buffer: Vec::new(),
 		}
 	}
 
-	/// Create with pre-allocated capacity
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
 			buffer: Vec::with_capacity(capacity),
 		}
 	}
 
-	/// Extend with bool value
 	pub fn extend_bool(&mut self, value: bool) -> &mut Self {
 		self.buffer.push(encode_bool(value));
 		self
 	}
 
-	/// Extend with f32 value
 	pub fn extend_f32(&mut self, value: f32) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_f32(value));
 		self
 	}
 
-	/// Extend with f64 value
 	pub fn extend_f64(&mut self, value: f64) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_f64(value));
 		self
 	}
 
-	/// Extend with i8 value
 	pub fn extend_i8<T: Into<i8>>(&mut self, value: T) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_i8(value.into()));
 		self
 	}
 
-	/// Extend with i16 value
 	pub fn extend_i16<T: Into<i16>>(&mut self, value: T) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_i16(value.into()));
 		self
 	}
 
-	/// Extend with i32 value
 	pub fn extend_i32<T: Into<i32>>(&mut self, value: T) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_i32(value.into()));
 		self
 	}
 
-	/// Extend with i64 value
 	pub fn extend_i64<T: Into<i64>>(&mut self, value: T) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_i64(value.into()));
 		self
 	}
 
-	/// Extend with i128 value
 	pub fn extend_i128<T: Into<i128>>(&mut self, value: T) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_i128(value.into()));
 		self
 	}
 
-	/// Extend with u8 value
 	pub fn extend_u8<T: Into<u8>>(&mut self, value: T) -> &mut Self {
 		self.buffer.push(encode_u8(value.into()));
 		self
 	}
 
-	/// Extend with u16 value
 	pub fn extend_u16<T: Into<u16>>(&mut self, value: T) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_u16(value.into()));
 		self
 	}
 
-	/// Extend with u32 value
 	pub fn extend_u32<T: Into<u32>>(&mut self, value: T) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_u32(value.into()));
 		self
 	}
 
-	/// Extend with u64 value
 	pub fn extend_u64<T: Into<u64>>(&mut self, value: T) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_u64(value.into()));
 		self
 	}
 
-	/// Extend with u128 value
 	pub fn extend_u128<T: Into<u128>>(&mut self, value: T) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_u128(value.into()));
 		self
 	}
 
-	/// Extend with raw bytes
 	pub fn extend_bytes<T: AsRef<[u8]>>(&mut self, bytes: T) -> &mut Self {
 		encode_bytes(bytes.as_ref(), &mut self.buffer);
 		self
 	}
 
-	/// Extend with string (UTF-8 bytes)
 	pub fn extend_str<T: AsRef<str>>(&mut self, s: T) -> &mut Self {
 		self.extend_bytes(s.as_ref().as_bytes())
 	}
 
-	/// Consume serializer and return final buffer
 	pub fn finish(self) -> Vec<u8> {
 		self.buffer
 	}
 
-	/// Consume serializer and return an EncodedKey directly
 	pub fn to_encoded_key(self) -> EncodedKey {
 		EncodedKey::new(self.buffer)
 	}
 
-	/// Extend with a ShapeId value (includes type discriminator)
 	pub fn extend_shape_id(&mut self, object: impl Into<ShapeId>) -> &mut Self {
 		let primitive = object.into();
 		self.buffer.extend_from_slice(&catalog::serialize_shape_id(&primitive));
 		self
 	}
 
-	/// Extend with an IndexId value (includes type discriminator)  
 	pub fn extend_index_id(&mut self, index: impl Into<IndexId>) -> &mut Self {
 		let index = index.into();
 		self.buffer.extend_from_slice(&catalog::serialize_index_id(&index));
 		self
 	}
 
-	/// Extend with a serializable value using keycode encoding
 	pub fn extend_serialize<T: Serialize>(&mut self, value: &T) -> &mut Self {
 		self.buffer.extend_from_slice(&serialize(value));
 		self
 	}
 
-	/// Extend with raw bytes (no encoding)
 	pub fn extend_raw(&mut self, bytes: &[u8]) -> &mut Self {
 		self.buffer.extend_from_slice(bytes);
 		self
 	}
 
-	/// Get current buffer length
 	pub fn len(&self) -> usize {
 		self.buffer.len()
 	}
 
-	/// Check if buffer is empty
 	pub fn is_empty(&self) -> bool {
 		self.buffer.is_empty()
 	}
 
-	/// Extend with Date value
 	pub fn extend_date(&mut self, date: &Date) -> &mut Self {
 		self.extend_i32(date.to_days_since_epoch())
 	}
 
-	/// Extend with DateTime value
 	pub fn extend_datetime(&mut self, datetime: &DateTime) -> &mut Self {
 		self.extend_u64(datetime.to_nanos())
 	}
 
-	/// Extend with Time value
 	pub fn extend_time(&mut self, time: &Time) -> &mut Self {
 		self.extend_u64(time.to_nanos_since_midnight())
 	}
 
-	/// Extend with Duration value
 	pub fn extend_duration(&mut self, duration: &Duration) -> &mut Self {
 		self.extend_i32(duration.get_months()).extend_i32(duration.get_days()).extend_i64(duration.get_nanos())
 	}
 
-	/// Extend with RowNumber value
 	pub fn extend_row_number(&mut self, row_number: &RowNumber) -> &mut Self {
 		self.extend_u64(row_number.0)
 	}
 
-	/// Extend with IdentityId value
 	pub fn extend_identity_id(&mut self, id: &IdentityId) -> &mut Self {
 		self.extend_bytes(id.as_bytes())
 	}
 
-	/// Extend with Uuid4 value
 	pub fn extend_uuid4(&mut self, uuid: &Uuid4) -> &mut Self {
 		self.extend_bytes(uuid.as_bytes())
 	}
 
-	/// Extend with Uuid7 value
 	pub fn extend_uuid7(&mut self, uuid: &Uuid7) -> &mut Self {
 		self.extend_bytes(uuid.as_bytes())
 	}
 
-	/// Extend with Blob value
 	pub fn extend_blob(&mut self, blob: &Blob) -> &mut Self {
 		self.extend_bytes(blob.as_ref() as &[u8])
 	}
 
-	/// Extend with arbitrary precision Int value
 	pub fn extend_int(&mut self, int: &Int) -> &mut Self {
-		// For arbitrary precision, encode as bytes with sign prefix
 		let (sign, bytes) = int.to_bytes_be();
-		// Encode sign as a byte (0 for negative, 1 for positive)
+
 		self.buffer.push(match sign {
 			Sign::Minus => 0,
 			_ => 1,
@@ -243,26 +206,19 @@ impl KeySerializer {
 		self
 	}
 
-	/// Extend with arbitrary precision Uint value
 	pub fn extend_uint(&mut self, uint: &Uint) -> &mut Self {
-		// For arbitrary precision unsigned, encode as bytes with length prefix
 		let (_sign, bytes) = uint.0.to_bytes_be();
 		self.extend_u32(bytes.len() as u32);
 		self.buffer.extend_from_slice(&bytes);
 		self
 	}
 
-	/// Extend with Decimal value
 	pub fn extend_decimal(&mut self, decimal: &Decimal) -> &mut Self {
-		// Encode decimal as string representation for now
-		// This ensures ordering is preserved for decimal values
 		let s = decimal.to_string();
 		self.extend_str(&s);
 		self
 	}
 
-	/// Extend with a Value based on its type, including a type marker byte for self-describing encoding.
-	/// The marker is written as a raw byte (not complement-encoded) so that `read_value()` can decode it.
 	pub fn extend_value(&mut self, value: &Value) -> &mut Self {
 		match value {
 			Value::None {

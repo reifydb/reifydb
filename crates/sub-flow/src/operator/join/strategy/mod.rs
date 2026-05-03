@@ -24,7 +24,6 @@ use reifydb_type::Result;
 
 use crate::operator::join::strategy::{hash_inner::InnerHashJoin, hash_left::LeftHashJoin};
 
-/// Shared context for join strategy operations, grouping the side, mutable state, operator reference, and version.
 pub(crate) struct JoinContext<'a> {
 	pub side: JoinSide,
 	pub state: &'a mut JoinState,
@@ -32,7 +31,6 @@ pub(crate) struct JoinContext<'a> {
 	pub version: CommitVersion,
 }
 
-/// Pre- and post-update join key hashes for a batched key update.
 #[derive(Clone, Copy)]
 pub(crate) struct UpdateKeys<'a> {
 	pub pre: &'a Hash128,
@@ -52,7 +50,6 @@ impl JoinStrategy {
 		}
 	}
 
-	/// Handle insert for rows with undefined join keys (processed individually)
 	pub(crate) fn handle_insert_undefined(
 		&self,
 		txn: &mut FlowTransaction,
@@ -66,7 +63,6 @@ impl JoinStrategy {
 		}
 	}
 
-	/// Handle remove for rows with undefined join keys (processed individually)
 	pub(crate) fn handle_remove_undefined(
 		&self,
 		txn: &mut FlowTransaction,
@@ -80,7 +76,6 @@ impl JoinStrategy {
 		}
 	}
 
-	/// Handle update for rows with undefined join keys (processed individually)
 	pub(crate) fn handle_update_undefined(
 		&self,
 		txn: &mut FlowTransaction,
@@ -95,7 +90,6 @@ impl JoinStrategy {
 		}
 	}
 
-	/// Handle insert for rows with defined join keys (batched by key)
 	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -110,7 +104,6 @@ impl JoinStrategy {
 		}
 	}
 
-	/// Handle remove for rows with defined join keys (batched by key)
 	pub(crate) fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
@@ -125,7 +118,6 @@ impl JoinStrategy {
 		}
 	}
 
-	/// Handle update for rows with defined join keys (batched by key)
 	pub(crate) fn handle_update(
 		&self,
 		txn: &mut FlowTransaction,

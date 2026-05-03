@@ -11,15 +11,10 @@ use reifydb_extension::operator::ffi_loader::{ColumnInfo, ffi_operator_loader};
 use reifydb_type::Result;
 use tracing::{debug, instrument};
 
-/// Load FFI operators from a directory into the global loader.
-///
-/// This should be called ONCE during subsystem initialization, before any FlowEngine instances are created.
-/// All operators in the directory will be loaded and registered, triggering FlowOperatorLoadedEvent for each.
 #[instrument(name = "flow::subsystem::load_ffi_operators", level = "debug", skip(event_bus), fields(dir = ?dir))]
 pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 	let loader = ffi_operator_loader();
 
-	// Scan directory for shared libraries
 	let entries = read_dir(dir).unwrap();
 
 	for entry in entries {
@@ -35,19 +30,16 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 			continue;
 		}
 
-		// Register the operator without instantiating it
 		let mut guard = loader.write().unwrap();
 		let info = match guard.register_operator(&path)? {
 			Some(info) => info,
 			None => {
-				// Not a valid FFI operator, skip silently
 				continue;
 			}
 		};
 
 		debug!("Registered FFI operator: {} from {:?}", info.operator, path);
 
-		// Convert column definitions to event format
 		fn convert_columns(columns: &[ColumnInfo]) -> Vec<OperatorColumn> {
 			columns.iter()
 				.map(|c| OperatorColumn {
@@ -58,7 +50,6 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 				.collect()
 		}
 
-		// Emit event for loaded operator
 		let event_bus = event_bus.clone();
 		let event = FlowOperatorLoadedEvent::new(
 			info.operator,

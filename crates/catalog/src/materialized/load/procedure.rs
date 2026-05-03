@@ -8,8 +8,6 @@ use super::MaterializedCatalog;
 use crate::{CatalogStore, Result};
 
 pub(crate) fn load_procedures(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
-	// Collect procedure ids + commit versions in a first pass so the storage stream is
-	// dropped before we fan out to per-procedure reads (which need to re-borrow rx).
 	let mut entries = Vec::new();
 	{
 		let stream = rx.range(ProcedureKey::full_scan(), 1024)?;

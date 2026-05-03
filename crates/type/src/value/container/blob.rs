@@ -46,9 +46,6 @@ where
 
 impl Serialize for BlobContainer<Cow> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
-		// Postcard-stable: the inner VarlenContainer encodes as a sequence
-		// of byte slices, matching the previous `Vec<Blob>` (== `Vec<Vec<u8>>`)
-		// wire form byte-for-byte.
 		self.inner.serialize(serializer)
 	}
 }
@@ -75,13 +72,11 @@ impl BlobContainer<Cow> {
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
-		// Heuristic: assume ~32 bytes per blob initially.
 		Self {
 			inner: VarlenContainer::with_capacity(capacity, capacity * 32),
 		}
 	}
 
-	/// Build directly from contiguous bytes + offsets.
 	pub fn from_bytes_offsets(data: Vec<u8>, offsets: Vec<u64>) -> Self {
 		Self {
 			inner: VarlenContainer::from_raw_parts(data, offsets),
@@ -126,7 +121,6 @@ impl<S: Storage> BlobContainer<S> {
 		self.inner.clear_generic();
 	}
 
-	/// Borrow the i-th blob's bytes.
 	pub fn get(&self, index: usize) -> Option<&[u8]> {
 		self.inner.get_bytes(index)
 	}
@@ -135,18 +129,14 @@ impl<S: Storage> BlobContainer<S> {
 		idx < self.len()
 	}
 
-	/// Borrow the underlying concatenated payload bytes. Used by the FFI
-	/// marshal path for zero-copy borrow.
 	pub fn data_bytes(&self) -> &[u8] {
 		self.inner.data_bytes()
 	}
 
-	/// Borrow the underlying offsets array (length = `len + 1`).
 	pub fn offsets(&self) -> &[u64] {
 		self.inner.offsets()
 	}
 
-	/// Borrow the inner VarlenContainer (test/debug only).
 	pub fn inner(&self) -> &VarlenContainer<S> {
 		&self.inner
 	}
@@ -165,12 +155,10 @@ impl<S: Storage> BlobContainer<S> {
 		}
 	}
 
-	/// Iterate blobs as `Option<&[u8]>`.
 	pub fn iter(&self) -> impl Iterator<Item = Option<&[u8]>> + '_ {
 		(0..self.len()).map(|i| self.get(i))
 	}
 
-	/// Iterate blobs as `&[u8]` directly.
 	pub fn iter_bytes(&self) -> impl Iterator<Item = &[u8]> + '_ {
 		(0..self.len()).map(|i| self.get(i).unwrap_or(&[]))
 	}

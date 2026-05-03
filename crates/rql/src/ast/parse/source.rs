@@ -17,20 +17,16 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse CREATE SOURCE name AS { FROM connector { config } TO target }
 	pub(crate) fn parse_source(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Parse source name: ns::name
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let shape_ident = MaybeQualifiedSourceIdentifier::new(name).with_namespace(namespace);
 
-		// Expect AS {
 		self.consume_operator(Operator::As)?;
 		self.consume_operator(Operator::OpenCurly)?;
 		self.skip_new_line()?;
 
-		// Expect FROM connector_name { config }
 		self.consume_keyword(Keyword::From)?;
 		let connector = self.consume(TokenKind::Identifier)?.fragment;
 
@@ -38,7 +34,6 @@ impl<'bump> Parser<'bump> {
 
 		self.skip_new_line()?;
 
-		// Expect TO target
 		self.consume_keyword(Keyword::To)?;
 		let mut target_segments = self.parse_double_colon_separated_identifiers()?;
 		let target_name = target_segments.pop().unwrap().into_fragment();
@@ -47,7 +42,6 @@ impl<'bump> Parser<'bump> {
 
 		self.skip_new_line()?;
 
-		// Expect closing }
 		self.consume_operator(Operator::CloseCurly)?;
 
 		Ok(AstCreate::Source(AstCreateSource {
@@ -59,7 +53,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse a generic config block: { key: value, key: value, ... }
 	pub(crate) fn parse_config_block(&mut self) -> Result<Vec<AstConfigPair<'bump>>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -84,7 +77,6 @@ impl<'bump> Parser<'bump> {
 
 			self.skip_new_line()?;
 
-			// Optional comma separator
 			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
 				continue;
 			}

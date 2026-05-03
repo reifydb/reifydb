@@ -3,7 +3,6 @@
 
 use super::buffer::BufferFFI;
 
-/// Type code for column data variant (maps to ColumnBuffer enum)
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColumnTypeCode {
@@ -37,43 +36,21 @@ pub enum ColumnTypeCode {
 	Undefined = 27,
 }
 
-/// FFI-safe column data representation.
-///
-/// Contains typed column data in a format suitable for FFI transfer.
-/// - For fixed-size types: `data` contains the raw values, native endian.
-/// - For variable-length types (Utf8, Blob): `data` contains concatenated bytes, `offsets` contains u64 offsets (length
-///   = row_count + 1).
-/// - `defined_bitvec` tracks which values are defined (bit=1 means defined), LSB-first within each byte.
-///
-/// Per-type wire layouts (when `data` is a borrowed `cap == 0` slice):
-/// - Bool: packed bits, `data.len = row_count.div_ceil(8)`, LSB-first.
-/// - Float4/8: native `f32` / `f64` array, `data.len = row_count * 4|8`.
-/// - Int{1..16} / Uint{1..16}: native two's-complement / unsigned array.
-/// - Utf8: `data = concatenated bytes`, `offsets = [u64; row_count + 1]`.
-/// - Blob: same shape as Utf8.
-/// - Date: `[i32; row_count]` of days-since-Unix-epoch.
-/// - DateTime: `[u64; row_count]` of nanos-since-Unix-epoch.
-/// - Time: `[u64; row_count]` of nanos-since-midnight.
-/// - Duration: `[(i32 months, i32 days, i64 nanos); row_count]`, `#[repr(C)]` packed = 16 bytes per element.
-/// - IdentityId / Uuid4 / Uuid7: 16 bytes per element (raw UUID bytes).
-/// - DictionaryId: `[u128; row_count]`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ColumnDataFFI {
-	/// Type code indicating data format
 	pub type_code: ColumnTypeCode,
-	/// Number of rows in the column
+
 	pub row_count: usize,
-	/// Raw data buffer (interpretation depends on type_code)
+
 	pub data: BufferFFI,
-	/// Defined/null bitvec (1 = defined, 0 = undefined)
+
 	pub defined_bitvec: BufferFFI,
-	/// Offsets for variable-length types (Utf8, Blob). Empty for fixed-size types.
+
 	pub offsets: BufferFFI,
 }
 
 impl ColumnDataFFI {
-	/// Create an empty column data
 	pub const fn empty() -> Self {
 		Self {
 			type_code: ColumnTypeCode::Undefined,
@@ -85,18 +62,15 @@ impl ColumnDataFFI {
 	}
 }
 
-/// FFI-safe single column representation (name + data)
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ColumnFFI {
-	/// Column name (UTF-8 encoded)
 	pub name: BufferFFI,
-	/// Column data
+
 	pub data: ColumnDataFFI,
 }
 
 impl ColumnFFI {
-	/// Create an empty column
 	pub const fn empty() -> Self {
 		Self {
 			name: BufferFFI::empty(),
@@ -105,28 +79,23 @@ impl ColumnFFI {
 	}
 }
 
-/// FFI-safe multi-row columnar structure
-///
-/// Represents a batch of rows in columnar format, matching the Rust `Columns` type.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ColumnsFFI {
-	/// Number of rows
 	pub row_count: usize,
-	/// Number of columns
+
 	pub column_count: usize,
-	/// Pointer to row numbers array (u64 per row, may be null if empty)
+
 	pub row_numbers: *const u64,
-	/// Pointer to array of ColumnFFI
+
 	pub columns: *const ColumnFFI,
-	/// Pointer to created_at timestamps array (u64 nanos since epoch, one per row)
+
 	pub created_at: *const u64,
-	/// Pointer to updated_at timestamps array (u64 nanos since epoch, one per row)
+
 	pub updated_at: *const u64,
 }
 
 impl ColumnsFFI {
-	/// Create an empty Columns
 	pub const fn empty() -> Self {
 		Self {
 			row_count: 0,
@@ -138,7 +107,6 @@ impl ColumnsFFI {
 		}
 	}
 
-	/// Check if the columns are empty
 	pub fn is_empty(&self) -> bool {
 		self.row_count == 0
 	}

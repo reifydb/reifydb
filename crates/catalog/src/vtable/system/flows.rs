@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system flow information
 pub struct SystemFlows {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
@@ -60,7 +59,6 @@ impl BaseVTable for SystemFlows {
 			namespaces.push(flow.namespace.0);
 			names.push(flow.name.as_str());
 
-			// Convert FlowStatus enum to string
 			let status_str = match flow.status {
 				FlowStatus::Active => "Active",
 				FlowStatus::Paused => "Paused",

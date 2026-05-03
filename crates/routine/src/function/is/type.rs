@@ -50,9 +50,6 @@ impl<'a> Routine<FunctionContext<'a>> for IsType {
 		let type_column = &args[1];
 		let row_count = value_column.len();
 
-		// Extract target Type from second arg
-		// - ColumnBuffer::Any containing Value::Type -> use that type
-		// - Value::None -> check for Option type
 		let target_type = match type_column.get_value(0) {
 			Value::Any(boxed) => match boxed.as_ref() {
 				Value::Type(t) => t.clone(),
@@ -78,7 +75,6 @@ impl<'a> Routine<FunctionContext<'a>> for IsType {
 			}
 		};
 
-		// Per-row type check
 		let data: Vec<bool> = (0..row_count)
 			.map(|i| {
 				let vtype = value_column.get_value(i).get_type();

@@ -26,9 +26,6 @@ use crate::{hot::storage::HotStorage, warm::WarmStorage};
 
 #[derive(Clone)]
 pub enum FlushMessage {
-	/// One commit's worth of dirty keys observed via `MultiCommittedEvent`.
-	///
-	/// All keys in `sets` and `tombstones` were committed at `version`.
 	Dirty {
 		version: CommitVersion,
 		sets: HashMap<EntryKind, Vec<EncodedKey>>,
@@ -36,9 +33,7 @@ pub enum FlushMessage {
 	},
 	Tick(DateTime),
 	Shutdown,
-	/// Drain the actor's accumulated `pending` map synchronously and notify
-	/// the waiter when finished. Same code path as the periodic `Tick`,
-	/// just triggered on demand.
+
 	FlushPending {
 		waiter: Arc<WaiterHandle>,
 	},
@@ -58,16 +53,6 @@ pub struct FlushActorState {
 	flushing: bool,
 }
 
-/// Periodic warm-tier flush actor.
-///
-/// Subscribes (via `FlushEventListener`) to `MultiCommittedEvent` and buffers
-/// dirty keys per `EntryKind`. On each tick, drains the buffer: groups keys by
-/// the commit version that touched them, reads the corresponding values from
-/// hot at that version, and writes the batch to warm via
-/// `TierStorage::set(version, batches)`.
-///
-/// Phase 1: warm is a passive mirror. No eviction from hot. Drops are not
-/// flushed (drop is a hot-only concept; warm has no historical chain).
 #[allow(dead_code)]
 pub struct FlushActor {
 	hot: HotStorage,
@@ -75,11 +60,6 @@ pub struct FlushActor {
 	flush_interval: Duration,
 }
 
-// On wasm32 / no-sqlite, `WarmStorage` is uninhabited so `FlushActor` itself
-// is uninhabited; the methods below would all be unreachable code. The
-// FlushActor type definition stays so `FlushMessage` and the `Option<ActorRef<...>>`
-// field in `StandardMultiStoreInner` remain unconditional, but the construction
-// and Actor-trait impls are sqlite-only.
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl FlushActor {
 	pub fn new(hot: HotStorage, warm: WarmStorage, flush_interval: Duration) -> Self {
@@ -129,8 +109,6 @@ impl FlushActor {
 
 		let pending = mem::take(&mut state.pending);
 
-		// Group by the version each key was committed at, since
-		// `TierStorage::set(version, batches)` writes a single version per call.
 		let mut by_version: HashMap<CommitVersion, TierBatch> = HashMap::new();
 
 		for (kind, keys_map) in pending {
@@ -141,9 +119,6 @@ impl FlushActor {
 					match self.hot.get(kind, key.as_ref(), entry.version) {
 						Ok(Some(v)) => Some(v),
 						Ok(None) => {
-							// Hot dropped the key before we got here, or the
-							// commit applied a tombstone via Remove. Skip:
-							// nothing to mirror.
 							continue;
 						}
 						Err(e) => {
@@ -188,9 +163,7 @@ fn upsert_pending(
 	is_tombstone: bool,
 ) {
 	match slot.get_mut(&key) {
-		Some(existing) if existing.version >= version => {
-			// Existing pending entry is newer or equal; keep it.
-		}
+		Some(existing) if existing.version >= version => {}
 		Some(existing) => {
 			existing.version = version;
 			existing.is_tombstone = is_tombstone;

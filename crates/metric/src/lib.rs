@@ -17,13 +17,11 @@ pub mod snapshot;
 pub mod statement;
 pub mod storage;
 
-/// Identifier for tracking per-object storage statistics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MetricId {
-	/// Table, view, or flow shape
 	Shape(ShapeId),
-	/// Flow operator node
+
 	FlowNode(FlowNodeId),
-	/// System metadata (sequences, versions, etc.)
+
 	System,
 }

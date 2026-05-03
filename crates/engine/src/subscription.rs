@@ -8,16 +8,9 @@ use reifydb_rql::flow::flow::FlowDag;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::Result;
 
-/// Service interface for managing ephemeral subscriptions.
-///
-/// Implemented by `reifydb-sub-subscription` and registered in IoC as
-/// `Arc<dyn SubscriptionService>`. The engine's DDL code resolves this
-/// to create and drop subscriptions.
 pub trait SubscriptionService: Send + Sync {
-	/// Generate a new unique subscription ID.
 	fn next_id(&self) -> SubscriptionId;
 
-	/// Register a subscription with a pre-compiled flow DAG.
 	fn register_subscription(
 		&self,
 		id: SubscriptionId,
@@ -26,9 +19,7 @@ pub trait SubscriptionService: Send + Sync {
 		txn: &mut Transaction<'_>,
 	) -> Result<()>;
 
-	/// Unregister a subscription.
 	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<()>;
 }
 
-/// Convenience type alias for IoC registration.
 pub type SubscriptionServiceRef = Arc<dyn SubscriptionService>;

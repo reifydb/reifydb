@@ -7,7 +7,6 @@ use reifydb_type::value::identity::IdentityId;
 use crate::materialized::{MaterializedCatalog, MultiVersionIdentity};
 
 impl MaterializedCatalog {
-	/// Find an identity by IdentityId at a specific version
 	pub fn find_identity_at(&self, id: IdentityId, version: CommitVersion) -> Option<Identity> {
 		self.identities.get(&id).and_then(|entry| {
 			let multi = entry.value();
@@ -15,7 +14,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find an identity by name at a specific version
 	pub fn find_identity_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Identity> {
 		self.identities_by_name.get(name).and_then(|entry| {
 			let identity_id = *entry.value();
@@ -23,7 +21,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find an identity by IdentityId (returns latest version)
 	pub fn find_identity(&self, id: IdentityId) -> Option<Identity> {
 		self.identities.get(&id).and_then(|entry| {
 			let multi = entry.value();
@@ -31,7 +28,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// List all identities at a specific version
 	pub fn list_all_identities_at(&self, version: CommitVersion) -> Vec<Identity> {
 		self.identities.iter().filter_map(|entry| entry.value().get(version)).collect()
 	}

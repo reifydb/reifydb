@@ -7,7 +7,6 @@ use crate::token::{
 	token::{Literal::None, Token, TokenKind},
 };
 
-/// Scan for none literal
 pub fn scan_none<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();

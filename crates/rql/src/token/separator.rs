@@ -29,7 +29,6 @@ separator! {
     NewLine => "\n"
 }
 
-/// Scan for a separator token
 pub fn scan_separator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();

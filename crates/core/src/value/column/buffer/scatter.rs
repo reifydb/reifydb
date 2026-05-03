@@ -23,19 +23,6 @@ use reifydb_type::{
 use crate::value::column::ColumnBuffer;
 
 impl ColumnBuffer {
-	/// Merge two columns by mask: row `i` gets `self[i]` if `then_mask[i]`,
-	/// `other[i]` if `else_mask[i]`, `None` otherwise. Callers must satisfy
-	/// `self.len() >= total_len` and `other.len() >= total_len`.
-	///
-	/// Fast path: when both operands share a bare variant (Bool / numeric /
-	/// temporal / Uuid), a typed kernel writes directly into a preallocated
-	/// buffer, skipping the `Value` enum round-trip. If any row is unmapped by
-	/// both masks, the kernel returns an `Option`-wrapped result with the
-	/// validity bitmap set accordingly.
-	///
-	/// Fallback: mismatched variants, `Option`-wrapped operands, and
-	/// variable-width variants (`Utf8`, `Blob`, etc.) go through a generic
-	/// row-by-row path.
 	pub fn scatter_merge(
 		&self,
 		other: &ColumnBuffer,
@@ -121,8 +108,6 @@ fn scatter_merge_generic(
 	data
 }
 
-/// Fast-path typed scatter merge. Returns `None` if the variant pair isn't
-/// supported by a typed kernel; callers fall back to the generic path.
 fn scatter_merge_typed(
 	self_col: &ColumnBuffer,
 	other: &ColumnBuffer,

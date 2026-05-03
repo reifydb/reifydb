@@ -22,7 +22,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system series (time-series) information
 pub struct SystemSeries {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

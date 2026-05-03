@@ -16,10 +16,6 @@ use crate::{
 	util::float_format::format_f32,
 };
 
-/// A wrapper around f32 that provides total ordering by rejecting NaN values.
-/// This type is sortable and can be used in collections that require Ord,
-/// such as BTreeMap and BTreeSet. It prevents NaN values from being stored,
-/// ensuring that all values are comparable and can be sorted consistently.
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Default)]
 pub struct OrderedF32(f32);
@@ -109,9 +105,6 @@ impl Ord for OrderedF32 {
 	}
 }
 
-/// Convert f32 bits to a u32 that sorts in the same order as the float.
-/// Positive floats: flip sign bit so they sort above negative.
-/// Negative floats: flip all bits so magnitude order is reversed.
 #[inline]
 fn float_to_ordered_u32(f: f32) -> u32 {
 	let bits = f.to_bits();

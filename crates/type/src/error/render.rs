@@ -72,7 +72,6 @@ impl DefaultRenderer {
 			let _ = writeln!(output);
 		}
 
-		// Render operator chain if present
 		if let Some(chain) = &diagnostic.operator_chain
 			&& !chain.is_empty()
 		{
@@ -122,10 +121,8 @@ impl DefaultRenderer {
 			"↳ "
 		};
 
-		// Main error line
 		let _ = writeln!(output, "{}{} Error {}: {}", indent, prefix, diagnostic.code, diagnostic.message);
 
-		// Location info
 		if let Fragment::Statement {
 			line,
 			column,
@@ -152,7 +149,6 @@ impl DefaultRenderer {
 			);
 			let _ = writeln!(output);
 
-			// Code visualization
 			let line_content = get_line(rql, line);
 
 			let _ = writeln!(output, "{}  {} │ {}", indent, line, line_content);
@@ -185,29 +181,24 @@ impl DefaultRenderer {
 			let _ = writeln!(output);
 		}
 
-		// Handle nested cause first (if exists)
 		if let Some(cause) = &diagnostic.cause {
 			self.render_nested(output, cause, depth + 1);
 		}
 
-		// Help section
 		if let Some(help) = &diagnostic.help {
 			let _ = writeln!(output, "{}  help: {}", indent, help);
 		}
 
-		// Column info
 		if let Some(col) = &diagnostic.column {
 			let _ = writeln!(output, "{}  column `{}` is of type `{}`", indent, col.name, col.r#type);
 		}
 
-		// Notes
 		if !diagnostic.notes.is_empty() {
 			for note in &diagnostic.notes {
 				let _ = writeln!(output, "{}  note: {}", indent, note);
 			}
 		}
 
-		// Add spacing between diagnostic levels
 		if depth > 0 {
 			let _ = writeln!(output);
 		}

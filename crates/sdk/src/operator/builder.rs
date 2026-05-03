@@ -242,9 +242,6 @@ impl<'a> ColumnsBuilder<'a> {
 		}
 	}
 
-	/// Create a builder from a raw `*mut ContextFFI`. Used by transform /
-	/// procedure contexts that aren't `OperatorContext`. The caller is
-	/// responsible for ensuring the pointer outlives `'a`.
 	pub fn from_raw_ctx(ctx: *mut ContextFFI) -> Self {
 		Self {
 			ctx,
@@ -252,8 +249,6 @@ impl<'a> ColumnsBuilder<'a> {
 		}
 	}
 
-	/// Acquire a fresh column builder of the given type with at least
-	/// `capacity` elements (bytes for var-len data buffer).
 	pub fn acquire(&mut self, type_code: ColumnTypeCode, capacity: usize) -> Result<ColumnBuilder<'_>, FFIError> {
 		let handle = unsafe {
 			let cb = (*self.ctx).callbacks.builder;

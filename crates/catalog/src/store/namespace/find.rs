@@ -20,7 +20,6 @@ impl CatalogStore {
 	) -> Result<Option<Namespace>> {
 		let name = name.as_ref();
 
-		// Special case for system namespace - hardcoded with fixed ID
 		if name == "system" {
 			return Ok(Some(Namespace::system()));
 		}
@@ -44,7 +43,6 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_namespace(rx: &mut Transaction<'_>, id: NamespaceId) -> Result<Option<Namespace>> {
-		// Special case for system namespace - hardcoded with fixed ID
 		if id == NamespaceId::SYSTEM {
 			return Ok(Some(Namespace::system()));
 		}

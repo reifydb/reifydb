@@ -11,39 +11,32 @@ use std::{
 
 use crate::encoded::{key::EncodedKey, row::EncodedRow};
 
-/// Represents a pending operation on a key
 #[derive(Debug, Clone)]
 pub enum PendingWrite {
 	Set(EncodedRow),
 	Remove,
 }
 
-/// Manages pending writes and removes with sorted key access
 #[derive(Debug, Default, Clone)]
 pub struct Pending {
-	/// Primary storage - BTreeMap for sorted key access and range queries
 	writes: BTreeMap<EncodedKey, PendingWrite>,
 }
 
 impl Pending {
-	/// Create a new empty pending writes manager
 	pub fn new() -> Self {
 		Self {
 			writes: BTreeMap::new(),
 		}
 	}
 
-	/// Insert a write operation
 	pub fn insert(&mut self, key: EncodedKey, value: EncodedRow) {
 		self.writes.insert(key, PendingWrite::Set(value));
 	}
 
-	/// Insert a remove operation
 	pub fn remove(&mut self, key: EncodedKey) {
 		self.writes.insert(key, PendingWrite::Remove);
 	}
 
-	/// Get a value if it exists and is a write (not a remove)
 	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
 		match self.writes.get(key) {
 			Some(PendingWrite::Set(value)) => Some(value),
@@ -51,22 +44,18 @@ impl Pending {
 		}
 	}
 
-	/// Check if a key is marked for removal
 	pub fn is_removed(&self, key: &EncodedKey) -> bool {
 		matches!(self.writes.get(key), Some(PendingWrite::Remove))
 	}
 
-	/// Check if a key exists (either as write or remove)
 	pub fn contains_key(&self, key: &EncodedKey) -> bool {
 		self.writes.contains_key(key)
 	}
 
-	/// Iterate over all pending operations in sorted key order
 	pub fn iter_sorted(&self) -> Iter<'_, EncodedKey, PendingWrite> {
 		self.writes.iter()
 	}
 
-	/// Range query over pending operations in sorted key order
 	pub fn range<R>(&self, range: R) -> Range<'_, EncodedKey, PendingWrite>
 	where
 		R: RangeBounds<EncodedKey>,

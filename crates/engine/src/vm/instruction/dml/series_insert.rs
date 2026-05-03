@@ -157,7 +157,6 @@ pub(crate) fn insert_series(
 	Ok(insert_series_result(namespace.name(), &series.name, inserted_count))
 }
 
-/// Snapshot of one freshly-inserted series row, used for flow-change tracking.
 struct SeriesRowSnapshot<'a> {
 	key_column_name: &'a str,
 	key_value: u64,

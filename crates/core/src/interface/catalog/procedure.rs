@@ -10,10 +10,9 @@ use crate::interface::catalog::id::{NamespaceId, ProcedureId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum RqlTrigger {
-	/// Invoked explicitly via CALL
 	#[default]
 	Call,
-	/// Triggered by DISPATCH on an event variant
+
 	Event {
 		variant: VariantRef,
 	},
@@ -52,7 +51,6 @@ pub struct ProcedureParam {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Procedure {
-	/// User-defined RQL procedure. Persisted; transactional; addable/droppable via DDL.
 	Rql {
 		id: ProcedureId,
 		namespace: NamespaceId,
@@ -62,7 +60,7 @@ pub enum Procedure {
 		body: String,
 		trigger: RqlTrigger,
 	},
-	/// User-defined RQL test procedure. Persisted; only callable from test context.
+
 	Test {
 		id: ProcedureId,
 		namespace: NamespaceId,
@@ -71,7 +69,7 @@ pub enum Procedure {
 		return_type: Option<TypeConstraint>,
 		body: String,
 	},
-	/// Built-in Rust procedure registered into the runtime registry. Ephemeral.
+
 	Native {
 		id: ProcedureId,
 		namespace: NamespaceId,
@@ -80,7 +78,7 @@ pub enum Procedure {
 		return_type: Option<TypeConstraint>,
 		native_name: String,
 	},
-	/// Procedure loaded from an FFI shared library at boot. Ephemeral.
+
 	Ffi {
 		id: ProcedureId,
 		namespace: NamespaceId,
@@ -91,7 +89,7 @@ pub enum Procedure {
 		library_path: PathBuf,
 		entry_symbol: String,
 	},
-	/// Procedure loaded from a WASM module at boot. Ephemeral.
+
 	Wasm {
 		id: ProcedureId,
 		namespace: NamespaceId,
@@ -249,13 +247,10 @@ impl Procedure {
 		}
 	}
 
-	/// True for variants that live in MVCC storage (Rql, Test).
-	/// False for Native/Ffi/Wasm which are repopulated from the runtime registry on every boot.
 	pub fn is_persistent(&self) -> bool {
 		matches!(self, Procedure::Rql { .. } | Procedure::Test { .. })
 	}
 
-	/// Event variant this procedure is bound to, if any. Only Rql procedures with `RqlTrigger::Event` return Some.
 	pub fn event_variant(&self) -> Option<VariantRef> {
 		match self {
 			Procedure::Rql {
@@ -268,7 +263,6 @@ impl Procedure {
 		}
 	}
 
-	/// Native registry lookup name for Native/Ffi/Wasm variants. None for Rql/Test.
 	pub fn native_name(&self) -> Option<&str> {
 		match self {
 			Procedure::Native {
@@ -287,7 +281,6 @@ impl Procedure {
 		}
 	}
 
-	/// RQL source body for Rql/Test variants. None for native-bound variants.
 	pub fn body(&self) -> Option<&str> {
 		match self {
 			Procedure::Rql {

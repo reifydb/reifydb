@@ -21,15 +21,6 @@ const NANOS_PER_DAY: u64 = 86_400 * NANOS_PER_SECOND;
 pub static CREATED_AT_COLUMN_NAME: &str = "created_at";
 pub static UPDATED_AT_COLUMN_NAME: &str = "updated_at";
 
-/// A date and time value with nanosecond precision.
-/// Always in SVTC timezone.
-///
-/// Internally stored as nanoseconds since Unix epoch (1970-01-01T00:00:00Z).
-/// Only supports dates from 1970-01-01 onward.
-///
-/// `#[repr(transparent)]` is required: the FFI ABI hands guests a borrow of
-/// `Vec<DateTime>` storage as a contiguous `[u64]` payload (also used for
-/// per-row `created_at`/`updated_at` arrays in `ColumnsFFI`).
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct DateTime {
@@ -37,15 +28,13 @@ pub struct DateTime {
 }
 
 impl DateTime {
-	/// Create from year, month, day, hour, minute, second, nanosecond.
-	/// Returns None if the date is invalid or before Unix epoch.
 	pub fn new(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32, nano: u32) -> Option<Self> {
 		let date = Date::new(year, month, day)?;
 		let time = Time::new(hour, min, sec, nano)?;
 
 		let days = date.to_days_since_epoch();
 		if days < 0 {
-			return None; // Before Unix epoch
+			return None;
 		}
 
 		let nanos = (days as u64).checked_mul(NANOS_PER_DAY)?.checked_add(time.to_nanos_since_midnight())?;
@@ -80,15 +69,12 @@ impl DateTime {
 		}
 	}
 
-	/// Create from a primary u64 nanoseconds value.
-	/// Values beyond MAX_SAFE_NANOS are rejected to prevent downstream i32 overflow in date().
 	pub fn from_nanos(nanos: u64) -> Self {
 		Self {
 			nanos,
 		}
 	}
 
-	/// Get the raw nanoseconds since epoch.
 	pub fn to_nanos(&self) -> u64 {
 		self.nanos
 	}
@@ -155,7 +141,6 @@ impl DateTime {
 		Time::from_nanos_since_midnight(nanos_in_day).unwrap()
 	}
 
-	/// Convert to nanoseconds since Unix epoch as u128.
 	pub fn to_nanos_since_epoch_u128(&self) -> u128 {
 		self.nanos as u128
 	}
@@ -188,7 +173,6 @@ impl DateTime {
 		self.time().nanosecond()
 	}
 
-	/// Add a Duration to this DateTime, handling calendar arithmetic for months/days.
 	pub fn add_duration(&self, dur: &Duration) -> Result<Self, Box<TypeError>> {
 		let date = self.date();
 		let time = self.time();
@@ -196,18 +180,15 @@ impl DateTime {
 		let mut month = date.month() as i32;
 		let mut day = date.day();
 
-		// Add months component
 		let total_months = month + dur.get_months();
 		year += (total_months - 1).div_euclid(12);
 		month = (total_months - 1).rem_euclid(12) + 1;
 
-		// Clamp day to valid range for the new month
 		let max_day = Date::days_in_month(year, month as u32);
 		if day > max_day {
 			day = max_day;
 		}
 
-		// Convert to nanos since epoch and add day/nanos components
 		let base_date = Date::new(year, month as u32, day).ok_or_else(|| {
 			Box::new(Self::overflow_err(format!(
 				"invalid date after adding duration: {}-{:02}-{:02}",
@@ -236,12 +217,10 @@ impl Display for DateTime {
 		let date = self.date();
 		let time = self.time();
 
-		// Format as ISO 8601: YYYY-MM-DDTHH:MM:SS.nnnnnnnnnZ
 		write!(f, "{}T{}Z", date, time)
 	}
 }
 
-// Serde implementation for ISO 8601 format
 impl Serialize for DateTime {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -264,18 +243,13 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 	where
 		E: de::Error,
 	{
-		// Parse ISO 8601 datetime format:
-		// YYYY-MM-DDTHH:MM:SS[.nnnnnnnnn]Z Remove trailing Z if
-		// present
 		let value = value.strip_suffix('Z').unwrap_or(value);
 
-		// Split on T
 		let parts: Vec<&str> = value.split('T').collect();
 		if parts.len() != 2 {
 			return Err(E::custom(format!("invalid datetime format: {}", value)));
 		}
 
-		// Parse date part
 		let date_parts: Vec<&str> = parts[0].split('-').collect();
 		if date_parts.len() != 3 {
 			return Err(E::custom(format!("invalid date format: {}", parts[0])));
@@ -290,7 +264,6 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 		let month = month_str.parse::<u32>().map_err(|_| E::custom(format!("invalid month: {}", month_str)))?;
 		let day = day_str.parse::<u32>().map_err(|_| E::custom(format!("invalid day: {}", day_str)))?;
 
-		// Parse time part
 		let (time_part, nano_part) = if let Some(dot_pos) = parts[1].find('.') {
 			(&parts[1][..dot_pos], Some(&parts[1][dot_pos + 1..]))
 		} else {
@@ -313,7 +286,6 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 			.map_err(|_| E::custom(format!("invalid second: {}", time_parts[2])))?;
 
 		let nano = if let Some(nano_str) = nano_part {
-			// Pad or truncate to 9 digits
 			let padded = if nano_str.len() < 9 {
 				format!("{:0<9}", nano_str)
 			} else {

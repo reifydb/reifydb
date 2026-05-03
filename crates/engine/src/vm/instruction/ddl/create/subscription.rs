@@ -19,7 +19,6 @@ pub(crate) fn create_subscription(
 	txn: &mut Transaction<'_>,
 	plan: CreateSubscriptionNode,
 ) -> Result<Columns> {
-	// Check if the plan targets a remote source
 	if let Some(ref as_clause) = plan.as_clause
 		&& let QueryPlan::RemoteScan(ref remote) = **as_clause
 	{
@@ -34,17 +33,13 @@ pub(crate) fn create_subscription(
 		]));
 	}
 
-	// Resolve SubscriptionService from IoC
 	let sub_service = services.ioc.resolve::<SubscriptionServiceRef>()?;
 
-	// Generate ephemeral ID
 	let subscription_id = sub_service.next_id();
 
-	// Build column names (user-defined columns + implicit _op)
 	let mut column_names: Vec<String> = plan.columns.iter().map(|c| c.name.clone()).collect();
 	column_names.push("_op".to_string());
 
-	// Compile flow DAG without persisting to catalog
 	let as_clause =
 		plan.as_clause.ok_or_else(|| Error(Box::new(subscription_missing_as_clause(Fragment::None))))?;
 
@@ -52,7 +47,6 @@ pub(crate) fn create_subscription(
 	let flow_dag =
 		compile_subscription_flow_ephemeral(&services.catalog, txn, *as_clause, subscription_id, flow_id)?;
 
-	// Register with subscription subsystem via service
 	sub_service.register_subscription(subscription_id, flow_dag, column_names, txn)?;
 
 	Ok(Columns::single_row([

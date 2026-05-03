@@ -786,7 +786,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 					scale: *scale,
 				}
 			}
-			// Mixed-type fallback: promote all to Decimal or recursion
+
 			_ => {
 				let v_type = v_data.get_type();
 				let lo_type = lo_data.get_type();

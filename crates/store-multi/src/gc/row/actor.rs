@@ -22,21 +22,17 @@ use tracing::{debug, info, trace, warn};
 use super::{ListRowTtls, ScanStats, scanner};
 use crate::{store::StandardMultiStore, tier::RangeCursor};
 
-/// Holds state for the chunked, stateful scanner.
 #[derive(Default)]
 pub struct ScannerState {
 	cursors: HashMap<ShapeId, RangeCursor>,
 }
 
-/// Internal state for the row TTL actor.
 pub struct ActorState {
 	_timer_handle: Option<TimerHandle>,
 	scanning: bool,
 	scanner: ScannerState,
 }
 
-/// Background actor that periodically scans shapes for expired rows
-/// and physically drops them based on TTL configuration.
 pub struct Actor<P: ListRowTtls> {
 	store: StandardMultiStore,
 	provider: P,
@@ -143,21 +139,16 @@ impl<P: ListRowTtls> Actor<P> {
 						scanner::ScanResult::Yielded => {
 							state.scanner.cursors.insert(*shape_id, cursor);
 						}
-						scanner::ScanResult::Exhausted => {
-							// Cursor is already removed, shape will restart from beginning
-							// next tick.
-						}
+						scanner::ScanResult::Exhausted => {}
 					}
 				}
 				Err(e) => {
 					warn!(?shape_id, error = %e, "Failed to scan shape for expired rows");
-					// On error, we drop the cursor to restart scanning for this shape next tick.
 				}
 			}
 		}
 
 		if stats.rows_expired > 0 {
-			// Trigger maintenance to physically reclaim memory/disk space (especially for SQLite)
 			hot.maintenance();
 
 			info!(
@@ -234,11 +225,6 @@ impl<P: ListRowTtls> ActorTrait for Actor<P> {
 	}
 }
 
-/// Spawn a row TTL actor that periodically scans and drops expired rows.
-///
-/// The provider is typically implemented by the engine layer wrapping
-/// the materialized catalog. Call this after both store and catalog
-/// are available.
 pub fn spawn_row_ttl_actor<P: ListRowTtls>(
 	store: StandardMultiStore,
 	system: ActorSystem,

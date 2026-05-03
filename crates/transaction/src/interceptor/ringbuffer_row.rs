@@ -7,7 +7,6 @@ use reifydb_type::{Result, value::row_number::RowNumber};
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
-// PRE INSERT
 pub struct RingBufferRowPreInsertContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub row: EncodedRow,
@@ -80,7 +79,6 @@ where
 	ClosureRingBufferRowPreInsertInterceptor::new(f)
 }
 
-// POST INSERT
 pub struct RingBufferRowPostInsertContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,
@@ -155,7 +153,6 @@ where
 	ClosureRingBufferRowPostInsertInterceptor::new(f)
 }
 
-// PRE UPDATE
 pub struct RingBufferRowPreUpdateContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,
@@ -230,7 +227,6 @@ where
 	ClosureRingBufferRowPreUpdateInterceptor::new(f)
 }
 
-// POST UPDATE
 pub struct RingBufferRowPostUpdateContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,
@@ -307,7 +303,6 @@ where
 	ClosureRingBufferRowPostUpdateInterceptor::new(f)
 }
 
-// PRE DELETE
 pub struct RingBufferRowPreDeleteContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,
@@ -380,7 +375,6 @@ where
 	ClosureRingBufferRowPreDeleteInterceptor::new(f)
 }
 
-// POST DELETE
 pub struct RingBufferRowPostDeleteContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,
@@ -455,7 +449,6 @@ where
 	ClosureRingBufferRowPostDeleteInterceptor::new(f)
 }
 
-/// Helper struct for executing ring buffer interceptors via static methods.
 pub struct RingBufferRowInterceptor;
 
 impl RingBufferRowInterceptor {

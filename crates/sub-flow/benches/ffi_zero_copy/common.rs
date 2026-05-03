@@ -9,9 +9,6 @@ use std::{
 	sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
-/// A `GlobalAlloc` that delegates to `System` but, when **counting** is
-/// enabled on the current thread, increments the allocation and byte
-/// counters in `STATS`.
 struct CountingAlloc;
 
 unsafe impl GlobalAlloc for CountingAlloc {
@@ -59,15 +56,12 @@ unsafe impl GlobalAlloc for CountingAlloc {
 #[global_allocator]
 static GLOBAL: CountingAlloc = CountingAlloc;
 
-/// Process-wide enable flag. Only counts when this is true; per-thread
-/// `COUNTING_DEPTH` further gates so unrelated background threads don't
-/// pollute the numbers. See `with_counting`.
 static COUNTING: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
-	/// Re-entrant depth: the harness wraps benches in `with_counting`,
-	/// which increments on entry and decrements on exit. Counting is
-	/// active iff depth > 0 *and* the global flag is on.
+
+
+
 	static COUNTING_DEPTH: Cell<u32> = const { Cell::new(0) };
 }
 
@@ -95,7 +89,6 @@ static STATS: Stats = Stats {
 	freed_bytes: AtomicU64::new(0),
 };
 
-/// Snapshot of allocator stats over a scoped region.
 #[derive(Debug, Clone, Copy)]
 pub struct Counts {
 	pub allocs: u64,

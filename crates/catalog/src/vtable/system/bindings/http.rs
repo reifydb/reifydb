@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes HTTP bindings.
 pub struct SystemBindingsHttp {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

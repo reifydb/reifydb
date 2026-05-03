@@ -27,11 +27,9 @@ use crate::{
 	},
 };
 
-/// Pre-compiled UDF call ready for row-by-row execution.
 struct CompiledUdfCall {
-	/// The extracted UDF definition and metadata.
 	udf: ExtractedUdf,
-	/// Compiled argument expressions for column-oriented evaluation.
+
 	compiled_args: Vec<CompiledExpr>,
 }
 
@@ -50,9 +48,6 @@ impl UdfEvalNode {
 		}
 	}
 
-	/// If expressions contain UDF calls, wraps input with a UdfEvalNode and rewrites expressions.
-	/// Otherwise returns input and expressions unchanged.
-	/// Returns (wrapped_input, rewritten_expressions, synthetic_column_names).
 	pub fn wrap_if_needed(
 		input: Box<dyn QueryNode>,
 		expressions: &[Expression],
@@ -86,7 +81,6 @@ impl QueryNode for UdfEvalNode {
 			symbols: &ctx.symbols,
 		};
 
-		// Compile argument expressions for each UDF call
 		let compiled: Vec<CompiledUdfCall> = self
 			.udf_calls
 			.drain(..)
@@ -122,7 +116,6 @@ impl QueryNode for UdfEvalNode {
 		}
 
 		for call in compiled_calls {
-			// Evaluate argument expressions column-oriented
 			let session = EvalContext::from_query(stored_ctx);
 			let eval_ctx = session.with_eval(columns.clone(), row_count);
 
@@ -132,18 +125,15 @@ impl QueryNode for UdfEvalNode {
 			}
 
 			let result_column = if is_vectorizable(&call.udf.func_def.body) {
-				// Batch path: execute UDF body ONCE with batch_size = row_count
 				let mut func_symbols = stored_ctx.symbols.clone();
 				func_symbols.enter_scope(ScopeType::Function);
 
-				// Bind arguments as full Columns
 				for (param, arg_col) in call.udf.func_def.parameters.iter().zip(arg_columns.iter()) {
 					let param_name = strip_dollar_prefix(param.name.text()).to_string();
 					let col_var = Variable::columns(Columns::new(vec![arg_col.clone()]));
 					func_symbols.set(param_name, col_var, true)?;
 				}
 
-				// Execute via columnar VM - one invocation for all rows
 				let mut vm = Vm::with_batch_size_from_services(
 					func_symbols,
 					row_count,
@@ -154,7 +144,6 @@ impl QueryNode for UdfEvalNode {
 				let mut func_result: Vec<Frame> = Vec::new();
 				vm.run(&stored_ctx.services, rx, &call.udf.func_def.body, &mut func_result)?;
 
-				// Extract result column from return value
 				let result_var = collect_call_result(&mut vm, &mut func_result);
 				match result_var {
 					Variable::Columns {
@@ -178,7 +167,6 @@ impl QueryNode for UdfEvalNode {
 					}
 				}
 			} else {
-				// Scalar fallback: execute UDF body row-by-row via canonical VM
 				let mut results: Vec<Value> = Vec::with_capacity(row_count);
 				let mut func_symbols = stored_ctx.symbols.clone();
 
@@ -237,13 +225,6 @@ impl QueryNode for UdfEvalNode {
 	}
 }
 
-/// Check if a UDF body contains only instructions that the columnar VM can batch-execute.
-///
-/// Every instruction listed here must have a batch-capable handler in `vm/exec/`:
-/// either a kernel that operates on `Column`s (arithmetic, comparison, logic,
-/// between, in_list, cast), or a mask-aware dispatch path (jump instructions,
-/// scoped control flow). If you add an instruction to this list, verify its
-/// handler accepts multi-row columns, or `pop_value()` will fail at runtime.
 pub(crate) fn is_vectorizable(instructions: &[Instruction]) -> bool {
 	instructions.iter().all(|instr| {
 		matches!(
@@ -275,7 +256,6 @@ pub(crate) fn is_vectorizable(instructions: &[Instruction]) -> bool {
 	})
 }
 
-/// Remove synthetic `__udf_N` columns from output so they never leak to the user.
 pub(crate) fn strip_udf_columns(columns: &mut Columns, udf_names: &[String]) {
 	if udf_names.is_empty() {
 		return;
@@ -295,9 +275,6 @@ pub(crate) fn strip_udf_columns(columns: &mut Columns, udf_names: &[String]) {
 	});
 }
 
-/// Extract UDF calls from expressions and evaluate them for a single row with no input columns.
-/// Returns the rewritten expressions and a `Columns` containing the UDF result columns.
-/// If no UDFs are found, returns `None`.
 pub(crate) fn evaluate_udfs_no_input(
 	expressions: &[Expression],
 	ctx: &QueryContext,
@@ -328,7 +305,6 @@ pub(crate) fn evaluate_udfs_no_input(
 		let mut func_symbols = ctx.symbols.clone();
 		func_symbols.enter_scope(ScopeType::Function);
 
-		// Evaluate arguments as scalar expressions (no input columns)
 		for (param, arg_expr) in udf.func_def.parameters.iter().zip(udf.arg_expressions.iter()) {
 			let compiled_arg = compile_expression(&compile_ctx, arg_expr).expect("compile UDF arg");
 			let eval_ctx = session.with_eval_empty();
@@ -338,7 +314,6 @@ pub(crate) fn evaluate_udfs_no_input(
 			func_symbols.set(param_name, Variable::scalar(value), true)?;
 		}
 
-		// Execute UDF via canonical VM
 		let mut vm = Vm::from_services(func_symbols, &ctx.services, &EMPTY_PARAMS, ctx.identity);
 		let mut func_result: Vec<Frame> = Vec::new();
 		vm.run(&ctx.services, rx, &udf.func_def.body, &mut func_result)?;

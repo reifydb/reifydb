@@ -11,11 +11,6 @@ use reifydb_type::{
 use super::option::apply_option_bitvec;
 use crate::Result;
 
-/// If `l` is an entirely defined boolean column whose every row is `false`,
-/// return an all-false defined column of `row_count` rows. The caller can then
-/// skip evaluating the right operand of `AND` (`false AND x = false` for any
-/// `x`, including `null`). Returns `None` whenever any row is `true` or `null`,
-/// in which case the right operand must still be evaluated for Kleene K3.
 pub(crate) fn try_short_circuit_and(
 	l: &ColumnWithName,
 	fragment: &Fragment,
@@ -28,8 +23,6 @@ pub(crate) fn try_short_circuit_and(
 	}
 }
 
-/// Mirror of [`try_short_circuit_and`] for `OR`: short-circuits to all-true
-/// only when every row of `l` is defined and `true`.
 pub(crate) fn try_short_circuit_or(
 	l: &ColumnWithName,
 	fragment: &Fragment,
@@ -92,9 +85,6 @@ pub(crate) fn execute_logical_op(
 	let (right_data, right_bv) = right.data().unwrap_option();
 	let len = left_data.len();
 
-	// A side may be a non-Bool buffer when it represents a bare `none` literal,
-	// which is materialized as Any with an all-None bitvec. Substitute such sides
-	// with a synthetic all-None Bool column so Kleene K3 rules apply uniformly.
 	let synthetic = BitVec::repeat(len, false);
 
 	let (l_v_bits, l_valid_bv) = match left_data {
@@ -147,12 +137,6 @@ fn type_error(
 	.into())
 }
 
-// Kleene K3 validity per position:
-// - AND: defined iff both operands defined, OR either operand is defined-FALSE (FALSE AND x = FALSE for any x,
-//   including none)
-// - OR:  defined iff both operands defined, OR either operand is defined-TRUE (TRUE OR x = TRUE for any x, including
-//   none)
-// - XOR: strict propagation - any none operand yields none
 fn compute_kleene_validity(
 	logical_op: &LogicalOp,
 	left_bv: Option<&BitVec>,

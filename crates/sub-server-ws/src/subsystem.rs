@@ -30,76 +30,41 @@ use tracing::{debug, info, warn};
 
 use crate::{handler::handle_connection, subscription::registry::SubscriptionRegistry};
 
-/// WebSocket server subsystem.
-///
-/// Manages a tokio-tungstenite WebSocket server with support for:
-/// - Connection limiting via semaphore
-/// - Graceful startup and shutdown
-/// - Active connection tracking
-/// - Health monitoring with connection count warnings
-/// - Subscription push notifications
-///
-/// # Example
-///
-/// ```ignore
-/// let state = AppState::new(pool, engine, QueryConfig::default(), RequestInterceptorChain::empty());
-///
-/// let mut ws = WsSubsystem::new(
-///     "0.0.0.0:8091".to_string(),
-///     state,
-/// );
-///
-/// ws.start()?;
-/// // Server is now accepting connections
-///
-/// ws.shutdown()?;
-/// // Server has gracefully stopped, connections drained
-/// ```
 pub struct WsSubsystem {
-	/// Address to bind the server to.
 	bind_addr: Option<String>,
-	/// Address to bind the admin server to.
+
 	admin_bind_addr: Option<String>,
-	/// Actual bound address (available after start).
+
 	actual_addr: RwLock<Option<SocketAddr>>,
-	/// Actual bound address for admin server (available after start).
+
 	admin_actual_addr: RwLock<Option<SocketAddr>>,
-	/// Shared application state.
+
 	state: AppState,
-	/// Flag indicating if the server is running.
+
 	running: Arc<AtomicBool>,
-	/// Count of active connections.
+
 	active_connections: Arc<AtomicUsize>,
-	/// Channel to send shutdown signal.
+
 	shutdown_tx: Option<watch::Sender<bool>>,
-	/// Channel to receive shutdown completion.
+
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	/// Channel to receive admin shutdown completion.
+
 	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	/// Semaphore for connection limiting.
+
 	connection_semaphore: Arc<Semaphore>,
-	/// Shared tokio runtime.
+
 	runtime: SharedRuntime,
-	/// Subscription registry for push notifications.
+
 	registry: Arc<SubscriptionRegistry>,
-	/// Subscription polling interval.
+
 	poll_interval: Duration,
-	/// Maximum rows to read per subscription per poll.
+
 	poll_batch_size: usize,
-	/// In-memory subscription store (from IoC, if subscription subsystem is active).
+
 	subscription_store: Option<Arc<SubscriptionStore>>,
 }
 
 impl WsSubsystem {
-	/// Create a new WebSocket subsystem.
-	///
-	/// # Arguments
-	///
-	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8091")
-	/// * `state` - Shared application state with engine and config
-	/// * `runtime` - Shared runtime
-	/// * `poll_interval` - Subscription polling interval
-	/// * `poll_batch_size` - Maximum rows to read per subscription per poll
 	pub fn new(
 		bind_addr: Option<String>,
 		admin_bind_addr: Option<String>,
@@ -130,32 +95,26 @@ impl WsSubsystem {
 		}
 	}
 
-	/// Get the bind address.
 	pub fn bind_addr(&self) -> Option<&str> {
 		self.bind_addr.as_deref()
 	}
 
-	/// Get the actual bound address (available after start).
 	pub fn local_addr(&self) -> Option<SocketAddr> {
 		*self.actual_addr.read().unwrap()
 	}
 
-	/// Get the actual bound port (available after start).
 	pub fn port(&self) -> Option<u16> {
 		self.local_addr().map(|a| a.port())
 	}
 
-	/// Get the current number of active connections.
 	pub fn active_connections(&self) -> usize {
 		self.active_connections.load(Ordering::SeqCst)
 	}
 
-	/// Get the actual bound address for the admin server (available after start).
 	pub fn admin_local_addr(&self) -> Option<SocketAddr> {
 		*self.admin_actual_addr.read().unwrap()
 	}
 
-	/// Get the actual bound port for the admin server (available after start).
 	pub fn admin_port(&self) -> Option<u16> {
 		self.admin_local_addr().map(|a| a.port())
 	}
@@ -291,15 +250,14 @@ impl Subsystem for WsSubsystem {
 	}
 
 	fn shutdown(&mut self) -> Result<()> {
-		// Signal shutdown (both main and admin listen on the same watch channel)
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(true);
 		}
-		// Wait for admin server to stop
+
 		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
 			let _ = self.runtime.block_on(rx);
 		}
-		// Wait for main server to stop
+
 		if let Some(rx) = self.shutdown_complete_rx.take() {
 			let _ = self.runtime.block_on(rx);
 		}
@@ -316,7 +274,6 @@ impl Subsystem for WsSubsystem {
 			let active = self.active_connections.load(Ordering::SeqCst);
 			let max = self.state.max_connections();
 
-			// Warn if connections are at 90% capacity
 			if active > max * 90 / 100 {
 				HealthStatus::Warning {
 					description: format!("High connection count: {}/{}", active, max),
@@ -325,7 +282,6 @@ impl Subsystem for WsSubsystem {
 				HealthStatus::Healthy
 			}
 		} else if self.shutdown_tx.is_some() {
-			// Started but not yet running (startup in progress)
 			HealthStatus::Warning {
 				description: "Starting up".to_string(),
 			}

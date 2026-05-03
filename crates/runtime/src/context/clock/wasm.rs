@@ -23,17 +23,14 @@ fn performance_now_ms() -> f64 {
 	window().and_then(|w| w.performance()).map(|p| p.now()).unwrap_or_else(|| Date::now())
 }
 
-/// A clock that provides time - either real system time or mock time for testing.
 #[derive(Clone)]
 pub enum Clock {
-	/// Real system clock - delegates to platform time
 	Real,
-	/// Mock clock with controllable time
+
 	Mock(MockClock),
 }
 
 impl Clock {
-	/// Get current time in nanoseconds since Unix epoch
 	pub fn now_nanos(&self) -> u64 {
 		match self {
 			Clock::Real => platform_now_nanos(),
@@ -41,17 +38,14 @@ impl Clock {
 		}
 	}
 
-	/// Get current time in microseconds since Unix epoch
 	pub fn now_micros(&self) -> u64 {
 		self.now_nanos() / 1_000
 	}
 
-	/// Get current time in milliseconds since Unix epoch
 	pub fn now_millis(&self) -> u64 {
 		self.now_nanos() / 1_000_000
 	}
 
-	/// Get current time in seconds since Unix epoch
 	pub fn now_secs(&self) -> u64 {
 		self.now_nanos() / 1_000_000_000
 	}
@@ -79,7 +73,6 @@ impl Default for Clock {
 	}
 }
 
-/// Mock clock with atomic time storage for thread-safe access.
 #[derive(Clone)]
 pub struct MockClock {
 	inner: Arc<MockClockInner>,
@@ -90,7 +83,6 @@ struct MockClockInner {
 }
 
 impl MockClock {
-	/// Create a new mock clock starting at the given nanoseconds
 	pub fn new(initial_nanos: u64) -> Self {
 		Self {
 			inner: Arc::new(MockClockInner {
@@ -99,57 +91,46 @@ impl MockClock {
 		}
 	}
 
-	/// Create a new mock clock starting at the given milliseconds
 	pub fn from_millis(millis: u64) -> Self {
 		Self::new(millis * 1_000_000)
 	}
 
-	/// Get current time in nanoseconds
 	pub fn now_nanos(&self) -> u64 {
 		self.inner.time_nanos.load(Ordering::Acquire)
 	}
 
-	/// Get current time in microseconds
 	pub fn now_micros(&self) -> u64 {
 		self.now_nanos() / 1_000
 	}
 
-	/// Get current time in milliseconds
 	pub fn now_millis(&self) -> u64 {
 		self.now_nanos() / 1_000_000
 	}
 
-	/// Get current time in seconds
 	pub fn now_secs(&self) -> u64 {
 		self.now_nanos() / 1_000_000_000
 	}
 
-	/// Set time to specific nanoseconds
 	pub fn set_nanos(&self, nanos: u64) {
 		self.inner.time_nanos.store(nanos, Ordering::Release);
 	}
 
-	/// Set time to specific microseconds
 	pub fn set_micros(&self, micros: u64) {
 		self.set_nanos(micros * 1_000);
 	}
 
-	/// Set time to specific milliseconds
 	pub fn set_millis(&self, millis: u64) {
 		self.set_nanos(millis * 1_000_000);
 	}
 
-	/// Advance time by nanoseconds
 	pub fn advance_nanos(&self, nanos: u64) {
 		self.set_nanos(self.now_nanos().saturating_add(nanos));
 	}
 
-	/// Advance time by microseconds
 	pub fn advance_micros(&self, micros: u64) {
 		self.advance_nanos(micros * 1_000);
 	}
 
-	/// Advance time by milliseconds
 	pub fn advance_millis(&self, millis: u64) {
 		self.advance_nanos(millis * 1_000_000);
 	}

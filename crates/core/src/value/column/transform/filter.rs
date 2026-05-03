@@ -10,7 +10,6 @@ use crate::value::column::columns::Columns;
 
 impl Columns {
 	pub fn filter(&mut self, mask: &BitVec) -> Result<()> {
-		// Filter encoded numbers if present
 		if !self.row_numbers.is_empty() {
 			let filtered_row_numbers: Vec<_> = self
 				.row_numbers
@@ -22,7 +21,6 @@ impl Columns {
 			self.row_numbers = CowVec::new(filtered_row_numbers);
 		}
 
-		// Filter created_at timestamps if present
 		if !self.created_at.is_empty() {
 			let filtered_created_at: Vec<_> = self
 				.created_at
@@ -34,7 +32,6 @@ impl Columns {
 			self.created_at = CowVec::new(filtered_created_at);
 		}
 
-		// Filter updated_at timestamps if present
 		if !self.updated_at.is_empty() {
 			let filtered_updated_at: Vec<_> = self
 				.updated_at
@@ -46,7 +43,6 @@ impl Columns {
 			self.updated_at = CowVec::new(filtered_updated_at);
 		}
 
-		// Filter columns
 		let columns = self.columns.make_mut();
 		for column in columns.iter_mut() {
 			column.filter(mask)?;

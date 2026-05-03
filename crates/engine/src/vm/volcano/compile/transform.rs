@@ -88,7 +88,6 @@ pub(crate) fn compile_patch<'a>(
 	let mut assignments = node.assignments;
 	let input = node.input.expect("Patch requires input");
 
-	// Expand sumtype constructors and unit variant identifiers in assignments
 	if let Some(source) = extract_resolved_source(&input) {
 		assignments = expand_patch_sumtype_assignments(assignments, &source, &context.services.catalog, rx);
 	}
@@ -97,9 +96,6 @@ pub(crate) fn compile_patch<'a>(
 	Box::new(PatchNode::new(input_node, assignments))
 }
 
-/// Expand sumtype constructors and unit variant identifiers in UPDATE/PATCH assignments.
-/// For UPDATE, we must explicitly null out non-active variant fields because PatchNode
-/// only replaces columns that appear in the assignments.
 fn expand_patch_sumtype_assignments(
 	assignments: Vec<Expression>,
 	source: &ResolvedShape,
@@ -117,7 +113,6 @@ fn expand_patch_sumtype_assignments(
 		let col_name = alias_expr.alias.name().to_string();
 		let tag_col_name = format!("{}_tag", col_name);
 
-		// Check if this assignment targets a SumType column
 		let tag_col = source.columns().iter().find(|c| c.name == tag_col_name);
 		let sumtype_info = tag_col.and_then(|tc| {
 			if let Some(Constraint::SumType(id)) = tc.constraint.constraint() {
@@ -143,7 +138,6 @@ fn expand_patch_sumtype_assignments(
 					.find(|v| v.name.to_lowercase() == variant_name_lower)
 					.expect("variant not found in sumtype");
 
-				// Tag column
 				expanded.push(Expression::Alias(AliasExpression {
 					alias: IdentExpression(Fragment::internal(format!("{}_tag", col_name))),
 					expression: Box::new(Expression::Constant(ConstantExpression::Number {
@@ -152,14 +146,12 @@ fn expand_patch_sumtype_assignments(
 					fragment: fragment.clone(),
 				}));
 
-				// Build field lookup from constructor
 				let field_map: collections::HashMap<String, &Expression> = ctor
 					.columns
 					.iter()
 					.map(|(name, expr)| (name.text().to_lowercase(), expr))
 					.collect();
 
-				// All variant fields: active variant gets values, others get None
 				for v in &sumtype.variants {
 					for field in &v.fields {
 						let phys_col_name = format!(
@@ -190,12 +182,10 @@ fn expand_patch_sumtype_assignments(
 				}
 			}
 			Expression::Column(col) => {
-				// Check if bare identifier matches a unit variant
 				let variant_name_lower = col.0.name.text().to_lowercase();
 				if let Some(variant) =
 					sumtype.variants.iter().find(|v| v.name.to_lowercase() == variant_name_lower)
 				{
-					// Tag column
 					expanded.push(Expression::Alias(AliasExpression {
 						alias: IdentExpression(Fragment::internal(format!("{}_tag", col_name))),
 						expression: Box::new(Expression::Constant(
@@ -206,7 +196,6 @@ fn expand_patch_sumtype_assignments(
 						fragment: fragment.clone(),
 					}));
 
-					// All variant fields set to None
 					for v in &sumtype.variants {
 						for field in &v.fields {
 							let phys_col_name = format!(

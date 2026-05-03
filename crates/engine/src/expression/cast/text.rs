@@ -63,8 +63,6 @@ pub fn from_blob(container: &BlobContainer, lazy_fragment: impl LazyFragment) ->
 	let mut out = ColumnBuffer::with_capacity(Type::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
-			// Reconstruct a Blob from the borrowed bytes so the existing
-			// to_utf8 invariant logic + diagnostic stays unchanged.
 			let blob = Blob::new(container.get(idx).unwrap_or(&[]).to_vec());
 			match blob.to_utf8() {
 				Ok(s) => out.push(s),

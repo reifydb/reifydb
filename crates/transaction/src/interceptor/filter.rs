@@ -10,14 +10,12 @@
 /// - `"*"` - match all (wildcard)
 #[derive(Debug, Clone)]
 pub struct InterceptFilter {
-	/// Namespace to match. None means match any namespace.
 	pub namespace: Option<String>,
-	/// Entity name to match. None means match any entity.
+
 	pub name: Option<String>,
 }
 
 impl InterceptFilter {
-	/// Create a filter that matches all entities.
 	pub fn all() -> Self {
 		Self {
 			namespace: None,
@@ -25,7 +23,6 @@ impl InterceptFilter {
 		}
 	}
 
-	/// Create a filter for a specific namespace and name.
 	pub fn exact(namespace: impl Into<String>, name: impl Into<String>) -> Self {
 		Self {
 			namespace: Some(namespace.into()),
@@ -33,7 +30,6 @@ impl InterceptFilter {
 		}
 	}
 
-	/// Create a filter for all entities in a namespace.
 	pub fn namespace(namespace: impl Into<String>) -> Self {
 		Self {
 			namespace: Some(namespace.into()),
@@ -41,7 +37,6 @@ impl InterceptFilter {
 		}
 	}
 
-	/// Create a filter for an entity name in any namespace.
 	pub fn name(name: impl Into<String>) -> Self {
 		Self {
 			namespace: None,
@@ -49,13 +44,6 @@ impl InterceptFilter {
 		}
 	}
 
-	/// Parse a filter specification string.
-	///
-	/// Formats:
-	/// - `"namespace.name"` - exact match
-	/// - `"namespace.*"` - all in namespace
-	/// - `"*.name"` - name in any namespace
-	/// - `"*"` - match all
 	pub fn parse(spec: &str) -> Self {
 		let spec = spec.trim();
 
@@ -79,7 +67,6 @@ impl InterceptFilter {
 				name,
 			}
 		} else {
-			// No dot - treat as namespace only
 			Self {
 				namespace: Some(spec.to_string()),
 				name: None,
@@ -87,14 +74,12 @@ impl InterceptFilter {
 		}
 	}
 
-	/// Check if the filter matches the given namespace and name.
 	pub fn matches(&self, namespace: &str, name: &str) -> bool {
 		let ns_matches = self.namespace.as_ref().is_none_or(|ns| ns == namespace);
 		let name_matches = self.name.as_ref().is_none_or(|n| n == name);
 		ns_matches && name_matches
 	}
 
-	/// Check if this filter matches all entities (no restrictions).
 	pub fn is_all(&self) -> bool {
 		self.namespace.is_none() && self.name.is_none()
 	}

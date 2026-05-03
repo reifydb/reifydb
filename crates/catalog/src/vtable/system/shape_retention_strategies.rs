@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes shape retention strategy information
 pub struct SystemShapeRetentionStrategies {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
@@ -70,7 +69,6 @@ impl BaseVTable for SystemShapeRetentionStrategies {
 			ids.push(shape_id);
 			shape_types.push(shape_type);
 
-			// Encode strategy
 			match entry.strategy {
 				RetentionStrategy::KeepForever => {
 					strategy_types.push("keep_forever");

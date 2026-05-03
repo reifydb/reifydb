@@ -23,25 +23,12 @@ use super::{
 };
 use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
-/// SQLite-backed warm tier storage.
-///
-/// Phase 1 of the tiered architecture: stores only the latest committed value
-/// per key in a per-`EntryKind` `__warm_current` table. There is no historical
-/// version chain in warm; aged history dies on the floor of hot via the
-/// existing watermark GC and never reaches warm.
-///
-/// Read semantics: a request at version `W` is served if and only if the
-/// stored row's version `V <= W`. A row whose `V > W` is "from the future"
-/// relative to the snapshot and the read returns `None` (caller continues to
-/// lower tiers).
 #[derive(Clone)]
 pub struct SqliteWarmStorage {
 	inner: Arc<SqliteWarmStorageInner>,
 }
 
 struct SqliteWarmStorageInner {
-	/// Single connection protected by Mutex for thread-safe access.
-	/// rusqlite::Connection is Send but not Sync, so a mutex is required.
 	conn: Mutex<Connection>,
 }
 
@@ -197,9 +184,6 @@ impl TierStorage for SqliteWarmStorage {
 		};
 
 		match result {
-			// Snapshot read: only return the row if it was committed at or before
-			// the requested version. A row whose version > requested is "from the
-			// future" relative to this snapshot and warm cannot answer.
 			Ok((stored_version, value)) if stored_version <= version => Ok(value.map(CowVec::new)),
 			Ok(_) => Ok(None),
 			Err(QueryReturnedNoRows) => Ok(None),
@@ -307,20 +291,13 @@ impl TierStorage for SqliteWarmStorage {
 
 	fn drop(&self, _batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
 		// TODO: change the TierStorage interface so warm doesn't have to expose
-		// drop at all. Warm has no historical chain to physically erase per
-		// (key, version) and receives no drop-actor traffic.
+
 		panic!("SqliteWarmStorage::drop: warm tier has no historical chain to drop versions from");
 	}
 
 	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
-		// Warm holds at most one version per key (the latest committed value).
-		// Returning [] for "no row" or [(v, value_opt)] for "the one row" is
-		// what the cascade's tombstone disambiguation expects in
-		// `store/version.rs::get_at_version`. This is NOT historical data;
-		// it is the single current row.
 		// TODO: change the TierStorage interface to remove the
-		// historical-chain methods entirely; this current-only access should
-		// live on a smaller warm-specific trait.
+
 		let table_name = warm_current_table_name(table);
 		let conn = self.inner.conn.lock();
 		let sql = build_get_warm_current_sql(&table_name);
@@ -356,8 +333,7 @@ impl TierStorage for SqliteWarmStorage {
 		_batch_size: usize,
 	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
 		// TODO: change the TierStorage interface so warm doesn't have to expose
-		// historical-chain methods at all. Warm is current-only by design;
-		// callers must not invoke this on warm.
+
 		panic!("SqliteWarmStorage::scan_historical_below: warm tier has no historical chain");
 	}
 }

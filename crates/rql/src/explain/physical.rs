@@ -44,7 +44,6 @@ pub fn explain_physical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query:
 	Ok(result)
 }
 
-/// Write the current operator line
 fn write_node_header(output: &mut String, prefix: &str, is_last: bool, label: &str) {
 	let branch = if is_last {
 		"└──"
@@ -54,7 +53,6 @@ fn write_node_header(output: &mut String, prefix: &str, is_last: bool, label: &s
 	writeln!(output, "{}{} {}", prefix, branch, label).unwrap();
 }
 
-/// Compute prefix for child nodes
 fn with_child_prefix<F: FnOnce(&str)>(prefix: &str, is_last: bool, f: F) {
 	let child_prefix = format!(
 		"{}{}",
@@ -221,7 +219,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		}) => {
 			write_node_header(output, prefix, is_last, "Aggregate");
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				// Show Map branch
 				if !map.is_empty() {
 					writeln!(output, "{}├── Map", child_prefix).unwrap();
 					let map_prefix = format!("{}│   ", child_prefix);
@@ -242,8 +239,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 					}
 				}
 
-				// Show By branch (even if empty for
-				// consistency)
 				if !by.is_empty() {
 					writeln!(output, "{}├── By", child_prefix).unwrap();
 					let by_prefix = format!("{}│   ", child_prefix);
@@ -263,11 +258,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 						.unwrap();
 					}
 				} else {
-					// Show empty By for global aggregations
 					writeln!(output, "{}├── By", child_prefix).unwrap();
 				}
 
-				// Show Source branch
 				writeln!(output, "{}└── Source", child_prefix).unwrap();
 				let source_prefix = format!("{}    ", child_prefix);
 				render_physical_plan_inner(input, &source_prefix, true, output);
@@ -625,11 +618,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::Conditional(conditional_node) => {
 			write_node_header(output, prefix, is_last, "Conditional");
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				// Show condition
 				let condition_label = format!("If: {}", conditional_node.condition);
 				write_node_header(output, child_prefix, false, &condition_label);
 
-				// Show then branch
 				write_node_header(output, child_prefix, false, "Then:");
 				with_child_prefix(child_prefix, false, |then_child_prefix| {
 					render_physical_plan_inner(
@@ -640,7 +631,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 					);
 				});
 
-				// Show else if branches
 				for (i, else_if) in conditional_node.else_ifs.iter().enumerate() {
 					let is_last_else_if = i == conditional_node.else_ifs.len() - 1
 						&& conditional_node.else_branch.is_none();
@@ -658,7 +648,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 					});
 				}
 
-				// Show else branch if present
 				if let Some(else_branch) = &conditional_node.else_branch {
 					write_node_header(output, child_prefix, false, "Else:");
 					with_child_prefix(child_prefix, true, |else_child_prefix| {
@@ -757,7 +746,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				&format!("DefineFunction: {}[{}]{}", def.name.text(), params.join(", "), return_str),
 			);
 
-			// Render body
 			let child_prefix = format!(
 				"{}{}",
 				prefix,

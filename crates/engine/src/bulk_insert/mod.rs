@@ -6,7 +6,6 @@ pub mod coerce;
 pub mod primitive;
 pub mod validation;
 
-/// Result of a bulk insert operation
 #[derive(Debug, Clone, Default)]
 pub struct BulkInsertResult {
 	pub tables: Vec<TableInsertResult>,
@@ -14,7 +13,6 @@ pub struct BulkInsertResult {
 	pub series: Vec<SeriesInsertResult>,
 }
 
-/// Result of inserting into a specific table
 #[derive(Debug, Clone)]
 pub struct TableInsertResult {
 	pub namespace: String,
@@ -22,7 +20,6 @@ pub struct TableInsertResult {
 	pub inserted: u64,
 }
 
-/// Result of inserting into a specific ring buffer
 #[derive(Debug, Clone)]
 pub struct RingBufferInsertResult {
 	pub namespace: String,
@@ -30,7 +27,6 @@ pub struct RingBufferInsertResult {
 	pub inserted: u64,
 }
 
-/// Result of inserting into a specific series
 #[derive(Debug, Clone)]
 pub struct SeriesInsertResult {
 	pub namespace: String,

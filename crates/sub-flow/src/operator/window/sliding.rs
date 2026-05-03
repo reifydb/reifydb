@@ -13,7 +13,6 @@ use super::{WindowEvent, WindowLayout, WindowOperator};
 use crate::transaction::FlowTransaction;
 
 impl WindowOperator {
-	/// Determine which windows an event belongs to for sliding windows
 	pub fn get_sliding_window_ids(&self, timestamp_or_row_index: u64) -> Vec<u64> {
 		match &self.kind {
 			WindowKind::Sliding {
@@ -45,7 +44,7 @@ impl WindowOperator {
 				size: WindowSize::Count(count),
 				slide: WindowSize::Count(slide_count),
 			} => {
-				let row_number = timestamp_or_row_index + 1; // 1-based
+				let row_number = timestamp_or_row_index + 1;
 				let min_window = if row_number > *count {
 					(row_number - *count) / *slide_count
 				} else {
@@ -64,7 +63,6 @@ impl WindowOperator {
 		}
 	}
 
-	/// Set window start time for sliding windows (aligned to slide boundaries)
 	pub fn set_sliding_window_start(&self, timestamp: u64, window_id: u64) -> u64 {
 		match &self.kind {
 			WindowKind::Sliding {
@@ -79,7 +77,6 @@ impl WindowOperator {
 	}
 }
 
-/// Process inserts for a single group in sliding windows
 fn process_sliding_group_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -163,7 +160,6 @@ fn process_sliding_group_insert(
 	Ok(result)
 }
 
-/// Apply changes for sliding windows
 pub fn apply_sliding_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let changed_at = change.changed_at;
 	let diffs = operator.apply_window_change(txn, &change, true, |op, txn, columns| {

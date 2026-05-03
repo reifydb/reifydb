@@ -3,7 +3,6 @@
 
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
-/// General frame processing error
 pub fn frame_error(message: String) -> Diagnostic {
 	Diagnostic {
 		code: "ENG_001".to_string(),
@@ -19,7 +18,6 @@ pub fn frame_error(message: String) -> Diagnostic {
 	}
 }
 
-/// Column policy saturation error - wraps an existing diagnostic
 pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
 	let rql = diagnostic.rql.clone();
 	let message = diagnostic.message.clone();
@@ -42,7 +40,6 @@ pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
 	}
 }
 
-/// Frame missing required ROW_NUMBER column error
 pub fn missing_row_number_column() -> Diagnostic {
 	Diagnostic {
 		code: "ENG_003".to_string(),
@@ -58,7 +55,6 @@ pub fn missing_row_number_column() -> Diagnostic {
 	}
 }
 
-/// Invalid or undefined RowNumber values error
 pub fn invalid_row_number_values() -> Diagnostic {
 	Diagnostic {
 		code: "ENG_004".to_string(),
@@ -74,7 +70,6 @@ pub fn invalid_row_number_values() -> Diagnostic {
 	}
 }
 
-/// Invalid parameter reference error
 pub fn invalid_parameter_reference(fragment: Fragment) -> Diagnostic {
 	let value = fragment.text();
 	Diagnostic {
@@ -91,7 +86,6 @@ pub fn invalid_parameter_reference(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Parameter not found error
 pub fn parameter_not_found(fragment: Fragment) -> Diagnostic {
 	let value = fragment.text();
 	Diagnostic {
@@ -108,7 +102,6 @@ pub fn parameter_not_found(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Write operation rejected because the engine is in read-only (replica) mode.
 pub fn read_only_rejection(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "ENG_007".to_string(),

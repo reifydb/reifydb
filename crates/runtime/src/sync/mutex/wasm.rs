@@ -8,7 +8,6 @@ use std::{
 	ops::{Deref, DerefMut},
 };
 
-/// WASM mutex implementation using RefCell (no actual locking needed).
 pub struct MutexInner<T> {
 	inner: cell::RefCell<T>,
 }
@@ -20,21 +19,18 @@ impl<T: fmt::Debug> fmt::Debug for MutexInner<T> {
 }
 
 impl<T> MutexInner<T> {
-	/// Creates a new mutex.
 	pub fn new(value: T) -> Self {
 		Self {
 			inner: cell::RefCell::new(value),
 		}
 	}
 
-	/// Acquires the mutex (always succeeds in WASM).
 	pub fn lock(&self) -> MutexGuardInner<'_, T> {
 		MutexGuardInner {
 			inner: self.inner.borrow_mut(),
 		}
 	}
 
-	/// Attempts to acquire the mutex (always succeeds in WASM).
 	pub fn try_lock(&self) -> Option<MutexGuardInner<'_, T>> {
 		self.inner.try_borrow_mut().ok().map(|inner| MutexGuardInner {
 			inner,
@@ -42,7 +38,6 @@ impl<T> MutexInner<T> {
 	}
 }
 
-/// WASM guard providing mutable access to the data protected by a Mutex.
 pub struct MutexGuardInner<'a, T> {
 	pub(in crate::sync) inner: RefMut<'a, T>,
 }

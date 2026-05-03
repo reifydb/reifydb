@@ -6,9 +6,6 @@ use reifydb_type::{Result, value::Value};
 
 use crate::error::ColumnError;
 
-// Sum of all non-None rows. Overflow follows Rust's wrapping semantics in
-// release builds; debug builds panic on overflow. v1 restricts to fixed-width
-// integer and float columns; BigNum/VarLen/Bool return an error.
 pub fn sum(array: &Canonical) -> Result<Value> {
 	let skip = |row: usize| -> bool { array.nones.as_ref().map(|n| n.is_none(row)).unwrap_or(false) };
 
@@ -25,7 +22,6 @@ pub fn sum(array: &Canonical) -> Result<Value> {
 	}
 
 	let v = match &array.buffer {
-		// Widen narrow ints to i64/u64 to reduce (but not eliminate) overflow risk.
 		ColumnBuffer::Int1(_) => sum_int_slice!(array.buffer.as_slice::<i8>(), i64, Int8),
 		ColumnBuffer::Int2(_) => sum_int_slice!(array.buffer.as_slice::<i16>(), i64, Int8),
 		ColumnBuffer::Int4(_) => sum_int_slice!(array.buffer.as_slice::<i32>(), i64, Int8),

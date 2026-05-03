@@ -16,14 +16,6 @@ use crate::value::column::{
 	stats::StatsSet,
 };
 
-// Canonical (uncompressed) column representation. Wraps a `ColumnBuffer` with
-// lifted nullability: definedness lives in the outer `nones` bitmap, so the
-// inner `buffer` is never a `ColumnBuffer::Option` variant.
-//
-// The bridge between `ColumnBuffer` and `Canonical` is an Arc-bump clone on the
-// `CowVec`-backed containers plus (for nullable columns) an O(n/64) polarity
-// flip on the bitvec - `ColumnBuffer::Option.bitvec` uses set bit = defined
-// while `NoneBitmap` uses set bit = None.
 #[derive(Clone, Debug)]
 pub struct Canonical {
 	pub ty: Type,
@@ -48,9 +40,6 @@ impl Canonical {
 		}
 	}
 
-	// Owning constructor: move a `ColumnBuffer` into `Canonical`. If the buffer
-	// is `ColumnBuffer::Option`, the definedness bitvec is inverted into a
-	// `NoneBitmap` and the inner buffer is unwrapped.
 	pub fn from_buffer(b: ColumnBuffer) -> Self {
 		match b {
 			ColumnBuffer::Option {
@@ -75,7 +64,6 @@ impl Canonical {
 		}
 	}
 
-	// Borrowing constructor: Arc-bump clones the inner `CowVec`s, zero data copy.
 	pub fn from_column_buffer(cd: &ColumnBuffer) -> Result<Self> {
 		Ok(Self::from_buffer(cd.clone()))
 	}

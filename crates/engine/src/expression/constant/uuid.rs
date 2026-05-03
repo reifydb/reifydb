@@ -16,8 +16,6 @@ use crate::{Result, error::CastError};
 pub(crate) struct UuidParser;
 
 impl UuidParser {
-	/// Parse text to a specific UUID target type with detailed error
-	/// handling
 	pub(crate) fn from_text(fragment: impl Into<Fragment>, target: Type, row_count: usize) -> Result<ColumnBuffer> {
 		let fragment = fragment.into();
 		match target {

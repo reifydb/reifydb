@@ -37,22 +37,18 @@ use reifydb_type::{
 };
 
 use crate::transaction::FlowTransaction;
-// All types are accessed directly from their submodules:
-// - crate::operator::sink::view::SinkTableViewOperator
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 static EMPTY_ROUTINES: LazyLock<Routines> = LazyLock::new(Routines::empty);
 static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(|| RuntimeContext::with_clock(Clock::Real));
 
-/// Coerce columns to match target shape types
 pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]) -> Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());
 	}
 
-	// If target columns are empty, use input columns as-is
 	if target_columns.is_empty() {
 		return Ok(columns.clone());
 	}
@@ -62,8 +58,6 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 	for target_col in target_columns {
 		let target_type = target_col.constraint.get_type();
 
-		// Create context with Undefined saturation policy for this column
-		// This ensures overflow during cast produces undefined instead of errors
 		// FIXME how to handle failing views ?!
 		let session = EvalContext {
 			params: &EMPTY_PARAMS,
@@ -87,7 +81,6 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		});
 
 		if let Some(source_col) = columns.column(&target_col.name) {
-			// Cast to target type
 			let casted = cast_column_data(
 				&ctx,
 				source_col.data(),
@@ -104,7 +97,6 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		}
 	}
 
-	// Preserve system columns
 	let mut names_vec = Vec::with_capacity(result_columns.len());
 	let mut buffers_vec = Vec::with_capacity(result_columns.len());
 	for c in result_columns {
@@ -120,21 +112,15 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 	})
 }
 
-/// Encode values at a specific row index with explicit row number
 pub(crate) fn encode_row_at_index(
 	columns: &Columns,
 	row_idx: usize,
 	shape: &RowShape,
 	row_number: RowNumber,
 ) -> Result<(RowNumber, EncodedRow)> {
-	// Use row_number parameter instead of columns.row_numbers[row_idx]
-
-	// Collect values in SHAPE FIELD ORDER by matching column names
-	// This ensures values are in the same order as shape expects
 	let values: Vec<Value> = shape
 		.field_names()
 		.map(|field_name| {
-			// Find column with matching name
 			let col = columns
 				.iter()
 				.find(|col| col.name().as_ref() == field_name)
@@ -144,7 +130,6 @@ pub(crate) fn encode_row_at_index(
 		})
 		.collect();
 
-	// Encode directly
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
 
@@ -163,13 +148,7 @@ pub(crate) fn encode_row_at_index(
 	Ok((row_number, encoded))
 }
 
-/// Decode dictionary columns in-place using FlowTransaction for lookups.
-///
-/// For columns that store `DictionaryId` values, reads the embedded `dictionary_id`
-/// from the container metadata, looks up the `Dictionary` in the catalog,
-/// then resolves each dictionary entry ID to its actual value.
 pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTransaction) -> Result<()> {
-	// Collect (col_pos, Dictionary) for every DictionaryId column that carries a dictionary_id
 	let dict_columns: Vec<(usize, Dictionary)> = {
 		let catalog = txn.catalog();
 		columns.iter()

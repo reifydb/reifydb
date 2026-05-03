@@ -3,7 +3,6 @@
 
 use crate::value::column::columns::Columns;
 
-/// A captured event dispatch during test execution.
 #[derive(Clone, Debug)]
 pub struct CapturedEvent {
 	pub sequence: u64,
@@ -14,7 +13,6 @@ pub struct CapturedEvent {
 	pub columns: Columns,
 }
 
-/// A captured handler invocation during test execution.
 #[derive(Clone, Debug)]
 pub struct CapturedInvocation {
 	pub sequence: u64,
@@ -27,7 +25,6 @@ pub struct CapturedInvocation {
 	pub message: String,
 }
 
-/// Identifies the primitive type category for a `testing::*::changed()` generator.
 pub struct TestingChanged {
 	pub shape_type: &'static str,
 }

@@ -10,10 +10,6 @@ use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::MetricId;
 
-/// Extract Id from an encoded key.
-///
-/// Parses the key to determine its KeyKind and then extracts the appropriate ID.
-/// Returns Id::System for unrecognized keys.
 pub fn parse_id(key: &[u8]) -> MetricId {
 	let Some(kind) = Key::kind(key) else {
 		return MetricId::System;
@@ -21,15 +17,8 @@ pub fn parse_id(key: &[u8]) -> MetricId {
 	extract_object_id(key, kind)
 }
 
-/// Extract Id from an encoded key based on its KeyKind.
-///
-/// Different key types embed different IDs:
-/// - Row, Index, IndexEntry, etc. contain ShapeId
-/// - FlowNodeState, FlowNodeInternalState contain FlowNodeId
-/// - Other keys are classified as System
 fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 	match kind {
-		// Keys that contain ShapeId at bytes 2..11
 		KeyKind::Row
 		| KeyKind::RowSequence
 		| KeyKind::Column
@@ -40,66 +29,51 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 		| KeyKind::IndexEntry
 		| KeyKind::PrimaryKey => extract_shape_id(key).map(MetricId::Shape).unwrap_or(MetricId::System),
 
-		// Keys that contain DictionaryId at bytes 2..10
 		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex | KeyKind::DictionarySequence => {
 			extract_dictionary_id(key)
 				.map(|id| MetricId::Shape(ShapeId::Dictionary(DictionaryId(id))))
 				.unwrap_or(MetricId::System)
 		}
 
-		// Keys that contain FlowNodeId at bytes 2..10
 		KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState => {
 			extract_flow_node_id(key).map(MetricId::FlowNode).unwrap_or(MetricId::System)
 		}
 
-		// All other key types are system metadata
 		_ => MetricId::System,
 	}
 }
 
-/// Extract ShapeId from a key.
-///
-/// Assumes key format: `[VERSION:1][KIND:1][ShapeId:9][...]`
 fn extract_shape_id(key: &[u8]) -> Option<ShapeId> {
 	if key.len() < 11 {
-		// 1 + 1 + 9 = 11 bytes minimum
 		return None;
 	}
 
 	let mut de = KeyDeserializer::from_bytes(key);
-	let _ = de.read_u8().ok()?; // Skip version
-	let _ = de.read_u8().ok()?; // Skip kind
+	let _ = de.read_u8().ok()?;
+	let _ = de.read_u8().ok()?;
 	de.read_shape_id().ok()
 }
 
-/// Extract FlowNodeId from a key.
-///
-/// Assumes key format: `[VERSION:1][KIND:1][FlowNodeId:8][...]`
 fn extract_flow_node_id(key: &[u8]) -> Option<FlowNodeId> {
 	if key.len() < 10 {
-		// 1 + 1 + 8 = 10 bytes minimum
 		return None;
 	}
 
 	let mut de = KeyDeserializer::from_bytes(key);
-	let _ = de.read_u8().ok()?; // Skip version
-	let _ = de.read_u8().ok()?; // Skip kind
+	let _ = de.read_u8().ok()?;
+	let _ = de.read_u8().ok()?;
 	let node_id = de.read_u64().ok()?;
 	Some(FlowNodeId(node_id))
 }
 
-/// Extract DictionaryId from a dictionary key.
-///
-/// Assumes key format: `[VERSION:1][KIND:1][DictionaryId:8][...]`
 fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 	if key.len() < 10 {
-		// 1 + 1 + 8 = 10 bytes minimum
 		return None;
 	}
 
 	let mut de = KeyDeserializer::from_bytes(key);
-	let _ = de.read_u8().ok()?; // Skip version
-	let _ = de.read_u8().ok()?; // Skip kind
+	let _ = de.read_u8().ok()?;
+	let _ = de.read_u8().ok()?;
 	de.read_u64().ok()
 }
 

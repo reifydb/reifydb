@@ -42,14 +42,14 @@ pub struct StandardMultiStoreInner {
 	pub(crate) hot: Option<HotStorage>,
 	pub(crate) warm: Option<WarmStorage>,
 	pub(crate) cold: Option<ColdStorage>,
-	/// Reference to the drop actor for sending drop requests.
+
 	pub(crate) drop_actor: ActorRef<DropMessage>,
-	/// Reference to the warm-flush actor. `None` when no warm tier is configured.
+
 	#[allow(dead_code)]
 	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
-	/// Actor system that owns the drop and flush actors.
+
 	_actor_system: ActorSystem,
-	/// Event bus for emitting storage statistics events.
+
 	pub(crate) event_bus: EventBus,
 }
 
@@ -65,10 +65,8 @@ impl StandardMultiStore {
 		let cold = None;
 		let _ = config.cold;
 
-		// Use the provided actor system for the drop and flush actors
 		let actor_system = config.actor_system.clone();
 
-		// Spawn drop actor
 		let storage = hot.as_ref().expect("hot tier is required");
 		let drop_config = DropWorkerConfig::default();
 		let drop_actor = DropActor::spawn(
@@ -79,9 +77,6 @@ impl StandardMultiStore {
 			config.clock,
 		);
 
-		// Spawn warm-flush actor when warm is configured. Gated on the sqlite
-		// feature: without it, `WarmStorage` is uninhabited and the construction
-		// below would be unreachable code.
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (warm, flush_actor) = {
 			let warm_config = config.warm.clone();
@@ -121,35 +116,19 @@ impl StandardMultiStore {
 		})))
 	}
 
-	/// Get access to the hot storage tier.
-	///
-	/// Returns `None` if the hot tier is not configured.
 	pub fn hot(&self) -> Option<&HotStorage> {
 		self.hot.as_ref()
 	}
 
-	/// Get access to the warm storage tier.
-	///
-	/// Returns `None` if the warm tier is not configured.
 	pub fn warm(&self) -> Option<&WarmStorage> {
 		self.warm.as_ref()
 	}
 
-	/// Block until the actor has drained its accumulated `pending` map of
-	/// dirty keys (the same code the periodic Tick runs), and the result is
-	/// in warm. No-op when the warm tier is not configured.
-	///
-	/// This is the synchronous trigger for the production flush path; tests
-	/// use it to control flush timing without bypassing the listener /
-	/// pending / drain pipeline.
 	pub fn flush_pending_blocking(&self) {
 		let Some(actor_ref) = self.flush_actor.as_ref() else {
 			return;
 		};
 
-		// Drain the event bus first so every prior `MultiCommittedEvent` has
-		// dispatched to the flush listener, queueing any `Dirty` messages
-		// ahead of the `FlushPending` we are about to send.
 		self.event_bus.wait_for_completion();
 
 		let waiter = Arc::new(WaiterHandle::new());
@@ -162,8 +141,7 @@ impl StandardMultiStore {
 		{
 			return;
 		}
-		// Generous upper bound; in practice the actor notifies in <100ms.
-		// `wait_timeout` returns immediately once notified (sticky flag).
+
 		waiter.wait_timeout(Duration::from_secs(60));
 	}
 }
@@ -201,7 +179,6 @@ impl StandardMultiStore {
 		.unwrap()
 	}
 
-	/// In-memory hot tier + in-memory SQLite warm tier for tests.
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_warm_sqlite() -> Self {
 		let pools = Pools::new(PoolConfig::default());

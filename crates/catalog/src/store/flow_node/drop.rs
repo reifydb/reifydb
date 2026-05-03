@@ -16,11 +16,9 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_flow_node(txn: &mut AdminTransaction, node_id: FlowNodeId) -> Result<()> {
-		// First, get the node to find the flow ID for index deletion
 		let node = CatalogStore::find_flow_node(&mut Transaction::Admin(&mut *txn), node_id)?;
 
 		if let Some(node_def) = node {
-			// Clean up flow node state entries
 			let state_range = FlowNodeStateKey::node_range(node_id);
 			let mut state_stream = txn.range(state_range, 1024)?;
 			let mut state_keys = Vec::new();
@@ -32,7 +30,6 @@ impl CatalogStore {
 				txn.remove(&key)?;
 			}
 
-			// Clean up flow node internal state entries
 			let internal_range = FlowNodeInternalStateKey::node_range(node_id);
 			let mut internal_stream = txn.range(internal_range, 1024)?;
 			let mut internal_keys = Vec::new();
@@ -44,13 +41,10 @@ impl CatalogStore {
 				txn.remove(&key)?;
 			}
 
-			// Clean up operator retention strategy
 			txn.remove(&OperatorRetentionStrategyKey::encoded(node_id))?;
 
-			// Delete from main flow_node table
 			txn.remove(&FlowNodeKey::encoded(node_id))?;
 
-			// Delete from flow_node_by_flow index
 			txn.remove(&FlowNodeByFlowKey::encoded(node_def.flow, node_id))?;
 		}
 

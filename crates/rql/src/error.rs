@@ -878,7 +878,6 @@ impl From<RqlError> for Error {
 	}
 }
 
-/// Errors related to identifier resolution
 #[derive(Debug, Clone)]
 pub enum IdentifierError {
 	SourceNotFound(ShapeNotFoundError),
@@ -1005,7 +1004,6 @@ impl From<IdentifierError> for Error {
 	}
 }
 
-/// Shape (table/view) not found error
 #[derive(Debug, Clone)]
 pub struct ShapeNotFoundError {
 	pub namespace: String,
@@ -1024,9 +1022,7 @@ impl fmt::Display for ShapeNotFoundError {
 }
 
 impl ShapeNotFoundError {
-	/// Create error with additional context about what type was expected
 	pub fn with_expected_type(namespace: String, name: String, _expected: &str, fragment: Fragment) -> Self {
-		// Could extend this to include expected type in the error
 		Self {
 			namespace,
 			name,
@@ -1035,7 +1031,6 @@ impl ShapeNotFoundError {
 	}
 }
 
-/// Ambiguous column reference error
 #[derive(Debug, Clone)]
 pub struct AmbiguousColumnError {
 	pub column: String,
@@ -1048,7 +1043,6 @@ impl fmt::Display for AmbiguousColumnError {
 	}
 }
 
-/// Unknown alias error
 #[derive(Debug, Clone)]
 pub struct UnknownAliasError {
 	pub alias: String,
@@ -1060,7 +1054,6 @@ impl fmt::Display for UnknownAliasError {
 	}
 }
 
-/// Function not found error
 #[derive(Debug, Clone)]
 pub struct FunctionNotFoundError {
 	pub namespaces: Vec<String>,
@@ -1078,7 +1071,6 @@ impl fmt::Display for FunctionNotFoundError {
 	}
 }
 
-/// Check if a fragment represents an injected default namespace
 pub fn is_default_namespace(fragment: &Fragment) -> bool {
 	matches!(fragment, Fragment::Internal { .. })
 }

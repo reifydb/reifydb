@@ -9,7 +9,6 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionPrimaryKey};
 
 impl MaterializedCatalog {
-	/// Find a primary key by ID at a specific version
 	pub fn find_primary_key_at(&self, primary_key_id: PrimaryKeyId, version: CommitVersion) -> Option<PrimaryKey> {
 		self.primary_keys.get(&primary_key_id).and_then(|entry| {
 			let multi = entry.value();
@@ -17,7 +16,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a primary key by ID (returns latest version)
 	pub fn find_primary_key(&self, primary_key_id: PrimaryKeyId) -> Option<PrimaryKey> {
 		self.primary_keys.get(&primary_key_id).and_then(|entry| {
 			let multi = entry.value();
@@ -25,9 +23,7 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Set or update a primary key at a specific version
 	pub fn set_primary_key(&self, id: PrimaryKeyId, version: CommitVersion, primary_key: Option<PrimaryKey>) {
-		// Update the multi primary key
 		let multi = self.primary_keys.get_or_insert_with(id, MultiVersionPrimaryKey::new);
 		if let Some(new) = primary_key {
 			multi.value().insert(version, new);

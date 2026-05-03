@@ -16,9 +16,6 @@ use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::Rou
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("clock::advance"));
 
-/// Native procedure that advances the mock clock by a duration or number of milliseconds.
-///
-/// Accepts 1 positional argument: a Duration or integer milliseconds.
 pub struct ClockAdvanceProcedure;
 
 impl Default for ClockAdvanceProcedure {
@@ -66,7 +63,6 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockAdvanceProcedure {
 				match arg {
 					Value::Duration(dur) => {
 						if dur.get_months() == 0 && dur.get_days() == 0 {
-							// Pure nanos-only duration: advance directly
 							let nanos = dur.get_nanos();
 							if nanos >= 0 {
 								mock.advance_nanos(nanos as u64);
@@ -82,7 +78,6 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockAdvanceProcedure {
 								mock.set_nanos(current - abs_nanos);
 							}
 						} else {
-							// Calendar-aware: go through DateTime arithmetic
 							let current_nanos = mock.now_nanos();
 							let current_dt = DateTime::from_nanos(current_nanos);
 							let new_dt = current_dt.add_duration(dur)?;

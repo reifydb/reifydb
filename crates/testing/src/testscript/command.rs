@@ -16,83 +16,63 @@ use std::{
 	str::FromStr,
 };
 
-/// A block, consisting of multiple commands.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub(crate) struct Block {
-	/// The commands in the block.
 	pub commands: Vec<Command>,
-	/// The literal string of the input commands. Used to generate the
-	/// output.
+
 	pub literal: String,
-	/// The block's line number position in the script.
+
 	pub line_number: u32,
 }
 
-/// A command.
 #[derive(Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Command {
-	/// The name of the command. Never empty.
 	pub name: String,
-	/// The command's arguments, in the given order.
+
 	pub args: Vec<Argument>,
-	/// The command prefix, if given.
+
 	pub prefix: Option<String>,
-	/// Any command tags, if given.
+
 	pub tags: HashSet<String>,
-	/// Silences the output of this command. This is handled automatically,
-	/// the [`Runner`](crate::Runner) does not have to take this into
-	/// account.
+
 	pub silent: bool,
-	/// If true, the command is expected to fail with a panic or error. If
-	/// the command does not fail, the test fails.
+
 	pub fail: bool,
-	/// The command's line number position in the script.
+
 	pub line_number: u32,
 }
 
 impl fmt::Debug for Command {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("Command")
-            .field("name", &self.name)
-            .field("args", &self.args)
-            .field("prefix", &self.prefix)
-            // Use a sorted BTreeSet for test determinism.
-            .field("tags", &BTreeSet::from_iter(&self.tags))
-            .field("silent", &self.silent)
-            .field("fail", &self.fail)
-            .field("line_number", &self.line_number)
-            .finish()
+			.field("name", &self.name)
+			.field("args", &self.args)
+			.field("prefix", &self.prefix)
+			.field("tags", &BTreeSet::from_iter(&self.tags))
+			.field("silent", &self.silent)
+			.field("fail", &self.fail)
+			.field("line_number", &self.line_number)
+			.finish()
 	}
 }
 
 impl Command {
-	/// Returns an argument consumer, for more convenient argument
-	/// processing. Does not affect [`Command::args`].
-	///
-	/// See the [module documentation](crate#argument-processing) for usage
-	/// examples.
 	pub fn consume_args(&self) -> ArgumentConsumer<'_> {
 		ArgumentConsumer::new(&self.args)
 	}
 }
 
-/// A command argument.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct Argument {
-	/// The argument key, for `key=value` style arguments. Not guaranteed
-	/// to be unique, the [`Runner`](crate::Runner) can handle this as
-	/// desired.
 	pub key: Option<String>,
-	/// The argument value. Can be empty.
+
 	pub value: String,
 }
 
 impl Argument {
-	/// Returns a name for the argument -- either the key, if given, or
-	/// value.
 	pub fn name(&self) -> &str {
 		match self.key.as_deref() {
 			Some(key) => key,
@@ -100,9 +80,6 @@ impl Argument {
 		}
 	}
 
-	/// Parses the argument value as a T using flow::str::parse().
-	/// Convenience method that returns an improved error message as a
-	/// boxed error to ease error handling in a [`Runner`](crate::Runner).
 	pub fn parse<T>(&self) -> Result<T, Box<dyn Error>>
 	where
 		T: FromStr,
@@ -112,11 +89,6 @@ impl Argument {
 	}
 }
 
-/// Helper for argument processing, by returning and removing arguments on
-/// demand.
-///
-/// Created by [`Command::consume_args()`]. Implements [`Iterator`], but is also
-/// intended for out-of-order processing, unlike most iterators.
 pub struct ArgumentConsumer<'a> {
 	args: VecDeque<&'a Argument>,
 }
@@ -124,23 +96,18 @@ pub struct ArgumentConsumer<'a> {
 impl<'a> Iterator for ArgumentConsumer<'a> {
 	type Item = &'a Argument;
 
-	/// Returns and removes the next argument, if any.
 	fn next(&mut self) -> Option<Self::Item> {
 		self.args.pop_front()
 	}
 }
 
 impl<'a> ArgumentConsumer<'a> {
-	/// Creates a new argument consumer.
 	fn new(args: &'a [Argument]) -> Self {
 		Self {
 			args: VecDeque::from_iter(args.iter()),
 		}
 	}
 
-	/// Looks up and removes a key/value argument by key. If multiple
-	/// arguments use the same key, the last one is returned (but all are
-	/// removed).
 	pub fn lookup(&mut self, key: &str) -> Option<&'a Argument> {
 		let arg = self.args.iter().rev().find(|a| a.key.as_deref() == Some(key)).copied();
 		if arg.is_some() {
@@ -149,8 +116,6 @@ impl<'a> ArgumentConsumer<'a> {
 		arg
 	}
 
-	/// Looks up and parses a key/value argument by key, removing it. If
-	/// parsing errors, the argument is not removed.
 	pub fn lookup_parse<T>(&mut self, key: &str) -> Result<Option<T>, Box<dyn Error>>
 	where
 		T: FromStr,
@@ -169,17 +134,14 @@ impl<'a> ArgumentConsumer<'a> {
 		Ok(value)
 	}
 
-	/// Returns and removes the next key/value argument, if any.
 	pub fn next_key(&mut self) -> Option<&'a Argument> {
 		self.args.iter().position(|a| a.key.is_some()).map(|i| self.args.remove(i).unwrap())
 	}
 
-	/// Returns and removes the next positional argument, if any.
 	pub fn next_pos(&mut self) -> Option<&'a Argument> {
 		self.args.iter().position(|a| a.key.is_none()).map(|i| self.args.remove(i).unwrap())
 	}
 
-	/// Rejects any remaining arguments with an error.
 	pub fn reject_rest(&self) -> Result<(), Box<dyn Error>> {
 		if let Some(arg) = self.args.front() {
 			return Err(format!("invalid argument '{}'", arg.name()).into());
@@ -187,12 +149,10 @@ impl<'a> ArgumentConsumer<'a> {
 		Ok(())
 	}
 
-	/// Returns and removes all remaining arguments.
 	pub fn rest(&mut self) -> Vec<&'a Argument> {
 		self.args.drain(..).collect()
 	}
 
-	/// Returns and removes all remaining key/value arguments.
 	pub fn rest_key(&mut self) -> Vec<&'a Argument> {
 		let keyed: Vec<_> = self.args.iter().filter(|a| a.key.is_some()).copied().collect();
 		if !keyed.is_empty() {
@@ -201,7 +161,6 @@ impl<'a> ArgumentConsumer<'a> {
 		keyed
 	}
 
-	/// Returns and removes all remaining positional arguments.
 	pub fn rest_pos(&mut self) -> Vec<&'a Argument> {
 		let pos: Vec<_> = self.args.iter().filter(|a| a.key.is_none()).copied().collect();
 		if !pos.is_empty() {

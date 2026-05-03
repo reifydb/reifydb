@@ -3,43 +3,21 @@
 
 use super::KeyKind;
 
-/// Returns true if the KeyKind should be excluded from CDC generation.
-///
-/// Excluded kinds represent internal system state or operator bookkeeping
-/// that should not generate user-facing change events:
-/// - FlowNodeState: Operator state subject to retention policies
-/// - FlowNodeInternalState: Operator internal state (e.g., join hash tables, row mappings)
-/// - CdcConsumer: CDC consumption checkpoints
-/// - StorageTracker: Internal storage statistics tracking
-/// - SystemSequence, RowSequence, ColumnSequence, DictionarySequence: ID generators
-/// - SystemVersion, TransactionVersion: Internal version tracking
-/// - RingBufferMetadata: Ring buffer internal state (head/tail pointers)
-/// - Index: Index metadata (derived from Row changes)
 pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 	matches!(
 		kind,
-		// Flow operator state
 		KeyKind::FlowNodeState
 			| KeyKind::FlowNodeInternalState
-		// CDC infrastructure
 			| KeyKind::CdcConsumer
-		// Internal tracking and statistics
-			| KeyKind::Metric
-		// Sequence generators (internal ID generation)
-			| KeyKind::SystemSequence
+			| KeyKind::Metric | KeyKind::SystemSequence
 			| KeyKind::RowSequence
 			| KeyKind::ColumnSequence
 			| KeyKind::DictionarySequence
-		// Version tracking (internal system state)
 			| KeyKind::SystemVersion
 			| KeyKind::TransactionVersion
 			| KeyKind::FlowVersion
-		// Ring buffer internal bookkeeping
 			| KeyKind::RingBufferMetadata
-		// Index metadata (derived from Row CDC)
-			| KeyKind::Index
-		// Subscriptions are runtime only
-			| KeyKind::Subscription
+			| KeyKind::Index | KeyKind::Subscription
 			| KeyKind::SubscriptionColumn
 			| KeyKind::SubscriptionRow
 			| KeyKind::ConfigStorage

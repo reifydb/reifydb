@@ -5,18 +5,14 @@ use std::time::Duration;
 
 use reifydb_runtime::context::clock::Instant;
 
-/// Defines when and how often a task should be executed
 #[derive(Debug, Clone)]
 pub enum Schedule {
-	/// Execute at fixed intervals (interval starts after task completion)
 	FixedInterval(Duration),
-	/// Execute once after a delay
+
 	Once(Duration),
 }
 
 impl Schedule {
-	/// Calculate the next execution time after the given instant
-	/// Returns None for one-shot tasks
 	pub fn next_execution(&self, after: Instant) -> Option<Instant> {
 		match self {
 			Schedule::FixedInterval(duration) => Some(after + *duration),
@@ -24,7 +20,6 @@ impl Schedule {
 		}
 	}
 
-	/// Get the initial delay for first execution
 	pub fn initial_delay(&self) -> Duration {
 		match self {
 			Schedule::FixedInterval(duration) => *duration,
@@ -32,7 +27,6 @@ impl Schedule {
 		}
 	}
 
-	/// Validate the schedule
 	pub fn validate(&self) -> Result<(), String> {
 		match self {
 			Schedule::FixedInterval(duration) => {

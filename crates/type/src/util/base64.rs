@@ -5,32 +5,27 @@ use std::{error, fmt};
 const BASE64_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const BASE64_URL_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-/// Base64 encoding engine
 pub struct Engine {
 	alphabet: &'static [u8],
 	use_padding: bool,
 }
 
 impl Engine {
-	/// Standard base64 with padding
 	pub const STANDARD: Engine = Engine {
 		alphabet: BASE64_CHARS,
 		use_padding: true,
 	};
 
-	/// Standard base64 without padding
 	pub const STANDARD_NO_PAD: Engine = Engine {
 		alphabet: BASE64_CHARS,
 		use_padding: false,
 	};
 
-	/// URL-safe base64 without padding
 	pub const URL_SAFE_NO_PAD: Engine = Engine {
 		alphabet: BASE64_URL_CHARS,
 		use_padding: false,
 	};
 
-	/// Encode bytes to base64 string
 	pub fn encode(&self, input: &[u8]) -> String {
 		if input.is_empty() {
 			return String::new();
@@ -75,40 +70,27 @@ impl Engine {
 		result
 	}
 
-	/// Decode base64 string to bytes
 	pub fn decode(&self, input: &str) -> Result<Vec<u8>, DecodeError> {
-		// URL-safe base64 should not have padding
 		if !self.use_padding && input.contains('=') {
 			return Err(DecodeError::UnexpectedPadding);
 		}
 
-		// Validate padding if present
 		if self.use_padding && input.contains('=') {
-			// Count trailing padding characters
 			let padding_start = input.rfind(|c| c != '=').map(|i| i + 1).unwrap_or(0);
 			let padding_count = input.len() - padding_start;
 
-			// Valid base64 can only have 0, 1, or 2 padding
-			// characters
 			if padding_count > 2 {
 				return Err(DecodeError::InvalidPadding);
 			}
 
-			// Check that padding only appears at the end
 			if padding_start > 0 && input[..padding_start].contains('=') {
 				return Err(DecodeError::InvalidPadding);
 			}
 
-			// Total length must be divisible by 4
 			if !input.len().is_multiple_of(4) {
 				return Err(DecodeError::InvalidPadding);
 			}
 
-			// Validate padding count based on the last quantum
-			// The last quantum (4 chars) can be:
-			// - XXXX (no padding)
-			// - XXX= (1 padding)
-			// - XX== (2 padding)
 			let non_padding_in_last_quantum = 4 - padding_count;
 			if non_padding_in_last_quantum < 2 {
 				return Err(DecodeError::InvalidPadding);
@@ -172,7 +154,6 @@ impl fmt::Display for DecodeError {
 
 impl error::Error for DecodeError {}
 
-// Convenience module to match the original API
 pub mod engine {
 	pub mod general_purpose {
 		use crate::util::base64::Engine;

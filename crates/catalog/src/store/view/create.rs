@@ -127,7 +127,6 @@ impl CatalogStore {
 		);
 		view::SHAPE.set_u64(&mut row, view::PRIMARY_KEY, 0u64);
 
-		// Write storage kind and configuration
 		match &to_create.storage {
 			ViewStorageConfig::Table {
 				underlying,
@@ -207,7 +206,6 @@ impl CatalogStore {
 	}
 
 	fn insert_columns_for_view(txn: &mut AdminTransaction, view: ViewId, to_create: ViewToCreate) -> Result<()> {
-		// Look up namespace name for error messages
 		let namespace = Self::get_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?;
 
 		for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
@@ -223,7 +221,7 @@ impl CatalogStore {
 					properties: vec![],
 					index: ColumnIndex(idx as u8),
 					auto_increment: false,
-					dictionary_id: None, // Views don't support dictionaries yet
+					dictionary_id: None,
 				},
 			)?;
 		}

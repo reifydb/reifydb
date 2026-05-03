@@ -8,8 +8,6 @@ use reifydb_type::value::r#type::Type;
 
 use crate::value::column::buffer::ColumnBuffer;
 
-/// Fixed per-type retention cap. Not configurable for now; bounds the
-/// worst-case pool size at 26 (concrete types) * 64 = 1664 buffers.
 const CAP_PER_TYPE: usize = 64;
 
 pub struct ColumnBufferPool {
@@ -29,10 +27,6 @@ impl ColumnBufferPool {
 		}
 	}
 
-	/// Pop a buffer for `target` whose `capacity() >= min_capacity`, preferring
-	/// the smallest qualifying buffer (best-fit). Falls back to allocating
-	/// fresh via `ColumnBuffer::with_capacity` if `target` is not poolable
-	/// or no qualifying buffer is in the bucket.
 	pub fn acquire(&self, target: &Type, min_capacity: usize) -> ColumnBuffer {
 		if is_poolable(target) {
 			let mut pool = self.inner.lock();
@@ -54,9 +48,6 @@ impl ColumnBufferPool {
 		ColumnBuffer::with_capacity(target.clone(), min_capacity)
 	}
 
-	/// Clear `buffer` and return it to the pool indexed by its type. Drops
-	/// the buffer if its type is not poolable, or if the bucket is at
-	/// `CAP_PER_TYPE`.
 	pub fn release(&self, mut buffer: ColumnBuffer) {
 		let buffer_type = buffer.get_type();
 		if !is_poolable(&buffer_type) {
@@ -70,21 +61,15 @@ impl ColumnBufferPool {
 		}
 	}
 
-	/// Total number of buffers currently held across all type buckets.
-	/// Primarily for tests.
 	pub fn len(&self) -> usize {
 		self.inner.lock().values().map(|v| v.len()).sum()
 	}
 
-	/// `true` if every bucket is empty. Primarily for tests.
 	pub fn is_empty(&self) -> bool {
 		self.len() == 0
 	}
 }
 
-/// True for the 26 concrete `Type` variants the pool buckets. Polymorphic
-/// or variable-shape types (`Option(_)`, `Any`, `List(_)`, `Record(_)`,
-/// `Tuple(_)`) bypass the pool - `acquire` allocates fresh, `release` drops.
 fn is_poolable(t: &Type) -> bool {
 	matches!(
 		t,

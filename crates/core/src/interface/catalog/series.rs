@@ -48,10 +48,6 @@ impl SeriesKey {
 		}
 	}
 
-	/// Decode a `SeriesKey` from its stored representation.
-	///
-	/// `key_kind`: 1 = Integer, otherwise DateTime.
-	/// `precision_raw`: only used for DateTime keys (0=ms, 1=us, 2=ns, 3=s).
 	pub fn decode(key_kind: u8, precision_raw: u8, column: String) -> Self {
 		match key_kind {
 			1 => SeriesKey::Integer {
@@ -90,17 +86,11 @@ impl Series {
 		&self.name
 	}
 
-	/// Returns the Type of the key column, if the key column is found in columns.
 	pub fn key_column_type(&self) -> Option<Type> {
 		let key_col_name = self.key.column();
 		self.columns.iter().find(|c| c.name == key_col_name).map(|c| c.constraint.get_type())
 	}
 
-	/// Convert a Value to u64 for series key encoding.
-	///
-	/// Handles both integer and datetime key types. For datetime keys, the nanos-since-epoch
-	/// value is divided by the precision factor to recover the original u64 key.
-	/// Negative values (pre-1970 dates, negative integers) are rejected.
 	pub fn key_to_u64(&self, value: Value) -> Option<u64> {
 		match value {
 			Value::Int1(v) => u64::try_from(v).ok(),
@@ -132,7 +122,6 @@ impl Series {
 		}
 	}
 
-	/// Convert a u64 key value back to the appropriate Value type for encoding.
 	pub fn key_from_u64(&self, v: u64) -> Value {
 		let ty = self.key_column_type();
 		match ty.as_ref() {
@@ -165,7 +154,6 @@ impl Series {
 		}
 	}
 
-	/// Build a ColumnBuffer from u64 key values using the proper key column type.
 	pub fn key_column_data(&self, keys: Vec<u64>) -> ColumnBuffer {
 		let key_type = self.key_column_type();
 		match &key_type {
@@ -180,7 +168,6 @@ impl Series {
 		}
 	}
 
-	/// Returns columns excluding the key column (data columns only).
 	pub fn data_columns(&self) -> impl Iterator<Item = &Column> {
 		let key_column = self.key.column().to_string();
 		self.columns.iter().filter(move |c| c.name != key_column)

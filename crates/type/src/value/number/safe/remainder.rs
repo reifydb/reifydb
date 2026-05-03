@@ -79,7 +79,6 @@ use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl SafeRemainder for Int {
 	fn checked_rem(&self, r: &Self) -> Option<Self> {
-		// Check for modulo by zero
 		if r.0 == BigInt::from(0) {
 			None
 		} else {
@@ -88,8 +87,6 @@ impl SafeRemainder for Int {
 	}
 
 	fn saturating_rem(&self, r: &Self) -> Self {
-		// For modulo by zero, return zero (consistent with primitive
-		// types)
 		if r.0 == BigInt::from(0) {
 			Int::from(0)
 		} else {
@@ -98,8 +95,6 @@ impl SafeRemainder for Int {
 	}
 
 	fn wrapping_rem(&self, r: &Self) -> Self {
-		// For modulo by zero, return zero (consistent with primitive
-		// types)
 		if r.0 == BigInt::from(0) {
 			Int::from(0)
 		} else {

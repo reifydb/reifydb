@@ -12,8 +12,6 @@ use reifydb_transaction::{
 };
 use reifydb_type::{Result as TxResult, value::r#type::Type};
 
-/// Trait abstracting over write-capable transaction types (CommandTransaction, AdminTransaction).
-/// Both types share the same write API but have no common trait in the transaction crate.
 pub trait SequenceTransaction: Send {
 	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
 	where
@@ -115,17 +113,12 @@ macro_rules! impl_generator {
 						}
 						None => match default {
 							Some(value) => {
-								// When default is provided, initialize to that value
-								// (ignore incr) This allows resuming a sequence
-								// from a specific point
 								let mut new_row = SHAPE.allocate();
 								SHAPE.$setter(&mut new_row, 0, value);
 								tx.set(key, new_row)?;
 								value
 							}
 							None => {
-								// When no default, allocate 'incr' contiguous IDs
-								// starting from start_value
 								let first = $start;
 								let last = first.saturating_add(incr.saturating_sub(1));
 
@@ -405,7 +398,6 @@ macro_rules! impl_generator {
 	};
 }
 
-// Generate all unsigned integer generators
 impl_generator!(
 	module: u8,
 	name: GeneratorU8,
@@ -461,7 +453,6 @@ impl_generator!(
 	max_value: u128::MAX
 );
 
-// Generate all signed integer generators
 impl_generator!(
 	module: i8,
 	name: GeneratorI8,

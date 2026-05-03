@@ -158,7 +158,7 @@ impl Transform for MapNode {
 pub(crate) struct MapWithoutInputNode {
 	expressions: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
-	/// When UDFs are present, stores the rewritten expressions and pre-computed UDF result columns.
+
 	udf_columns: Option<Columns>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
@@ -177,7 +177,6 @@ impl MapWithoutInputNode {
 impl QueryNode for MapWithoutInputNode {
 	#[instrument(name = "volcano::map::noinput::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		// Extract and evaluate UDFs if present
 		if let Some((rewritten, udf_cols)) = evaluate_udfs_no_input(&self.expressions, ctx, rx)? {
 			self.expressions = rewritten;
 			self.udf_columns = Some(udf_cols);
@@ -208,7 +207,6 @@ impl QueryNode for MapWithoutInputNode {
 		let mut columns = vec![];
 
 		for compiled_expr in compiled {
-			// If we have UDF result columns, include them so __udf_N column refs resolve
 			let exec_ctx = match &self.udf_columns {
 				Some(udf_cols) => session.with_eval(udf_cols.clone(), 1),
 				None => session.with_eval_empty(),

@@ -5,26 +5,21 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-/// Maximum bytes constraint for types like UTF8, BLOB, INT, UINT
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct MaxBytes(u32);
 
 impl MaxBytes {
-	/// Create a new MaxBytes value
 	pub fn new(bytes: u32) -> Self {
 		Self(bytes)
 	}
 
-	/// Get the max bytes value
 	pub fn value(self) -> u32 {
 		self.0
 	}
 
-	/// Maximum value (u32::MAX)
 	pub const MAX: Self = Self(u32::MAX);
 
-	/// Minimum value (0)
 	pub const MIN: Self = Self(0);
 }
 

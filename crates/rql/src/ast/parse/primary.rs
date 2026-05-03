@@ -30,9 +30,6 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Check if the next token is `(` (keyword used as function call),
-	/// and if so, consume the keyword as identifier and parse the call.
-	/// Otherwise fall through to parse as identifier.
 	fn try_parse_keyword_as_function_call(&mut self) -> Result<Ast<'bump>> {
 		if self.position + 1 < self.tokens.len()
 			&& self.tokens[self.position + 1].is_operator(Operator::OpenParen)
@@ -85,177 +82,150 @@ impl<'bump> Parser<'bump> {
 				}
 				.into()),
 			},
-			TokenKind::Keyword(keyword) => {
-				// Keywords that can start statements at the top
-				// level
-				match keyword {
-					Keyword::Append => Ok(Ast::Append(self.parse_append()?)),
-					Keyword::Assert => Ok(Ast::Assert(self.parse_assert()?)),
-					Keyword::Require => {
-						let token = self.consume_keyword(Keyword::Require)?;
-						// Handle optional braces like filter does
-						let has_braces = !self.is_eof()
-							&& self.current()?.is_operator(Operator::OpenCurly);
-						if has_braces {
-							self.advance()?; // consume {
-						}
-						let body = self.parse_node(Precedence::None)?;
-						if has_braces {
-							self.consume_operator(Operator::CloseCurly)?;
-						}
-						Ok(Ast::Require(AstRequire {
-							token,
-							body: BumpBox::new_in(body, self.bump()),
-						}))
+			TokenKind::Keyword(keyword) => match keyword {
+				Keyword::Append => Ok(Ast::Append(self.parse_append()?)),
+				Keyword::Assert => Ok(Ast::Assert(self.parse_assert()?)),
+				Keyword::Require => {
+					let token = self.consume_keyword(Keyword::Require)?;
+
+					let has_braces =
+						!self.is_eof() && self.current()?.is_operator(Operator::OpenCurly);
+					if has_braces {
+						self.advance()?;
 					}
-					Keyword::From => Ok(Ast::From(self.parse_from()?)),
-					Keyword::Map => Ok(Ast::Map(self.parse_map()?)),
-					Keyword::Extend => Ok(Ast::Extend(self.parse_extend()?)),
-					Keyword::Patch => Ok(Ast::Patch(self.parse_patch()?)),
-					Keyword::Filter => Ok(Ast::Filter(self.parse_filter()?)),
-					Keyword::Gate => Ok(Ast::Gate(self.parse_gate()?)),
-					Keyword::Aggregate => Ok(Ast::Aggregate(self.parse_aggregate()?)),
-					Keyword::Cast => Ok(Ast::Cast(self.parse_cast()?)),
-					Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
-					Keyword::Alter => Ok(Ast::Alter(self.parse_alter()?)),
-					Keyword::Drop => Ok(Ast::Drop(self.parse_drop()?)),
-					Keyword::Delete | Keyword::Insert | Keyword::Update => {
-						// If next token is an identifier or keyword, parse as statement.
-						// Otherwise treat as an identifier (e.g. `filter {update == 3}`).
-						if self.position + 1 < self.tokens.len()
-							&& (matches!(
-								self.tokens[self.position + 1].kind,
-								TokenKind::Identifier | TokenKind::Keyword(_)
-							) || matches!(
-								self.tokens[self.position + 1].kind,
-								TokenKind::Operator(Operator::OpenBracket)
-									| TokenKind::Operator(Operator::OpenCurly)
-									| TokenKind::Variable
-							)) {
-							match keyword {
-								Keyword::Delete => {
-									Ok(Ast::Delete(self.parse_delete()?))
-								}
-								Keyword::Insert => {
-									Ok(Ast::Insert(self.parse_insert()?))
-								}
-								Keyword::Update => {
-									Ok(Ast::Update(self.parse_update()?))
-								}
-								_ => unreachable!(),
-							}
-						} else {
-							self.try_parse_keyword_as_function_call()
-						}
+					let body = self.parse_node(Precedence::None)?;
+					if has_braces {
+						self.consume_operator(Operator::CloseCurly)?;
 					}
-					Keyword::Inner => Ok(Ast::Join(self.parse_inner_join()?)),
-					Keyword::Join => Ok(Ast::Join(self.parse_join()?)),
-					Keyword::Left => Ok(Ast::Join(self.parse_left_join()?)),
-					Keyword::Natural => Ok(Ast::Join(self.parse_natural_join()?)),
-					Keyword::Take => Ok(Ast::Take(self.parse_take()?)),
-					Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),
-					Keyword::Distinct => Ok(Ast::Distinct(self.parse_distinct()?)),
-					Keyword::Apply => Ok(Ast::Apply(self.parse_apply()?)),
-					Keyword::Call => Ok(Ast::Call(self.parse_call()?)),
-					Keyword::If => Ok(Ast::If(self.parse_if()?)),
-					Keyword::Match => Ok(Ast::Match(self.parse_match()?)),
-					Keyword::Dispatch => Ok(Ast::Dispatch(self.parse_dispatch()?)),
-					Keyword::Grant => Ok(Ast::Grant(self.parse_grant()?)),
-					Keyword::Revoke => Ok(Ast::Revoke(self.parse_revoke()?)),
-					Keyword::Migrate => Ok(Ast::Migrate(self.parse_migrate()?)),
-					Keyword::Rollback => {
-						Ok(Ast::RollbackMigration(self.parse_rollback_migration()?))
-					}
-					Keyword::Run => {
-						let token = self.advance()?;
-						if (self.consume_if(TokenKind::Keyword(Keyword::Tests))?).is_some() {
-							// RUN TESTS [namespace]
-							if self.is_eof()
-								|| self.current()?.is_separator(NewLine) || self
-								.current()?
-								.is_operator(Operator::Pipe) || matches!(
-								self.current()?.kind,
-								TokenKind::Separator(_)
-							) {
-								return Ok(Ast::RunTests(AstRunTests::All {
-									token,
-								}));
-							}
-							// Parse namespace
-							let segments =
-								self.parse_double_colon_separated_identifiers()?;
-							let namespace = MaybeQualifiedNamespaceIdentifier::new(
-								segments.into_iter()
-									.map(|s| s.into_fragment())
-									.collect(),
-							);
-							Ok(Ast::RunTests(AstRunTests::Namespace {
-								token,
-								namespace,
-							}))
-						} else if (self.consume_if(TokenKind::Keyword(Keyword::Test))?)
-							.is_some()
-						{
-							// RUN TEST ns::test_name
-							let mut segments =
-								self.parse_double_colon_separated_identifiers()?;
-							let name = segments.pop().unwrap().into_fragment();
-							let namespace: Vec<_> = segments
-								.into_iter()
-								.map(|s| s.into_fragment())
-								.collect();
-							let test_ident = MaybeQualifiedTestIdentifier::new(name)
-								.with_namespace(namespace);
-							Ok(Ast::RunTests(AstRunTests::Single {
-								token,
-								test: test_ident,
-							}))
-						} else {
-							let fragment = self.current()?.fragment.to_owned();
-							Err(Error::from(TypeError::Ast {
-								kind: AstErrorKind::UnexpectedToken {
-									expected: "TESTS or TEST after RUN".to_string(),
-								},
-								message: format!(
-									"expected TESTS or TEST after RUN, found `{}`",
-									fragment.text()
-								),
-								fragment,
-							}))
-						}
-					}
-					Keyword::Loop => Ok(Ast::Loop(self.parse_loop()?)),
-					Keyword::While => Ok(Ast::While(self.parse_while()?)),
-					Keyword::For => Ok(Ast::For(self.parse_for()?)),
-					Keyword::Break => Ok(Ast::Break(self.parse_break()?)),
-					Keyword::Continue => Ok(Ast::Continue(self.parse_continue()?)),
-					Keyword::Let => Ok(Ast::Let(self.parse_let()?)),
-					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
-					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
-					Keyword::Udf => {
-						// Only parse as function definition if next token is an identifier (the
-						// udf name). Otherwise fall through so `udf()` as a function
-						// call still works.
-						if self.position + 1 < self.tokens.len()
-							&& matches!(
-								self.tokens[self.position + 1].kind,
-								TokenKind::Identifier | TokenKind::Keyword(_)
-							) {
-							Ok(Ast::DefFunction(self.parse_def_function()?))
-						} else {
-							self.try_parse_keyword_as_function_call()
-						}
-					}
-					Keyword::Return => Ok(Ast::Return(self.parse_return()?)),
-					Keyword::Rownum => {
-						let token = self.advance()?;
-						Ok(Ast::Rownum(AstRownum {
-							token,
-						}))
-					}
-					_ => self.try_parse_keyword_as_function_call(),
+					Ok(Ast::Require(AstRequire {
+						token,
+						body: BumpBox::new_in(body, self.bump()),
+					}))
 				}
-			}
+				Keyword::From => Ok(Ast::From(self.parse_from()?)),
+				Keyword::Map => Ok(Ast::Map(self.parse_map()?)),
+				Keyword::Extend => Ok(Ast::Extend(self.parse_extend()?)),
+				Keyword::Patch => Ok(Ast::Patch(self.parse_patch()?)),
+				Keyword::Filter => Ok(Ast::Filter(self.parse_filter()?)),
+				Keyword::Gate => Ok(Ast::Gate(self.parse_gate()?)),
+				Keyword::Aggregate => Ok(Ast::Aggregate(self.parse_aggregate()?)),
+				Keyword::Cast => Ok(Ast::Cast(self.parse_cast()?)),
+				Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
+				Keyword::Alter => Ok(Ast::Alter(self.parse_alter()?)),
+				Keyword::Drop => Ok(Ast::Drop(self.parse_drop()?)),
+				Keyword::Delete | Keyword::Insert | Keyword::Update => {
+					if self.position + 1 < self.tokens.len()
+						&& (matches!(
+							self.tokens[self.position + 1].kind,
+							TokenKind::Identifier | TokenKind::Keyword(_)
+						) || matches!(
+							self.tokens[self.position + 1].kind,
+							TokenKind::Operator(Operator::OpenBracket)
+								| TokenKind::Operator(Operator::OpenCurly)
+								| TokenKind::Variable
+						)) {
+						match keyword {
+							Keyword::Delete => Ok(Ast::Delete(self.parse_delete()?)),
+							Keyword::Insert => Ok(Ast::Insert(self.parse_insert()?)),
+							Keyword::Update => Ok(Ast::Update(self.parse_update()?)),
+							_ => unreachable!(),
+						}
+					} else {
+						self.try_parse_keyword_as_function_call()
+					}
+				}
+				Keyword::Inner => Ok(Ast::Join(self.parse_inner_join()?)),
+				Keyword::Join => Ok(Ast::Join(self.parse_join()?)),
+				Keyword::Left => Ok(Ast::Join(self.parse_left_join()?)),
+				Keyword::Natural => Ok(Ast::Join(self.parse_natural_join()?)),
+				Keyword::Take => Ok(Ast::Take(self.parse_take()?)),
+				Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),
+				Keyword::Distinct => Ok(Ast::Distinct(self.parse_distinct()?)),
+				Keyword::Apply => Ok(Ast::Apply(self.parse_apply()?)),
+				Keyword::Call => Ok(Ast::Call(self.parse_call()?)),
+				Keyword::If => Ok(Ast::If(self.parse_if()?)),
+				Keyword::Match => Ok(Ast::Match(self.parse_match()?)),
+				Keyword::Dispatch => Ok(Ast::Dispatch(self.parse_dispatch()?)),
+				Keyword::Grant => Ok(Ast::Grant(self.parse_grant()?)),
+				Keyword::Revoke => Ok(Ast::Revoke(self.parse_revoke()?)),
+				Keyword::Migrate => Ok(Ast::Migrate(self.parse_migrate()?)),
+				Keyword::Rollback => Ok(Ast::RollbackMigration(self.parse_rollback_migration()?)),
+				Keyword::Run => {
+					let token = self.advance()?;
+					if (self.consume_if(TokenKind::Keyword(Keyword::Tests))?).is_some() {
+						if self.is_eof()
+							|| self.current()?.is_separator(NewLine) || self
+							.current()?
+							.is_operator(Operator::Pipe) || matches!(
+							self.current()?.kind,
+							TokenKind::Separator(_)
+						) {
+							return Ok(Ast::RunTests(AstRunTests::All {
+								token,
+							}));
+						}
+
+						let segments = self.parse_double_colon_separated_identifiers()?;
+						let namespace = MaybeQualifiedNamespaceIdentifier::new(
+							segments.into_iter().map(|s| s.into_fragment()).collect(),
+						);
+						Ok(Ast::RunTests(AstRunTests::Namespace {
+							token,
+							namespace,
+						}))
+					} else if (self.consume_if(TokenKind::Keyword(Keyword::Test))?).is_some() {
+						let mut segments = self.parse_double_colon_separated_identifiers()?;
+						let name = segments.pop().unwrap().into_fragment();
+						let namespace: Vec<_> =
+							segments.into_iter().map(|s| s.into_fragment()).collect();
+						let test_ident = MaybeQualifiedTestIdentifier::new(name)
+							.with_namespace(namespace);
+						Ok(Ast::RunTests(AstRunTests::Single {
+							token,
+							test: test_ident,
+						}))
+					} else {
+						let fragment = self.current()?.fragment.to_owned();
+						Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "TESTS or TEST after RUN".to_string(),
+							},
+							message: format!(
+								"expected TESTS or TEST after RUN, found `{}`",
+								fragment.text()
+							),
+							fragment,
+						}))
+					}
+				}
+				Keyword::Loop => Ok(Ast::Loop(self.parse_loop()?)),
+				Keyword::While => Ok(Ast::While(self.parse_while()?)),
+				Keyword::For => Ok(Ast::For(self.parse_for()?)),
+				Keyword::Break => Ok(Ast::Break(self.parse_break()?)),
+				Keyword::Continue => Ok(Ast::Continue(self.parse_continue()?)),
+				Keyword::Let => Ok(Ast::Let(self.parse_let()?)),
+				Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
+				Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
+				Keyword::Udf => {
+					if self.position + 1 < self.tokens.len()
+						&& matches!(
+							self.tokens[self.position + 1].kind,
+							TokenKind::Identifier | TokenKind::Keyword(_)
+						) {
+						Ok(Ast::DefFunction(self.parse_def_function()?))
+					} else {
+						self.try_parse_keyword_as_function_call()
+					}
+				}
+				Keyword::Return => Ok(Ast::Return(self.parse_return()?)),
+				Keyword::Rownum => {
+					let token = self.advance()?;
+					Ok(Ast::Rownum(AstRownum {
+						token,
+					}))
+				}
+				_ => self.try_parse_keyword_as_function_call(),
+			},
 			_ => match current {
 				_ if current.is_literal(Number) => Ok(Ast::Literal(self.parse_literal(Number)?)),
 				_ if current.is_literal(True) => Ok(Ast::Literal(self.parse_literal(True)?)),
@@ -289,19 +259,18 @@ impl<'bump> Parser<'bump> {
 								token: var_token,
 							}));
 						}
-						// Check if there's a pipe ahead - if so, treat as frame source
+
 						if self.has_pipe_ahead() {
-							let from_token = var_token; // Token is Copy
+							let from_token = var_token;
 							let variable = AstVariable {
 								token: var_token,
 							};
-							// Create a FROM AST node to treat variable as frame source
+
 							Ok(Ast::From(AstFrom::Variable {
 								token: from_token,
 								variable,
 							}))
 						} else {
-							// No pipe ahead, treat as normal variable expression
 							Ok(Ast::Variable(AstVariable {
 								token: var_token,
 							}))

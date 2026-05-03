@@ -90,7 +90,6 @@ impl AuthEngine for StandardEngine {
 	}
 }
 
-// Engine methods (formerly from Engine trait in reifydb-core)
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
 	pub fn begin_command(&self, identity: IdentityId) -> Result<CommandTransaction> {
@@ -129,7 +128,6 @@ impl StandardEngine {
 		Ok(txn)
 	}
 
-	/// Get the runtime clock for timestamp operations.
 	pub fn clock(&self) -> &Clock {
 		&self.executor.runtime_context.clock
 	}
@@ -268,7 +266,6 @@ impl StandardEngine {
 		outcome
 	}
 
-	/// Call a procedure by fully-qualified name.
 	#[instrument(name = "engine::procedure_as", level = "debug", skip(self, params), fields(name = %name))]
 	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> ExecutionResult {
 		if let Err(e) = self.reject_if_read_only() {
@@ -297,57 +294,18 @@ impl StandardEngine {
 		outcome
 	}
 
-	/// Register a user-defined virtual table.
-	///
-	/// The virtual table will be available for queries using the given namespace and name.
-	///
-	/// # Arguments
-	///
-	/// * `namespace` - The namespace name (e.g., "default", "my_namespace")
-	/// * `name` - The table name
-	/// * `table` - The virtual table implementation
-	///
-	/// # Returns
-	///
-	/// The assigned `VTableId` on success.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// use reifydb_engine::vtable::{UserVTable, UserVTableColumn};
-	/// use reifydb_type::value::r#type::Type;
-	/// use reifydb_core::value::Columns;
-	///
-	/// #[derive(Clone)]
-	/// struct MyTable;
-	///
-	/// impl UserVTable for MyTable {
-	///     fn definition(&self) -> Vec<UserVTableColumn> {
-	///         vec![UserVTableColumn::new("id", Type::Uint8)]
-	///     }
-	///     fn get(&self) -> Columns {
-	///         // Return column-oriented data
-	///         Columns::empty()
-	///     }
-	/// }
-	///
-	/// let id = engine.register_virtual_table("default", "my_table", MyTable)?;
-	/// ```
 	pub fn register_virtual_table<T: UserVTable>(&self, namespace: &str, name: &str, table: T) -> Result<VTableId> {
 		let catalog = self.materialized_catalog();
 
-		// Look up namespace by name (use max u64 to get latest version)
 		let ns_def = catalog
 			.find_namespace_by_name(namespace)
 			.ok_or_else(|| Error(Box::new(namespace_not_found(Fragment::None, namespace))))?;
 
-		// Allocate a new table ID
 		let table_id = self.executor.virtual_table_registry.allocate_id();
-		// Convert user column definitions to internal column definitions
+
 		let table_columns = table.vtable();
 		let columns = convert_vtable_user_columns_to_columns(&table_columns);
 
-		// Create the table definition
 		let def = Arc::new(VTable {
 			id: table_id,
 			namespace: ns_def.id(),
@@ -355,11 +313,10 @@ impl StandardEngine {
 			columns,
 		});
 
-		// Register in catalog (for resolver lookups)
 		catalog.register_vtable_user(def.clone())?;
-		// Create the data function from the UserVTable trait
+
 		let data_fn: UserVTableDataFunction = Arc::new(move |_params| table.get());
-		// Create and register the entry
+
 		let entry = UserVTableEntry {
 			def: def.clone(),
 			data_fn,
@@ -433,14 +390,12 @@ impl StandardEngine {
 		let listener = SystemFlowOperatorEventListener::new(flow_operator_store.clone());
 		event_bus.register(listener);
 
-		// Get the metrics store from IoC to create the stats reader
 		let metrics_store = config
 			.ioc
 			.resolve::<SingleStore>()
 			.expect("SingleStore must be registered in IocContainer for metrics");
 		let stats_reader = MetricReader::new(metrics_store);
 
-		// Register MaterializedCatalogInterceptor as a factory function.
 		let materialized = catalog.materialized.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
 			interceptors
@@ -462,23 +417,14 @@ impl StandardEngine {
 		}))
 	}
 
-	/// Create a new set of interceptors from the factory.
 	pub fn create_interceptors(&self) -> Interceptors {
 		self.interceptors.create()
 	}
 
-	/// Register an additional interceptor factory function.
-	///
-	/// The function will be called on every `create()` to augment the base interceptors.
-	/// This is thread-safe and can be called after the engine is constructed (e.g. by subsystems).
 	pub fn add_interceptor_factory(&self, factory: Arc<dyn Fn(&mut Interceptors) + Send + Sync>) {
 		self.interceptors.add_late(factory);
 	}
 
-	/// Begin a query transaction at a specific version.
-	///
-	/// This is used for parallel query execution where multiple tasks need to
-	/// read from the same snapshot (same CommitVersion) for consistency.
 	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0
     ))]
 	pub fn begin_query_at_version(&self, version: CommitVersion, identity: IdentityId) -> Result<QueryTransaction> {
@@ -501,7 +447,6 @@ impl StandardEngine {
 		self.multi.clone()
 	}
 
-	/// Get the actor system
 	#[inline]
 	pub fn actor_system(&self) -> ActorSystem {
 		self.multi.actor_system()
@@ -527,19 +472,11 @@ impl StandardEngine {
 		&self.catalog.materialized
 	}
 
-	/// Returns a `Catalog` instance for catalog lookups.
-	/// The Catalog provides three-tier lookup methods that check transactional changes,
-	/// then MaterializedCatalog, then fall back to storage.
 	#[inline]
 	pub fn catalog(&self) -> Catalog {
 		self.catalog.clone()
 	}
 
-	/// Returns the shared `Services` instance used by this engine's executor.
-	/// External consumers that want to drive volcano operators directly (e.g.
-	/// subsystems that build a `QueryContext`) read from the same `Services`
-	/// the engine already initialised - avoids duplicating the `Services::new`
-	/// wiring path.
 	#[inline]
 	pub fn services(&self) -> Arc<Services> {
 		self.executor.services().clone()
@@ -550,29 +487,21 @@ impl StandardEngine {
 		&self.flow_operator_store
 	}
 
-	/// Get the current version from the transaction manager
 	#[inline]
 	pub fn current_version(&self) -> Result<CommitVersion> {
 		self.multi.current_version()
 	}
 
-	/// Returns the highest version where ALL prior versions have completed.
-	/// This is useful for CDC polling to know the safe upper bound for fetching
-	/// CDC events - all events up to this version are guaranteed to be in storage.
 	#[inline]
 	pub fn done_until(&self) -> CommitVersion {
 		self.multi.done_until()
 	}
 
-	/// Highest version strictly below which no in-flight read transaction is
-	/// observing; versions less than this are GC-safe in `__historical`.
 	#[inline]
 	pub fn query_done_until(&self) -> CommitVersion {
 		self.multi.query_done_until()
 	}
 
-	/// Wait for the watermark to reach the given version with a timeout.
-	/// Returns true if the watermark reached the target, false if timeout occurred.
 	#[inline]
 	pub fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
 		self.multi.wait_for_mark_timeout(version, timeout)
@@ -583,28 +512,16 @@ impl StandardEngine {
 		self.executor.clone()
 	}
 
-	/// Borrow the IoC container backing this engine. Used by callers that need
-	/// to resolve services registered during construction (e.g. observability
-	/// providers).
 	#[inline]
 	pub fn ioc(&self) -> &IocContainer {
 		&self.executor.ioc
 	}
 
-	/// Get the CDC store from the IoC container.
-	///
-	/// Returns the CdcStore that was registered during engine construction.
-	/// Panics if CdcStore was not registered.
 	#[inline]
 	pub fn cdc_store(&self) -> CdcStore {
 		self.executor.ioc.resolve::<CdcStore>().expect("CdcStore must be registered")
 	}
 
-	/// Resolve an actor handle by message type.
-	///
-	/// Returns `None` if no actor for `M` was registered during engine
-	/// construction (e.g. the CDC compact actor is only registered for
-	/// persistent backends).
 	#[inline]
 	pub fn actor<M: 'static>(&self) -> Option<ActorRef<M>>
 	where
@@ -613,14 +530,6 @@ impl StandardEngine {
 		self.executor.ioc.try_resolve::<ActorRef<M>>()
 	}
 
-	/// Highest commit version processed by the CDC producer actor.
-	///
-	/// Once this returns `>= V`, every `PostCommitEvent` for versions `<= V`
-	/// has been fully handled by the producer, so any CDC row it was going
-	/// to write is in storage. Unlike `cdc_store().max_version()`, this
-	/// advances even for commits whose deltas were entirely filtered out by
-	/// `should_exclude_from_cdc` (e.g. ConfigStorage-only commits), so it is
-	/// the correct frontier for "producer is caught up to the engine".
 	#[inline]
 	pub fn cdc_producer_watermark(&self) -> CommitVersion {
 		self.executor
@@ -630,13 +539,10 @@ impl StandardEngine {
 			.get()
 	}
 
-	/// Mark this engine as read-only (replica mode).
-	/// Once set, all write-path methods will return ENG_007 immediately.
 	pub fn set_read_only(&self) {
 		self.read_only.store(true, Ordering::SeqCst);
 	}
 
-	/// Whether this engine is in read-only (replica) mode.
 	pub fn is_read_only(&self) -> bool {
 		self.read_only.load(Ordering::SeqCst)
 	}
@@ -653,85 +559,19 @@ impl StandardEngine {
 		self.executor.ioc.clear();
 	}
 
-	/// Start a bulk insert operation with full validation.
-	///
-	/// This provides a fluent API for fast bulk inserts that bypasses RQL parsing.
-	/// All inserts within a single builder execute in one transaction.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// use reifydb_type::params;
-	///
-	/// engine.bulk_insert(&identity)
-	///     .table("namespace.users")
-	///         .row(params!{ id: 1, name: "Alice" })
-	///         .row(params!{ id: 2, name: "Bob" })
-	///         .done()
-	///     .execute()?;
-	/// ```
 	pub fn bulk_insert<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Validated> {
 		BulkInsertBuilder::new(self, identity)
 	}
 
-	/// Start a bulk insert that bypasses BOTH constraint validation AND the
-	/// oracle's per-key conflict-detection index ("unchecked" mode).
-	///
-	/// # What this skips beyond `bulk_insert`
-	///
-	/// `bulk_insert` (the validated default) performs full type/constraint
-	/// validation and registers the commit's write set in the oracle's
-	/// conflict-detection time-windows so that any concurrent OCC transaction
-	/// whose read set overlaps these writes will be aborted at its own commit
-	/// time.
-	///
-	/// `bulk_insert_unchecked` skips both. The commit version still advances
-	/// and the watermark still progresses, so any transaction that reads at
-	/// version >= this commit will observe the new rows. But concurrent OCC
-	/// transactions that already started reading at an older version will
-	/// NOT detect that this commit happened underneath them.
-	///
-	/// # Safety contract - when this is sound
-	///
-	/// Use this method ONLY when ALL of the following hold for the calling
-	/// context:
-	///
-	/// 1. **Single writer.** This commit is the only writer touching the rows it inserts. No other thread / process
-	///    / connection is writing to the same keys concurrently. (For chain ingest: the block-stream consumer is
-	///    the only writer, and blocks arrive in monotonic order.)
-	///
-	/// 2. **No concurrent OCC reader needs to be invalidated.** Any OCC transaction reading at an older version
-	///    will silently miss this commit's writes when computing its own conflict set. If your workload has
-	///    concurrent user transactions that read these rows, they will commit successfully despite a logical
-	///    conflict, and they will see stale data on retry. For trusted ingest where "downstream" readers are
-	///    streaming-view operators that consume each new commit on its own merits (not via OCC retry), this is
-	///    fine.
-	///
-	/// 3. **Caller-side well-formedness.** Validation is skipped, so primary key violations or constraint failures
-	///    will surface as storage errors at insert time rather than as transaction-level conflicts. The caller must
-	///    already ensure the data conforms to the table/ringbuffer shape.
-	///
-	/// 4. **No need to abort on overlap.** OCC normally aborts a writer whose read set was modified by a more
-	///    recent committer. Skipping the index means a concurrent OCC writer with an overlapping read set will
-	///    commit through. For trusted ingest where there is no competing OCC writer, this is irrelevant.
-	///
-	/// In short: safe for sequential, single-writer, append-mostly trusted
-	/// ingest where downstream readers don't rely on OCC abort-on-overlap.
-	/// Unsafe (silently incorrect) for any workload with concurrent OCC
-	/// transactions that read these keys and rely on conflict detection
-	/// for correctness.
 	pub fn bulk_insert_unchecked<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Unchecked> {
 		BulkInsertBuilder::new_unchecked(self, identity)
 	}
 }
 
-/// Convert user column definitions to internal Column format.
 fn convert_vtable_user_columns_to_columns(columns: &[UserVTableColumn]) -> Vec<Column> {
 	columns.iter()
 		.enumerate()
 		.map(|(idx, col)| {
-			// Note: For virtual tables, we use unconstrained for all types.
-			// The nullable field is still available for documentation purposes.
 			let constraint = TypeConstraint::unconstrained(col.data_type.clone());
 			Column {
 				id: ColumnId(idx as u64),

@@ -15,8 +15,6 @@ pub(super) fn version_from_bytes(bytes: &[u8]) -> CommitVersion {
 	CommitVersion(u64::from_be_bytes(bytes.try_into().expect("version must be 8 bytes")))
 }
 
-/// DDL: create the warm `__warm_current` table for a logical table.
-/// One row per logical key; `key` is the sole primary key. No historical chain.
 pub(super) fn build_create_warm_current_sql(table_name: &str) -> String {
 	format!(
 		"CREATE TABLE IF NOT EXISTS \"{}\" (\
@@ -28,13 +26,10 @@ pub(super) fn build_create_warm_current_sql(table_name: &str) -> String {
 	)
 }
 
-/// Point-get from `__warm_current`. Returns the row if any.
 pub(super) fn build_get_warm_current_sql(table_name: &str) -> String {
 	format!("SELECT version, value FROM \"{}\" WHERE key = ?1", table_name)
 }
 
-/// Upsert into `__warm_current`. The conflict guard `WHERE excluded.version >= "<table>".version`
-/// prevents an out-of-order or stale flush from regressing warm to an older version.
 pub(super) fn build_upsert_warm_current_sql(table_name: &str) -> String {
 	format!(
 		"INSERT INTO \"{0}\" (key, version, value) VALUES (?1, ?2, ?3) \
@@ -46,14 +41,6 @@ pub(super) fn build_upsert_warm_current_sql(table_name: &str) -> String {
 	)
 }
 
-/// Range scan over `__warm_current` at a snapshot version.
-///
-/// Bind parameters in declaration order: `[start?, end?, last_key?, version, limit]`.
-/// The `version` filter (`version <= ?`) skips rows whose stored version is newer
-/// than the requested snapshot, mirroring `build_get_warm_current_sql`.
-///
-/// `version` is stored as a big-endian 8-byte BLOB; SQLite compares BLOBs
-/// lexicographically, so `<=` over those bytes is numeric `<=`.
 pub(super) fn build_range_warm_current_sql(
 	table_name: &str,
 	start: Bound<()>,

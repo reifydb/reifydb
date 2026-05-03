@@ -47,7 +47,6 @@ fn format_date(year: i32, month: u32, day: u32, day_of_year: u32, fmt: &str) -> 
 	Ok(result)
 }
 
-/// Compute day of year from year/month/day
 fn compute_day_of_year(year: i32, month: u32, day: u32) -> u32 {
 	let mut doy = 0u32;
 	for m in 1..month {

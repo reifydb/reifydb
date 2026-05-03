@@ -107,7 +107,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		"├──"
 	};
 
-	// Special handling for Row and Alter to show more detail
 	let description = match ast {
 		Ast::Inline(r) => {
 			let field_names: Vec<&str> = r.keyed_values.iter().map(|f| f.key.text()).collect();
@@ -175,8 +174,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		}
 	);
 
-	// We collect references to existing children, and also store
-	// synthetic owned nodes whose references we need to pass to recursion.
 	let mut owned_children: Vec<Ast<'_>> = vec![];
 	let mut ref_children: Vec<&Ast<'_>> = vec![];
 
@@ -194,73 +191,63 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		}
 		Ast::Filter(f) => ref_children.push(&f.node),
 		Ast::Gate(f) => ref_children.push(&f.node),
-		Ast::From(from) => {
-			match from {
-				AstFrom::Source {
-					source,
-					index_name,
-					..
-				} => {
-					// Create an Identifier AST node for the source name
-					let source_token = Token {
-						kind: TokenKind::Identifier,
-						fragment: source.name,
-					};
-					owned_children.push(Ast::Identifier(UnqualifiedIdentifier::new(source_token)));
+		Ast::From(from) => match from {
+			AstFrom::Source {
+				source,
+				index_name,
+				..
+			} => {
+				let source_token = Token {
+					kind: TokenKind::Identifier,
+					fragment: source.name,
+				};
+				owned_children.push(Ast::Identifier(UnqualifiedIdentifier::new(source_token)));
 
-					// If there's an index directive, add it as a child too
-					if let Some(index) = index_name {
-						let index_token = Token {
-							kind: TokenKind::Identifier,
-							fragment: *index,
-						};
-						owned_children
-							.push(Ast::Identifier(UnqualifiedIdentifier::new(index_token)));
-					}
-				}
-				AstFrom::Inline {
-					list: query,
-					..
-				} => {
-					for node in &query.nodes {
-						ref_children.push(node);
-					}
-				}
-				AstFrom::Generator(generator_func) => {
-					for node in &generator_func.nodes {
-						ref_children.push(node);
-					}
-				}
-				AstFrom::Variable {
-					variable,
-					..
-				} => {
-					// Create an Identifier AST for the variable
-					let variable_token = Token {
-						kind: TokenKind::Variable,
-						fragment: variable.token.fragment,
+				if let Some(index) = index_name {
+					let index_token = Token {
+						kind: TokenKind::Identifier,
+						fragment: *index,
 					};
-					owned_children
-						.push(Ast::Identifier(UnqualifiedIdentifier::new(variable_token)));
-				}
-				AstFrom::Environment {
-					..
-				} => {
-					// Create an Identifier AST for the environment
-					let env_token = Token {
-						kind: TokenKind::Variable,
-						fragment: BumpFragment::Internal {
-							text: "env",
-						},
-					};
-					owned_children.push(Ast::Identifier(UnqualifiedIdentifier::new(env_token)));
+					owned_children.push(Ast::Identifier(UnqualifiedIdentifier::new(index_token)));
 				}
 			}
-		}
+			AstFrom::Inline {
+				list: query,
+				..
+			} => {
+				for node in &query.nodes {
+					ref_children.push(node);
+				}
+			}
+			AstFrom::Generator(generator_func) => {
+				for node in &generator_func.nodes {
+					ref_children.push(node);
+				}
+			}
+			AstFrom::Variable {
+				variable,
+				..
+			} => {
+				let variable_token = Token {
+					kind: TokenKind::Variable,
+					fragment: variable.token.fragment,
+				};
+				owned_children.push(Ast::Identifier(UnqualifiedIdentifier::new(variable_token)));
+			}
+			AstFrom::Environment {
+				..
+			} => {
+				let env_token = Token {
+					kind: TokenKind::Variable,
+					fragment: BumpFragment::Internal {
+						text: "env",
+					},
+				};
+				owned_children.push(Ast::Identifier(UnqualifiedIdentifier::new(env_token)));
+			}
+		},
 		Ast::Aggregate(a) => {
-			// Show Map and By as labeled branches
 			if !a.map.is_empty() {
-				// Create a synthetic label for "Aggregate Map"
 				output.push_str(&format!("{}├── Aggregate Map\n", child_prefix));
 				let map_prefix = format!("{}│   ", child_prefix);
 				for (i, child) in a.map.iter().enumerate() {
@@ -269,7 +256,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 				}
 			}
 			if !a.by.is_empty() {
-				// Create a synthetic label for "Aggregate By"
 				output.push_str(&format!("{}└── Aggregate By\n", child_prefix));
 				let by_prefix = format!("{}    ", child_prefix);
 				for (i, child) in a.by.iter().enumerate() {
@@ -277,11 +263,9 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 					render_ast_tree_inner(child, &by_prefix, last, output);
 				}
 			} else if a.map.is_empty() {
-				// If both are empty (shouldn't happen), or just
-				// By is empty
 				output.push_str(&format!("{}└── Aggregate By\n", child_prefix));
 			}
-			// Return early since we handled the children
+
 			return;
 		}
 		Ast::Insert(_) => {
@@ -292,11 +276,10 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 			using_clause,
 			..
 		}) => {
-			// Add the nodes from the subquery statement
 			for node in &with.statement.nodes {
 				ref_children.push(node);
 			}
-			// Add expressions from using clause pairs
+
 			for pair in &using_clause.pairs {
 				ref_children.push(&pair.first);
 				ref_children.push(&pair.second);
@@ -312,16 +295,9 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 				ref_children.push(node);
 			}
 		}
-		Ast::Sort(_o) => {
-			// Column identifiers are now complex structures, not
-			// simple AST nodes Skip adding them as children for
-			// explain purposes
-		}
+		Ast::Sort(_o) => {}
 		Ast::Inline(r) => {
-			// Add each field as a child - they will be displayed as
-			// key: value pairs
 			for field in &r.keyed_values {
-				// Create an infix operator to represent "key: value"
 				owned_children.push(Ast::Identifier(field.key));
 				ref_children.push(&field.value);
 			}
@@ -331,19 +307,13 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 			ref_children.push(&i.right);
 		}
 		Ast::Alter(alter) => {
-			// Handle ALTER operations as child nodes
 			match alter {
-				AstAlter::Sequence(_) => {
-					// Sequence alter doesn't have child
-					// operations
-				}
+				AstAlter::Sequence(_) => {}
 				AstAlter::Policy(_) => {}
-				AstAlter::Table(_) => {
-					// Table alter doesn't have child operations to display here
-				}
+				AstAlter::Table(_) => {}
 				AstAlter::RemoteNamespace(_) => {}
 			}
-			// Return early since we handled the children
+
 			return;
 		}
 		Ast::Patch(p) => {
@@ -357,7 +327,6 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 			}
 		}
 		Ast::SubQuery(sq) => {
-			// Add the nodes from the subquery statement as children
 			for node in &sq.statement.nodes {
 				ref_children.push(node);
 			}
@@ -365,26 +334,13 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		_ => {}
 	}
 
-	// Render referenced children first, then owned children.
-	// For Inline (Row) nodes, owned and ref children alternate (key, value, key, value...),
-	// so we need to interleave them. For simplicity and correctness, we handle
-	// the general case: if there are only ref_children or only owned_children, render them.
-	// If both exist, the Inline case interleaves them, while From pushes only to owned.
-	// The ordering: ref_children are added in order, owned_children are added in order.
-	// For Inline: owned has keys, ref has values - they alternate.
-	// We handle this by merging: for Inline, the order is key0, val0, key1, val1...
-	// which means owned[0], ref[0], owned[1], ref[1], etc.
-	// For From: only owned_children are used.
-	// For most other cases: only ref_children are used.
-
 	if !owned_children.is_empty() && !ref_children.is_empty() {
-		// Interleave: owned and ref alternate (for Inline case)
 		let total = owned_children.len() + ref_children.len();
 		let mut oi = 0;
 		let mut ri = 0;
 		for idx in 0..total {
 			let last = idx == total - 1;
-			// For Inline: pattern is owned, ref, owned, ref...
+
 			if idx % 2 == 0 && oi < owned_children.len() {
 				render_ast_tree_inner(&owned_children[oi], &child_prefix, last, output);
 				oi += 1;

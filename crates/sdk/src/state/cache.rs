@@ -18,9 +18,7 @@ use crate::{
 
 pub struct StateCache<K, V> {
 	cache: LruCache<K, V>,
-	/// Keys mutated since the last `flush`. `Some(value)` means a `set`,
-	/// `None` means a `remove`. The cache acts as a coalescing buffer:
-	/// repeated `set`s of the same key only flush the final value once.
+
 	dirty: HashMap<K, Option<V>>,
 }
 
@@ -38,12 +36,10 @@ where
 	}
 
 	pub fn get(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<Option<V>> {
-		// Check cache first
 		if let Some(cached) = self.cache.get(key) {
 			return Ok(Some(cached.clone()));
 		}
 
-		// Cache miss - load from FFI
 		let encoded_key = key.into_encoded_key();
 		let state = ctx.state();
 		match state.get(&encoded_key)? {
@@ -72,12 +68,6 @@ where
 		Ok(())
 	}
 
-	/// Drain dirty entries and write them through to host storage.
-	///
-	/// Called once per txn at commit time, normally from the operator's
-	/// `FFIOperator::flush_state` impl. Repeated `set`s of the same key
-	/// produce a single write here; coalesced `set` + `remove` produces a
-	/// single remove.
 	pub fn flush(&mut self, ctx: &mut OperatorContext) -> Result<()> {
 		let dirty = mem::take(&mut self.dirty);
 		let shape = RowShape::operator_state();
@@ -142,13 +132,10 @@ where
 	where
 		U: FnOnce(&mut V) -> Result<()>,
 	{
-		// Load or create default
 		let mut value = self.get_or_default(ctx, key)?;
 
-		// Apply update
 		updater(&mut value)?;
 
-		// Save (write-through)
 		self.set(ctx, key, &value)?;
 
 		Ok(value)

@@ -90,8 +90,6 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 fn extract_column_data(col: &ColumnWithName, ctx: &EvalContext) -> Result<ColumnWithName> {
 	let take = ctx.take.unwrap_or(usize::MAX);
 
-	// Fast path: when no truncation is required, the underlying buffer already
-	// carries its data in the correct typed form and a clone is an Arc-bump.
 	if take >= col.data().len() {
 		return Ok(col.clone());
 	}

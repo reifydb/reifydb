@@ -27,8 +27,6 @@ impl DateAge {
 	}
 }
 
-/// Compute calendar-aware age between two dates.
-/// Returns Duration with months + days components.
 pub fn date_age(d1: &Date, d2: &Date) -> Result<Duration, Box<TypeError>> {
 	let y1 = d1.year();
 	let m1 = d1.month() as i32;
@@ -44,7 +42,7 @@ pub fn date_age(d1: &Date, d2: &Date) -> Result<Duration, Box<TypeError>> {
 
 	if days < 0 {
 		months -= 1;
-		// Borrow days from previous month (relative to d2's perspective)
+
 		let borrow_month = if m1 - 1 < 1 {
 			12
 		} else {

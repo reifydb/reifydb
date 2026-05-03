@@ -18,7 +18,6 @@ use reifydb_type::util::cowvec::CowVec;
 
 type KeyRange = (Bound<CowVec<u8>>, Bound<CowVec<u8>>);
 
-/// Parses an binary key range, using Rust range syntax.
 pub fn parse_key_range(s: &str) -> Result<KeyRange, Box<dyn Error>> {
 	let mut bound = (Bound::<CowVec<u8>>::Unbounded, Bound::<CowVec<u8>>::Unbounded);
 
@@ -26,12 +25,10 @@ pub fn parse_key_range(s: &str) -> Result<KeyRange, Box<dyn Error>> {
 		let start_part = &s[..dot_pos];
 		let end_part = &s[dot_pos + 2..];
 
-		// Parse start bound
 		if !start_part.is_empty() {
 			bound.0 = Bound::Included(decode_binary(start_part));
 		}
 
-		// Parse end bound - check for inclusive marker "="
 		if let Some(end_str) = end_part.strip_prefix('=') {
 			if !end_str.is_empty() {
 				bound.1 = Bound::Included(decode_binary(end_str));

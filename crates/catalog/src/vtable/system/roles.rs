@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system role information
 pub struct SystemRoles {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

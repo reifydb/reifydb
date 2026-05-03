@@ -11,8 +11,6 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Get a shape (table or view) by its ShapeId
-	/// Returns an error if the shape doesn't exist
 	pub(crate) fn get_shape(rx: &mut Transaction<'_>, shape: impl Into<ShapeId>) -> Result<Shape> {
 		let shape_id = shape.into();
 

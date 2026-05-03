@@ -17,7 +17,6 @@ impl<'bump> Parser<'bump> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Sort)?;
 
-		// Always require opening curly brace
 		if self.is_eof() || !self.current()?.is_operator(OpenCurly) {
 			return Err(RqlError::OperatorMissingBraces {
 				kind: OperationKind::Sort,
@@ -25,14 +24,13 @@ impl<'bump> Parser<'bump> {
 			}
 			.into());
 		}
-		self.advance()?; // consume opening brace
+		self.advance()?;
 
 		let mut columns = Vec::new();
 		let mut directions = Vec::new();
 
-		// Handle empty braces case
 		if !self.is_eof() && self.current()?.is_operator(CloseCurly) {
-			self.advance()?; // consume closing brace
+			self.advance()?;
 			return Ok(AstSort {
 				token,
 				columns,
@@ -44,14 +42,12 @@ impl<'bump> Parser<'bump> {
 		loop {
 			columns.push(self.parse_column_identifier()?);
 
-			// Check for direction specifier
 			if !self.is_eof()
 				&& !self.current()?.is_separator(Comma)
 				&& !self.current()?.is_operator(CloseCurly)
 			{
-				// Colon-based syntax: {column: asc}
 				if self.current()?.is_operator(Colon) {
-					self.advance()?; // consume colon
+					self.advance()?;
 					if self.current()?.is_keyword(Keyword::Asc)
 						|| self.current()?.is_keyword(Keyword::Desc)
 					{
@@ -72,13 +68,11 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Look for closing brace
 			if self.current()?.is_operator(CloseCurly) {
-				self.advance()?; // consume closing brace
+				self.advance()?;
 				break;
 			}
 
-			// consume comma and continue
 			if self.current()?.is_separator(Comma) {
 				self.advance()?;
 			} else {

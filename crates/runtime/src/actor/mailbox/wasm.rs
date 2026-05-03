@@ -14,18 +14,13 @@ use std::{
 use super::{ActorRef, SendError};
 use crate::actor::timers::drain_expired_timers;
 
-/// WASM implementation of ActorRef inner.
-///
-/// Messages are processed synchronously inline when sent.
-/// Uses a message queue to handle reentrancy.
 pub struct ActorRefInner<M> {
-	/// The processor function that handles messages inline.
 	pub(crate) processor: Rc<RefCell<Option<Box<dyn FnMut(M)>>>>,
-	/// Flag indicating if the actor is still alive.
+
 	pub(crate) alive: Arc<AtomicBool>,
-	/// Queue for messages that arrive during processing (handles reentrancy).
+
 	pub(crate) queue: Rc<RefCell<Vec<M>>>,
-	/// Flag to track if we're currently processing (prevents reentrant processing).
+
 	pub(crate) processing: Rc<Cell<bool>>,
 }
 
@@ -47,7 +42,6 @@ impl<M> fmt::Debug for ActorRefInner<M> {
 }
 
 impl<M> ActorRefInner<M> {
-	/// Create a new ActorRefInner for WASM.
 	pub(crate) fn new(
 		processor: Rc<RefCell<Option<Box<dyn FnMut(M)>>>>,
 		alive: Arc<AtomicBool>,
@@ -62,10 +56,6 @@ impl<M> ActorRefInner<M> {
 		}
 	}
 
-	/// Send a message (processes synchronously inline in WASM).
-	///
-	/// If we're already processing a message (reentrant call), the message
-	/// is queued and will be processed after the current message completes.
 	pub fn send(&self, msg: M) -> Result<(), SendError<M>> {
 		if !self.alive.load(Ordering::SeqCst) {
 			return Err(SendError::Closed(msg));
@@ -103,31 +93,24 @@ impl<M> ActorRefInner<M> {
 
 		self.processing.set(false);
 
-		// Fire any WASI timers that have expired during processing.
 		drain_expired_timers();
 
 		Ok(())
 	}
 
-	/// Send a message, blocking if the mailbox is full.
-	///
-	/// In WASM, this is identical to `send()` since processing is inline.
 	pub fn send_blocking(&self, msg: M) -> Result<(), SendError<M>> {
 		self.send(msg)
 	}
 
-	/// Check if the actor is still alive.
 	pub fn is_alive(&self) -> bool {
 		self.alive.load(Ordering::SeqCst)
 	}
 
-	/// Mark the actor as stopped.
 	pub(crate) fn mark_stopped(&self) {
 		self.alive.store(false, Ordering::SeqCst);
 	}
 }
 
-/// Create an ActorRef for WASM.
 pub(crate) fn create_actor_ref<M>() -> ActorRef<M> {
 	ActorRef::from_inner(ActorRefInner {
 		processor: Rc::new(RefCell::new(None)),

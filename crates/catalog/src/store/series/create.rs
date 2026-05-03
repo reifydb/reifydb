@@ -189,8 +189,6 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	/// Create a series with a specific ID and column IDs. Used for bootstrapping system shapes.
-	/// Skips duplicate check - caller must ensure uniqueness.
 	pub(crate) fn create_series_with_id(
 		txn: &mut AdminTransaction,
 		series_id: SeriesId,

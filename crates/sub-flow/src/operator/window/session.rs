@@ -22,7 +22,6 @@ use super::{WindowEvent, WindowLayout, WindowOperator};
 use crate::{operator::stateful::window::WindowStateful, transaction::FlowTransaction};
 
 impl WindowOperator {
-	/// Get the session gap duration in milliseconds (only valid for Session windows)
 	fn session_gap_ms(&self) -> u64 {
 		match &self.kind {
 			WindowKind::Session {
@@ -32,7 +31,6 @@ impl WindowOperator {
 		}
 	}
 
-	/// Create a session-tracking key that stores the current session_id for a group
 	fn create_session_tracker_key(&self, group_hash: Hash128) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);
 		serializer.extend_bytes(b"ses:");
@@ -40,8 +38,6 @@ impl WindowOperator {
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Load the current session_id for a group. Returns (session_id, last_event_time).
-	/// If no session exists yet, returns (0, 0).
 	fn load_session_tracker(&self, txn: &mut FlowTransaction, group_hash: Hash128) -> Result<(u64, u64)> {
 		let tracker_key = self.create_session_tracker_key(group_hash);
 		let state_row = self.load_state(txn, &tracker_key)?;
@@ -59,7 +55,6 @@ impl WindowOperator {
 		Ok(tracker)
 	}
 
-	/// Save the session tracker (session_id, last_event_time) for a group
 	fn save_session_tracker(
 		&self,
 		txn: &mut FlowTransaction,
@@ -76,8 +71,6 @@ impl WindowOperator {
 		self.save_state(txn, &tracker_key, state_row)
 	}
 
-	/// Tick-based session expiration.
-	/// Scans all operator state, finds "win:" keys with expired sessions.
 	pub fn tick_session_expiration(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let gap_ms = self.session_gap_ms();
@@ -253,7 +246,6 @@ fn append_event_to_session(
 	Ok(diff)
 }
 
-/// Apply changes for session windows (no time-based expiration - sessions close lazily)
 pub fn apply_session_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let changed_at = change.changed_at;
 	let diffs = operator.apply_window_change(txn, &change, false, |op, txn, columns| {

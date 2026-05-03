@@ -10,13 +10,11 @@ use tracing::{debug, instrument, warn};
 
 use crate::engine::StandardEngine;
 
-/// Backoff strategy between retry attempts.
 pub enum Backoff {
-	/// No delay between retries.
 	None,
-	/// Fixed delay between each retry attempt.
+
 	Fixed(Duration),
-	/// Exponential backoff: delay doubles each attempt, capped at `max`.
+
 	Exponential {
 		base: Duration,
 		max: Duration,
@@ -27,7 +25,6 @@ pub enum Backoff {
 	},
 }
 
-/// Controls how many times a write transaction is retried on conflict (`TXN_001`).
 pub struct RetryStrategy {
 	pub max_attempts: u32,
 	pub backoff: Backoff,
@@ -46,7 +43,6 @@ impl Default for RetryStrategy {
 }
 
 impl RetryStrategy {
-	/// No retries - fail immediately on conflict.
 	pub fn no_retry() -> Self {
 		Self {
 			max_attempts: 1,
@@ -58,7 +54,6 @@ impl RetryStrategy {
 		Self::default()
 	}
 
-	/// Fixed delay between retry attempts.
 	pub fn with_fixed_backoff(max_attempts: u32, delay: Duration) -> Self {
 		Self {
 			max_attempts,
@@ -66,7 +61,6 @@ impl RetryStrategy {
 		}
 	}
 
-	/// Exponential backoff: delay doubles each attempt, capped at `max`.
 	pub fn with_exponential_backoff(max_attempts: u32, base: Duration, max: Duration) -> Self {
 		Self {
 			max_attempts,
@@ -158,7 +152,6 @@ fn exponential_cap(base: Duration, max: Duration, attempt: u32) -> Duration {
 	base.saturating_mul(multiplier).min(max)
 }
 
-/// A unified session binding an identity to a database engine.
 pub struct Session {
 	engine: StandardEngine,
 	identity: IdentityId,
@@ -168,7 +161,6 @@ pub struct Session {
 }
 
 impl Session {
-	/// Create a session from a validated auth token (server path).
 	pub fn from_token(engine: StandardEngine, info: &Token) -> Self {
 		Self {
 			engine,
@@ -179,7 +171,6 @@ impl Session {
 		}
 	}
 
-	/// Create a session from a validated auth token, preserving the token string.
 	pub fn from_token_with_value(engine: StandardEngine, info: &Token) -> Self {
 		Self {
 			engine,
@@ -190,7 +181,6 @@ impl Session {
 		}
 	}
 
-	/// Create a trusted session (embedded path, no authentication required).
 	pub fn trusted(engine: StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
@@ -201,42 +191,35 @@ impl Session {
 		}
 	}
 
-	/// Create an anonymous session.
 	pub fn anonymous(engine: StandardEngine) -> Self {
 		Self::trusted(engine, IdentityId::anonymous())
 	}
 
-	/// Set the retry strategy for command and admin operations.
 	pub fn with_retry(mut self, strategy: RetryStrategy) -> Self {
 		self.retry = strategy;
 		self
 	}
 
-	/// The identity associated with this session.
 	#[inline]
 	pub fn identity(&self) -> IdentityId {
 		self.identity
 	}
 
-	/// The auth token, if this session was created from a validated token.
 	#[inline]
 	pub fn token(&self) -> Option<&str> {
 		self.token.as_deref()
 	}
 
-	/// Whether this session was created from authenticated credentials.
 	#[inline]
 	pub fn is_authenticated(&self) -> bool {
 		self.authenticated
 	}
 
-	/// Execute a read-only query.
 	#[instrument(name = "session::query", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn query(&self, rql: &str, params: impl Into<Params>) -> ExecutionResult {
 		self.engine.query_as(self.identity, rql, params.into())
 	}
 
-	/// Execute a transactional command (DML + Query) with retry on conflict.
 	#[instrument(name = "session::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command(&self, rql: &str, params: impl Into<Params>) -> ExecutionResult {
 		let params = params.into();
@@ -244,7 +227,6 @@ impl Session {
 			.execute(self.engine.rng(), rql, || self.engine.command_as(self.identity, rql, params.clone()))
 	}
 
-	/// Execute an admin (DDL + DML + Query) operation with retry on conflict.
 	#[instrument(name = "session::admin", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin(&self, rql: &str, params: impl Into<Params>) -> ExecutionResult {
 		let params = params.into();

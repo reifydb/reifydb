@@ -11,11 +11,6 @@ use crate::{
 	token::{token::TokenKind, tokenize},
 };
 
-/// Compute a fingerprint for a single parsed statement.
-///
-/// The fingerprint captures the structural shape of the query (node types,
-/// identifiers, operators) while normalizing away literal values. Two queries
-/// that differ only in constants produce the same fingerprint.
 pub fn fingerprint_statement(statement: &AstStatement<'_>) -> StatementFingerprint {
 	let mut buf = FingerprintBuffer::new();
 	buf.write_u8(statement.has_pipes as u8);
@@ -24,7 +19,6 @@ pub fn fingerprint_statement(statement: &AstStatement<'_>) -> StatementFingerpri
 	StatementFingerprint(xxh3_128(buf.as_bytes()))
 }
 
-/// Normalizes a statement string by replacing literal values with `?`.
 pub fn normalize_statement(statement: &AstStatement<'_>) -> String {
 	let bump = Bump::new();
 	let tokens = match tokenize(&bump, statement.rql) {
@@ -42,7 +36,6 @@ pub fn normalize_statement(statement: &AstStatement<'_>) -> String {
 			..
 		} = token.fragment
 		{
-			// Add any whitespace before this token
 			if offset > last_end {
 				normalized.push_str(&statement.rql[last_end..offset]);
 			}
@@ -55,7 +48,6 @@ pub fn normalize_statement(statement: &AstStatement<'_>) -> String {
 		}
 	}
 
-	// Add any trailing whitespace
 	if last_end < statement.rql.len() {
 		normalized.push_str(&statement.rql[last_end..]);
 	}

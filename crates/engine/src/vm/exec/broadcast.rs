@@ -6,14 +6,11 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
-	/// Pop a Variable from the stack and extract its single Column.
 	pub(crate) fn pop_as_column(&mut self) -> Result<ColumnWithName> {
 		self.stack.pop()?.into_column()
 	}
 }
 
-/// If one column has length 1 and the other has length N, broadcast the short one
-/// to length N by repeating its single value. If both are equal length, returns as-is.
 pub(crate) fn broadcast_to_match(left: ColumnWithName, right: ColumnWithName) -> (ColumnWithName, ColumnWithName) {
 	let ll = left.data.len();
 	let rl = right.data.len();
@@ -27,12 +24,10 @@ pub(crate) fn broadcast_to_match(left: ColumnWithName, right: ColumnWithName) ->
 	} else if rl == 1 && ll > 1 {
 		(left, broadcast_column(&right, ll))
 	} else {
-		// Mismatched lengths that aren't broadcastable - let the kernel error
 		(left, right)
 	}
 }
 
-/// Repeat a single-element column to `target_len` rows.
 pub(crate) fn broadcast_column(col: &ColumnWithName, target_len: usize) -> ColumnWithName {
 	debug_assert_eq!(col.data.len(), 1);
 	let value = col.data.get_value(0);
@@ -43,9 +38,6 @@ pub(crate) fn broadcast_column(col: &ColumnWithName, target_len: usize) -> Colum
 	ColumnWithName::new(col.name.clone(), data)
 }
 
-/// Broadcast any length-1 columns to the longest length among the inputs.
-/// Columns already at the target length pass through unchanged. Columns with
-/// mismatched non-1 lengths are returned as-is (the kernel's length assert will fire).
 pub(crate) fn broadcast_many(cols: Vec<ColumnWithName>) -> Vec<ColumnWithName> {
 	let target = cols.iter().map(|c| c.data.len()).max().unwrap_or(0);
 	if target <= 1 {

@@ -9,7 +9,6 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionRole};
 
 impl MaterializedCatalog {
-	/// Find a role by ID at a specific version
 	pub fn find_role_at(&self, id: RoleId, version: CommitVersion) -> Option<Role> {
 		self.roles.get(&id).and_then(|entry| {
 			let multi = entry.value();
@@ -17,7 +16,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a role by name at a specific version
 	pub fn find_role_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Role> {
 		self.roles_by_name.get(name).and_then(|entry| {
 			let role_id = *entry.value();
@@ -25,7 +23,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a role by ID (returns latest version)
 	pub fn find_role(&self, id: RoleId) -> Option<Role> {
 		self.roles.get(&id).and_then(|entry| {
 			let multi = entry.value();

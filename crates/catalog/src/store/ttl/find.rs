@@ -12,15 +12,12 @@ use super::decode_ttl_config;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Find a TTL configuration for a shape
-	/// Returns None if no TTL is configured
 	#[allow(dead_code)]
 	pub fn find_row_ttl(rx: &mut Transaction<'_>, shape: ShapeId) -> Result<Option<Ttl>> {
 		let value = rx.get(&RowTtlKey::encoded(shape))?;
 		Ok(value.and_then(|v| decode_ttl_config(&v.row)))
 	}
 
-	/// Find a per-operator TTL configuration for a flow node.
 	#[allow(dead_code)]
 	pub fn find_operator_ttl(rx: &mut Transaction<'_>, node: FlowNodeId) -> Result<Option<Ttl>> {
 		let value = rx.get(&OperatorTtlKey::encoded(node))?;

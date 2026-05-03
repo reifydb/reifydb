@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::ringbuffers::*, vtable::RINGBUFFERS};
 
-/// Returns the static definition for the system.ringbuffers virtual table
-/// This table exposes information about all ring buffers in the database
 pub fn ringbuffers() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

@@ -15,7 +15,6 @@ impl RowShape {
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::IdentityId);
 		row.set_valid(index, true);
 		unsafe {
-			// IdentityId wraps Uuid7 which is 16 bytes
 			ptr::write_unaligned(
 				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut [u8; 16],
 				*value.as_bytes(),
@@ -28,7 +27,6 @@ impl RowShape {
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::IdentityId);
 		unsafe {
-			// IdentityId wraps Uuid7 which is 16 bytes
 			let bytes: [u8; 16] =
 				ptr::read_unaligned(row.as_ptr().add(field.offset as usize) as *const [u8; 16]);
 			let uuid = Uuid::from_bytes(bytes);

@@ -73,16 +73,9 @@ pub struct MultiWriteTransaction {
 	pub(crate) conflicts: ConflictManager,
 	pub(crate) pending_writes: PendingWrites,
 	pub(crate) duplicates: Vec<DeltaEntry>,
-	/// Append-only delta history. Source of truth for `optimize_deltas`
-	/// at commit time so that same-key sequences (Set+Unset, multi-touch)
-	/// are visible in issuance order. `pending_writes` collapses to one
-	/// entry per key and cannot serve this.
+
 	pub(crate) delta_log: Vec<DeltaEntry>,
-	/// Keys that existed in committed storage before this transaction
-	/// started. Populated by `mark_preexisting` from Update / Delete after
-	/// they read the prior row. The optimiser uses this to distinguish a
-	/// true Insert+Delete (cancellable) from an Update+Delete (must keep
-	/// tombstone, otherwise the prior version remains visible).
+
 	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
 
 	pub(crate) lifecycle: Lifecycle,
@@ -216,7 +209,6 @@ impl MultiWriteTransaction {
 		self.conflicts.reserve_writes(additional);
 	}
 
-	/// See the "Unchecked commits" section in `multi::transaction` for the safety contract.
 	pub(crate) fn disable_conflict_tracking(&mut self) {
 		self.conflicts.set_disabled();
 	}
@@ -241,8 +233,6 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	/// Adds a delete marker for the key at commit timestamp; preserves
-	/// `row` so CDC and post-commit interceptors can see what was deleted.
 	#[instrument(name = "transaction::command::unset", level = "debug", skip(self, row), fields(
 		txn_id = %self.id,
 		key_hex = %hex::display(key.as_ref()),
@@ -261,9 +251,6 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	/// Remove an entry without preserving the deleted row. Use when only
-	/// the key matters (index entries, catalog metadata) and CDC consumers
-	/// don't need the prior payload.
 	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(
 		txn_id = %self.id,
 		key_len = key.len()
@@ -349,12 +336,6 @@ impl MultiWriteTransaction {
 		Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into))
 	}
 
-	/// Read the committed value at the transaction's read version, ignoring
-	/// any intra-tx pending writes. Returns `None` when the key was not in
-	/// committed storage when this transaction started. Used by row
-	/// operations to gate `mark_preexisting`: only keys that genuinely
-	/// existed before the transaction may participate in the optimizer's
-	/// "preexisting => keep tombstone" rule.
 	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self), fields(
 		txn_id = %self.id,
 		key_hex = %hex::display(key.as_ref())
@@ -407,9 +388,7 @@ impl MultiWriteTransaction {
 				version,
 			})
 		}
-		// Append to delta_log before moving into pending_writes so commit
-		// replays the full issuance order; pending_writes collapses
-		// same-key sequences and would lose Set+Unset history.
+
 		self.delta_log.push(pending.clone());
 		self.pending_writes.insert(key.clone(), pending);
 
@@ -442,7 +421,6 @@ impl MultiWriteTransaction {
 		}
 	}
 
-	/// See the "Unchecked commits" section in `multi::transaction` for the safety contract.
 	#[instrument(name = "transaction::command::commit_pending_unchecked", level = "debug", skip(self), fields(
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
@@ -464,9 +442,6 @@ impl MultiWriteTransaction {
 		}
 	}
 
-	/// The oracle has consumed the read snapshot - whether it committed,
-	/// conflicted, or rejected as TooOld, base_version is no longer needed
-	/// for conflict detection. Release it on the watermark exactly once.
 	#[inline]
 	fn release_read_snapshot(&mut self, base_version: CommitVersion) {
 		if self.lifecycle == Lifecycle::Active {
@@ -475,9 +450,6 @@ impl MultiWriteTransaction {
 		}
 	}
 
-	/// On Success: drain pending writes / duplicates / delta log, stamp every
-	/// entry with the assigned commit version, and return the merged list in
-	/// issuance order (delta log first, duplicates appended).
 	#[inline]
 	fn assemble_committed_deltas(&mut self, version: CommitVersion) -> Vec<DeltaEntry> {
 		debug_assert_ne!(version, 0);
@@ -508,7 +480,6 @@ impl MultiWriteTransaction {
 		self.finalize_commit(commit_version, entries)
 	}
 
-	/// See the "Unchecked commits" section in `multi::transaction` for the safety contract.
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
 	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		if self.pending_writes.is_empty() {
@@ -519,9 +490,6 @@ impl MultiWriteTransaction {
 		self.finalize_commit(commit_version, entries)
 	}
 
-	/// Persist the commit and publish the post-commit event. Returns
-	/// `CommitVersion(0)` when `entries` is empty (every write was elided
-	/// by the optimizer or there were no writes to begin with).
 	#[inline]
 	fn finalize_commit(
 		&mut self,
@@ -549,12 +517,6 @@ impl MultiWriteTransaction {
 		CowVec::new(optimized)
 	}
 
-	/// Order matters: emit `PostCommitEvent` BEFORE `done_commit`. The CDC
-	/// poll actor uses `done_until()` as the safe upper bound for fetching
-	/// CDC entries from the store. If the watermark advances first, a
-	/// concurrent commit on another thread can produce a CDC entry at
-	/// V+1 that the poll actor observes, causing it to advance its
-	/// checkpoint past V and permanently skip V's CDC.
 	#[inline]
 	fn publish(&self, commit_version: CommitVersion, deltas: CowVec<Delta>) {
 		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version));
@@ -693,7 +655,6 @@ where
 							}));
 						}
 					} else if matches!(cmp, Ordering::Equal) {
-						// DeltaEntry shadows storage on equal keys.
 						let (key, value) = self.pending_iter.next().unwrap();
 						self.next_storage = None;
 						if let Some(row) = value.row() {

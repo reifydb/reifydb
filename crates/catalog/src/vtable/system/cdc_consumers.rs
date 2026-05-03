@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes CDC consumer checkpoint information
 pub struct SystemCdcConsumers {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

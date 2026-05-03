@@ -97,12 +97,10 @@ impl GrpcSubsystem {
 		self.local_addr().map(|a| a.port())
 	}
 
-	/// Get the actual bound address for the admin server (available after start).
 	pub fn admin_local_addr(&self) -> Option<SocketAddr> {
 		*self.admin_actual_addr.read().unwrap()
 	}
 
-	/// Get the actual bound port for the admin server (available after start).
 	pub fn admin_port(&self) -> Option<u16> {
 		self.admin_local_addr().map(|a| a.port())
 	}
@@ -249,26 +247,25 @@ impl Subsystem for GrpcSubsystem {
 	}
 
 	fn shutdown(&mut self) -> Result<()> {
-		// Close all local subscription channels
 		if let Some(registry) = self.registry.take() {
 			registry.close_all();
 		}
-		// Signal proxy tasks and cleanup tasks to exit
+
 		if let Some(tx) = self.subscription_shutdown_tx.take() {
 			let _ = tx.send(true);
 		}
-		// Stop the poller if managed directly (no main listener)
+
 		if let Some(tx) = self.poller_stop_tx.take() {
 			let _ = tx.send(true);
 		}
-		// Shutdown admin server first
+
 		if let Some(tx) = self.admin_shutdown_tx.take() {
 			let _ = tx.send(());
 		}
 		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
 			let _ = self.runtime.block_on(rx);
 		}
-		// Then signal main tonic server
+
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}

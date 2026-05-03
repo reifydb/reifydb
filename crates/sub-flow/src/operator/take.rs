@@ -228,21 +228,10 @@ impl TakeOperator {
 				continue;
 			}
 
-			// Row suppressed by the take limit (kept as a candidate for
-			// future promotion); subscriber is intentionally not receiving
-			// it, so the Update is also suppressed.
 			if state.candidates.contains_key(&row_number) {
 				continue;
 			}
 
-			// Row is unknown to TakeState because it existed before the
-			// subscription started (subscriptions have no backfill, so
-			// TakeState begins empty even when the upstream view is
-			// populated). The subscriber is seeing this row for the first
-			// time, so emit the post-image as an Insert and run the same
-			// admission/eviction policy that the Insert branch uses for
-			// genuinely new rows. Without this, every Update against a
-			// pre-existing row would be silently dropped.
 			let single = post.extract_by_indices(&[row_idx]);
 			self.admit_or_evict_new_row(state, txn, row_number, single, output_diffs)?;
 		}
@@ -334,8 +323,6 @@ impl Operator for TakeOperator {
 			}
 		}
 
-		// Restore the cached state for the next batch in this txn; the put
-		// marks the slot dirty so flush_operator_states will persist it.
 		txn.put_operator_state(node_id, state, persist);
 
 		Ok(Change::from_flow(self.node, version, output_diffs, change.changed_at))

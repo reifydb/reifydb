@@ -16,20 +16,16 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse CREATE SINK name AS { FROM source TO connector { config } }
 	pub(crate) fn parse_sink(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Parse sink name: ns::name
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let sink_ident = MaybeQualifiedSinkIdentifier::new(name).with_namespace(namespace);
 
-		// Expect AS {
 		self.consume_operator(Operator::As)?;
 		self.consume_operator(Operator::OpenCurly)?;
 		self.skip_new_line()?;
 
-		// Expect FROM source
 		self.consume_keyword(Keyword::From)?;
 		let mut source_segments = self.parse_double_colon_separated_identifiers()?;
 		let source_name = source_segments.pop().unwrap().into_fragment();
@@ -38,7 +34,6 @@ impl<'bump> Parser<'bump> {
 
 		self.skip_new_line()?;
 
-		// Expect TO connector { config }
 		self.consume_keyword(Keyword::To)?;
 		let connector = self.consume(TokenKind::Identifier)?.fragment;
 
@@ -46,7 +41,6 @@ impl<'bump> Parser<'bump> {
 
 		self.skip_new_line()?;
 
-		// Expect closing }
 		self.consume_operator(Operator::CloseCurly)?;
 
 		Ok(AstCreate::Sink(AstCreateSink {

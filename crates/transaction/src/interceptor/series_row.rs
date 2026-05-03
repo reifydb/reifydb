@@ -7,7 +7,6 @@ use reifydb_type::Result;
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
-// PRE INSERT
 pub struct SeriesRowPreInsertContext<'a> {
 	pub series: &'a Series,
 	pub row: EncodedRow,
@@ -80,7 +79,6 @@ where
 	ClosureSeriesRowPreInsertInterceptor::new(f)
 }
 
-// POST INSERT
 pub struct SeriesRowPostInsertContext<'a> {
 	pub series: &'a Series,
 	pub row: &'a EncodedRow,
@@ -153,7 +151,6 @@ where
 	ClosureSeriesRowPostInsertInterceptor::new(f)
 }
 
-// PRE UPDATE
 pub struct SeriesRowPreUpdateContext<'a> {
 	pub series: &'a Series,
 	pub row: EncodedRow,
@@ -226,7 +223,6 @@ where
 	ClosureSeriesRowPreUpdateInterceptor::new(f)
 }
 
-// POST UPDATE
 pub struct SeriesRowPostUpdateContext<'a> {
 	pub series: &'a Series,
 	pub post: &'a EncodedRow,
@@ -301,7 +297,6 @@ where
 	ClosureSeriesRowPostUpdateInterceptor::new(f)
 }
 
-// PRE DELETE
 pub struct SeriesRowPreDeleteContext<'a> {
 	pub series: &'a Series,
 }
@@ -372,7 +367,6 @@ where
 	ClosureSeriesRowPreDeleteInterceptor::new(f)
 }
 
-// POST DELETE
 pub struct SeriesRowPostDeleteContext<'a> {
 	pub series: &'a Series,
 	pub deleted_row: &'a EncodedRow,
@@ -445,7 +439,6 @@ where
 	ClosureSeriesRowPostDeleteInterceptor::new(f)
 }
 
-/// Helper struct for executing series interceptors via static methods.
 pub struct SeriesRowInterceptor;
 
 impl SeriesRowInterceptor {

@@ -13,8 +13,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 use super::{Value, r#type::Type};
 use crate::{Result, error::TypeError};
 
-/// A dictionary entry ID that can be one of several unsigned integer sizes.
-/// The variant used depends on the dictionary's `id_type` configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DictionaryEntryId {
 	U1(u8),
@@ -25,8 +23,6 @@ pub enum DictionaryEntryId {
 }
 
 impl DictionaryEntryId {
-	/// Create a DictionaryEntryId from a u128 value and the target Type.
-	/// Returns an error if the value doesn't fit in the specified type.
 	pub fn from_u128(value: u128, id_type: Type) -> Result<Self> {
 		match id_type {
 			Type::Uint1 => {
@@ -82,7 +78,6 @@ impl DictionaryEntryId {
 		}
 	}
 
-	/// Convert this ID to a u128 value for internal storage/computation.
 	pub fn to_u128(&self) -> u128 {
 		match self {
 			Self::U1(v) => *v as u128,
@@ -93,7 +88,6 @@ impl DictionaryEntryId {
 		}
 	}
 
-	/// Get the Type this ID represents.
 	pub fn id_type(&self) -> Type {
 		match self {
 			Self::U1(_) => Type::Uint1,
@@ -104,13 +98,10 @@ impl DictionaryEntryId {
 		}
 	}
 
-	/// Convert this DictionaryEntryId to a Value.
 	pub fn to_value(self) -> Value {
 		Value::DictionaryId(self)
 	}
 
-	/// Create a DictionaryEntryId from a Value.
-	/// Returns None if the Value is not a DictionaryId or unsigned integer type.
 	pub fn from_value(value: &Value) -> Option<Self> {
 		match value {
 			Value::DictionaryId(id) => Some(*id),
@@ -185,7 +176,6 @@ impl From<DictionaryId> for u64 {
 }
 
 impl DictionaryId {
-	/// Get the inner u64 value.
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		self.0

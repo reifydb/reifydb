@@ -11,7 +11,6 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-/// Helper to create common columns for all binding virtual tables.
 pub(crate) fn common_columns() -> Vec<Column> {
 	vec![
 		Column {

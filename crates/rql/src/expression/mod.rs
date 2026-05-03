@@ -139,7 +139,6 @@ pub struct AccessShapeExpression {
 
 impl AccessShapeExpression {
 	pub fn full_fragment_owned(&self) -> Fragment {
-		// For backward compatibility, merge shape and column fragments
 		match &self.column.shape {
 			ColumnShape::Qualified {
 				name,
@@ -158,15 +157,15 @@ pub enum ConstantExpression {
 	Bool {
 		fragment: Fragment,
 	},
-	// any number
+
 	Number {
 		fragment: Fragment,
 	},
-	// any textual representation can be String, Text, ...
+
 	Text {
 		fragment: Fragment,
 	},
-	// any temporal representation can be Date, Time, DateTime, ...
+
 	Temporal {
 		fragment: Fragment,
 	},
@@ -509,7 +508,6 @@ pub struct ColumnExpression(pub ColumnIdentifier);
 
 impl ColumnExpression {
 	pub fn full_fragment_owned(&self) -> Fragment {
-		// Return just the column name for unqualified column references
 		self.0.name.clone()
 	}
 
@@ -807,7 +805,6 @@ pub struct VariableExpression {
 
 impl VariableExpression {
 	pub fn name(&self) -> &str {
-		// Extract variable name from token value (skip the '$')
 		let text = self.fragment.text();
 		text.strip_prefix('$').unwrap_or(text)
 	}
@@ -962,8 +959,6 @@ impl ExpressionCompiler {
 				})),
 			},
 			Ast::Identifier(identifier) => {
-				// Create an unqualified column identifier
-
 				let column = ColumnIdentifier {
 					shape: ColumnShape::Qualified {
 						namespace: Fragment::Internal {
@@ -978,7 +973,6 @@ impl ExpressionCompiler {
 				Ok(Expression::Column(ColumnExpression(column)))
 			}
 			Ast::CallFunction(call) => {
-				// Build the full function name from namespace + function
 				let full_name = if call.function.namespaces.is_empty() {
 					call.function.name.text().to_string()
 				} else {
@@ -992,7 +986,6 @@ impl ExpressionCompiler {
 					format!("{}::{}", namespace_path, call.function.name.text())
 				};
 
-				// Compile arguments
 				let mut arg_expressions = Vec::new();
 				for arg_ast in call.arguments.nodes {
 					let compiled = Self::compile(arg_ast)?;
@@ -1125,13 +1118,10 @@ impl ExpressionCompiler {
 				Ok(Expression::Column(ColumnExpression(column)))
 			}
 			Ast::If(if_ast) => {
-				// Compile condition
 				let condition = Box::new(Self::compile(BumpBox::into_inner(if_ast.condition))?);
 
-				// Compile then expression (take first expression from first statement in block)
 				let then_expr = Box::new(Self::compile_block_as_expr(if_ast.then_block)?);
 
-				// Compile else_if chains
 				let mut else_ifs = Vec::new();
 				for else_if in if_ast.else_ifs {
 					let else_if_condition =
@@ -1144,7 +1134,6 @@ impl ExpressionCompiler {
 					});
 				}
 
-				// Compile optional else expression
 				let else_expr = if let Some(else_block) = if_ast.else_block {
 					Some(Box::new(Self::compile_block_as_expr(else_block)?))
 				} else {
@@ -1160,7 +1149,6 @@ impl ExpressionCompiler {
 				}))
 			}
 			Ast::Map(map) => {
-				// Compile expressions in the map
 				let mut expressions = Vec::with_capacity(map.nodes.len());
 				for node in map.nodes {
 					expressions.push(Self::compile(node)?);
@@ -1172,7 +1160,6 @@ impl ExpressionCompiler {
 				}))
 			}
 			Ast::Extend(extend) => {
-				// Compile expressions in the extend
 				let mut expressions = Vec::with_capacity(extend.nodes.len());
 				for node in extend.nodes {
 					expressions.push(Self::compile(node)?);
@@ -1184,7 +1171,6 @@ impl ExpressionCompiler {
 				}))
 			}
 			Ast::List(list) => {
-				// Compile list expressions (used for IN [...] syntax)
 				let mut expressions = Vec::with_capacity(list.nodes.len());
 				for ast in list.nodes {
 					expressions.push(Self::compile(ast)?);
@@ -1234,9 +1220,6 @@ impl ExpressionCompiler {
 		}
 	}
 
-	/// Compile an AstBlock as a single expression.
-	/// Takes the first expression from the first statement in the block.
-	/// Used for IF/ELSE blocks in expression context.
 	fn compile_block_as_expr(block: AstBlock<'_>) -> Result<Expression> {
 		let fragment = block.token.fragment.to_owned();
 		if let Some(first_stmt) = block.statements.into_iter().next()
@@ -1244,29 +1227,25 @@ impl ExpressionCompiler {
 		{
 			return Self::compile(first_node);
 		}
-		// Empty block → none
+
 		Ok(Expression::Constant(ConstantExpression::None {
 			fragment,
 		}))
 	}
 
-	/// Compile a MATCH expression by lowering it to an IfExpression.
 	fn compile_match(match_ast: ast::ast::AstMatch<'_>) -> Result<Expression> {
 		let fragment = match_ast.token.fragment.to_owned();
 
-		// Compile subject expression (if present)
 		let subject = match match_ast.subject {
 			Some(s) => Some(Self::compile(BumpBox::into_inner(s))?),
 			None => None,
 		};
 
-		// Extract the subject column name for field rewriting (if subject is a simple column)
 		let subject_col_name = subject.as_ref().and_then(|s| match s {
 			Expression::Column(ColumnExpression(col)) => Some(col.name.text().to_string()),
 			_ => None,
 		});
 
-		// Build list of (condition, result) pairs + optional else
 		let mut branches: Vec<(Expression, Expression)> = Vec::new();
 		let mut else_result: Option<Expression> = None;
 
@@ -1285,14 +1264,12 @@ impl ExpressionCompiler {
 					let subject_expr = subject.clone().expect("Value arm requires a MATCH subject");
 					let pattern_expr = Self::compile(BumpBox::into_inner(pattern))?;
 
-					// condition = subject == pattern
 					let mut condition = Expression::Equal(EqExpression {
 						left: Box::new(subject_expr),
 						right: Box::new(pattern_expr),
 						fragment: fragment.clone(),
 					});
 
-					// If guard, condition = condition AND guard
 					if let Some(guard) = guard {
 						let guard_expr = Self::compile(BumpBox::into_inner(guard))?;
 						condition = Expression::And(AndExpression {
@@ -1315,7 +1292,6 @@ impl ExpressionCompiler {
 				} => {
 					let subject_expr = subject.clone().expect("IS arm requires a MATCH subject");
 
-					// Build field bindings for rewriting
 					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
 						(Some(destr), Some(col_name)) => {
 							let variant_lower = variant_name.text().to_lowercase();
@@ -1336,7 +1312,6 @@ impl ExpressionCompiler {
 						_ => vec![],
 					};
 
-					// condition = subject IS [ns.]Type::Variant
 					let mut condition = Expression::IsVariant(IsVariantExpression {
 						expression: Box::new(subject_expr),
 						namespace: namespace.map(|n| n.to_owned()),
@@ -1346,7 +1321,6 @@ impl ExpressionCompiler {
 						fragment: fragment.clone(),
 					});
 
-					// If guard, rewrite field refs in guard, then AND
 					if let Some(guard) = guard {
 						let mut guard_expr = Self::compile(BumpBox::into_inner(guard))?;
 						Self::rewrite_field_refs(&mut guard_expr, &bindings);
@@ -1370,7 +1344,6 @@ impl ExpressionCompiler {
 					let subject_expr =
 						subject.clone().expect("Variant arm requires a MATCH subject");
 
-					// Build field bindings for rewriting
 					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
 						(Some(destr), Some(col_name)) => {
 							let variant_lower = variant_name.text().to_lowercase();
@@ -1391,7 +1364,6 @@ impl ExpressionCompiler {
 						_ => vec![],
 					};
 
-					// condition = subject IS Variant (placeholder sumtype_name = variant_name)
 					let mut condition = Expression::IsVariant(IsVariantExpression {
 						expression: Box::new(subject_expr),
 						namespace: None,
@@ -1401,7 +1373,6 @@ impl ExpressionCompiler {
 						fragment: fragment.clone(),
 					});
 
-					// If guard, rewrite field refs in guard, then AND
 					if let Some(guard) = guard {
 						let mut guard_expr = Self::compile(BumpBox::into_inner(guard))?;
 						Self::rewrite_field_refs(&mut guard_expr, &bindings);
@@ -1438,9 +1409,7 @@ impl ExpressionCompiler {
 			}
 		}
 
-		// Assemble into IfExpression
 		if branches.is_empty() {
-			// Degenerate: only ELSE or empty match
 			return Ok(else_result.unwrap_or(Expression::Constant(ConstantExpression::None {
 				fragment,
 			})));
@@ -1466,9 +1435,6 @@ impl ExpressionCompiler {
 		}))
 	}
 
-	/// Rewrite field references in a compiled expression tree.
-	/// Replaces Column expressions whose name matches a bound field name
-	/// with the corresponding physical column name.
 	pub(crate) fn rewrite_field_refs(expr: &mut Expression, bindings: &[(String, String)]) {
 		if bindings.is_empty() {
 			return;
@@ -1587,7 +1553,7 @@ impl ExpressionCompiler {
 				Self::rewrite_field_refs(&mut e.value, bindings);
 				Self::rewrite_field_refs(&mut e.list, bindings);
 			}
-			// Leaf nodes that don't contain column references
+
 			Expression::Constant(_)
 			| Expression::AccessSource(_)
 			| Expression::Type(_)

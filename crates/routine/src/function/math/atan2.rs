@@ -116,7 +116,6 @@ impl<'a> Routine<FunctionContext<'a>> for Atan2 {
 
 		let result_data = ColumnBuffer::float8_with_bitvec(result, res_bitvec);
 
-		// Combine bitvecs if either column has options
 		let combined_bitvec = match (y_bitvec, x_bitvec) {
 			(Some(y_bv), Some(x_bv)) => Some(y_bv.and(x_bv)),
 			(Some(y_bv), None) => Some(y_bv.clone()),

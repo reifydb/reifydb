@@ -29,15 +29,11 @@ use serde_json::{Error, Value, from_str, from_value};
 
 use crate::json::types::ResponseFrame;
 
-/// Parse a JSON string in the `[ResponseFrame, ...]` shape and rebuild typed `Frame`s.
 pub fn frames_from_json(json: &str) -> Result<Vec<Frame>, Error> {
 	let response_frames: Vec<ResponseFrame> = from_str(json)?;
 	Ok(response_frames.into_iter().map(response_frame_to_frame).collect())
 }
 
-/// Convert a top-level envelope body containing `{ "frames": [...] }` to `Vec<Frame>`.
-///
-/// Used by JSON transport clients that embed frames inside a response envelope.
 pub fn convert_envelope_response(body: Value) -> Vec<Frame> {
 	let frames_value = match body {
 		Value::Object(ref map) => map.get("frames"),
@@ -74,7 +70,6 @@ fn response_frame_to_frame(frame: ResponseFrame) -> Frame {
 	}
 }
 
-/// Parse a column's payload strings back into typed `FrameColumnData`.
 pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 	match target {
 		Type::Option(inner_type) => {

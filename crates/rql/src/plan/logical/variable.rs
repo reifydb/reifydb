@@ -30,11 +30,10 @@ impl<'bump> Compiler<'bump> {
 		let value = match ast.value {
 			AstLetValue::Expression(expr) => {
 				let inner = BumpBox::into_inner(expr);
-				// Detect LET $x = [] → empty Frame
+
 				if matches!(&inner, Ast::List(list) if list.is_empty()) {
 					LetValue::EmptyFrame
 				} else if matches!(&inner, Ast::Closure(_)) {
-					// Closures require statement-level compilation (not expression-level)
 					let Ast::Closure(closure_node) = inner else {
 						unreachable!()
 					};
@@ -58,7 +57,6 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	/// Produce a MAP { value: none } plan node.
 	fn none_as_map(&self) -> Result<LogicalPlan<'bump>> {
 		let none_literal = Ast::Literal(AstLiteral::None(AstLiteralNone(Token {
 			kind: TokenKind::Literal(Literal::None),
@@ -68,13 +66,10 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	pub(crate) fn compile_if(&self, ast: AstIf<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
-		// Compile the condition expression
 		let condition = ExpressionCompiler::compile(BumpBox::into_inner(ast.condition))?;
 
-		// Compile the then branch from block
 		let then_branch = BumpBox::new_in(self.compile_block_single(ast.then_block, tx)?, self.bump);
 
-		// Compile else if branches
 		let mut else_ifs = Vec::new();
 		for else_if in ast.else_ifs {
 			let condition = ExpressionCompiler::compile(BumpBox::into_inner(else_if.condition))?;
@@ -87,7 +82,6 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		// Compile optional else branch
 		let else_branch = if let Some(else_block) = ast.else_block {
 			Some(BumpBox::new_in(self.compile_block_single(else_block, tx)?, self.bump))
 		} else {
@@ -109,19 +103,16 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<LogicalPlan<'bump>> {
 		let fragment = ast.token.fragment.to_owned();
 
-		// Compile subject expression (if present)
 		let subject = match ast.subject {
 			Some(s) => Some(ExpressionCompiler::compile(BumpBox::into_inner(s))?),
 			None => None,
 		};
 
-		// Extract the subject column name for field rewriting (if subject is a simple column)
 		let subject_col_name = subject.as_ref().and_then(|s| match s {
 			Expression::Column(ColumnExpression(col)) => Some(col.name.text().to_string()),
 			_ => None,
 		});
 
-		// Build list of (condition, LogicalPlan) pairs + optional else
 		let mut branches: Vec<(Expression, LogicalPlan<'bump>)> = Vec::new();
 		let mut else_plan: Option<LogicalPlan<'bump>> = None;
 
@@ -169,7 +160,6 @@ impl<'bump> Compiler<'bump> {
 				} => {
 					let subject_expr = subject.clone().expect("IS arm requires a MATCH subject");
 
-					// Build field bindings for rewriting
 					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
 						(Some(destr), Some(col_name)) => {
 							let variant_lower = variant_name.text().to_lowercase();
@@ -210,7 +200,6 @@ impl<'bump> Compiler<'bump> {
 						});
 					}
 
-					// Compile result, rewrite field refs, then wrap in MapNode
 					let mut result_expr = ExpressionCompiler::compile(BumpBox::into_inner(result))?;
 					ExpressionCompiler::rewrite_field_refs(&mut result_expr, &bindings);
 
@@ -235,7 +224,6 @@ impl<'bump> Compiler<'bump> {
 					let subject_expr =
 						subject.clone().expect("Variant arm requires a MATCH subject");
 
-					// Build field bindings for rewriting
 					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
 						(Some(destr), Some(col_name)) => {
 							let variant_lower = variant_name.text().to_lowercase();
@@ -276,7 +264,6 @@ impl<'bump> Compiler<'bump> {
 						});
 					}
 
-					// Compile result, rewrite field refs, then wrap in MapNode
 					let mut result_expr = ExpressionCompiler::compile(BumpBox::into_inner(result))?;
 					ExpressionCompiler::rewrite_field_refs(&mut result_expr, &bindings);
 
@@ -315,7 +302,6 @@ impl<'bump> Compiler<'bump> {
 			}
 		}
 
-		// Assemble into ConditionalNode
 		if branches.is_empty() {
 			return match else_plan {
 				Some(plan) => Ok(plan),
@@ -346,19 +332,16 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	/// Compile a block as a single logical plan node.
-	/// Takes the first expression from the first statement.
 	fn compile_block_single(&self, block: AstBlock<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		if let Some(first_stmt) = block.statements.into_iter().next()
 			&& let Some(first_node) = first_stmt.nodes.into_iter().next()
 		{
 			return self.compile_single(first_node, tx);
 		}
-		// Empty block → none wrapped in MAP
+
 		self.none_as_map()
 	}
 
-	/// Compile all statements in a block into a Vec<BumpVec<LogicalPlan>>
 	pub(crate) fn compile_block(
 		&self,
 		block: AstBlock<'bump>,
@@ -403,7 +386,7 @@ impl<'bump> Compiler<'bump> {
 			nodes: vec![iterable_ast],
 			has_pipes: false,
 			is_output: false,
-			rql: "", // Internal statement
+			rql: "",
 		};
 		let iterable = self.compile(iterable_stmt, tx)?;
 		let body = self.compile_block(ast.body, tx)?;
@@ -414,16 +397,13 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	/// Compile a function definition
 	pub(crate) fn compile_def_function(
 		&self,
 		ast: AstDefFunction<'bump>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
-		// Convert function name
 		let name = ast.name.token.fragment;
 
-		// Convert parameters
 		let mut parameters = Vec::new();
 		for param in ast.parameters {
 			let param_name = param.variable.token.fragment;
@@ -438,14 +418,12 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		// Convert optional return type
 		let return_type = if let Some(ref ty) = ast.return_type {
 			Some(convert_data_type_with_constraints(ty)?)
 		} else {
 			None
 		};
 
-		// Compile the body
 		let body = self.compile_block(ast.body, tx)?;
 
 		Ok(LogicalPlan::DefineFunction(DefineFunctionNode {
@@ -456,7 +434,6 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	/// Compile a return statement
 	pub(crate) fn compile_return(&self, ast: AstReturn<'bump>) -> Result<LogicalPlan<'bump>> {
 		let value = if let Some(expr) = ast.value {
 			Some(ExpressionCompiler::compile(BumpBox::into_inner(expr))?)
@@ -469,7 +446,6 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	/// Compile a function call (potentially user-defined)
 	pub(crate) fn compile_call_function(&self, ast: AstCallFunction<'bump>) -> Result<LogicalPlan<'bump>> {
 		let name = if ast.function.namespaces.is_empty() {
 			ast.function.name
@@ -499,7 +475,6 @@ impl<'bump> Compiler<'bump> {
 			}
 		};
 
-		// Compile arguments as expressions
 		let mut arguments = Vec::new();
 		for arg in ast.arguments.nodes {
 			arguments.push(ExpressionCompiler::compile(arg)?);
@@ -512,11 +487,7 @@ impl<'bump> Compiler<'bump> {
 		}))
 	}
 
-	/// Compile a CALL statement (e.g., `CALL procedure_name(args)` or `CALL ns::proc(args)`)
-	/// This compiles to the same CallFunction logical plan node, so the VM
-	/// will resolve it against DEF functions, catalog procedures, or built-in functions.
 	pub(crate) fn compile_call(&self, ast: AstCall<'bump>) -> Result<LogicalPlan<'bump>> {
-		// Build qualified name: join namespaces with '::' for catalog lookup
 		let name = if ast.function.namespaces.is_empty() {
 			ast.function.name
 		} else {
@@ -545,7 +516,6 @@ impl<'bump> Compiler<'bump> {
 			}
 		};
 
-		// Compile arguments as expressions
 		let mut arguments = Vec::new();
 		for arg in ast.arguments.nodes {
 			arguments.push(ExpressionCompiler::compile(arg)?);

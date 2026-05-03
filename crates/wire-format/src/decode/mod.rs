@@ -33,11 +33,9 @@ use crate::{
 	},
 };
 
-/// Decode RBCF binary data into frames.
 pub fn decode_frames(data: &[u8]) -> Result<Vec<Frame>, DecodeError> {
 	let mut pos = 0;
 
-	// Read message header
 	check_len(data, pos, MESSAGE_HEADER_SIZE)?;
 	let magic = read_u32(data, pos);
 	pos += 4;
@@ -202,7 +200,6 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 	let encoding = Encoding::from_u8(encoding_byte).ok_or(DecodeError::UnknownEncoding(encoding_byte))?;
 	let has_nones = flags & COL_FLAG_HAS_NONES != 0;
 
-	// Read column name
 	check_len(data, pos, name_len)?;
 	let name = str::from_utf8(&data[pos..pos + name_len])
 		.map_err(|e| DecodeError::InvalidData(format!("invalid column name: {}", e)))?
@@ -211,11 +208,9 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 	let name_pad = (4 - (name_len % 4)) % 4;
 	pos += name_pad;
 
-	// Wrap all remaining reads and dispatch in a closure to add column context on error
 	let result = (|| -> Result<(FrameColumnData, usize), DecodeError> {
 		let mut pos = pos;
 
-		// Read nones bitmap
 		let nones = if has_nones && nones_len > 0 {
 			check_len(data, pos, nones_len)?;
 			let bv = decode_bitvec(&data[pos..pos + nones_len], row_count);
@@ -226,22 +221,18 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 			None
 		};
 
-		// Read data segment
 		check_len(data, pos, data_len)?;
 		let data_bytes = &data[pos..pos + data_len];
 		pos += data_len;
 
-		// Read offsets segment
 		check_len(data, pos, offsets_len)?;
 		let offsets_bytes = &data[pos..pos + offsets_len];
 		pos += offsets_len;
 
-		// Read extra segment (for dict encoding)
 		check_len(data, pos, extra_len)?;
 		let extra_bytes = &data[pos..pos + extra_len];
 		pos += extra_len;
 
-		// Decode column data based on type code and encoding
 		let col_data = decode_column_dispatch(
 			type_code,
 			encoding,
@@ -252,7 +243,6 @@ fn decode_column(data: &[u8], start: usize) -> Result<(FrameColumn, usize), Deco
 			extra_bytes,
 		)?;
 
-		// Wrap in Option if has nones
 		let col_data = if let Some(bitvec) = nones {
 			FrameColumnData::Option {
 				inner: Box::new(col_data),
@@ -289,22 +279,19 @@ fn decode_column_dispatch(
 	offsets: &[u8],
 	extra: &[u8],
 ) -> Result<FrameColumnData, DecodeError> {
-	// Strip the option bit - the option-ness is represented separately via the nones bitmap
-	// and handled in the caller; the encoding strategies only know about the inner concrete type.
 	let type_code = type_code & 0x7F;
 	let ty = Type::from_u8(type_code);
 
 	match encoding {
 		Encoding::Plain | Encoding::BitPack => {
-			// Try Any first (special handling)
 			if ty == Type::Any {
 				return any::decode_any_column(row_count, data);
 			}
-			// Try fixed-width types
+
 			if let Some(result) = fixed::decode_fixed_plain(type_code, row_count, data) {
 				return result;
 			}
-			// Try variable-length types
+
 			if let Some(result) = varlen::decode_varlen_plain(type_code, row_count, data, offsets) {
 				return result;
 			}
@@ -382,15 +369,12 @@ fn decode_column_dispatch(
 			}
 			_ => Err(DecodeError::InvalidData(format!("Dict encoding not supported for type {:?}", ty))),
 		},
-		Encoding::Rle => {
-			// Try fixed-width RLE first, then variable-length RLE
-			match ty {
-				Type::Int | Type::Uint | Type::Decimal => {
-					varlen::decode_rle_varlen_column(type_code, row_count, data)
-				}
-				_ => fixed::decode_rle_column(type_code, row_count, data),
+		Encoding::Rle => match ty {
+			Type::Int | Type::Uint | Type::Decimal => {
+				varlen::decode_rle_varlen_column(type_code, row_count, data)
 			}
-		}
+			_ => fixed::decode_rle_column(type_code, row_count, data),
+		},
 		Encoding::Delta => fixed::decode_delta_column(type_code, row_count, data),
 		Encoding::DeltaRle => fixed::decode_delta_rle_column(type_code, row_count, data),
 	}

@@ -18,7 +18,6 @@ use crate::{
 	store::migration::create::MigrationToCreate as StoreMigrationToCreate,
 };
 
-/// Migration creation specification for the Catalog API.
 #[derive(Debug, Clone)]
 pub struct MigrationToCreate {
 	pub name: String,
@@ -27,14 +26,6 @@ pub struct MigrationToCreate {
 }
 
 impl Catalog {
-	/// Register a migration in the catalog.
-	///
-	/// Behavior when a migration with the same `name` already exists (either
-	/// pending in this transaction or persisted in the catalog):
-	/// - If the content hash matches, return the existing migration unchanged (idempotent: no row is written, no
-	///   event is emitted).
-	/// - If the content hash differs, return [`CatalogError::MigrationHashMismatch`]. Applied migrations are
-	///   immutable; modifying their body or rollback after registration risks silently diverging environments.
 	#[instrument(name = "catalog::migration::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_migration(&self, txn: &mut AdminTransaction, to_create: MigrationToCreate) -> Result<Migration> {
 		let new_hash = migration_hash(&to_create.body, to_create.rollback_body.as_deref());

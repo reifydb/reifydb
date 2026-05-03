@@ -31,9 +31,6 @@ use reifydb_type::{
 	value::{container::number::NumberContainer, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
 
-/// No-op stand-in for the parent operator slot of `DistinctOperator`. The
-/// bench only drives Insert paths, which never read from the parent;
-/// `pull` is never invoked.
 struct NoOpParent;
 
 impl Operator for NoOpParent {
@@ -69,7 +66,6 @@ fn make_flow_txn(engine: &TestEngine) -> (FlowTransaction, AdminTransaction) {
 	(txn, admin)
 }
 
-/// Build a Change with `n_rows` Int8 values cycling through `distinct_keys`.
 fn build_distinct_input(distinct_keys: usize, n_rows: usize, batch_idx: usize) -> Change {
 	let int_data: Vec<i64> = (0..n_rows).map(|r| ((batch_idx * n_rows + r) % distinct_keys) as i64).collect();
 	let int_col = ColumnBuffer::Int8(NumberContainer::from_parts(CowVec::new(int_data)));
@@ -85,8 +81,6 @@ fn build_distinct_input(distinct_keys: usize, n_rows: usize, batch_idx: usize) -
 }
 
 fn bench_distinct_warm_cache(distinct_keys: usize, batches: usize, rows_per_batch: usize) {
-	// Cached run: load state once at the start of the txn, hit the cache
-	// on every subsequent apply, flush once at the end (production pattern).
 	let cached_bytes_per_batch;
 	let cached_allocs_per_batch;
 	let cached_elapsed;
@@ -110,8 +104,6 @@ fn bench_distinct_warm_cache(distinct_keys: usize, batches: usize, rows_per_batc
 		cached_bytes_per_batch = counts.bytes_allocated as f64 / batches as f64;
 	}
 
-	// Anti-cache run: flush after every apply. Forces the state to be
-	// re-encoded and re-decoded on every batch (the pre-Change-1 baseline).
 	let nocache_bytes_per_batch;
 	let nocache_allocs_per_batch;
 	let nocache_elapsed;

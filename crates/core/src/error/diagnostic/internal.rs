@@ -5,8 +5,6 @@ use std::env;
 
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
-/// Creates a detailed internal error diagnostic with source location and
-/// context
 pub fn internal_with_context(
 	reason: impl Into<String>,
 	file: &str,
@@ -17,7 +15,6 @@ pub fn internal_with_context(
 ) -> Diagnostic {
 	let reason = reason.into();
 
-	// Generate a unique error ID based on location
 	let error_id = format!("ERR-{}:{}", file.rsplit('/').next().unwrap_or(file).replace(".rs", ""), line);
 
 	let detailed_message = format!("Internal error [{}]: {}", error_id, reason);
@@ -65,13 +62,10 @@ pub fn internal_with_context(
 	}
 }
 
-/// Simplified internal error without detailed context
 pub fn internal(reason: impl Into<String>) -> Diagnostic {
 	internal_with_context(reason, "unknown", 0, 0, "unknown", "unknown")
 }
 
-/// Creates a diagnostic for shutdown-related errors
-/// Used when operations fail because a subsystem is shutting down
 pub fn shutdown(component: impl Into<String>) -> Diagnostic {
 	let component = component.into();
 
@@ -96,7 +90,6 @@ pub fn shutdown(component: impl Into<String>) -> Diagnostic {
 	}
 }
 
-/// Macro to create an internal error with automatic source location capture
 #[macro_export]
 macro_rules! internal {
     ($reason:expr) => {
@@ -135,8 +128,6 @@ macro_rules! internal {
     };
 }
 
-/// Macro to create an internal error result with automatic source location
-/// capture
 #[macro_export]
 macro_rules! internal_error {
     ($reason:expr) => {
@@ -147,8 +138,6 @@ macro_rules! internal_error {
     };
 }
 
-/// Macro to create an internal error result with automatic source location
-/// capture
 #[macro_export]
 macro_rules! internal_err {
     ($reason:expr) => {
@@ -159,8 +148,6 @@ macro_rules! internal_err {
     };
 }
 
-/// Macro to return an internal error with automatic source location capture
-/// This combines return_error! and internal_error! for convenience
 #[macro_export]
 macro_rules! return_internal_error {
     ($reason:expr) => {

@@ -6,7 +6,6 @@ use reifydb_core::{common::CommitVersion, interface::catalog::shape::ShapeId, ro
 use crate::materialized::{MaterializedCatalog, MultiVersionRowTtl};
 
 impl MaterializedCatalog {
-	/// Find a TTL config for a shape at a specific version
 	pub fn find_row_ttl_at(&self, shape: ShapeId, version: CommitVersion) -> Option<Ttl> {
 		self.row_ttls.get(&shape).and_then(|entry| {
 			let multi = entry.value();
@@ -14,7 +13,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a TTL config for a shape (returns latest version)
 	pub fn find_row_ttl(&self, shape: ShapeId) -> Option<Ttl> {
 		self.row_ttls.get(&shape).and_then(|entry| {
 			let multi = entry.value();
@@ -22,7 +20,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Set a TTL config for a shape at a specific version
 	pub fn set_row_ttl(&self, shape: ShapeId, version: CommitVersion, config: Option<Ttl>) {
 		let multi = self.row_ttls.get_or_insert_with(shape, MultiVersionRowTtl::new);
 

@@ -18,7 +18,6 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for storing retention strategy for a data shape (table, view, ringbuffer)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShapeRetentionStrategyKey {
 	pub shape: ShapeId,
@@ -40,7 +39,6 @@ impl EncodableKey for ShapeRetentionStrategyKey {
 		let mut serializer = KeySerializer::with_capacity(11);
 		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
 
-		// Encode object_id with discriminator
 		match &self.shape {
 			ShapeId::Table(id) => {
 				serializer.extend_u8(0x01).extend_u64(id.0);
@@ -97,7 +95,6 @@ impl EncodableKey for ShapeRetentionStrategyKey {
 	}
 }
 
-/// Key for storing retention strategy for a flow operator
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorRetentionStrategyKey {
 	pub operator: FlowNodeId,
@@ -140,7 +137,6 @@ impl EncodableKey for OperatorRetentionStrategyKey {
 	}
 }
 
-/// Range for scanning all shape retention policies
 pub struct ShapeRetentionStrategyKeyRange;
 
 impl ShapeRetentionStrategyKeyRange {
@@ -161,7 +157,6 @@ impl ShapeRetentionStrategyKeyRange {
 	}
 }
 
-/// Range for scanning all operator retention policies
 pub struct OperatorRetentionStrategyKeyRange;
 
 impl OperatorRetentionStrategyKeyRange {

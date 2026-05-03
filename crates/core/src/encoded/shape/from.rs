@@ -18,9 +18,6 @@ impl From<&[Column]> for RowShape {
 		let fields = value
 			.iter()
 			.map(|col| {
-				// For dictionary columns, the constraint carries Dictionary info with id_type.
-				// Convert to TypeConstraint::dictionary() so the shape uses DictionaryId as base_type,
-				// matching the shape used to encode the data.
 				let constraint = match col.constraint.constraint() {
 					Some(Constraint::Dictionary(dict_id, id_type)) => {
 						TypeConstraint::dictionary(*dict_id, id_type.clone())

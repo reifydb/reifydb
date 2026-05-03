@@ -12,7 +12,6 @@ use tokio::{
 	sync::{mpsc, watch},
 };
 
-/// Error returned when connecting to a remote subscription fails.
 #[derive(Debug)]
 pub enum RemoteSubscriptionError {
 	Connect(String),
@@ -28,20 +27,17 @@ impl fmt::Display for RemoteSubscriptionError {
 	}
 }
 
-/// An active remote subscription, wrapping the underlying gRPC connection.
 pub struct RemoteSubscription {
 	inner: GrpcSubscription,
 	subscription_id: String,
 }
 
 impl RemoteSubscription {
-	/// The subscription ID assigned by the remote node.
 	pub fn subscription_id(&self) -> &str {
 		&self.subscription_id
 	}
 }
 
-/// Connect to a remote node and create a subscription.
 pub async fn connect_remote(
 	address: &str,
 	rql: &str,
@@ -62,13 +58,6 @@ pub async fn connect_remote(
 	})
 }
 
-/// Proxy raw payloads from a remote subscription to a local channel.
-///
-/// Receives raw payloads from the remote subscription and converts them using the
-/// provided closure before sending through the local channel. Exits when:
-/// - The remote stream ends
-/// - The local channel closes (receiver dropped)
-/// - A shutdown signal is received
 pub async fn proxy_remote<T, F>(
 	mut remote_sub: RemoteSubscription,
 	sender: mpsc::UnboundedSender<T>,
@@ -96,14 +85,6 @@ pub async fn proxy_remote<T, F>(
 	}
 }
 
-/// Proxy raw payloads from a remote subscription into a caller-supplied sink closure.
-///
-/// Each received `RawChangePayload` is passed to `sink`. The sink returns `true` to
-/// continue, `false` to stop the proxy (e.g. downstream batch was torn down).
-/// Exits when:
-/// - The remote stream ends
-/// - `sink` returns `false`
-/// - A shutdown signal is received
 pub async fn proxy_remote_to_sink<F>(
 	mut remote_sub: RemoteSubscription,
 	mut shutdown: watch::Receiver<bool>,

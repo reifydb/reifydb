@@ -21,17 +21,12 @@ use tracing::{Span, field, instrument};
 use super::entry::{CurrentMap, Entries, Entry, HistoricalMap, entry_id_to_key};
 use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
-/// Memory-based primitive storage implementation.
-///
-/// Uses DashMap for per-table sharding with RwLock<BTreeMap> for concurrent access.
-/// Split current/historical maps optimize for latest version reads.
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
 	inner: Arc<MemoryPrimitiveStorageInner>,
 }
 
 struct MemoryPrimitiveStorageInner {
-	/// Storage for each type
 	entries: Entries,
 }
 
@@ -87,7 +82,6 @@ impl MemoryPrimitiveStorage {
 			.unwrap_or(0))
 	}
 
-	/// Get or create a table entry
 	#[inline]
 	#[instrument(name = "store::multi::memory::get_or_create_table", level = "trace", skip(self), fields(table = ?table))]
 	fn get_or_create_table(&self, table: EntryKind) -> Entry {
@@ -95,7 +89,6 @@ impl MemoryPrimitiveStorage {
 		self.inner.entries.data.get_or_insert_with(table_key, Entry::new)
 	}
 
-	/// Process a single table batch: insert entries with version, promote old current to historical
 	#[inline]
 	#[instrument(name = "store::multi::memory::set::table", level = "trace", skip(self, entries), fields(
 		table = ?table,
@@ -112,24 +105,20 @@ impl MemoryPrimitiveStorage {
 		let mut historical = table_entry.historical.write();
 
 		for (key, value) in entries {
-			// Check if we need to promote old current to historical
 			if let Some((pre_version, pre_value)) = current.get(&key) {
 				if *pre_version < version {
-					// New version is newer: move pre current to historical
 					let pre_version = *pre_version;
 					let pre_value = pre_value.clone();
 					historical
 						.entry(key.clone())
 						.or_default()
 						.insert(Reverse(pre_version), pre_value);
-					// Insert new as current
+
 					current.insert(key, (version, value));
 				} else {
-					// New version is older than current: insert directly to historical
 					historical.entry(key).or_default().insert(Reverse(version), value);
 				}
 			} else {
-				// No existing entry: insert as current
 				current.insert(key, (version, value));
 			}
 		}
@@ -147,7 +136,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		let key = CowVec::new(key.to_vec());
 
-		// Check current first (fast path)
 		let current = entry.current.read();
 		if let Some((cur_version, value)) = current.get(&key)
 			&& *cur_version <= version
@@ -156,11 +144,8 @@ impl TierStorage for MemoryPrimitiveStorage {
 		}
 		drop(current);
 
-		// Fall back to historical for point-in-time queries
 		let historical = entry.historical.read();
 		if let Some(versions) = historical.get(&key) {
-			// Find largest version <= requested
-			// Since we use Reverse<CommitVersion>, iterate from requested version onwards
 			for (Reverse(v), value) in versions.range(Reverse(version)..) {
 				if *v <= version {
 					return Ok(value.clone());
@@ -181,17 +166,14 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		let key = CowVec::new(key.to_vec());
 
-		// Check current first
 		let current = entry.current.read();
 		if let Some((cur_version, value)) = current.get(&key)
 			&& *cur_version <= version
 		{
-			// Key exists if not a tombstone
 			return Ok(value.is_some());
 		}
 		drop(current);
 
-		// Fall back to historical
 		let historical = entry.historical.read();
 		if let Some(versions) = historical.get(&key) {
 			for (Reverse(v), value) in versions.range(Reverse(version)..) {
@@ -243,7 +225,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		};
 
-		// Convert bounds to CowVec
 		let start_key = match start {
 			Bound::Included(k) | Bound::Excluded(k) => Some(CowVec::new(k.to_vec())),
 			Bound::Unbounded => None,
@@ -253,16 +234,13 @@ impl TierStorage for MemoryPrimitiveStorage {
 			Bound::Unbounded => None,
 		};
 
-		// Determine effective start bound based on cursor state
 		let cursor_key = cursor.last_key.clone();
 
 		let current = entry.current.read();
 		let historical = entry.historical.read();
 
-		// Build merged view: for each logical key, find best version <= requested
 		let mut entries: Vec<RawEntry> = Vec::with_capacity(batch_size + 1);
 
-		// Determine the effective start key for iteration
 		let iter_start: Bound<&CowVec<u8>> = match &cursor_key {
 			Some(last) => Bound::Excluded(last),
 			None => match &start_key {
@@ -284,7 +262,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => Bound::Unbounded,
 		};
 
-		// Collect all logical keys from current in range
 		let current_keys: Vec<_> = current.range::<CowVec<u8>, _>((iter_start, iter_end)).collect();
 
 		for (key, (cur_version, cur_value)) in current_keys {
@@ -292,16 +269,13 @@ impl TierStorage for MemoryPrimitiveStorage {
 				break;
 			}
 
-			// Check if current version satisfies the version constraint
 			if *cur_version <= version {
-				// Current version is valid
 				entries.push(RawEntry {
 					key: key.clone(),
 					version: *cur_version,
 					value: cur_value.clone(),
 				});
 			} else {
-				// Current version is too new, check historical
 				if let Some(versions) = historical.get(key) {
 					for (Reverse(v), value) in versions.range(Reverse(version)..) {
 						if *v <= version {
@@ -314,23 +288,18 @@ impl TierStorage for MemoryPrimitiveStorage {
 						}
 					}
 				}
-				// If no valid historical version found, skip this key
 			}
 		}
 
-		// Also check historical for keys not in current (rare case)
-		// This handles keys that only exist in historical (all versions older than current)
 		for (key, versions) in historical.range::<CowVec<u8>, _>((iter_start, iter_end)) {
 			if entries.len() > batch_size {
 				break;
 			}
 
-			// Skip if already in current
 			if current.contains_key(key) {
 				continue;
 			}
 
-			// Find best version <= requested
 			for (Reverse(v), value) in versions.range(Reverse(version)..) {
 				if *v <= version {
 					entries.push(RawEntry {
@@ -343,16 +312,13 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		}
 
-		// Sort entries by key to maintain proper order (since we merged two sources)
 		entries.sort_by(|a, b| a.key.cmp(&b.key));
 
-		// Truncate to batch_size + 1 after sorting
 		let has_more = entries.len() > batch_size;
 		if has_more {
 			entries.truncate(batch_size);
 		}
 
-		// Update cursor
 		if let Some(last_entry) = entries.last() {
 			cursor.last_key = Some(last_entry.key.clone());
 		}
@@ -389,7 +355,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		};
 
-		// Convert bounds to CowVec
 		let start_key = match start {
 			Bound::Included(k) | Bound::Excluded(k) => Some(CowVec::new(k.to_vec())),
 			Bound::Unbounded => None,
@@ -399,7 +364,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			Bound::Unbounded => None,
 		};
 
-		// Determine effective end bound based on cursor state (for reverse iteration)
 		let cursor_key = cursor.last_key.clone();
 
 		let current = entry.current.read();
@@ -407,7 +371,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		let mut entries: Vec<RawEntry> = Vec::with_capacity(batch_size + 1);
 
-		// Determine the effective bounds for reverse iteration
 		let iter_start: Bound<&CowVec<u8>> = match &start_key {
 			Some(k) => match start {
 				Bound::Included(_) => Bound::Included(k),
@@ -429,7 +392,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			},
 		};
 
-		// Collect all logical keys from current in range (reverse order)
 		let current_keys: Vec<_> = current.range::<CowVec<u8>, _>((iter_start, iter_end)).rev().collect();
 
 		for (key, (cur_version, cur_value)) in current_keys {
@@ -437,7 +399,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 				break;
 			}
 
-			// Check if current version satisfies the version constraint
 			if *cur_version <= version {
 				entries.push(RawEntry {
 					key: key.clone(),
@@ -445,7 +406,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 					value: cur_value.clone(),
 				});
 			} else {
-				// Current version is too new, check historical
 				if let Some(versions) = historical.get(key) {
 					for (Reverse(v), value) in versions.range(Reverse(version)..) {
 						if *v <= version {
@@ -458,11 +418,9 @@ impl TierStorage for MemoryPrimitiveStorage {
 						}
 					}
 				}
-				// If no valid historical version found, skip this key
 			}
 		}
 
-		// Also check historical for keys not in current
 		for (key, versions) in historical.range::<CowVec<u8>, _>((iter_start, iter_end)).rev() {
 			if entries.len() > batch_size {
 				break;
@@ -484,7 +442,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		}
 
-		// Sort entries by key in descending order (reverse)
 		entries.sort_by(|a, b| b.key.cmp(&a.key));
 
 		let has_more = entries.len() > batch_size;
@@ -492,7 +449,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			entries.truncate(batch_size);
 		}
 
-		// Update cursor
 		if let Some(last_entry) = entries.last() {
 			cursor.last_key = Some(last_entry.key.clone());
 		}
@@ -604,14 +560,12 @@ impl TierStorage for MemoryPrimitiveStorage {
 		let key = CowVec::new(key.to_vec());
 		let mut versions: Vec<(CommitVersion, Option<CowVec<u8>>)> = Vec::new();
 
-		// Get from current
 		let current = entry.current.read();
 		if let Some((cur_version, value)) = current.get(&key) {
 			versions.push((*cur_version, value.clone()));
 		}
 		drop(current);
 
-		// Get from historical
 		let historical = entry.historical.read();
 		if let Some(hist_versions) = historical.get(&key) {
 			for (Reverse(v), value) in hist_versions.iter() {
@@ -619,7 +573,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		}
 
-		// Sort by version descending
 		versions.sort_by(|a, b| b.0.cmp(&a.0));
 
 		Ok(versions)

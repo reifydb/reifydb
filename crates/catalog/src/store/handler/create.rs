@@ -46,7 +46,6 @@ impl CatalogStore {
 
 		let handler_id = SystemSequence::next_handler_id(txn)?;
 
-		// Write primary row
 		let mut row = handler_shape::SHAPE.allocate();
 		handler_shape::SHAPE.set_u64(&mut row, handler_shape::ID, handler_id);
 		handler_shape::SHAPE.set_u64(&mut row, handler_shape::NAMESPACE, namespace_id);
@@ -57,14 +56,12 @@ impl CatalogStore {
 
 		txn.set(&HandlerKey::encoded(handler_id), row)?;
 
-		// Write namespace index row
 		let mut ns_row = handler_namespace::SHAPE.allocate();
 		handler_namespace::SHAPE.set_u64(&mut ns_row, handler_namespace::ID, handler_id);
 		handler_namespace::SHAPE.set_utf8(&mut ns_row, handler_namespace::NAME, to_create.name.text());
 
 		txn.set(&NamespaceHandlerKey::encoded(namespace_id, handler_id), ns_row)?;
 
-		// Write variant index row (empty value - key encodes all needed info)
 		let mut var_row = handler_namespace::SHAPE.allocate();
 		handler_namespace::SHAPE.set_u64(&mut var_row, handler_namespace::ID, handler_id);
 		handler_namespace::SHAPE.set_utf8(&mut var_row, handler_namespace::NAME, to_create.name.text());

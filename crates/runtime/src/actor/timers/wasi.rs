@@ -24,10 +24,6 @@ thread_local! {
 	static DRAINING: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Schedule a message to be sent after a delay.
-///
-/// The message is enqueued and will fire when `drain_expired_timers` runs
-/// after the delay has elapsed.
 pub fn schedule_once_fn<M: Send + 'static, F: FnOnce() -> M + Send + 'static>(
 	actor_ref: ActorRef<M>,
 	delay: Duration,
@@ -50,10 +46,6 @@ pub fn schedule_once_fn<M: Send + 'static, F: FnOnce() -> M + Send + 'static>(
 	handle
 }
 
-/// Schedule a message to be sent repeatedly at an interval.
-///
-/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
-/// Returns a handle that can be used to cancel the timer.
 pub fn schedule_repeat_fn<M: Send + 'static, F: Fn() -> M + Send + 'static>(
 	actor_ref: ActorRef<M>,
 	interval: Duration,
@@ -94,9 +86,6 @@ fn enqueue_repeat_fn<M: Send + 'static, F: Fn() -> M + Send + 'static>(
 	});
 }
 
-/// Schedule a message to be sent repeatedly at an interval.
-///
-/// Each firing re-enqueues itself for the next interval.
 pub fn schedule_repeat<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, interval: Duration, msg: M) -> TimerHandle {
 	let handle = TimerHandle::new(next_timer_id());
 	let cancelled = handle.cancelled_flag();
@@ -134,10 +123,6 @@ fn enqueue_repeat<M: Send + Clone + 'static>(
 	});
 }
 
-/// Drain all expired timers, firing their callbacks synchronously.
-///
-/// Uses a reentrancy guard so that timer callbacks (which may send actor
-/// messages, triggering further drains) do not recurse.
 pub fn drain_expired_timers() {
 	if DRAINING.with(|d| d.get()) {
 		return;
@@ -148,9 +133,9 @@ pub fn drain_expired_timers() {
 		let now = Instant::now();
 		let entry = TIMER_QUEUE.with(|q| {
 			let mut queue = q.borrow_mut();
-			// Remove cancelled entries while scanning
+
 			queue.retain(|e| !e.cancelled.load(Ordering::SeqCst));
-			// Find an expired entry
+
 			if let Some(idx) = queue.iter().position(|e| e.fire_at <= now) {
 				Some(queue.swap_remove(idx))
 			} else {

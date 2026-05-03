@@ -21,7 +21,6 @@ use crate::{
 };
 
 impl<'a> Vm<'a> {
-	/// Pop two columns, apply a columnar comparison, push the boolean result column.
 	fn exec_columnar_cmp<Op: CompareOp>(&mut self, binary_op: BinaryOp) -> Result<()> {
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
@@ -39,7 +38,6 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	/// Pop two columns, apply a columnar boolean logic op, push the boolean result column.
 	fn exec_columnar_logic(&mut self, op: LogicalOp, bool_fn: fn(bool, bool) -> bool) -> Result<()> {
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;

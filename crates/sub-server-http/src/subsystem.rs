@@ -25,61 +25,31 @@ use tracing::{error, info, warn};
 
 use crate::{routes::router, state::HttpServerState};
 
-/// HTTP server subsystem.
-///
-/// Manages an Axum-based HTTP server with support for:
-/// - Graceful startup and shutdown
-/// - Health monitoring
-///
-/// # Example
-///
-/// ```ignore
-/// let state = AppState::new(pool, engine, QueryConfig::default(), RequestInterceptorChain::empty());
-///
-/// let mut http = HttpSubsystem::new(
-///     "0.0.0.0:8090".to_string(),
-///     state,
-/// );
-///
-/// http.start()?;
-/// // Server is now accepting connections
-///
-/// http.shutdown()?;
-/// // Server has gracefully stopped
-/// ```
 pub struct HttpSubsystem {
-	/// Address to bind the server to.
 	bind_addr: Option<String>,
-	/// Address to bind the admin server to.
+
 	admin_bind_addr: Option<String>,
-	/// Actual bound address (available after start).
+
 	actual_addr: RwLock<Option<SocketAddr>>,
-	/// Actual bound address for admin server (available after start).
+
 	admin_actual_addr: RwLock<Option<SocketAddr>>,
-	/// Shared application state.
+
 	state: AppState,
-	/// Flag indicating if the server is running.
+
 	running: Arc<AtomicBool>,
-	/// Channel to send shutdown signal.
+
 	shutdown_tx: Option<oneshot::Sender<()>>,
-	/// Channel to receive shutdown completion.
+
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	/// Channel to send admin shutdown signal.
+
 	admin_shutdown_tx: Option<oneshot::Sender<()>>,
-	/// Channel to receive admin shutdown completion.
+
 	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	/// Shared tokio runtime.
+
 	runtime: SharedRuntime,
 }
 
 impl HttpSubsystem {
-	/// Create a new HTTP subsystem.
-	///
-	/// # Arguments
-	///
-	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8090")
-	/// * `state` - Shared application state with engine and config
-	/// * `runtime` - Shared runtime
 	pub fn new(
 		bind_addr: Option<String>,
 		admin_bind_addr: Option<String>,
@@ -101,27 +71,22 @@ impl HttpSubsystem {
 		}
 	}
 
-	/// Get the bind address.
 	pub fn bind_addr(&self) -> Option<&str> {
 		self.bind_addr.as_deref()
 	}
 
-	/// Get the actual bound address (available after start).
 	pub fn local_addr(&self) -> Option<SocketAddr> {
 		*self.actual_addr.read().unwrap()
 	}
 
-	/// Get the actual bound port (available after start).
 	pub fn port(&self) -> Option<u16> {
 		self.local_addr().map(|a| a.port())
 	}
 
-	/// Get the actual bound address for the admin server (available after start).
 	pub fn admin_local_addr(&self) -> Option<SocketAddr> {
 		*self.admin_actual_addr.read().unwrap()
 	}
 
-	/// Get the actual bound port for the admin server (available after start).
 	pub fn admin_port(&self) -> Option<u16> {
 		self.admin_local_addr().map(|a| a.port())
 	}
@@ -224,14 +189,13 @@ impl Subsystem for HttpSubsystem {
 	}
 
 	fn shutdown(&mut self) -> Result<()> {
-		// Shutdown admin server first
 		if let Some(tx) = self.admin_shutdown_tx.take() {
 			let _ = tx.send(());
 		}
 		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
 			let _ = self.runtime.block_on(rx);
 		}
-		// Then shutdown main server
+
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}
@@ -250,7 +214,6 @@ impl Subsystem for HttpSubsystem {
 		if self.running.load(Ordering::SeqCst) {
 			HealthStatus::Healthy
 		} else if self.shutdown_tx.is_some() {
-			// Started but not yet running (startup in progress)
 			HealthStatus::Warning {
 				description: "Starting up".to_string(),
 			}

@@ -34,9 +34,6 @@ pub fn create_transform_descriptor<T: FFITransformWithMetadata>() -> TransformDe
 	}
 }
 
-/// # Safety
-///
-/// - `config_ptr` must either be null or point to `config_len` valid bytes of postcard-encoded config.
 pub unsafe extern "C" fn create_transform_instance<T: FFITransformWithMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,

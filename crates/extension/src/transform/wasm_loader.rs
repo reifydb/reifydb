@@ -8,10 +8,6 @@ use reifydb_type::Result;
 
 use super::{registry::Transforms, wasm::WasmTransform};
 
-/// Scan a directory for `.wasm` files, read each one, and return a `Transforms`
-/// registry with factory functions that create `WasmTransform` instances.
-///
-/// The transform name is derived from the file stem (e.g. `my_transform.wasm` → `"my_transform"`).
 pub fn load_transforms_from_dir(dir: &Path) -> Result<Transforms> {
 	let entries = fs::read_dir(dir).map_err(|e| {
 		FFIError::Other(format!("Failed to read WASM transform directory {}: {}", dir.display(), e))

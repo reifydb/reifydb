@@ -102,12 +102,8 @@ impl<'a> Parser<'a> {
 	}
 
 	fn peek_str(&self, n: usize) -> &str {
-		// This function returns n bytes from current position
-		// It's only used for checking ASCII patterns like "---" and
-		// "//"
 		let end = (self.pos + n).min(self.input.len());
 
-		// Make sure we don't split a UTF-8 character
 		let mut safe_end = end;
 		while safe_end > self.pos && !self.input.is_char_boundary(safe_end) {
 			safe_end -= 1;
@@ -188,14 +184,11 @@ impl<'a> Parser<'a> {
 		let line_number = self.line;
 		let literal_start = self.pos;
 
-		// Parse commands
 		let commands = self.parse_commands()?;
 
-		// Capture literal
 		let literal_end = self.pos;
 		let literal = self.input[literal_start..literal_end].to_string();
 
-		// Handle empty block at EOF
 		if self.is_at_end() && commands.is_empty() {
 			return Ok(Some(Block {
 				literal,
@@ -204,17 +197,14 @@ impl<'a> Parser<'a> {
 			}));
 		}
 
-		// If no commands and not at EOF, this isn't a valid block
 		if commands.is_empty() {
 			return Ok(None);
 		}
 
-		// Parse separator
 		if !self.parse_separator()? {
 			return Err(self.error("Expected --- separator"));
 		}
 
-		// Parse and skip output
 		self.parse_output()?;
 
 		Ok(Some(Block {
@@ -228,35 +218,27 @@ impl<'a> Parser<'a> {
 		let mut commands = Vec::new();
 
 		loop {
-			// Skip empty and comment lines
 			if self.skip_empty_or_comment_line() {
 				continue;
 			}
 
-			// Check for EOF
 			if self.is_at_end() {
 				break;
 			}
 
-			// Check for separator
 			if self.peek_str(3) == "---" && !commands.is_empty() {
 				break;
 			}
 
-			// Check for leading whitespace (not allowed for
-			// commands)
 			if let Some(ch) = self.peek_char()
 				&& ch.is_whitespace() && ch != '\n'
 			{
 				return Err(self.error("Command cannot start with whitespace"));
 			}
 
-			// Parse command
 			match self.parse_command() {
 				Ok(cmd) => commands.push(cmd),
 				Err(e) => {
-					// If we hit a separator but have no
-					// commands, let parse_command error
 					if self.peek_str(3) == "---" && commands.is_empty() {
 						return Err(e);
 					}
@@ -271,7 +253,6 @@ impl<'a> Parser<'a> {
 	fn parse_command(&mut self) -> Result<Command, ParseError> {
 		let line_number = self.line;
 
-		// Check for silencing (
 		let silent = if self.peek_char() == Some('(') {
 			self.advance();
 			self.skip_whitespace();
@@ -280,11 +261,9 @@ impl<'a> Parser<'a> {
 			false
 		};
 
-		// Parse prefix and tags
 		let mut tags = HashSet::new();
 		let mut prefix = None;
 
-		// Try to parse prefix (string followed by :)
 		let saved_pos = self.pos;
 		self.skip_whitespace();
 		if let Ok(s) = self.parse_string() {
@@ -294,19 +273,16 @@ impl<'a> Parser<'a> {
 				self.skip_whitespace();
 				prefix = Some(s);
 			} else {
-				// Backtrack
 				self.pos = saved_pos;
 			}
 		}
 
-		// Parse tags before command
 		self.skip_whitespace();
 		if let Some(parsed_tags) = self.parse_taglist()? {
 			tags.extend(parsed_tags);
 		}
 		self.skip_whitespace();
 
-		// Check for fail marker
 		let fail = if self.peek_char() == Some('!') {
 			self.advance();
 			self.skip_whitespace();
@@ -315,11 +291,10 @@ impl<'a> Parser<'a> {
 			false
 		};
 
-		// Check for literal command (>)
 		if self.peek_char() == Some('>') {
 			self.advance();
 			self.skip_whitespace();
-			// Also support >! (fail marker after literal marker)
+
 			let fail = if !fail && self.peek_char() == Some('!') {
 				self.advance();
 				self.skip_whitespace();
@@ -339,23 +314,19 @@ impl<'a> Parser<'a> {
 			});
 		}
 
-		// Parse command name
 		self.skip_whitespace();
 		let name = self.parse_string().map_err(|_| self.error("Expected command name"))?;
 
-		// Parse arguments
 		let mut args = Vec::new();
 		loop {
 			self.skip_whitespace();
 			if self.peek_char() == Some('[') {
-				// Might be trailing tags
 				if let Some(parsed_tags) = self.parse_taglist()? {
 					tags.extend(parsed_tags);
 					break;
 				}
 			}
 
-			// Check for end of command
 			if silent && self.peek_char() == Some(')') {
 				break;
 			}
@@ -368,7 +339,6 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			// Try to parse an argument
 			let saved_pos = self.pos;
 			let saved_line = self.line;
 			let saved_column = self.column;
@@ -385,7 +355,6 @@ impl<'a> Parser<'a> {
 			}
 		}
 
-		// Handle closing ) for silent commands
 		if silent {
 			self.skip_whitespace();
 			if self.peek_char() != Some(')') {
@@ -394,7 +363,6 @@ impl<'a> Parser<'a> {
 			self.advance();
 		}
 
-		// Skip trailing whitespace and comments
 		self.skip_whitespace();
 		if self.peek_char() == Some('#') || self.peek_str(2) == "//" {
 			self.skip_line();
@@ -416,7 +384,6 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_argument(&mut self) -> Result<Argument, ParseError> {
-		// Try key=value format first
 		let saved_pos = self.pos;
 		let saved_line = self.line;
 		let saved_column = self.column;
@@ -426,44 +393,29 @@ impl<'a> Parser<'a> {
 		if let Ok(key) = self.parse_string() {
 			if self.peek_char() == Some('=') {
 				self.advance();
-				// Allow empty value after =
-				// First check if we have an empty value (next
-				// is whitespace or another key)
+
 				let value = if matches!(self.peek_char(), Some(ch) if ch.is_whitespace())
 					|| matches!(self.peek_char(), Some('[' | ')' | '#'))
 					|| self.peek_char().is_none() || self.peek_str(2) == "//"
 				{
-					// Empty value case
 					String::new()
 				} else {
-					// Try to parse a value
 					match self.parse_string() {
 						Ok(v) => v,
 						Err(_) => {
-							// Check if this looks
-							// like another
-							// key=value pair
-							// by looking for a
-							// string followed by =
 							let check_pos = self.pos;
 							let check_line = self.line;
 							let check_column = self.column;
 							let check_line_start = self.line_start_pos;
 
-							// Try to parse what
-							// comes next as a
-							// potential key
 							if self.parse_string().is_ok() {
 								if self.peek_char() == Some('=') {
-									// This looks like another key=value, so current
-									// value is empty
 									self.pos = check_pos;
 									self.line = check_line;
 									self.column = check_column;
 									self.line_start_pos = check_line_start;
 									String::new()
 								} else {
-									// Not a key=value, this is an error
 									self.pos = saved_pos;
 									self.line = saved_line;
 									self.column = saved_column;
@@ -473,9 +425,6 @@ impl<'a> Parser<'a> {
 									));
 								}
 							} else {
-								// Can't parse
-								// anything, this
-								// is an error
 								self.pos = saved_pos;
 								self.line = saved_line;
 								self.column = saved_column;
@@ -492,7 +441,7 @@ impl<'a> Parser<'a> {
 					value,
 				});
 			}
-			// Just a value
+
 			return Ok(Argument {
 				key: None,
 				value: key,
@@ -515,7 +464,6 @@ impl<'a> Parser<'a> {
 			self.skip_whitespace();
 
 			if self.peek_char() == Some(']') {
-				// Empty tag list is an error
 				if tags.is_empty() {
 					return Err(self.error("Empty tag list"));
 				}
@@ -540,9 +488,6 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_string(&mut self) -> Result<String, ParseError> {
-		// Note: Don't skip whitespace here - the caller should handle
-		// that self.skip_whitespace();
-
 		match self.peek_char() {
 			Some('\'') => self.parse_quoted_string('\''),
 			Some('"') => self.parse_quoted_string('"'),
@@ -553,7 +498,6 @@ impl<'a> Parser<'a> {
 	fn parse_unquoted_string(&mut self) -> Result<String, ParseError> {
 		let mut result = String::new();
 
-		// First character must be alphanumeric or _
 		match self.peek_char() {
 			Some(ch) if ch.is_alphanumeric() || ch == '_' => {
 				result.push(ch);
@@ -562,7 +506,6 @@ impl<'a> Parser<'a> {
 			_ => return Err(self.error("Expected string")),
 		}
 
-		// Subsequent characters
 		while let Some(ch) = self.peek_char() {
 			if ch.is_alphanumeric() || "_-./@".contains(ch) {
 				result.push(ch);
@@ -578,7 +521,6 @@ impl<'a> Parser<'a> {
 	fn parse_quoted_string(&mut self, quote: char) -> Result<String, ParseError> {
 		let mut result = String::new();
 
-		// Skip opening quote
 		if self.peek_char() != Some(quote) {
 			return Err(self.error(format!("Expected {} quote", quote)));
 		}
@@ -683,19 +625,16 @@ impl<'a> Parser<'a> {
 
 		self.skip_whitespace();
 
-		// Check for comment
 		if self.peek_char() == Some('#') || self.peek_str(2) == "//" {
 			self.skip_line();
 			return true;
 		}
 
-		// Check for empty line
 		if self.peek_char() == Some('\n') {
 			self.advance();
 			return true;
 		}
 
-		// Not an empty or comment line, restore position
 		self.pos = saved_pos;
 		false
 	}
@@ -705,11 +644,10 @@ impl<'a> Parser<'a> {
 			return Ok(false);
 		}
 
-		self.advance(); // -
-		self.advance(); // -
-		self.advance(); // -
+		self.advance();
+		self.advance();
+		self.advance();
 
-		// Must be followed by newline (with optional \r) or EOF
 		match self.peek_char() {
 			Some('\r') => {
 				self.advance();
@@ -728,7 +666,6 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_output(&mut self) -> Result<(), ParseError> {
-		// Special case: no output (immediate newline or EOF)
 		if self.peek_char() == Some('\n') || self.is_at_end() {
 			if self.peek_char() == Some('\n') {
 				self.advance();
@@ -736,7 +673,6 @@ impl<'a> Parser<'a> {
 			return Ok(());
 		}
 
-		// Read until double newline or EOF
 		let mut last_was_newline = false;
 		while !self.is_at_end() {
 			let ch = self.advance().unwrap();
@@ -757,7 +693,6 @@ impl<'a> Parser<'a> {
 		let mut result = String::new();
 
 		loop {
-			// Read until end of line
 			while let Some(ch) = self.peek_char() {
 				if ch == '\n' {
 					break;
@@ -766,16 +701,14 @@ impl<'a> Parser<'a> {
 				self.advance();
 			}
 
-			// Check for continuation
 			if result.ends_with('\\') {
-				result.pop(); // Remove the backslash
+				result.pop();
 				if self.peek_char() == Some('\n') {
-					self.advance(); // Skip newline
+					self.advance();
 					continue;
 				}
 			}
 
-			// Skip the final newline
 			if self.peek_char() == Some('\n') {
 				self.advance();
 			}

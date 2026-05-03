@@ -12,8 +12,6 @@ use crate::{
 	format::Encoding,
 };
 
-/// Try dictionary encoding for variable-length types.
-/// Returns None if the column type is not variable-length or dict doesn't help.
 pub(crate) fn try_dict_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> {
 	match inner {
 		FrameColumnData::Utf8(c) => {
@@ -91,8 +89,6 @@ pub(crate) fn try_dict_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> 
 	}
 }
 
-/// Try RLE encoding for variable-length types.
-/// Returns None if the column type is not variable-length or RLE doesn't help.
 pub(crate) fn try_rle_varlen(inner: &FrameColumnData) -> Option<EncodedColumn> {
 	match inner {
 		FrameColumnData::Int(c) => {

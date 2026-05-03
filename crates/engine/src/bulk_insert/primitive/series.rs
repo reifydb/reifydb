@@ -5,7 +5,6 @@ use reifydb_type::params::Params;
 
 use crate::bulk_insert::builder::{BulkInsertBuilder, ValidationMode};
 
-/// Buffered series insert operation
 #[derive(Debug, Clone)]
 pub struct PendingSeriesInsert {
 	pub namespace: String,
@@ -31,17 +30,12 @@ impl PendingSeriesInsert {
 	}
 }
 
-/// Builder for inserting rows into a specific series.
-///
-/// Created by calling `series()` on a `BulkInsertBuilder`.
-/// Call `done()` to finish and return to the main builder.
 pub struct SeriesInsertBuilder<'a, 'e, V: ValidationMode> {
 	parent: &'a mut BulkInsertBuilder<'e, V>,
 	pending: PendingSeriesInsert,
 }
 
 impl<'a, 'e, V: ValidationMode> SeriesInsertBuilder<'a, 'e, V> {
-	/// Create a new series insert builder.
 	pub(crate) fn new(parent: &'a mut BulkInsertBuilder<'e, V>, namespace: String, series: String) -> Self {
 		Self {
 			parent,
@@ -49,29 +43,11 @@ impl<'a, 'e, V: ValidationMode> SeriesInsertBuilder<'a, 'e, V> {
 		}
 	}
 
-	/// Add a single row from named params.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// builder.row(params!{ timestamp: 12345, value: 0.42 })
-	/// ```
 	pub fn row(mut self, params: Params) -> Self {
 		self.pending.add_row(params);
 		self
 	}
 
-	/// Add multiple rows from an iterator.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// let rows = vec![
-	///     params!{ timestamp: 12345, value: 0.42 },
-	///     params!{ timestamp: 12346, value: 0.51 },
-	/// ];
-	/// builder.rows(rows)
-	/// ```
 	pub fn rows<I>(mut self, iter: I) -> Self
 	where
 		I: IntoIterator<Item = Params>,
@@ -80,9 +56,6 @@ impl<'a, 'e, V: ValidationMode> SeriesInsertBuilder<'a, 'e, V> {
 		self
 	}
 
-	/// Finish this series insert and return to the main builder.
-	///
-	/// This allows chaining to insert into additional targets.
 	pub fn done(self) -> &'a mut BulkInsertBuilder<'e, V> {
 		self.parent.add_series_insert(self.pending);
 		self.parent

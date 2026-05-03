@@ -3,11 +3,6 @@
 
 use super::Type;
 
-/// Describes accepted input type combinations for a function.
-///
-/// Each entry in the outer Vec represents one argument position.
-/// The inner Vec lists the valid types for that position.
-/// An empty inner Vec means any type is accepted at that position.
 #[derive(Debug, Clone)]
 pub struct InputTypes(Vec<Vec<Type>>);
 
@@ -16,17 +11,14 @@ impl InputTypes {
 		Self(args)
 	}
 
-	/// Single argument accepting specific types.
 	pub fn single(types: Vec<Type>) -> Self {
 		Self(vec![types])
 	}
 
-	/// Single argument accepting any type.
 	pub fn any() -> Self {
 		Self(vec![vec![]])
 	}
 
-	/// Single argument accepting all numeric types.
 	pub fn numeric() -> Self {
 		Self::single(vec![
 			Type::Int1,
@@ -47,7 +39,6 @@ impl InputTypes {
 		])
 	}
 
-	/// Single argument accepting all integer types (signed + unsigned).
 	pub fn integer() -> Self {
 		Self::single(vec![
 			Type::Int1,
@@ -65,12 +56,10 @@ impl InputTypes {
 		])
 	}
 
-	/// Number of argument positions.
 	pub fn arity(&self) -> usize {
 		self.0.len()
 	}
 
-	/// Checks whether `ty` is accepted at `position`.
 	pub fn accepts(&self, position: usize, ty: &Type) -> bool {
 		match self.0.get(position) {
 			Some(types) => types.is_empty() || types.contains(ty),
@@ -78,7 +67,6 @@ impl InputTypes {
 		}
 	}
 
-	/// Returns the accepted types at a position (for error messages).
 	pub fn expected_at(&self, position: usize) -> &[Type] {
 		self.0.get(position).map(|v| v.as_slice()).unwrap_or(&[])
 	}

@@ -15,7 +15,6 @@ use crate::system::{
 	ids::{columns::bindings::grpc::*, vtable::BINDINGS_GRPC},
 };
 
-/// Returns the static definition for the `system::bindings::grpc` virtual table.
 pub fn bindings_grpc() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

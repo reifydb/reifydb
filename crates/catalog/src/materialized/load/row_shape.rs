@@ -6,7 +6,6 @@ use tracing::{Span, field, instrument};
 
 use crate::{Result, materialized::MaterializedCatalog, store::row_shape::find::load_all_row_shapes};
 
-/// Load all shapes from storage into the MaterializedCatalog cache.
 #[instrument(
 	name = "materialized::load_row_shapes",
 	level = "debug",

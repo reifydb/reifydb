@@ -6,7 +6,6 @@ use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId, 
 use crate::materialized::{MaterializedCatalog, MultiVersionRowTtl};
 
 impl MaterializedCatalog {
-	/// Find a per-operator TTL config at a specific version.
 	pub fn find_operator_ttl_at(&self, node: FlowNodeId, version: CommitVersion) -> Option<Ttl> {
 		self.operator_ttls.get(&node).and_then(|entry| {
 			let multi = entry.value();
@@ -14,7 +13,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a per-operator TTL config (latest version).
 	pub fn find_operator_ttl(&self, node: FlowNodeId) -> Option<Ttl> {
 		self.operator_ttls.get(&node).and_then(|entry| {
 			let multi = entry.value();
@@ -22,7 +20,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Set a per-operator TTL config at a specific version.
 	pub fn set_operator_ttl(&self, node: FlowNodeId, version: CommitVersion, config: Option<Ttl>) {
 		let multi = self.operator_ttls.get_or_insert_with(node, MultiVersionRowTtl::new);
 

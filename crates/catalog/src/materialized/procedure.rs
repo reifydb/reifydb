@@ -13,7 +13,6 @@ use reifydb_type::value::sumtype::VariantRef;
 use crate::materialized::{MaterializedCatalog, MultiVersionProcedure};
 
 impl MaterializedCatalog {
-	/// Find a procedure by ID at a specific version
 	pub fn find_procedure_at(&self, procedure: ProcedureId, version: CommitVersion) -> Option<Procedure> {
 		self.procedures.get(&procedure).and_then(|entry| {
 			let multi = entry.value();
@@ -21,7 +20,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a procedure by name in a namespace at a specific version
 	pub fn find_procedure_by_name_at(
 		&self,
 		namespace: NamespaceId,
@@ -34,7 +32,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a procedure by ID (returns latest version)
 	pub fn find_procedure(&self, procedure: ProcedureId) -> Option<Procedure> {
 		self.procedures.get(&procedure).and_then(|entry| {
 			let multi = entry.value();
@@ -42,7 +39,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a procedure by name in a namespace (returns latest version)
 	pub fn find_procedure_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Procedure> {
 		self.procedures_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let procedure_id = *entry.value();
@@ -50,7 +46,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// List all procedures for a specific event variant at a specific version
 	pub fn list_procedures_for_variant_at(&self, variant: VariantRef, version: CommitVersion) -> Vec<Procedure> {
 		if let Some(entry) = self.procedures_by_variant.get(&variant) {
 			entry.value().iter().filter_map(|id| self.find_procedure_at(*id, version)).collect()
@@ -63,10 +58,8 @@ impl MaterializedCatalog {
 		if let Some(entry) = self.procedures.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{
-			// Remove old name from index
 			self.procedures_by_name.remove(&(pre.namespace(), pre.name().to_string()));
 
-			// Remove from variant index if it had an event binding
 			if let Some(variant) = pre.event_variant()
 				&& let Some(ids_entry) = self.procedures_by_variant.get(&variant)
 			{
@@ -81,7 +74,6 @@ impl MaterializedCatalog {
 		if let Some(new) = procedure {
 			self.procedures_by_name.insert((new.namespace(), new.name().to_string()), id);
 
-			// Add to variant index if it has an event binding
 			if let Some(variant) = new.event_variant() {
 				if let Some(entry) = self.procedures_by_variant.get(&variant) {
 					let mut ids = entry.value().clone();

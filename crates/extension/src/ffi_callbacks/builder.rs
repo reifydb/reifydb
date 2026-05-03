@@ -38,26 +38,21 @@ use reifydb_type::{
 };
 use serde::de::DeserializeOwned;
 
-/// Per-`FFIOperator` builder state. Holds active (acquired-but-not-yet-emitted)
-/// builder buffers plus an accumulator of `Diff`s the guest has emitted via
-/// `emit_diff` during the current vtable call.
 pub struct BuilderRegistry {
 	inner: Mutex<RegistryInner>,
 }
 
 struct RegistryInner {
-	/// id -> builder state (active + committed-but-not-yet-emitted)
 	slots: HashMap<u64, BuilderSlot>,
-	/// Diffs emitted during the current vtable call.
+
 	accumulator: Vec<EmittedDiff>,
-	/// Monotonic id generator for handles.
+
 	next_id: u64,
 }
 
 enum BuilderSlot {
-	/// Mutable, growable buffers being filled by the guest.
 	Active(ActiveBuilder),
-	/// Finalised `ColumnBuffer` waiting to be wrapped into a Diff.
+
 	Committed(CommittedBuilder),
 }
 
@@ -66,8 +61,7 @@ pub struct ActiveBuilder {
 	pub data: Vec<u8>,
 	pub offsets: Option<Vec<u64>>,
 	pub bitvec: Option<Vec<u8>>,
-	/// Bumps on commit/release; `data_ptr` etc. only succeed at the
-	/// matching generation.
+
 	pub generation: u64,
 }
 
@@ -100,9 +94,6 @@ impl BuilderRegistry {
 		}
 	}
 
-	/// Take the accumulated diffs out of the registry, leaving it empty for
-	/// the next vtable call. Also drops any not-yet-emitted slots so a
-	/// guest crash can't leak handles across calls.
 	pub fn drain(&self) -> Vec<EmittedDiff> {
 		let mut inner = self.inner.lock().unwrap();
 		inner.slots.clear();
@@ -110,8 +101,6 @@ impl BuilderRegistry {
 	}
 }
 
-/// Encoded handle: lower 32 bits = id, upper 32 bits = generation. Lets the
-/// guest pass a single `*mut c_void` while the host can validate generation.
 #[derive(Clone, Copy)]
 struct Handle {
 	id: u64,
@@ -121,8 +110,7 @@ struct Handle {
 impl Handle {
 	fn encode(self) -> *mut ColumnBufferHandle {
 		debug_assert!(self.id != 0, "handle id 0 reserved");
-		// Pack id (low 48) + generation (high 16). Aborts at runtime if
-		// either overflows the available bits.
+
 		assert!(self.id < (1 << 48), "handle id overflow");
 		assert!(self.generation < (1 << 16), "handle generation overflow");
 		let packed = self.id | (self.generation << 48);
@@ -138,9 +126,6 @@ impl Handle {
 	}
 }
 
-/// Resolve the active per-FFI-operator BuilderRegistry for `ctx`. The host
-/// stores a `&'static BuilderRegistry` pointer in a thread-local set up at
-/// the top of `FFIOperator::apply`/`pull`/`tick`; this function reads it.
 fn current_registry() -> Option<&'static BuilderRegistry> {
 	REGISTRY.with(|cell| cell.get())
 }
@@ -149,14 +134,9 @@ thread_local! {
 	static REGISTRY: Cell<Option<&'static BuilderRegistry>> = const { Cell::new(None) };
 }
 
-/// Install `registry` for the duration of `f`. Used by the host
-/// `FFIOperator::{apply,pull,tick}` wrappers to bind the active registry
-/// before invoking the guest's vtable.
 pub fn with_registry<R>(registry: &BuilderRegistry, f: impl FnOnce() -> R) -> R {
 	// SAFETY: we only hold the pointer for the duration of `f`; the
-	// registry lives at least that long because it's owned by the
-	// FFIOperator instance whose method drives the call. We extend the
-	// lifetime to 'static here only for storage; it never escapes `f`.
+
 	let extended: &'static BuilderRegistry = unsafe { mem::transmute(registry) };
 	let prev = REGISTRY.with(|cell| cell.replace(Some(extended)));
 	let result = f();
@@ -164,8 +144,6 @@ pub fn with_registry<R>(registry: &BuilderRegistry, f: impl FnOnce() -> R) -> R 
 	result
 }
 
-/// # Safety
-/// `_ctx` may be null; all pointer access is guarded internally.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_acquire(
 	_ctx: *mut ContextFFI,
@@ -202,8 +180,6 @@ pub unsafe extern "C" fn host_builder_acquire(
 	handle.encode()
 }
 
-/// # Safety
-/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_data_ptr(handle: *mut ColumnBufferHandle) -> *mut u8 {
 	let Some(registry) = current_registry() else {
@@ -217,8 +193,6 @@ pub unsafe extern "C" fn host_builder_data_ptr(handle: *mut ColumnBufferHandle) 
 	}
 }
 
-/// # Safety
-/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_offsets_ptr(handle: *mut ColumnBufferHandle) -> *mut u64 {
 	let Some(registry) = current_registry() else {
@@ -235,8 +209,6 @@ pub unsafe extern "C" fn host_builder_offsets_ptr(handle: *mut ColumnBufferHandl
 	}
 }
 
-/// # Safety
-/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_bitvec_ptr(handle: *mut ColumnBufferHandle) -> *mut u8 {
 	let Some(registry) = current_registry() else {
@@ -247,9 +219,6 @@ pub unsafe extern "C" fn host_builder_bitvec_ptr(handle: *mut ColumnBufferHandle
 	match inner.slots.get_mut(&h.id) {
 		Some(BuilderSlot::Active(active)) if active.generation == h.generation => {
 			if active.bitvec.is_none() {
-				// Allocate a bitvec sized to the current data
-				// capacity (one byte per 8 elements). Caller can
-				// `grow` to extend as needed.
 				let elem_cap = active.data.capacity() / elem_size_for(active.type_code).max(1);
 				active.bitvec = Some(vec![0u8; elem_cap.div_ceil(8)]);
 			}
@@ -259,8 +228,6 @@ pub unsafe extern "C" fn host_builder_bitvec_ptr(handle: *mut ColumnBufferHandle
 	}
 }
 
-/// # Safety
-/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_grow(handle: *mut ColumnBufferHandle, additional: usize) -> i32 {
 	let Some(registry) = current_registry() else {
@@ -287,8 +254,6 @@ pub unsafe extern "C" fn host_builder_grow(handle: *mut ColumnBufferHandle, addi
 	}
 }
 
-/// # Safety
-/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_commit(handle: *mut ColumnBufferHandle, written_count: usize) -> i32 {
 	let Some(registry) = current_registry() else {
@@ -303,19 +268,13 @@ pub unsafe extern "C" fn host_builder_commit(handle: *mut ColumnBufferHandle, wr
 	let mut active = match slot {
 		BuilderSlot::Active(a) if a.generation == h.generation => a,
 		other => {
-			// Reinsert if generation mismatched (treat as no-op).
 			inner.slots.insert(h.id, other);
 			return FFI_ERROR_INTERNAL;
 		}
 	};
 
-	// Sync the underlying Vec lengths to what the guest wrote through the
-	// raw pointers from `data_ptr`/`offsets_ptr`/`bitvec_ptr`. The Vec
-	// length isn't updated by raw pointer writes; commit is the signal
-	// that `written_count` elements (or bytes for var-len) are now live.
 	let elem = elem_size_for(active.type_code);
-	// For var-len types: extend offsets first so `.last()` reflects the
-	// guest-written end-of-payload byte count.
+
 	if let Some(offsets) = active.offsets.as_mut() {
 		let offsets_len = written_count + 1;
 		if offsets_len > offsets.capacity() {
@@ -365,8 +324,6 @@ pub unsafe extern "C" fn host_builder_commit(handle: *mut ColumnBufferHandle, wr
 	FFI_OK
 }
 
-/// # Safety
-/// `handle` must be a value returned by `host_builder_acquire`, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_release(handle: *mut ColumnBufferHandle) {
 	let Some(registry) = current_registry() else {
@@ -377,9 +334,6 @@ pub unsafe extern "C" fn host_builder_release(handle: *mut ColumnBufferHandle) {
 	inner.slots.remove(&h.id);
 }
 
-/// # Safety
-/// `ctx` must be a valid `ContextFFI` pointer. All handle/name pointer arrays must be
-/// valid for the given counts, or null when the corresponding count is zero.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn host_builder_emit_diff(
 	ctx: *mut ContextFFI,
@@ -525,7 +479,7 @@ fn assemble_columns(
 
 fn elem_size_for(type_code: ColumnTypeCode) -> usize {
 	match type_code {
-		ColumnTypeCode::Bool => 1, // packed; capacity here is element count
+		ColumnTypeCode::Bool => 1,
 		ColumnTypeCode::Float4 | ColumnTypeCode::Int4 | ColumnTypeCode::Uint4 | ColumnTypeCode::Date => 4,
 		ColumnTypeCode::Int1 | ColumnTypeCode::Uint1 => 1,
 		ColumnTypeCode::Int2 | ColumnTypeCode::Uint2 => 2,
@@ -537,7 +491,7 @@ fn elem_size_for(type_code: ColumnTypeCode) -> usize {
 		ColumnTypeCode::Int16 | ColumnTypeCode::Uint16 => 16,
 		ColumnTypeCode::Duration => 16,
 		ColumnTypeCode::IdentityId | ColumnTypeCode::Uuid4 | ColumnTypeCode::Uuid7 => 16,
-		ColumnTypeCode::Utf8 | ColumnTypeCode::Blob => 1, // var-len: data buffer is bytes
+		ColumnTypeCode::Utf8 | ColumnTypeCode::Blob => 1,
 		ColumnTypeCode::DictionaryId => 16,
 		ColumnTypeCode::Int | ColumnTypeCode::Uint | ColumnTypeCode::Decimal | ColumnTypeCode::Any => 1,
 		ColumnTypeCode::Undefined => 1,
@@ -620,8 +574,7 @@ fn finalize_buffer(
 		}
 		ColumnTypeCode::Utf8 => {
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
-			// `data` may have over-allocated capacity; truncate to
-			// the last offset (= total payload bytes).
+
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
 			ColumnBuffer::Utf8 {

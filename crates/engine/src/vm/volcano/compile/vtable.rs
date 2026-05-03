@@ -73,13 +73,11 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 	let namespace = node.source.namespace().def();
 	let table = node.source.def();
 
-	// First check user-defined virtual tables
 	let virtual_table_impl: VTables = if let Some(user_table) =
 		context.services.virtual_table_registry.find_by_name(namespace.id(), &table.name)
 	{
 		user_table
 	} else if namespace.id() == NamespaceId::SYSTEM {
-		// Built-in system virtual tables
 		compile_system_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_METRICS_STORAGE {
 		compile_metrics_storage_vtable(&table.name, &context)

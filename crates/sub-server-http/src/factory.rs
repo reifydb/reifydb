@@ -19,7 +19,6 @@ use reifydb_type::Result;
 
 use crate::subsystem::HttpSubsystem;
 
-/// Configurator for the HTTP server subsystem (builder pattern).
 pub struct HttpConfigurator {
 	bind_addr: Option<String>,
 	admin_bind_addr: Option<String>,
@@ -36,7 +35,6 @@ impl Default for HttpConfigurator {
 }
 
 impl HttpConfigurator {
-	/// Create a new HTTP configurator with default values.
 	pub fn new() -> Self {
 		Self {
 			bind_addr: None,
@@ -48,44 +46,36 @@ impl HttpConfigurator {
 		}
 	}
 
-	/// Set the bind address.
 	pub fn bind_addr(mut self, addr: impl Into<String>) -> Self {
 		self.bind_addr = Some(addr.into());
 		self
 	}
 
-	/// Set the admin bind address.
-	/// When set, admin operations are served on this separate port.
 	pub fn admin_bind_addr(mut self, addr: impl Into<String>) -> Self {
 		self.admin_bind_addr = Some(addr.into());
 		self
 	}
 
-	/// Set the maximum number of connections.
 	pub fn max_connections(mut self, max: usize) -> Self {
 		self.max_connections = max;
 		self
 	}
 
-	/// Set the query timeout.
 	pub fn query_timeout(mut self, timeout: Duration) -> Self {
 		self.query_timeout = timeout;
 		self
 	}
 
-	/// Set the request timeout.
 	pub fn request_timeout(mut self, timeout: Duration) -> Self {
 		self.request_timeout = timeout;
 		self
 	}
 
-	/// Set the shared runtime.
 	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
 		self.runtime = Some(runtime);
 		self
 	}
 
-	/// Finalize the configurator into an immutable config.
 	pub(crate) fn configure(self) -> HttpConfig {
 		HttpConfig {
 			bind_addr: self.bind_addr,
@@ -98,22 +88,18 @@ impl HttpConfigurator {
 	}
 }
 
-/// Immutable configuration for the HTTP server subsystem.
 #[derive(Clone, Debug)]
 pub struct HttpConfig {
-	/// Address to bind the HTTP server to (e.g., "0.0.0.0:8091").
 	pub bind_addr: Option<String>,
-	/// Address to bind the admin HTTP server to (e.g., "127.0.0.1:9091").
-	/// When set, admin operations are only available on this port.
-	/// When not set, admin operations are not available.
+
 	pub admin_bind_addr: Option<String>,
-	/// Maximum number of concurrent connections.
+
 	pub max_connections: usize,
-	/// Timeout for query execution.
+
 	pub query_timeout: Duration,
-	/// Timeout for entire request lifecycle.
+
 	pub request_timeout: Duration,
-	/// Optional shared runtime.
+
 	pub runtime: Option<SharedRuntime>,
 }
 
@@ -123,13 +109,11 @@ impl Default for HttpConfig {
 	}
 }
 
-/// Factory for creating HTTP subsystem instances.
 pub struct HttpSubsystemFactory {
 	config_fn: Box<dyn FnOnce() -> HttpConfig + Send>,
 }
 
 impl HttpSubsystemFactory {
-	/// Create a new HTTP subsystem factory with the given configurator closure.
 	pub fn new<F>(configurator: F) -> Self
 	where
 		F: FnOnce(HttpConfigurator) -> HttpConfigurator + Send + 'static,

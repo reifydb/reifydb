@@ -55,21 +55,14 @@ use crate::{
 	},
 };
 
-/// Marker trait for validation mode (sealed)
 pub trait ValidationMode: sealed::Sealed + 'static {
-	/// Whether this mode performs full type checking and constraint validation.
 	const VALIDATED: bool;
 
-	/// Run `body` inside a transaction in this mode and commit. `Unchecked`
-	/// routes through `execute_bulk_unchecked`, which disables conflict tracking
-	/// and commits via the bypass path; the others reserve the write-set hint
-	/// (when `total_rows > 0`) and commit through the standard path.
 	fn run<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -> Result<R>
 	where
 		F: FnOnce(&mut CommandTransaction) -> Result<R>;
 }
 
-/// Validated mode - performs full type checking and constraint validation
 pub struct Validated;
 impl ValidationMode for Validated {
 	const VALIDATED: bool = true;
@@ -82,9 +75,6 @@ impl ValidationMode for Validated {
 	}
 }
 
-/// Unchecked mode - skips validation AND skips registering the commit in the
-/// oracle's per-key conflict-detection index. Used by `bulk_insert_unchecked`.
-/// See that method's doc for the safety contract.
 pub struct Unchecked;
 impl ValidationMode for Unchecked {
 	const VALIDATED: bool = false;
@@ -101,9 +91,6 @@ fn run_checked<F, R>(txn: &mut CommandTransaction, total_rows: usize, body: F) -
 where
 	F: FnOnce(&mut CommandTransaction) -> Result<R>,
 {
-	// Pre-size the conflict-tracker write set so a known-size bulk insert doesn't
-	// rehash its HashSet thousands of times. Each row produces one row write plus
-	// up to one primary-index write, so reserve 2x the row total.
 	if total_rows > 0 {
 		txn.reserve_writes(total_rows.saturating_mul(2))?;
 	}
@@ -120,9 +107,6 @@ pub mod sealed {
 	impl Sealed for Unchecked {}
 }
 
-/// Main builder for bulk insert operations.
-///
-/// Type parameter `V` tracks the validation mode at compile time.
 pub struct BulkInsertBuilder<'e, V: ValidationMode = Validated> {
 	engine: &'e StandardEngine,
 	identity: IdentityId,
@@ -133,7 +117,6 @@ pub struct BulkInsertBuilder<'e, V: ValidationMode = Validated> {
 }
 
 impl<'e> BulkInsertBuilder<'e, Validated> {
-	/// Create a new bulk insert builder with full validation enabled.
 	pub(crate) fn new(engine: &'e StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
@@ -147,8 +130,6 @@ impl<'e> BulkInsertBuilder<'e, Validated> {
 }
 
 impl<'e> BulkInsertBuilder<'e, Unchecked> {
-	/// Create a new bulk insert builder with validation AND oracle conflict
-	/// tracking disabled (unchecked mode).
 	pub(crate) fn new_unchecked(engine: &'e StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
@@ -162,52 +143,33 @@ impl<'e> BulkInsertBuilder<'e, Unchecked> {
 }
 
 impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
-	/// Begin inserting into a table.
-	///
-	/// The qualified name can be either "namespace::table" or just "table"
-	/// (which uses the default namespace).
 	pub fn table<'a>(&'a mut self, qualified_name: &str) -> TableInsertBuilder<'a, 'e, V> {
 		let (namespace, table) = parse_qualified_name(qualified_name);
 		TableInsertBuilder::new(self, namespace, table)
 	}
 
-	/// Begin inserting into a ring buffer.
-	///
-	/// The qualified name can be either "namespace::ringbuffer" or just "ringbuffer"
-	/// (which uses the default namespace).
 	pub fn ringbuffer<'a>(&'a mut self, qualified_name: &str) -> RingBufferInsertBuilder<'a, 'e, V> {
 		let (namespace, ringbuffer) = parse_qualified_name(qualified_name);
 		RingBufferInsertBuilder::new(self, namespace, ringbuffer)
 	}
 
-	/// Begin inserting into a series.
-	///
-	/// The qualified name can be either "namespace::series" or just "series"
-	/// (which uses the default namespace).
 	pub fn series<'a>(&'a mut self, qualified_name: &str) -> SeriesInsertBuilder<'a, 'e, V> {
 		let (namespace, series) = parse_qualified_name(qualified_name);
 		SeriesInsertBuilder::new(self, namespace, series)
 	}
 
-	/// Add a pending table insert (called by TableInsertBuilder::done)
 	pub(super) fn add_table_insert(&mut self, pending: PendingTableInsert) {
 		self.pending_tables.push(pending);
 	}
 
-	/// Add a pending ring buffer insert (called by RingBufferInsertBuilder::done)
 	pub(super) fn add_ringbuffer_insert(&mut self, pending: PendingRingBufferInsert) {
 		self.pending_ringbuffers.push(pending);
 	}
 
-	/// Add a pending series insert (called by SeriesInsertBuilder::done)
 	pub(super) fn add_series_insert(&mut self, pending: PendingSeriesInsert) {
 		self.pending_series.push(pending);
 	}
 
-	/// Execute all pending inserts in a single transaction.
-	///
-	/// Returns a summary of what was inserted. On error, the entire
-	/// transaction is rolled back (no partial inserts).
 	pub fn execute(self) -> Result<BulkInsertResult> {
 		self.engine.reject_if_read_only()?;
 		let mut txn = self.engine.begin_command(self.identity)?;
@@ -765,8 +727,6 @@ fn update_series_metadata_for_insert(metadata: &mut SeriesMetadata, key_value: u
 	metadata.row_count += 1;
 }
 
-/// Parse a qualified name like "namespace::table" into (namespace, name).
-/// If no namespace is provided, uses "default".
 fn parse_qualified_name(qualified_name: &str) -> (String, String) {
 	if let Some((ns, name)) = qualified_name.rsplit_once("::") {
 		(ns.to_string(), name.to_string())

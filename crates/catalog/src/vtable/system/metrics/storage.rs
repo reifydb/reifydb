@@ -18,14 +18,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Row: (id, namespace_id, tier, current_key_bytes, current_value_bytes,
-/// current_total_bytes, current_count, historical_key_bytes, historical_value_bytes,
-/// historical_total_bytes, historical_count, total_bytes).
 type StorageRow = (u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64);
 
-/// Generic storage-stats virtual table. One row per `(object_id, tier)` for the
-/// matched `StatsPrimitive`. For `StatsPrimitive::Flow` stats are aggregated
-/// across all flow nodes that belong to each flow.
 pub struct SystemMetricsStorage {
 	pub(crate) vtable: Arc<VTable>,
 	primitive: StatsPrimitive,
@@ -108,7 +102,6 @@ impl SystemMetricsStorage {
 	}
 
 	fn collect_flow_rows(&self, txn: &mut Transaction<'_>) -> Result<Vec<StorageRow>> {
-		// (flow_id, namespace_id, tier) -> accumulated storage stats
 		let mut aggregated: HashMap<(u64, u64, Tier), MultiStorageStats> = HashMap::new();
 
 		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {

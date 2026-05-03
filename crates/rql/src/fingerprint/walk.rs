@@ -23,7 +23,6 @@ impl FingerprintBuffer {
 		self.0.extend_from_slice(&v.to_le_bytes());
 	}
 
-	/// Length-prefixed string so adjacent fields stay unambiguous.
 	#[inline]
 	fn write_str(&mut self, s: &str) {
 		self.write_u16(s.len() as u16);
@@ -36,14 +35,13 @@ impl FingerprintBuffer {
 }
 
 mod tag {
-	// Literals (value omitted)
+
 	pub const LIT_NUMBER: u8 = 0x01;
 	pub const LIT_TEXT: u8 = 0x02;
 	pub const LIT_BOOLEAN: u8 = 0x03;
 	pub const LIT_TEMPORAL: u8 = 0x04;
 	pub const LIT_NONE: u8 = 0x05;
 
-	// Atoms
 	pub const IDENTIFIER: u8 = 0x10;
 	pub const VARIABLE: u8 = 0x11;
 	pub const WILDCARD: u8 = 0x12;
@@ -52,12 +50,10 @@ mod tag {
 	pub const NOP: u8 = 0x15;
 	pub const SYSTEM_COLUMN: u8 = 0x16;
 
-	// Operators
 	pub const INFIX: u8 = 0x20;
 	pub const PREFIX: u8 = 0x21;
 	pub const BETWEEN: u8 = 0x22;
 
-	// Query pipeline
 	pub const FILTER: u8 = 0x30;
 	pub const MAP: u8 = 0x31;
 	pub const SORT: u8 = 0x32;
@@ -75,26 +71,22 @@ mod tag {
 	pub const WINDOW: u8 = 0x3E;
 	pub const APPLY: u8 = 0x3F;
 
-	// Collections
 	pub const LIST: u8 = 0x40;
 	pub const INLINE: u8 = 0x41;
 	pub const TUPLE: u8 = 0x42;
 	pub const BLOCK: u8 = 0x43;
 	pub const SUBQUERY: u8 = 0x44;
 
-	// DML
 	pub const INSERT: u8 = 0x50;
 	pub const UPDATE: u8 = 0x51;
 	pub const DELETE: u8 = 0x52;
 	pub const APPEND_VAR: u8 = 0x53;
 	pub const APPEND_QUERY: u8 = 0x54;
 
-	// Joins
 	pub const JOIN_INNER: u8 = 0x60;
 	pub const JOIN_LEFT: u8 = 0x61;
 	pub const JOIN_NATURAL: u8 = 0x62;
 
-	// Control flow
 	pub const IF: u8 = 0x70;
 	pub const FOR: u8 = 0x71;
 	pub const WHILE: u8 = 0x72;
@@ -105,7 +97,6 @@ mod tag {
 	pub const RETURN: u8 = 0x77;
 	pub const MATCH: u8 = 0x78;
 
-	// Functions / calls
 	pub const CALL: u8 = 0x80;
 	pub const CALL_FUNCTION: u8 = 0x81;
 	pub const CAST: u8 = 0x82;
@@ -114,7 +105,6 @@ mod tag {
 	pub const GENERATOR: u8 = 0x85;
 	pub const STATEMENT_EXPR: u8 = 0x86;
 
-	// DDL / admin
 	pub const CREATE: u8 = 0x90;
 	pub const ALTER: u8 = 0x91;
 	pub const DROP: u8 = 0x92;
@@ -131,7 +121,6 @@ mod tag {
 	pub const SUM_TYPE_CTOR: u8 = 0x9D;
 	pub const IS_VARIANT: u8 = 0x9E;
 
-	// Infix operators
 	pub const OP_ADD: u8 = 0xA0;
 	pub const OP_SUBTRACT: u8 = 0xA1;
 	pub const OP_MULTIPLY: u8 = 0xA2;
@@ -156,12 +145,10 @@ mod tag {
 	pub const OP_ACCESS_TABLE: u8 = 0xB5;
 	pub const OP_TYPE_ASCRIPTION: u8 = 0xB6;
 
-	// Prefix operators
 	pub const OP_PREFIX_PLUS: u8 = 0xC0;
 	pub const OP_PREFIX_NEGATE: u8 = 0xC1;
 	pub const OP_PREFIX_NOT: u8 = 0xC2;
 
-	// Take value kinds
 	pub const TAKE_LITERAL: u8 = 0xD0;
 	pub const TAKE_VARIABLE: u8 = 0xD1;
 }

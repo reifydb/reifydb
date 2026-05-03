@@ -13,12 +13,6 @@ use reifydb_runtime::actor::mailbox::ActorRef;
 use super::actor::FlushMessage;
 use crate::store::router::classify_key;
 
-/// `EventBus` listener that turns `MultiCommittedEvent`s into dirty-key
-/// notifications for the warm flush actor.
-///
-/// Pre-classifies each write/delete by `EntryKind` so the actor does not need
-/// to parse keys on the hot path. Drops are intentionally ignored: warm has no
-/// historical chain to clean up.
 pub struct FlushEventListener {
 	actor_ref: ActorRef<FlushMessage>,
 }
@@ -33,8 +27,6 @@ impl FlushEventListener {
 
 impl EventListener<MultiCommittedEvent> for FlushEventListener {
 	fn on(&self, event: &MultiCommittedEvent) {
-		// Drop-only events (emitted by the drop actor itself) carry no writes
-		// or deletes to mirror to warm; ignore them.
 		if event.writes().is_empty() && event.deletes().is_empty() {
 			return;
 		}

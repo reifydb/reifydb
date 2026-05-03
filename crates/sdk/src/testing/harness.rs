@@ -34,49 +34,29 @@ use crate::{
 	},
 };
 
-/// Test harness for FFI operators
-///
-/// This harness provides a complete testing environment for FFI operators with:
-/// - Mock FFI context with test-specific callbacks
-/// - State management via TestContext
-/// - Version tracking
-/// - Log capture (to stderr for now)
-/// - Full support for apply() and pull() driven through the zero-copy ABI
 pub struct OperatorTestHarness<T: FFIOperator> {
 	operator: T,
-	context: Box<TestContext>, // Boxed for stable address (pointed to by ffi_context)
+	context: Box<TestContext>,
 	ffi_context: Box<ContextFFI>,
 	config: HashMap<String, Value>,
 	node_id: FlowNodeId,
 	history: Vec<Change>,
-	/// Test-side mirror of the host's BuilderRegistry. Captures whatever
-	/// the operator emits via `ctx.builder()` during `apply` / `pull` /
-	/// `tick` so the harness can synthesise an output `Change` for the
-	/// caller to inspect.
+
 	builder_registry: TestBuilderRegistry,
-	/// Arena used to marshal input `Change` -> `ChangeFFI` so the
-	/// operator can read it as a `BorrowedChange`.
+
 	input_arena: Arena,
 }
 
 impl<T: FFIOperator> OperatorTestHarness<T> {
-	/// Create a new test harness builder
 	pub fn builder() -> TestHarnessBuilder<T> {
 		TestHarnessBuilder::new()
 	}
 
-	/// Apply a flow change to the operator via the zero-copy ABI.
-	///
-	/// Marshals the input as a `ChangeFFI` borrow, drives the operator,
-	/// and assembles an output `Change` from whatever the operator emitted
-	/// via `ctx.builder()`. The result is also appended to the harness
-	/// history so it can be inspected via `harness[i]`, `last_change()`,
-	/// or `history_len()`.
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
 		let version = input.version;
 		let changed_at = input.changed_at;
 		let origin = input.origin.clone();
-		// Reset arena for this call (cheap; bumpalo reset).
+
 		self.input_arena.clear();
 		let ffi_change = self.input_arena.marshal_change(&input);
 		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
@@ -85,14 +65,10 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 			let mut op_ctx = OperatorContext::new(ffi_ctx_ptr);
 			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
 			self.operator.apply(&mut op_ctx, borrowed)?;
-			// Mirror the production txn-commit lifecycle: drain dirty StateCache
-			// entries before the call returns. Without this step, operators
-			// that buffer state through StateCache silently drop their in-flight
-			// state across snapshot/restore cycles.
+
 			self.operator.flush_state(&mut op_ctx)
 		});
-		// Drop the input arena's outstanding scaffolding before doing
-		// anything else (input pointers are now invalid).
+
 		drop(input);
 		result?;
 
@@ -106,51 +82,36 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		Ok(output)
 	}
 
-	/// Chainable Insert: applies immediately, records output in history, panics on error.
-	///
-	/// Use for seeding state and/or inspecting emissions:
-	/// ```ignore
-	/// harness.insert(row1).insert(row2);
-	/// assert_eq!(harness[0].diffs.len(), 1);
-	/// ```
 	pub fn insert(&mut self, row: Row) -> &mut Self {
 		let change = TestChangeBuilder::new().insert(row).build();
 		self.apply(change).expect("insert failed");
 		self
 	}
 
-	/// Chainable Update: applies immediately, records output in history, panics on error.
 	pub fn update(&mut self, pre: Row, post: Row) -> &mut Self {
 		let change = TestChangeBuilder::new().update(pre, post).build();
 		self.apply(change).expect("update failed");
 		self
 	}
 
-	/// Chainable Remove: applies immediately, records output in history, panics on error.
 	pub fn remove(&mut self, row: Row) -> &mut Self {
 		let change = TestChangeBuilder::new().remove(row).build();
 		self.apply(change).expect("remove failed");
 		self
 	}
 
-	/// Number of changes recorded in the history so far.
 	pub fn history_len(&self) -> usize {
 		self.history.len()
 	}
 
-	/// Reference to the most recent change, or `None` if the history is empty.
 	pub fn last_change(&self) -> Option<&Change> {
 		self.history.last()
 	}
 
-	/// Clear the recorded history without affecting operator state.
 	pub fn clear_history(&mut self) {
 		self.history.clear();
 	}
 
-	/// Pull rows by their row numbers. The operator emits its result via
-	/// `ctx.builder()` as a single Insert-shaped diff; we read its `post`
-	/// columns as the return value.
 	pub fn pull(&mut self, row_numbers: &[RowNumber]) -> Result<Columns> {
 		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
 		let result: Result<()> = with_registry(&self.builder_registry, || {
@@ -169,17 +130,14 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		Ok(cols)
 	}
 
-	/// Get the current version
 	pub fn version(&self) -> CommitVersion {
 		(*self.context).version()
 	}
 
-	/// Set the current version
 	pub fn set_version(&mut self, version: CommitVersion) {
 		(*self.context).set_version(version);
 	}
 
-	/// Get access to the state store for assertions
 	pub fn state(&self) -> TestStateStore {
 		let store = self.context.state_store();
 		let data = store.lock().unwrap();
@@ -190,7 +148,6 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		result
 	}
 
-	/// Assert that a state key exists with the given value
 	pub fn assert_state<K>(&self, key: K, expected: Value)
 	where
 		K: EncodableKey,
@@ -202,22 +159,18 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		store.assert_value(&encoded_key, &[expected], &shape);
 	}
 
-	/// Get captured log messages
 	pub fn logs(&self) -> Vec<String> {
 		(*self.context).logs()
 	}
 
-	/// Clear captured log messages
 	pub fn clear_logs(&self) {
 		(*self.context).clear_logs()
 	}
 
-	/// Take a snapshot of the current state
 	pub fn snapshot_state(&self) -> HashMap<EncodedKey, EncodedRow> {
 		self.state().snapshot()
 	}
 
-	/// Restore state from a snapshot
 	pub fn restore_state(&mut self, snapshot: HashMap<EncodedKey, EncodedRow>) {
 		(*self.context).clear_state();
 		for (k, v) in snapshot {
@@ -225,53 +178,33 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		}
 	}
 
-	/// Reset the harness to initial state
 	pub fn reset(&mut self) -> Result<()> {
 		(*self.context).clear_state();
 		(*self.context).clear_logs();
 		(*self.context).set_version(CommitVersion(1));
 		self.history.clear();
 
-		// Recreate the operator
 		self.operator = T::new(self.node_id, &self.config)?;
 		Ok(())
 	}
 
-	/// Create an operator context for direct access
-	///
-	/// This is useful for testing components that need an OperatorContext
-	/// without going through the apply() or pull() methods.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// let mut harness = TestHarnessBuilder::<MyOperator>::new().build()?;
-	/// let mut ctx = harness.create_operator_context();
-	/// let (row_num, is_new) = ctx.get_or_create_row_number(harness.operator(), &key)?;
-	/// ```
 	pub fn create_operator_context(&mut self) -> OperatorContext {
 		OperatorContext::new(&mut *self.ffi_context as *mut ContextFFI)
 	}
 
-	/// Get a reference to the operator
 	pub fn operator(&self) -> &T {
 		&self.operator
 	}
 
-	/// Get a mutable reference to the operator
 	pub fn operator_mut(&mut self) -> &mut T {
 		&mut self.operator
 	}
 
-	/// Get the node ID
 	pub fn node_id(&self) -> FlowNodeId {
 		self.node_id
 	}
 }
 
-/// Index into the harness history - `harness[i]` returns the i-th recorded `Change`.
-///
-/// Panics if `i` is out of bounds.
 impl<T: FFIOperator> Index<usize> for OperatorTestHarness<T> {
 	type Output = Change;
 
@@ -280,7 +213,6 @@ impl<T: FFIOperator> Index<usize> for OperatorTestHarness<T> {
 	}
 }
 
-/// Builder for OperatorTestHarness
 pub struct TestHarnessBuilder<T: FFIOperator> {
 	config: HashMap<String, Value>,
 	node_id: FlowNodeId,
@@ -296,7 +228,6 @@ impl<T: FFIOperator> Default for TestHarnessBuilder<T> {
 }
 
 impl<T: FFIOperator> TestHarnessBuilder<T> {
-	/// Create a new builder
 	pub fn new() -> Self {
 		Self {
 			config: HashMap::new(),
@@ -307,7 +238,6 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 		}
 	}
 
-	/// Set the operator configuration
 	pub fn with_config<I, K>(mut self, config: I) -> Self
 	where
 		I: IntoIterator<Item = (K, Value)>,
@@ -317,25 +247,21 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 		self
 	}
 
-	/// Add a single config value
 	pub fn add_config(mut self, key: impl Into<String>, value: Value) -> Self {
 		self.config.insert(key.into(), value);
 		self
 	}
 
-	/// Set the node ID
 	pub fn with_node_id(mut self, node_id: FlowNodeId) -> Self {
 		self.node_id = node_id;
 		self
 	}
 
-	/// Set the initial version
 	pub fn with_version(mut self, version: CommitVersion) -> Self {
 		self.version = version;
 		self
 	}
 
-	/// Set initial state
 	pub fn with_initial_state<K>(mut self, key: K, value: Vec<u8>) -> Self
 	where
 		K: EncodableKey,
@@ -344,18 +270,13 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 		self
 	}
 
-	/// Build the test harness
 	pub fn build(self) -> Result<OperatorTestHarness<T>> {
-		// Create TestContext in a Box for stable address
 		let context = Box::new(TestContext::new(self.version));
 
-		// Set initial state
 		for (k, v) in self.initial_state {
 			context.set_state(k, v.0.to_vec());
 		}
 
-		// Create FFI context with test callbacks
-		// The txn_ptr points to the TestContext
 		let ffi_context = Box::new(ContextFFI {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			executor_ptr: null(),
@@ -364,7 +285,6 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 			callbacks: create_test_callbacks(),
 		});
 
-		// Create the operator
 		let operator = T::new(self.node_id, &self.config)?;
 
 		Ok(OperatorTestHarness {
@@ -380,16 +300,13 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 	}
 }
 
-/// Helper for testing operators with metadata
 pub struct TestMetadataHarness;
 
 impl TestMetadataHarness {
-	/// Assert an operator has the expected name
 	pub fn assert_name<T: FFIOperatorMetadata>(expected: &str) {
 		assert_eq!(T::NAME, expected, "Operator name mismatch. Expected: {}, Actual: {}", expected, T::NAME);
 	}
 
-	/// Assert an operator has the expected API version
 	pub fn assert_api<T: FFIOperatorMetadata>(expected: u32) {
 		assert_eq!(
 			T::API,
@@ -400,7 +317,6 @@ impl TestMetadataHarness {
 		);
 	}
 
-	/// Assert an operator has the expected semantic version
 	pub fn assert_version<T: FFIOperatorMetadata>(expected: &str) {
 		assert_eq!(
 			T::VERSION,

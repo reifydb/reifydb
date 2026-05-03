@@ -17,23 +17,18 @@ pub(crate) fn create_authentication(
 	let user_name = plan.user.text();
 	let method = plan.method.text();
 
-	// Find the user
 	let user = services.catalog.get_identity_by_name(&mut Transaction::Admin(&mut *txn), user_name)?;
 
-	// Get the auth provider
 	let provider = services.auth_registry.get(method).ok_or_else(|| {
 		Error::from(AuthError::UnknownMethod {
 			method: method.to_string(),
 		})
 	})?;
 
-	// Create the authentication properties
 	let properties = provider.create(&services.runtime_context.rng, &plan.config)?;
 
-	// Extract token for response (if token method)
 	let token_value = properties.get("token").cloned();
 
-	// Store in catalog
 	services.catalog.create_authentication(txn, user.id, method, properties)?;
 
 	let mut row: Vec<(&str, Value)> = vec![

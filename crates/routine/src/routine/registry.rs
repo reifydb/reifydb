@@ -13,22 +13,10 @@ use reifydb_type::value::sumtype::VariantRef;
 
 use super::{Function, FunctionKind, Procedure};
 
-/// Canonical storage prefix for built-in functions. Surface calls like
-/// `math::abs(x)` resolve to the literal `math::abs` first; on miss, if the
-/// first segment is a known builtin namespace, the registry retries under
-/// `system::builtin::functions::math::abs`.
 pub const BUILTIN_FUNCTION_PREFIX: &str = "system::builtin::functions::";
 
-/// Canonical storage prefix for built-in procedures. Same fallback semantics
-/// as `BUILTIN_FUNCTION_PREFIX`.
 pub const BUILTIN_PROCEDURE_PREFIX: &str = "system::builtin::procedures::";
 
-/// Unified registry for all routines (functions and procedures).
-///
-/// Internally splits by trait-object type because `dyn Function` and
-/// `dyn Procedure` are distinct  - there is no way to put both in a single
-/// map. Callers see one `Routines` handle with one public API; the split is
-/// invisible above this module.
 #[derive(Clone)]
 pub struct Routines(Arc<RoutinesInner>);
 
@@ -144,9 +132,6 @@ impl RoutinesInner {
 			.collect()
 	}
 
-	/// Resolve event handlers bound to a sumtype variant. Lazy: deferred
-	/// handlers are resolved on first dispatch using the materialized catalog
-	/// to look up their target `VariantRef`.
 	pub fn get_handlers(&self, catalog: &MaterializedCatalog, variant: VariantRef) -> Vec<Arc<dyn Procedure>> {
 		{
 			let mut state = self.handlers.write().unwrap();
@@ -184,42 +169,28 @@ impl RoutinesConfigurator {
 		self.procedures.contains_key(name)
 	}
 
-	/// Register a function under its literal `RoutineInfo` name. Used by FFI
-	/// and WASM loaders for user-defined functions; built-ins use
-	/// `register_builtin_function` instead.
 	pub fn register_function(mut self, routine: Arc<dyn Function>) -> Self {
 		self.functions.insert(routine.info().name.clone(), routine);
 		self
 	}
 
-	/// Register a procedure under its literal `RoutineInfo` name. Used by FFI
-	/// and WASM loaders for user-defined procedures; built-ins use
-	/// `register_builtin_procedure` instead.
 	pub fn register_procedure(mut self, routine: Arc<dyn Procedure>) -> Self {
 		self.procedures.insert(routine.info().name.clone(), routine);
 		self
 	}
 
-	/// Register a built-in function under `system::builtin::functions::<name>`.
-	/// `RoutineInfo::name` stays user-visible (e.g. `"math::abs"`); only the
-	/// storage key is prefixed.
 	pub fn register_builtin_function(mut self, routine: Arc<dyn Function>) -> Self {
 		let key = format!("{BUILTIN_FUNCTION_PREFIX}{}", routine.info().name);
 		self.functions.insert(key, routine);
 		self
 	}
 
-	/// Register a built-in procedure under `system::builtin::procedures::<name>`.
 	pub fn register_builtin_procedure(mut self, routine: Arc<dyn Procedure>) -> Self {
 		let key = format!("{BUILTIN_PROCEDURE_PREFIX}{}", routine.info().name);
 		self.procedures.insert(key, routine);
 		self
 	}
 
-	/// Register an event handler procedure by sumtype-variant path.
-	///
-	/// `event_path` uses the format `"namespace::event_name::VariantName"`.
-	/// Resolution is lazy  - the handler is resolved on first dispatch.
 	pub fn register_handler(mut self, event_path: &str, routine: Arc<dyn Procedure>) -> Self {
 		self.deferred_handlers.push((event_path.to_string(), routine));
 		self
@@ -239,9 +210,6 @@ impl RoutinesConfigurator {
 		self
 	}
 
-	/// Alias one built-in function name to another. `alias` and `canonical`
-	/// are the user-visible names (e.g. `"duration::day"`, `"duration::days"`);
-	/// both are stored with the canonical builtin prefix.
 	pub fn register_builtin_function_alias(mut self, alias: &str, canonical: &str) -> Self {
 		let canonical_key = format!("{BUILTIN_FUNCTION_PREFIX}{canonical}");
 		let alias_key = format!("{BUILTIN_FUNCTION_PREFIX}{alias}");
@@ -251,8 +219,6 @@ impl RoutinesConfigurator {
 		self
 	}
 
-	/// Alias one built-in procedure name to another. Mirrors
-	/// `register_builtin_function_alias`.
 	pub fn register_builtin_procedure_alias(mut self, alias: &str, canonical: &str) -> Self {
 		let canonical_key = format!("{BUILTIN_PROCEDURE_PREFIX}{canonical}");
 		let alias_key = format!("{BUILTIN_PROCEDURE_PREFIX}{alias}");

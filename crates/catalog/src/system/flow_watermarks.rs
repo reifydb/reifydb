@@ -12,10 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::flow_watermarks::*, vtable::FLOW_WATERMARKS};
 
-/// Returns the static definition for the system.flow_watermarks virtual table.
-///
-/// This table exposes per-source watermark information for each flow,
-/// showing how far behind each flow is for each of its subscribed sources.
 pub fn flow_watermarks() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

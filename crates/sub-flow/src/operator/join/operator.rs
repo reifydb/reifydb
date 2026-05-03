@@ -53,8 +53,6 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-/// Per-side retention configuration for a join. `None` on either side means
-/// "no eviction" for that side (the row-TTL absent-clause default: unbounded growth).
 #[derive(Default, Clone, Copy)]
 pub struct JoinStateTtl {
 	pub left_nanos: Option<u64>,
@@ -64,7 +62,6 @@ pub struct JoinStateTtl {
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
-/// Configuration for one side (left or right) of a join operator.
 pub struct JoinSideConfig {
 	pub parent: Arc<Operators>,
 	pub node: FlowNodeId,
@@ -155,8 +152,6 @@ impl JoinOperator {
 		RowShape::operator_state()
 	}
 
-	/// Compute join keys for all rows in Columns
-	/// Returns Vec<Option<Hash128>> - one per row, None for rows with undefined key values
 	pub(crate) fn compute_join_keys(
 		&self,
 		columns: &Columns,
@@ -182,7 +177,6 @@ impl JoinOperator {
 		};
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 
-		// Evaluate all compiled expressions on the entire batch
 		let mut expr_columns = Vec::with_capacity(compiled_exprs.len());
 		for compiled_expr in compiled_exprs.iter() {
 			let col: ColumnWithName = if let Some(col_name) = compiled_expr.access_column_name() {
@@ -197,7 +191,6 @@ impl JoinOperator {
 			expr_columns.push(col);
 		}
 
-		// Compute hash for each row
 		let mut hashes = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let mut hasher = Vec::with_capacity(256);
@@ -206,7 +199,6 @@ impl JoinOperator {
 			for col in &expr_columns {
 				let value = col.data().get_value(row_idx);
 
-				// Check if the value is undefined - undefined values should never match in joins
 				if matches!(value, Value::None { .. }) {
 					has_undefined = true;
 					break;
@@ -228,8 +220,6 @@ impl JoinOperator {
 		Ok(hashes)
 	}
 
-	/// Generate columns for an unmatched left join result.
-	/// Creates combined columns with left values and Undefined values for right columns.
 	pub(crate) fn unmatched_left_columns(
 		&self,
 		txn: &mut FlowTransaction,
@@ -238,25 +228,20 @@ impl JoinOperator {
 	) -> Result<Columns> {
 		let left_row_number = left.row_numbers[left_idx];
 
-		// Create composite key for this unmatched row
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_row_number.0);
 		let composite_key = EncodedKey::new(serializer.finish());
 
-		// Get or create a unique row number for this unmatched row
 		let (result_row_number, _is_new) =
 			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
 
-		// Get the right side shape
 		let right_shape = self.right_parent.pull(txn, &[])?;
 
-		// Build using JoinedColumnsBuilder
 		let builder = JoinedColumnsBuilder::new(left, &right_shape, &self.alias);
 		Ok(builder.unmatched_left(result_row_number, left, left_idx, &right_shape))
 	}
 
-	/// Generate columns for multiple unmatched left join results.
 	pub(crate) fn unmatched_left_columns_batch(
 		&self,
 		txn: &mut FlowTransaction,
@@ -267,7 +252,6 @@ impl JoinOperator {
 			return Ok(Columns::empty());
 		}
 
-		// Build composite keys for all unmatched rows
 		let composite_keys: Vec<EncodedKey> = left_indices
 			.iter()
 			.map(|&idx| {
@@ -279,32 +263,25 @@ impl JoinOperator {
 			})
 			.collect();
 
-		// Batch get/create row numbers
 		let row_numbers_with_flags =
 			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
-		// Get the right side shape
 		let right_shape = self.right_parent.pull(txn, &[])?;
 
-		// Build using JoinedColumnsBuilder
 		let builder = JoinedColumnsBuilder::new(left, &right_shape, &self.alias);
 		Ok(builder.unmatched_left_batch(&row_numbers, left, left_indices, &right_shape))
 	}
 
-	/// Clean up all join results for a given left row
-	/// This removes both matched and unmatched join results
 	pub(crate) fn cleanup_left_row_joins(&self, txn: &mut FlowTransaction, left_number: u64) -> Result<()> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_number);
 		let prefix = serializer.finish();
 
-		// Remove all mappings with this prefix
 		self.row_number_provider.remove_by_prefix(txn, &prefix)
 	}
 
-	/// Join a single left row with a single right row, returning combined Columns.
 	pub(crate) fn join_columns(
 		&self,
 		txn: &mut FlowTransaction,
@@ -320,12 +297,10 @@ impl JoinOperator {
 		let (result_row_number, _is_new) =
 			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
 
-		// Join directly at indices without extracting rows
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
 		Ok(builder.join_at_indices(result_row_number, left, left_idx, right, right_idx))
 	}
 
-	/// Create a composite key for a join result from left and right row numbers.
 	fn make_composite_key(left_num: RowNumber, right_num: RowNumber) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
@@ -334,19 +309,13 @@ impl JoinOperator {
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Decode a u64 from keycode format (big-endian with bits flipped).
-	/// The keycode format inverts all bits for proper byte-order sorting.
 	fn decode_row_number_from_keycode(bytes: &[u8]) -> u64 {
 		let arr: [u8; 8] =
 			[!bytes[0], !bytes[1], !bytes[2], !bytes[3], !bytes[4], !bytes[5], !bytes[6], !bytes[7]];
 		u64::from_be_bytes(arr)
 	}
 
-	/// Parse a composite key to extract left and optional right row numbers.
-	/// Returns None if the key format is invalid.
-	/// Key format: '!L' (1 byte inverted) + left_row_number (8 bytes) + optional right_row_number (8 bytes)
 	fn parse_composite_key(key_bytes: &[u8]) -> Option<(RowNumber, Option<RowNumber>)> {
-		// Check minimum length and 'L' prefix (inverted in keycode format)
 		if key_bytes.len() < 9 || key_bytes[0] != !b'L' {
 			return None;
 		}
@@ -361,8 +330,6 @@ impl JoinOperator {
 		Some((RowNumber(left_num), right_num))
 	}
 
-	/// Join one left row with all right rows.
-	/// Returns combined Columns with one row per right row.
 	pub(crate) fn join_columns_one_to_many(
 		&self,
 		txn: &mut FlowTransaction,
@@ -377,7 +344,6 @@ impl JoinOperator {
 
 		let left_row_number = left.row_numbers[left_idx];
 
-		// Build all composite keys
 		let composite_keys: Vec<EncodedKey> = (0..right_count)
 			.map(|right_idx| {
 				let right_row_number = right.row_numbers[right_idx];
@@ -385,7 +351,6 @@ impl JoinOperator {
 			})
 			.collect();
 
-		// Batch get/create row numbers
 		let row_numbers_with_flags =
 			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
@@ -394,8 +359,6 @@ impl JoinOperator {
 		Ok(builder.join_one_to_many(&row_numbers, left, left_idx, right))
 	}
 
-	/// Join all left rows with one right row.
-	/// Returns combined Columns with one row per left row.
 	pub(crate) fn join_columns_many_to_one(
 		&self,
 		txn: &mut FlowTransaction,
@@ -410,7 +373,6 @@ impl JoinOperator {
 
 		let right_row_number = right.row_numbers[right_idx];
 
-		// Build all composite keys
 		let composite_keys: Vec<EncodedKey> = (0..left_count)
 			.map(|left_idx| {
 				let left_row_number = left.row_numbers[left_idx];
@@ -418,7 +380,6 @@ impl JoinOperator {
 			})
 			.collect();
 
-		// Batch get/create row numbers
 		let row_numbers_with_flags =
 			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
@@ -427,8 +388,6 @@ impl JoinOperator {
 		Ok(builder.join_many_to_one(&row_numbers, left, right, right_idx))
 	}
 
-	/// Join left rows at specified indices with right rows at specified indices (cartesian product).
-	/// Returns combined Columns with left_indices.len() * right_indices.len() rows.
 	pub(crate) fn join_columns_cartesian(
 		&self,
 		txn: &mut FlowTransaction,
@@ -443,7 +402,6 @@ impl JoinOperator {
 			return Ok(Columns::empty());
 		}
 
-		// Build all composite keys for cartesian product
 		let total_results = left_count * right_count;
 		let mut composite_keys = Vec::with_capacity(total_results);
 
@@ -455,7 +413,6 @@ impl JoinOperator {
 			}
 		}
 
-		// Batch get/create row numbers
 		let row_numbers_with_flags =
 			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
@@ -574,11 +531,7 @@ impl Operator for JoinOperator {
 	}
 
 	// FIXME #244 The issue is that when we need to reconstruct an unmatched left row, we need the right side's
-	// shape to create the combined layout To make that work it requires shape / layout information of the right
-	// side this should unlock the test:
-	// testsuite/flow/tests/scripts/backfill/18_multiple_joins_same_table.skip
-	// testsuite/flow/tests/scripts/backfill/19_complex_multi_table.skip
-	// testsuite/flow/tests/scripts/backfill/21_backfill_with_distinct.skip
+
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		let mut found_columns: Vec<Columns> = Vec::new();
 

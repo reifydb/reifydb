@@ -12,7 +12,6 @@ use crate::{
 	expression::{Expression, ExpressionCompiler},
 };
 
-/// Compile an optional `RETURNING` clause shared by insert/update/delete.
 pub(crate) fn compile_returning_clause<'bump>(returning: Option<Vec<Ast<'bump>>>) -> Result<Option<Vec<Expression>>> {
 	let Some(returning_asts) = returning else {
 		return Ok(None);

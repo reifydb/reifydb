@@ -31,8 +31,6 @@ use crate::{
 	},
 };
 
-/// Tokenize the input string into a vector of tokens.
-/// The input lifetime is tied to the bump lifetime, enabling zero-copy fragments.
 const SYSTEM_COLUMNS: &[&str] = &["rownum", "created_at", "updated_at"];
 
 fn scan_system_column<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
@@ -67,31 +65,25 @@ fn scan_system_column<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<'b>>> {
 	let mut cursor = Cursor::new(input);
-	// Estimate token count: rough heuristic of 1 token per 6 characters
-	// with minimum of 8 and maximum reasonable limit
+
 	let estimated_tokens = (input.len() / 6).clamp(8, 2048);
 	let mut tokens = BumpVec::with_capacity_in(estimated_tokens, bump);
 
 	while !cursor.is_eof() {
-		// Skip whitespace at the beginning of each token
 		cursor.skip_whitespace();
 
 		if cursor.is_eof() {
 			break;
 		}
 
-		// Character-based dispatch for better performance
 		let token = match cursor.peek() {
 			Some(ch) => match ch {
-				// Variables start with $
 				'$' => scan_variable(&mut cursor),
 
 				'#' => scan_system_column(&mut cursor).or_else(|| scan_literal(&mut cursor)),
 
-				// Backtick-quoted identifiers
 				'`' => scan_quoted_identifier(&mut cursor),
 
-				// String literals
 				'\'' | '"' => scan_literal(&mut cursor),
 
 				// Numbers or digit-starting identifiers (e.g., 10min, 5sec)

@@ -13,15 +13,11 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse a block: `{ stmt; stmt; ... }`
-	/// Consumes the opening `{`, parses statements separated by `;` or newlines,
-	/// and consumes the closing `}`.
 	pub(crate) fn parse_block(&mut self) -> Result<AstBlock<'bump>> {
 		let token = self.consume_operator(Operator::OpenCurly)?;
 
 		let mut statements = Vec::new();
 		loop {
-			// Skip newlines
 			self.skip_new_line()?;
 
 			if self.is_eof() {
@@ -39,12 +35,10 @@ impl<'bump> Parser<'bump> {
 				}));
 			}
 
-			// Check for closing brace
 			if self.current()?.is_operator(Operator::CloseCurly) {
 				break;
 			}
 
-			// Parse a statement
 			let stmt = self.parse_block_statement()?;
 			if !stmt.is_empty() {
 				statements.push(stmt);
@@ -59,8 +53,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse a single statement inside a block.
-	/// Stops at `;`, `}`, or EOF without consuming `}`.
 	fn parse_block_statement(&mut self) -> Result<AstStatement<'bump>> {
 		let mut nodes = Vec::with_capacity(4);
 		let mut has_pipes = false;
@@ -70,13 +62,12 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Check for block-terminating tokens
 			if let Ok(current) = self.current() {
 				if current.is_operator(Operator::CloseCurly) {
 					break;
 				}
 				if current.is_separator(Separator::Semicolon) {
-					self.advance()?; // consume semicolon
+					self.advance()?;
 					break;
 				}
 			}
@@ -91,11 +82,11 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 				if current.is_separator(Separator::Semicolon) {
-					self.advance()?; // consume semicolon
+					self.advance()?;
 					break;
 				}
 				if current.is_operator(Operator::Pipe) {
-					self.advance()?; // consume pipe
+					self.advance()?;
 					has_pipes = true;
 				} else {
 					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
@@ -107,7 +98,7 @@ impl<'bump> Parser<'bump> {
 			nodes,
 			has_pipes,
 			is_output: false,
-			rql: "", // Internal statement
+			rql: "",
 		})
 	}
 }

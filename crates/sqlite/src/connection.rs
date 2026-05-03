@@ -7,7 +7,6 @@ use rusqlite::{Connection, OpenFlags as SqliteOpenFlags};
 
 use crate::{DbPath, OpenFlags, error::SqliteError};
 
-/// Connect to a SQLite database.
 pub fn connect(path: &DbPath, flags: SqliteOpenFlags) -> Result<Connection, SqliteError> {
 	match path {
 		DbPath::File(path) => {
@@ -48,11 +47,6 @@ pub fn connect(path: &DbPath, flags: SqliteOpenFlags) -> Result<Connection, Sqli
 	}
 }
 
-/// Resolve the database path, creating directories as needed.
-///
-/// `default_filename` is appended when the caller passes a `DbPath::File`
-/// that points at a directory (no extension), so each subsystem can keep its
-/// own default (e.g. `"cdc.db"` or `"primitive.db"`).
 pub fn resolve_db_path(db_path: DbPath, default_filename: &str) -> DbPath {
 	match db_path {
 		DbPath::Tmpfs(path) => {
@@ -84,7 +78,6 @@ pub fn resolve_db_path(db_path: DbPath, default_filename: &str) -> DbPath {
 	}
 }
 
-/// Convert our `OpenFlags` to `rusqlite::OpenFlags`.
 pub fn convert_flags(flags: &OpenFlags) -> SqliteOpenFlags {
 	let mut rusqlite_flags = SqliteOpenFlags::empty();
 

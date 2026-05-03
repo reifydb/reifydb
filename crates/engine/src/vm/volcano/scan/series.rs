@@ -46,7 +46,6 @@ impl SeriesScanNode {
 		variant_tag: Option<u8>,
 		context: Arc<QueryContext>,
 	) -> Result<Self> {
-		// Build headers: key column, optional tag, then data columns
 		let mut columns = vec![Fragment::internal(series.def().key.column())];
 		if series.def().tag.is_some() {
 			columns.push(Fragment::internal("tag"));
@@ -90,7 +89,6 @@ impl QueryNode for SeriesScanNode {
 		let series = self.series.def();
 		let has_tag = series.tag.is_some();
 
-		// Create scan range
 		let range = SeriesRowKeyRange::scan_range(
 			series.id,
 			self.variant_tag,
@@ -107,7 +105,6 @@ impl QueryNode for SeriesScanNode {
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
 		let mut new_last_key = None;
 
-		// Get the shape for decoding series values before borrowing rx for the stream
 		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;
 
 		let mut stream = rx.range(range, batch_size as usize)?;
@@ -116,7 +113,6 @@ impl QueryNode for SeriesScanNode {
 		for entry in stream.by_ref() {
 			let entry = entry?;
 
-			// Decode the key to get timestamp and optional tag
 			if let Some(key) = SeriesRowKey::decode(&entry.key) {
 				key_values.push(key.key);
 				sequences.push(key.sequence);
@@ -126,7 +122,6 @@ impl QueryNode for SeriesScanNode {
 					tags.push(key.variant_tag.unwrap_or(0));
 				}
 
-				// Decode data columns from value using shape
 				let mut values = Vec::with_capacity(series.data_columns().count());
 				for (i, _) in series.data_columns().enumerate() {
 					values.push(read_shape.get_value(&entry.row, i + 1));
@@ -146,7 +141,6 @@ impl QueryNode for SeriesScanNode {
 		if key_values.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				// Empty series: return empty columns with correct types to preserve shape
 				let key_type = series
 					.columns
 					.iter()
@@ -177,21 +171,17 @@ impl QueryNode for SeriesScanNode {
 
 		self.last_key = new_last_key;
 
-		// Build output columns
 		let mut result_columns = Vec::new();
 
-		// Key column
 		result_columns.push(ColumnWithName::new(
 			Fragment::internal(series.key.column()),
 			series.key_column_data(key_values),
 		));
 
-		// Tag column (Uint1) if present
 		if has_tag {
 			result_columns.push(ColumnWithName::new(Fragment::internal("tag"), ColumnBuffer::uint1(tags)));
 		}
 
-		// Data columns
 		for (col_idx, col_def) in series.data_columns().enumerate() {
 			let col_type = col_def.constraint.get_type();
 			let col_values: Vec<Value> = data_rows
@@ -339,7 +329,6 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 			ColumnBuffer::utf8(vals)
 		}
 		_ => {
-			// Fallback: convert to string representation
 			let vals: Vec<String> = values.iter().map(|v| format!("{:?}", v)).collect();
 			ColumnBuffer::utf8(vals)
 		}

@@ -15,8 +15,6 @@ use serde_json::{Value as JsonValue, to_string, to_value};
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-/// JSON-serializable version of FlowNodeType that uses JsonExpression
-/// for clean expression serialization without Fragment metadata.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JsonFlowNodeType {
@@ -274,7 +272,6 @@ impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
 							None => continue,
 						};
 
-						// Deserialize from postcard
 						let node_type: FlowNodeType = from_bytes(bytes).map_err(|e| {
 							Error(Box::new(internal!(
 								"Failed to deserialize FlowNodeType: {}",
@@ -282,10 +279,8 @@ impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
 							)))
 						})?;
 
-						// Convert to JsonFlowNodeType for clean serialization
 						let json_node_type: JsonFlowNodeType = (&node_type).into();
 
-						// Serialize to JSON (untagged - extract inner value only)
 						let json_value = to_value(&json_node_type).map_err(|e| {
 							Error(Box::new(internal!(
 								"Failed to serialize FlowNodeType to JSON: {}",
@@ -293,18 +288,13 @@ impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
 							)))
 						})?;
 
-						// Extract the inner object from the tagged enum {"variant_name": {...}}
 						let inner_value = match json_value {
 							JsonValue::Object(map) if map.len() == 1 => map
 								.into_iter()
 								.next()
 								.map(|(_, v)| v)
 								.unwrap_or(JsonValue::Null),
-							JsonValue::String(_) => {
-								// Unit variants serialize as strings, return null for
-								// untagged
-								JsonValue::Null
-							}
+							JsonValue::String(_) => JsonValue::Null,
 							other => other,
 						};
 

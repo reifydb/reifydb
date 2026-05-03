@@ -9,9 +9,6 @@ use reifydb_core::value::column::columns::Columns;
 
 use crate::ffi_callbacks::builder::BuilderRegistry;
 
-/// Drain a `BuilderRegistry` that received a single Insert-shaped diff and
-/// return its `post` (or `pre` for a Remove) columns. Used by the
-/// single-Columns FFI hot paths (operator `pull`, transforms, procedures).
 pub fn single_columns_from_registry(registry: &BuilderRegistry) -> Columns {
 	let mut diffs = registry.drain();
 	if let Some(first) = diffs.drain(..).next() {

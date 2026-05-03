@@ -226,10 +226,6 @@ impl FlowWorkerActor {
 			}
 		}
 
-		// Persist any operator state mutated during this txn before extracting
-		// pending writes. The cache holds the deserialised state across all the
-		// process_tick calls above; this flush is what actually writes it back
-		// to storage (via `pending`). See FlowTransaction::operator_state.
 		txn.flush_operator_states()?;
 
 		Ok((txn.take_pending(), txn.take_pending_shapes()))
@@ -280,9 +276,6 @@ impl FlowWorkerActor {
 				}
 			}
 
-			// Persist any operator state mutated during this batch before
-			// extracting pending writes - state writes need to land in
-			// `pending` so the worker commits them with the rest.
 			txn.flush_operator_states()?;
 
 			let view_entries = txn.take_accumulator_entries();

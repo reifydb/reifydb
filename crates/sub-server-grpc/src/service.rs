@@ -79,7 +79,6 @@ impl ReifyDbService {
 			return Ok(extract_identity_from_auth_header(self.state.auth_service(), header)?);
 		}
 
-		// No credentials provided - anonymous access
 		Ok(IdentityId::anonymous())
 	}
 
@@ -95,9 +94,6 @@ impl ReifyDbService {
 		meta
 	}
 
-	/// Build request metadata for internal per-query `create_subscription` calls inside
-	/// `batch_subscribe`. The headers from the original gRPC request are already captured
-	/// during `extract_identity`; downstream creators just need the protocol tag.
 	fn build_metadata_placeholder() -> RequestMetadata {
 		RequestMetadata::new(Protocol::Grpc)
 	}
@@ -116,7 +112,6 @@ impl ReifyDbService {
 	) -> Result<Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
 		let (tx, rx) = mpsc::unbounded_channel();
 
-		// Send initial subscribed event
 		let subscribed_event = SubscriptionEvent {
 			event: Some(subscription_event::Event::Subscribed(SubscribedEvent {
 				subscription_id: subscription_id.0.to_string(),
@@ -126,12 +121,10 @@ impl ReifyDbService {
 			return Err(Status::internal("Failed to send subscribed event"));
 		}
 
-		// Register with registry
 		self.registry.register(subscription_id, tx.clone(), format);
 
 		info!("gRPC subscription created: {}", subscription_id);
 
-		// Spawn cleanup task that monitors when the receiver is dropped or shutdown is signaled
 		let registry = self.registry.clone();
 		let engine = self.state.engine_clone();
 		let mut shutdown_rx = self.shutdown_rx.clone();
@@ -148,7 +141,6 @@ impl ReifyDbService {
 
 			registry.unregister(&subscription_id);
 
-			// Only run database cleanup on client disconnect, not server shutdown
 			if client_disconnected {
 				let engine_clone = engine.clone();
 				let result = spawn_blocking(move || {
@@ -189,7 +181,6 @@ impl ReifyDbService {
 
 		let (tx, rx) = mpsc::unbounded_channel();
 
-		// Forward initial SubscribedEvent
 		let subscribed_event = SubscriptionEvent {
 			event: Some(subscription_event::Event::Subscribed(SubscribedEvent {
 				subscription_id: remote_sub.subscription_id().to_string(),
@@ -197,7 +188,6 @@ impl ReifyDbService {
 		};
 		tx.send(Ok(subscribed_event)).map_err(|_| Status::internal("channel closed"))?;
 
-		// Spawn proxy: remote stream → local channel
 		let shutdown_rx = self.shutdown_rx.clone();
 		spawn(proxy_remote(remote_sub, tx, shutdown_rx, move |payload| {
 			let payload = match (format, payload) {
@@ -338,7 +328,6 @@ impl ReifyDb for ReifyDbService {
 		let inner = request.into_inner();
 		let format = WireFormat::from_proto_i32(inner.format);
 
-		// Subscribe still uses execute() via create_subscription for now
 		match create_subscription(&self.state, identity, &inner.rql, metadata).await.map_err(GrpcError::from)? {
 			CreateSubscriptionResult::Local(subscription_id) => {
 				self.subscribe_local(subscription_id, format).await
@@ -363,10 +352,8 @@ impl ReifyDb for ReifyDbService {
 				.map_err(|_| Status::invalid_argument("Invalid subscription ID"))?,
 		);
 
-		// Unregister from registry
 		self.registry.unregister(&subscription_id);
 
-		// Cleanup the subscription from the database
 		let engine = self.state.engine_clone();
 		let result = spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id)).await;
 		match result {
@@ -396,7 +383,6 @@ impl ReifyDb for ReifyDbService {
 			return Err(Status::invalid_argument("BatchSubscribe requires at least one query"));
 		}
 
-		// Resolve every member first, tracking which are local vs remote so we can roll back on failure.
 		let mut resolved: Vec<GrpcResolvedMember> = Vec::with_capacity(inner.rql.len());
 		for (index, rql) in inner.rql.iter().enumerate() {
 			let metadata = Self::build_metadata_placeholder();
@@ -456,8 +442,6 @@ impl ReifyDb for ReifyDbService {
 
 		let (batch_tx, batch_rx) = mpsc::unbounded_channel::<Result<BatchSubscriptionEvent, Status>>();
 
-		// Register local members + batch before shipping the initial event so that any
-		// try_deliver arriving immediately is routed correctly.
 		let member_ids: Vec<SubscriptionId> = resolved.iter().map(|m| m.subscription_id()).collect();
 
 		for member in &resolved {
@@ -478,7 +462,6 @@ impl ReifyDb for ReifyDbService {
 			self.state.rng(),
 		);
 
-		// Emit initial BatchSubscribedEvent.
 		let members_wire: Vec<BatchMember> = resolved
 			.iter()
 			.map(|m| BatchMember {
@@ -497,7 +480,6 @@ impl ReifyDb for ReifyDbService {
 			return Err(Status::internal("Failed to send subscribed event"));
 		}
 
-		// Spawn proxy tasks for remote members.
 		let mut remote_handles = Vec::new();
 		for member in resolved {
 			if let GrpcResolvedMember::Remote {
@@ -523,7 +505,6 @@ impl ReifyDb for ReifyDbService {
 
 		info!("gRPC batch {} created ({} members, format={:?})", batch_id, member_ids.len(), format);
 
-		// Cleanup task: on client disconnect OR server shutdown, unsubscribe the batch.
 		let registry = self.registry.clone();
 		let engine = self.state.engine_clone();
 		let batch_tx_for_close = batch_tx.clone();
@@ -546,8 +527,6 @@ impl ReifyDb for ReifyDbService {
 				for member in members {
 					let engine_clone = engine.clone();
 					let _ = spawn_blocking(move || {
-						// cleanup_subscription_sync is a noop for remote-only IDs,
-						// harmless.
 						cleanup_subscription_sync(&engine_clone, member)
 					})
 					.await;
@@ -663,7 +642,6 @@ impl ReifyDb for ReifyDbService {
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 
-		// Resolve the binding by gRPC rpc name via the protocol-specific index.
 		let binding = self
 			.state
 			.engine()
@@ -671,7 +649,6 @@ impl ReifyDb for ReifyDbService {
 			.find_grpc_binding_by_name(&inner.name)
 			.ok_or_else(|| Status::not_found(format!("no gRPC binding named `{}`", inner.name)))?;
 
-		// Resolve procedure + namespace.
 		let procedure = self
 			.state
 			.engine()
@@ -685,8 +662,6 @@ impl ReifyDb for ReifyDbService {
 			.find_namespace(binding.namespace)
 			.ok_or_else(|| Status::internal("binding references missing namespace"))?;
 
-		// Decode typed params from the wire and validate against the procedure's declared set
-		// (unknown keys, missing required) - without unpacking the Arc<HashMap>.
 		let params = Self::extract_params(inner.params)?;
 		match &params {
 			Params::None => {
@@ -725,8 +700,6 @@ impl ReifyDb for ReifyDbService {
 				.await
 				.map_err(GrpcError::from)?;
 
-		// Encode per binding format. Rbcf → bytes; Frames → proto FramesPayload.
-		// Json isn't representable over this gRPC schema - fall back to FramesPayload.
 		let payload = match binding.format {
 			BindingFormat::Rbcf => operation_response::Payload::Rbcf(
 				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
@@ -749,7 +722,6 @@ fn insert_meta_headers(metadata: &mut MetadataMap, metrics: &ExecutionMetrics) {
 	metadata.insert("x-duration", metrics.total.to_string().parse().unwrap());
 }
 
-/// A resolved batch member inside `batch_subscribe`, classified by source.
 enum GrpcResolvedMember {
 	Local {
 		index: usize,
@@ -790,7 +762,6 @@ impl GrpcResolvedMember {
 	}
 }
 
-/// Roll back any batch members already resolved before a subsequent failure.
 async fn rollback_grpc_batch(state: &GrpcServerState, resolved: &[GrpcResolvedMember]) {
 	for member in resolved {
 		if let GrpcResolvedMember::Local {
@@ -802,6 +773,5 @@ async fn rollback_grpc_batch(state: &GrpcServerState, resolved: &[GrpcResolvedMe
 			let sub_id = *subscription_id;
 			let _ = spawn_blocking(move || cleanup_subscription_sync(&engine, sub_id)).await;
 		}
-		// Remote members: dropping RemoteSubscription closes its gRPC stream → remote-side cleanup.
 	}
 }

@@ -15,7 +15,6 @@ use super::catalog::{
 	ringbuffer::RingBuffer, series::Series, table::Table, view::View, vtable::VTable,
 };
 
-/// Resolved namespace with both identifier and definition
 #[derive(Debug, Clone)]
 pub enum ResolvedNamespace {
 	Local(Arc<ResolvedNamespaceInner>),
@@ -48,39 +47,32 @@ impl ResolvedNamespace {
 		}
 	}
 
-	/// Get the namespace name
 	pub fn name(&self) -> &str {
 		self.inner().def.name()
 	}
 
-	/// Get the namespace def
 	pub fn def(&self) -> &Namespace {
 		&self.inner().def
 	}
 
-	/// Get the fragment for error reporting
 	pub fn fragment(&self) -> &Fragment {
 		&self.inner().identifier
 	}
 
-	/// Whether this is a remote namespace
 	pub fn is_remote(&self) -> bool {
 		matches!(self, Self::Remote(_))
 	}
 
-	/// Get the remote address if this is a remote namespace
 	pub fn address(&self) -> Option<&str> {
 		self.inner().def.address()
 	}
 
-	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedNamespace {
 		let inner = self.inner();
 		ResolvedNamespace::new(Fragment::internal(inner.identifier.text()), inner.def.clone())
 	}
 }
 
-/// Resolved physical table
 #[derive(Debug, Clone)]
 pub struct ResolvedTable(Arc<ResolvedTableInner>);
 
@@ -100,42 +92,34 @@ impl ResolvedTable {
 		}))
 	}
 
-	/// Get the table name
 	pub fn name(&self) -> &str {
 		&self.0.def.name
 	}
 
-	/// Get the table def
 	pub fn def(&self) -> &Table {
 		&self.0.def
 	}
 
-	/// Get the namespace
 	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
-	/// Get the identifier
 	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
-	/// Get fully qualified name
 	pub fn fully_qualified_name(&self) -> String {
 		format!("{}::{}", self.0.namespace.name(), self.name())
 	}
 
-	/// Get columns
 	pub fn columns(&self) -> &[Column] {
 		&self.0.def.columns
 	}
 
-	/// Find a column by name
 	pub fn find_column(&self, name: &str) -> Option<&Column> {
 		self.0.def.columns.iter().find(|c| c.name == name)
 	}
 
-	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedTable {
 		ResolvedTable(Arc::new(ResolvedTableInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
@@ -145,7 +129,6 @@ impl ResolvedTable {
 	}
 }
 
-/// Resolved virtual table (system tables, information_shape)
 #[derive(Debug, Clone)]
 pub struct ResolvedTableVirtual(Arc<ResolvedTableVirtualInner>);
 
@@ -185,7 +168,6 @@ impl ResolvedTableVirtual {
 		&self.0.def.columns
 	}
 
-	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedTableVirtual {
 		ResolvedTableVirtual(Arc::new(ResolvedTableVirtualInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
@@ -195,7 +177,6 @@ impl ResolvedTableVirtual {
 	}
 }
 
-/// Resolved ring buffer
 #[derive(Debug, Clone)]
 pub struct ResolvedRingBuffer(Arc<ResolvedRingBufferInner>);
 
@@ -215,42 +196,34 @@ impl ResolvedRingBuffer {
 		}))
 	}
 
-	/// Get the ring buffer name
 	pub fn name(&self) -> &str {
 		&self.0.def.name
 	}
 
-	/// Get the ring buffer def
 	pub fn def(&self) -> &RingBuffer {
 		&self.0.def
 	}
 
-	/// Get the namespace
 	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
-	/// Get the identifier
 	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
-	/// Get fully qualified name
 	pub fn fully_qualified_name(&self) -> String {
 		format!("{}::{}", self.0.namespace.name(), self.name())
 	}
 
-	/// Get columns
 	pub fn columns(&self) -> &[Column] {
 		&self.0.def.columns
 	}
 
-	/// Find a column by name
 	pub fn find_column(&self, name: &str) -> Option<&Column> {
 		self.0.def.columns.iter().find(|c| c.name == name)
 	}
 
-	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedRingBuffer {
 		ResolvedRingBuffer(Arc::new(ResolvedRingBufferInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
@@ -260,7 +233,6 @@ impl ResolvedRingBuffer {
 	}
 }
 
-/// Resolved dictionary
 #[derive(Debug, Clone)]
 pub struct ResolvedDictionary(Arc<ResolvedDictionaryInner>);
 
@@ -280,32 +252,26 @@ impl ResolvedDictionary {
 		}))
 	}
 
-	/// Get the dictionary name
 	pub fn name(&self) -> &str {
 		&self.0.def.name
 	}
 
-	/// Get the dictionary def
 	pub fn def(&self) -> &Dictionary {
 		&self.0.def
 	}
 
-	/// Get the namespace
 	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
-	/// Get the identifier
 	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
-	/// Get fully qualified name
 	pub fn fully_qualified_name(&self) -> String {
 		format!("{}::{}", self.0.namespace.name(), self.name())
 	}
 
-	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedDictionary {
 		ResolvedDictionary(Arc::new(ResolvedDictionaryInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
@@ -315,7 +281,6 @@ impl ResolvedDictionary {
 	}
 }
 
-/// Resolved series
 #[derive(Debug, Clone)]
 pub struct ResolvedSeries(Arc<ResolvedSeriesInner>);
 
@@ -335,42 +300,34 @@ impl ResolvedSeries {
 		}))
 	}
 
-	/// Get the series name
 	pub fn name(&self) -> &str {
 		&self.0.def.name
 	}
 
-	/// Get the series def
 	pub fn def(&self) -> &Series {
 		&self.0.def
 	}
 
-	/// Get the namespace
 	pub fn namespace(&self) -> &ResolvedNamespace {
 		&self.0.namespace
 	}
 
-	/// Get the identifier
 	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
-	/// Get fully qualified name
 	pub fn fully_qualified_name(&self) -> String {
 		format!("{}.{}", self.0.namespace.name(), self.name())
 	}
 
-	/// Get columns
 	pub fn columns(&self) -> &[Column] {
 		&self.0.def.columns
 	}
 
-	/// Find a column by name
 	pub fn find_column(&self, name: &str) -> Option<&Column> {
 		self.0.def.columns.iter().find(|c| c.name == name)
 	}
 
-	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedSeries {
 		ResolvedSeries(Arc::new(ResolvedSeriesInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
@@ -380,7 +337,6 @@ impl ResolvedSeries {
 	}
 }
 
-/// Resolved transaction view
 #[derive(Debug, Clone)]
 pub struct ResolvedView(Arc<ResolvedViewInner>);
 
@@ -424,7 +380,6 @@ impl ResolvedView {
 		format!("{}::{}", self.0.namespace.name(), self.name())
 	}
 
-	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedView {
 		ResolvedView(Arc::new(ResolvedViewInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
@@ -473,7 +428,6 @@ impl ResolvedDeferredView {
 		self.0.def.columns()
 	}
 
-	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedDeferredView {
 		ResolvedDeferredView(Arc::new(ResolvedDeferredViewInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
@@ -522,7 +476,6 @@ impl ResolvedTransactionalView {
 		self.0.def.columns()
 	}
 
-	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedTransactionalView {
 		ResolvedTransactionalView(Arc::new(ResolvedTransactionalViewInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
@@ -627,7 +580,7 @@ impl ResolvedFunction {
 		&self.0.def
 	}
 }
-/// Unified enum for any resolved shape type
+
 #[derive(Debug, Clone)]
 pub enum ResolvedShape {
 	Table(ResolvedTable),
@@ -641,7 +594,6 @@ pub enum ResolvedShape {
 }
 
 impl ResolvedShape {
-	/// Get the identifier fragment
 	pub fn identifier(&self) -> &Fragment {
 		match self {
 			Self::Table(t) => t.identifier(),
@@ -655,7 +607,6 @@ impl ResolvedShape {
 		}
 	}
 
-	/// Get the shape name
 	pub fn name(&self) -> &str {
 		match self {
 			Self::Table(t) => t.name(),
@@ -669,7 +620,6 @@ impl ResolvedShape {
 		}
 	}
 
-	/// Get the namespace if this shape has one
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
 		match self {
 			Self::Table(t) => Some(t.namespace()),
@@ -683,17 +633,14 @@ impl ResolvedShape {
 		}
 	}
 
-	/// Check if this shape supports indexes
 	pub fn supports_indexes(&self) -> bool {
 		matches!(self, Self::Table(_))
 	}
 
-	/// Check if this shape supports mutations
 	pub fn supports_mutations(&self) -> bool {
 		matches!(self, Self::Table(_) | Self::RingBuffer(_) | Self::Series(_))
 	}
 
-	/// Get columns for this shape
 	pub fn columns(&self) -> &[Column] {
 		match self {
 			Self::Table(t) => t.columns(),
@@ -702,17 +649,15 @@ impl ResolvedShape {
 			Self::DeferredView(v) => v.columns(),
 			Self::TransactionalView(v) => v.columns(),
 			Self::RingBuffer(r) => r.columns(),
-			Self::Dictionary(_d) => unreachable!(), // Dictionary columns are dynamic (id, value)
+			Self::Dictionary(_d) => unreachable!(),
 			Self::Series(s) => s.columns(),
 		}
 	}
 
-	/// Find a column by name
 	pub fn find_column(&self, name: &str) -> Option<&Column> {
 		self.columns().iter().find(|c| c.name == name)
 	}
 
-	/// Get the shape kind name for error messages
 	pub fn kind_name(&self) -> &'static str {
 		match self {
 			Self::Table(_) => "table",
@@ -726,7 +671,6 @@ impl ResolvedShape {
 		}
 	}
 
-	/// Get fully qualified name if available
 	pub fn fully_qualified_name(&self) -> Option<String> {
 		match self {
 			Self::Table(t) => Some(t.fully_qualified_name()),
@@ -740,7 +684,6 @@ impl ResolvedShape {
 		}
 	}
 
-	/// Convert to a table if this is a table shape
 	pub fn as_table(&self) -> Option<&ResolvedTable> {
 		match self {
 			Self::Table(t) => Some(t),
@@ -748,7 +691,6 @@ impl ResolvedShape {
 		}
 	}
 
-	/// Convert to a view if this is a view shape
 	pub fn as_view(&self) -> Option<&ResolvedView> {
 		match self {
 			Self::View(v) => Some(v),
@@ -756,7 +698,6 @@ impl ResolvedShape {
 		}
 	}
 
-	/// Convert to a ring buffer if this is a ring buffer shape
 	pub fn as_ringbuffer(&self) -> Option<&ResolvedRingBuffer> {
 		match self {
 			Self::RingBuffer(r) => Some(r),
@@ -764,7 +705,6 @@ impl ResolvedShape {
 		}
 	}
 
-	/// Convert to a dictionary if this is a dictionary shape
 	pub fn as_dictionary(&self) -> Option<&ResolvedDictionary> {
 		match self {
 			Self::Dictionary(d) => Some(d),
@@ -772,7 +712,6 @@ impl ResolvedShape {
 		}
 	}
 
-	/// Convert to a series if this is a series shape
 	pub fn as_series(&self) -> Option<&ResolvedSeries> {
 		match self {
 			Self::Series(s) => Some(s),
@@ -781,17 +720,15 @@ impl ResolvedShape {
 	}
 }
 
-/// Column with its resolved shape
 #[derive(Debug, Clone)]
 pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 
 #[derive(Debug)]
 struct ResolvedColumnInner {
-	/// Original identifier with fragments
 	pub identifier: Fragment,
-	/// The resolved shape this column belongs to
+
 	pub shape: ResolvedShape,
-	/// The column definition
+
 	pub def: Column,
 }
 
@@ -804,52 +741,42 @@ impl ResolvedColumn {
 		}))
 	}
 
-	/// Get the column name
 	pub fn name(&self) -> &str {
 		&self.0.def.name
 	}
 
-	/// Get the column def
 	pub fn def(&self) -> &Column {
 		&self.0.def
 	}
 
-	/// Get the identifier
 	pub fn identifier(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
-	/// Get the shape
 	pub fn shape(&self) -> &ResolvedShape {
 		&self.0.shape
 	}
 
-	/// Get the type constraint of this column
 	pub fn type_constraint(&self) -> &TypeConstraint {
 		&self.0.def.constraint
 	}
 
-	/// Get the column type
 	pub fn column_type(&self) -> Type {
 		self.0.def.constraint.get_type()
 	}
 
-	/// Get the column policies
 	pub fn properties(&self) -> Vec<ColumnPropertyKind> {
 		self.0.def.properties.iter().map(|p| p.property.clone()).collect()
 	}
 
-	/// Check if column has auto increment
 	pub fn is_auto_increment(&self) -> bool {
 		self.0.def.auto_increment
 	}
 
-	/// Get the namespace this column belongs to
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
 		self.0.shape.namespace()
 	}
 
-	/// Get fully qualified name
 	pub fn qualified_name(&self) -> String {
 		match self.0.shape.fully_qualified_name() {
 			Some(shape_name) => {
@@ -859,12 +786,10 @@ impl ResolvedColumn {
 		}
 	}
 
-	/// Get the fragment for error reporting
 	pub fn fragment(&self) -> &Fragment {
 		&self.0.identifier
 	}
 
-	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedColumn {
 		ResolvedColumn(Arc::new(ResolvedColumnInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
@@ -874,8 +799,6 @@ impl ResolvedColumn {
 	}
 }
 
-// Helper function to convert ResolvedColumn to NumberOutOfRangeDescriptor
-// This is used in evaluation context for error reporting
 pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOutOfRangeDescriptor {
 	let (namespace, table) = match column.shape() {
 		ResolvedShape::Table(table) => {
@@ -908,7 +831,6 @@ pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOu
 	}
 }
 
-// Placeholder types - these will be defined properly in catalog
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sequence {
 	pub name: String,

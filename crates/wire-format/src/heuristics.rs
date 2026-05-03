@@ -7,16 +7,13 @@ use reifydb_type::value::frame::data::FrameColumnData;
 
 use crate::{format::Encoding, options::CompressionLevel};
 
-/// Minimum row count before considering compressed encodings.
 const MIN_ROWS: usize = 4;
 
-/// Choose the best encoding for a column based on its data and compression level.
 pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) -> Encoding {
 	if compression == CompressionLevel::None {
 		return Encoding::Plain;
 	}
 
-	// Unwrap Option to get inner data for heuristics
 	let inner = match data {
 		FrameColumnData::Option {
 			inner,
@@ -30,15 +27,12 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 	}
 
 	match inner {
-		// Utf8/Blob: try dictionary encoding
 		FrameColumnData::Utf8(_) | FrameColumnData::Blob(_) => try_dict_heuristic(inner),
 
-		// Variable-length numeric: try RLE first, then dictionary
 		FrameColumnData::Int(c) => try_varlen_numeric_heuristic(c, inner),
 		FrameColumnData::Uint(c) => try_varlen_numeric_heuristic(c, inner),
 		FrameColumnData::Decimal(c) => try_varlen_numeric_heuristic(c, inner),
 
-		// Fixed-width types with delta/delta_rle/rle support
 		FrameColumnData::Int1(c) => {
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap() as i64).collect::<Vec<_>>())
 		}
@@ -66,7 +60,6 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 			try_numeric_heuristic_i64(&c.iter().map(|v| v.unwrap().to_bits() as i64).collect::<Vec<_>>())
 		}
 
-		// Temporal types backed by i32/u64
 		FrameColumnData::Date(c) => {
 			let raw: Vec<i32> = (**c).iter().map(|d| d.to_days_since_epoch()).collect();
 			try_numeric_heuristic_i32(&raw)
@@ -80,7 +73,6 @@ pub fn choose_encoding(data: &FrameColumnData, compression: CompressionLevel) ->
 			try_numeric_heuristic_u64(&raw)
 		}
 
-		// Everything else: plain
 		_ => Encoding::Plain,
 	}
 }
@@ -91,7 +83,6 @@ fn try_dict_heuristic(data: &FrameColumnData) -> Encoding {
 		return Encoding::Plain;
 	}
 
-	// Quick cardinality estimate: count distinct values up to a budget
 	let budget = (len / 2).min(10_000);
 	let mut seen = HashSet::new();
 
@@ -103,7 +94,6 @@ fn try_dict_heuristic(data: &FrameColumnData) -> Encoding {
 		}
 	}
 
-	// Dict is beneficial if distinct < row_count / 2
 	if seen.len() < len / 2 {
 		Encoding::Dict
 	} else {
@@ -116,7 +106,6 @@ fn try_numeric_heuristic_i32(slice: &[i32]) -> Encoding {
 		return Encoding::Plain;
 	}
 
-	// Check RLE first - high repetition benefits more from RLE than delta
 	let run_count = count_runs_generic(slice);
 	if run_count * 2 < slice.len() {
 		return Encoding::Rle;
@@ -124,7 +113,6 @@ fn try_numeric_heuristic_i32(slice: &[i32]) -> Encoding {
 
 	let as_i64: Vec<i64> = slice.iter().map(|&v| v as i64).collect();
 
-	// Check if monotonic (ascending or descending) for delta encoding
 	if is_monotonic_i64(&as_i64) {
 		if has_constant_stride_i64(&as_i64) {
 			return Encoding::DeltaRle;
@@ -140,7 +128,6 @@ fn try_numeric_heuristic_i64(slice: &[i64]) -> Encoding {
 		return Encoding::Plain;
 	}
 
-	// Check RLE first - high repetition benefits more from RLE than delta
 	let run_count = count_runs_generic(slice);
 	if run_count * 2 < slice.len() {
 		return Encoding::Rle;
@@ -161,7 +148,6 @@ fn try_numeric_heuristic_u64(slice: &[u64]) -> Encoding {
 		return Encoding::Plain;
 	}
 
-	// Check RLE first - high repetition benefits more from RLE than delta
 	let run_count = count_runs_generic(slice);
 	if run_count * 2 < slice.len() {
 		return Encoding::Rle;
@@ -227,7 +213,6 @@ fn try_numeric_heuristic_u128(slice: &[u128]) -> Encoding {
 	Encoding::Plain
 }
 
-/// Heuristic for variable-length numeric types: RLE first, then Dict.
 fn try_varlen_numeric_heuristic<T: PartialEq>(slice: &[T], data: &FrameColumnData) -> Encoding {
 	if slice.len() < MIN_ROWS {
 		return Encoding::Plain;
@@ -241,7 +226,6 @@ fn try_varlen_numeric_heuristic<T: PartialEq>(slice: &[T], data: &FrameColumnDat
 	try_dict_heuristic(data)
 }
 
-/// Check if a slice is monotonically sorted (ascending or descending).
 fn is_monotonic_i64(slice: &[i64]) -> bool {
 	let is_asc = slice.windows(2).all(|w| w[0] <= w[1]);
 	if is_asc {
@@ -252,7 +236,7 @@ fn is_monotonic_i64(slice: &[i64]) -> bool {
 
 fn has_constant_stride_i64(slice: &[i64]) -> bool {
 	if slice.len() < 3 {
-		return true; // trivially constant stride
+		return true;
 	}
 	let stride = slice[1].wrapping_sub(slice[0]);
 	slice.windows(2).all(|w| w[1].wrapping_sub(w[0]) == stride)

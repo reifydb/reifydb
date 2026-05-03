@@ -83,7 +83,6 @@ fn build_aggregation_shape(names: &[String], types: &[Type]) -> RowShape {
 
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
-/// RowShape layout shared across all events in a window (stored once, not per event)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowLayout {
 	pub names: Vec<String>,
@@ -109,7 +108,6 @@ impl WindowLayout {
 	}
 }
 
-/// A single event stored within a window
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowEvent {
 	pub row_number: RowNumber,
@@ -138,29 +136,25 @@ impl WindowEvent {
 	}
 }
 
-/// State for a single window
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WindowState {
-	/// All events in this window (stored in insertion order)
 	pub events: Vec<WindowEvent>,
-	/// RowShape layout shared by all events (set on first event)
+
 	pub window_layout: Option<WindowLayout>,
-	/// Window creation timestamp
+
 	pub window_start: u64,
-	/// Count of events in window (for count-based windows)
+
 	pub event_count: u64,
-	/// Timestamp of last event (for session windows)
+
 	pub last_event_time: u64,
 }
 
 impl WindowState {
-	/// Get the layout, panics if not set (should always be set after first event)
 	pub fn layout(&self) -> &WindowLayout {
 		self.window_layout.as_ref().expect("WindowState layout must be set before accessing")
 	}
 }
 
-/// Configuration for constructing a WindowOperator.
 pub struct WindowConfig {
 	pub parent: Arc<Operators>,
 	pub node: FlowNodeId,
@@ -172,7 +166,6 @@ pub struct WindowConfig {
 	pub routines: Routines,
 }
 
-/// The main window operator
 pub struct WindowOperator {
 	pub parent: Arc<Operators>,
 	pub node: FlowNodeId,
@@ -186,8 +179,7 @@ pub struct WindowOperator {
 	pub routines: Routines,
 	pub row_number_provider: RowNumberProvider,
 	pub runtime_context: RuntimeContext,
-	/// Column names needed by group_by + aggregations expressions.
-	/// When empty, no projection is applied (all columns stored).
+
 	pub projected_columns: Vec<String>,
 }
 
@@ -198,14 +190,12 @@ impl WindowOperator {
 			symbols: &symbols,
 		};
 
-		// Compile group_by expressions
 		let compiled_group_by: Vec<CompiledExpr> = config
 			.group_by
 			.iter()
 			.map(|e| compile_expression(&compile_ctx, e).expect("Failed to compile group_by expression"))
 			.collect();
 
-		// Compile aggregation expressions
 		let compiled_aggregations: Vec<CompiledExpr> = config
 			.aggregations
 			.iter()
@@ -234,12 +224,10 @@ impl WindowOperator {
 		}
 	}
 
-	/// Get the current timestamp in milliseconds
 	pub fn current_timestamp(&self) -> u64 {
 		self.runtime_context.clock.now_millis()
 	}
 
-	/// Project a single-row Columns down to only the columns needed by window expressions.
 	pub fn project_columns(&self, columns: &Columns) -> Columns {
 		if self.projected_columns.is_empty() {
 			return columns.clone();
@@ -247,17 +235,14 @@ impl WindowOperator {
 		columns.project_by_names(&self.projected_columns)
 	}
 
-	/// Whether this is a count-based window
 	pub fn is_count_based(&self) -> bool {
 		self.kind.size().is_some_and(|m| m.is_count())
 	}
 
-	/// Get the window size as duration (if time-based)
 	pub fn size_duration(&self) -> Option<Duration> {
 		self.kind.size().and_then(|m| m.as_duration())
 	}
 
-	/// Get the window size as count (if count-based)
 	pub fn size_count(&self) -> Option<u64> {
 		self.kind.size().and_then(|m| m.as_count())
 	}
@@ -278,7 +263,6 @@ impl WindowOperator {
 		}
 	}
 
-	/// Compute group keys for all rows in Columns
 	pub fn compute_group_keys(&self, columns: &Columns) -> Result<Vec<Hash128>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -312,9 +296,6 @@ impl WindowOperator {
 		Ok(hashes)
 	}
 
-	/// Resolve event timestamps for all rows.
-	/// When `ts` is configured, reads from the named DateTime column.
-	/// Otherwise falls back to processing time (current clock).
 	pub fn resolve_event_timestamps(&self, columns: &Columns, row_count: usize) -> Result<Vec<u64>> {
 		if row_count == 0 {
 			return Ok(Vec::new());
@@ -347,7 +328,6 @@ impl WindowOperator {
 		}
 	}
 
-	/// Create a window key for storage
 	pub fn create_window_key(&self, group_hash: Hash128, window_id: u64) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);
 		serializer.extend_bytes(b"win:");
@@ -356,7 +336,6 @@ impl WindowOperator {
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Create a row index key for mapping row_number → window_id
 	fn create_row_index_key(&self, group_hash: Hash128, row_number: RowNumber) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);
 		serializer.extend_bytes(b"idx:");
@@ -365,8 +344,6 @@ impl WindowOperator {
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Store a row_number → window_ids mapping.
-	/// Appends window_id to the existing list (supports sliding windows with multiple windows per event).
 	pub fn store_row_index(
 		&self,
 		txn: &mut FlowTransaction,
@@ -387,7 +364,6 @@ impl WindowOperator {
 		self.save_state(txn, &index_key, state_row)
 	}
 
-	/// Look up all window_ids for a given row_number
 	fn lookup_row_index(
 		&self,
 		txn: &mut FlowTransaction,
@@ -408,8 +384,6 @@ impl WindowOperator {
 		Ok(window_ids)
 	}
 
-	/// Replace an event across all its windows in-place (for UPDATE handling).
-	/// For sliding windows, an event may exist in multiple windows - all are updated.
 	fn replace_event_in_windows(
 		&self,
 		txn: &mut FlowTransaction,
@@ -469,7 +443,6 @@ impl WindowOperator {
 		Ok(result)
 	}
 
-	/// Process Update diffs by replacing events in-place within their windows.
 	fn process_event_updates(&self, txn: &mut FlowTransaction, pre: &Columns, post: &Columns) -> Result<Vec<Diff>> {
 		let row_count = pre.row_count();
 		if row_count == 0 {
@@ -562,7 +535,6 @@ impl WindowOperator {
 		})
 	}
 
-	/// Process Remove diffs by removing events from their windows.
 	fn process_event_removals(&self, txn: &mut FlowTransaction, pre: &Columns) -> Result<Vec<Diff>> {
 		let row_count = pre.row_count();
 		if row_count == 0 {
@@ -580,8 +552,6 @@ impl WindowOperator {
 		Ok(result)
 	}
 
-	/// Extract group values from window events (all events in a group have the same group values).
-	/// Evaluates compiled_group_by expressions on the first row of the events.
 	pub fn extract_group_values(
 		&self,
 		window_layout: &WindowLayout,
@@ -611,7 +581,6 @@ impl WindowOperator {
 		Ok((values, names))
 	}
 
-	/// Convert window events to columnar format for aggregation
 	pub fn events_to_columns(&self, window_layout: &WindowLayout, events: &[WindowEvent]) -> Result<Columns> {
 		if events.is_empty() {
 			return Ok(Columns::new(Vec::new()));
@@ -717,8 +686,6 @@ impl WindowOperator {
 		Ok((values, names, types))
 	}
 
-	/// Process expired windows: emit Remove diffs for each, then delete state.
-	/// Uses the group registry for per-group targeted expiration.
 	pub fn process_expired_windows(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 
@@ -733,7 +700,6 @@ impl WindowOperator {
 
 				let groups = self.load_group_registry(txn)?;
 				for group_hash in &groups {
-					// Keycode uses inverted ordering (NOT of big-endian)
 					let low_key = self.create_window_key(*group_hash, cutoff_id);
 					let high_key = self.create_window_key(*group_hash, 0);
 					let range = EncodedKeyRange::new(
@@ -777,7 +743,6 @@ impl WindowOperator {
 		Ok(result)
 	}
 
-	/// Load window state from storage
 	pub fn load_window_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> Result<WindowState> {
 		let state_row = self.load_state(txn, window_key)?;
 
@@ -794,7 +759,6 @@ impl WindowOperator {
 			.map_err(|e| Error(Box::new(internal!("Failed to deserialize WindowState: {}", e))))
 	}
 
-	/// Save window state to storage
 	pub fn save_window_state(
 		&self,
 		txn: &mut FlowTransaction,
@@ -811,7 +775,6 @@ impl WindowOperator {
 		self.save_state(txn, window_key, state_row)
 	}
 
-	/// Get and increment global event count for count-based windows
 	pub fn get_and_increment_global_count(&self, txn: &mut FlowTransaction, group_hash: Hash128) -> Result<u64> {
 		let count_key = self.create_count_key(group_hash);
 		let count_row = self.load_state(txn, &count_key)?;
@@ -841,7 +804,6 @@ impl WindowOperator {
 		Ok(current_count)
 	}
 
-	/// Create a count key for global event counting
 	pub fn create_count_key(&self, group_hash: Hash128) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);
 		serializer.extend_bytes(b"cnt:");
@@ -849,12 +811,10 @@ impl WindowOperator {
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Create the group registry key
 	fn create_group_registry_key(&self) -> EncodedKey {
 		EncodedKey::new(b"grp:")
 	}
 
-	/// Load the set of active group hashes from the registry.
 	pub fn load_group_registry(&self, txn: &mut FlowTransaction) -> Result<Vec<Hash128>> {
 		let key = self.create_group_registry_key();
 		let state_row = self.load_state(txn, &key)?;
@@ -869,7 +829,6 @@ impl WindowOperator {
 		Ok(groups.into_iter().map(Hash128::from).collect())
 	}
 
-	/// Save the group registry.
 	fn save_group_registry(&self, txn: &mut FlowTransaction, groups: &[Hash128]) -> Result<()> {
 		let key = self.create_group_registry_key();
 		let raw: Vec<u128> = groups.iter().map(|h| (*h).into()).collect();
@@ -881,7 +840,6 @@ impl WindowOperator {
 		self.save_state(txn, &key, state_row)
 	}
 
-	/// Register a group hash in the registry if not already present.
 	pub fn register_group(&self, txn: &mut FlowTransaction, group_hash: Hash128) -> Result<()> {
 		let mut groups = self.load_group_registry(txn)?;
 		if !groups.contains(&group_hash) {
@@ -968,7 +926,6 @@ impl WindowOperator {
 		Ok(None)
 	}
 
-	/// Shared: partition columns by group keys and call `group_fn` for each group.
 	pub fn process_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -991,8 +948,6 @@ impl WindowOperator {
 		Ok(result)
 	}
 
-	/// Shared: iterate change diffs and process inserts/updates via `process_fn`.
-	/// Optionally runs expiration first (all kinds except rolling).
 	pub fn apply_window_change(
 		&self,
 		txn: &mut FlowTransaction,
@@ -1056,8 +1011,6 @@ impl WindowOperator {
 		Ok(result)
 	}
 
-	/// Shared: emit an Insert or Update diff for an aggregation result.
-	/// `previous_aggregation` is the pre-update state (if the window already existed).
 	pub fn emit_aggregation_diff(
 		aggregated_row: &Row,
 		is_new: bool,

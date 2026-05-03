@@ -15,7 +15,6 @@ use tracing::instrument;
 
 use crate::{Result, catalog::Catalog, store::sequence::system::SystemSequence};
 
-/// Test creation specification for the Catalog API.
 #[derive(Debug, Clone)]
 pub struct TestToCreate {
 	pub name: Fragment,
@@ -146,7 +145,7 @@ impl Catalog {
 			Transaction::Admin(admin) => {
 				let mut tests =
 					self.materialized.list_tests_in_namespace_at(namespace, admin.version());
-				// Add transactional additions
+
 				for change in &admin.changes.test {
 					if let Some(t) = &change.post
 						&& t.namespace == namespace && !tests
@@ -156,7 +155,7 @@ impl Catalog {
 						tests.push(t.clone());
 					}
 				}
-				// Remove tests deleted in this transaction
+
 				tests.retain(|t| !admin.is_test_deleted(t.id));
 				Ok(tests)
 			}
@@ -166,7 +165,7 @@ impl Catalog {
 			Transaction::Test(t) => {
 				let mut tests =
 					self.materialized.list_tests_in_namespace_at(namespace, t.inner.version());
-				// Add transactional additions
+
 				for change in &t.inner.changes.test {
 					if let Some(tst) = &change.post
 						&& tst.namespace == namespace && !tests
@@ -176,7 +175,7 @@ impl Catalog {
 						tests.push(tst.clone());
 					}
 				}
-				// Remove tests deleted in this transaction
+
 				tests.retain(|tst| !t.inner.is_test_deleted(tst.id));
 				Ok(tests)
 			}
@@ -199,7 +198,7 @@ impl Catalog {
 						tests.push(t.clone());
 					}
 				}
-				// Remove tests deleted in this transaction
+
 				tests.retain(|t| !admin.is_test_deleted(t.id));
 				Ok(tests)
 			}
@@ -213,7 +212,7 @@ impl Catalog {
 						tests.push(tst.clone());
 					}
 				}
-				// Remove tests deleted in this transaction
+
 				tests.retain(|tst| !t.inner.is_test_deleted(tst.id));
 				Ok(tests)
 			}

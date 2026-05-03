@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::operator_retention_strategies::*, vtable::OPERATOR_RETENTION_STRATEGIES};
 
-/// Returns the static definition for the system.operator_retention_strategies virtual table
-/// This table exposes retention strategy information for flow operators
 pub fn operator_retention_strategies() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

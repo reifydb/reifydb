@@ -15,10 +15,6 @@ use reifydb_type::value::Value;
 type SourceFactory = Arc<dyn Fn(&HashMap<String, Value>) -> SdkResult<Box<dyn FFISource>> + Send + Sync>;
 type SinkFactory = Arc<dyn Fn(&HashMap<String, Value>) -> SdkResult<Box<dyn FFISink>> + Send + Sync>;
 
-/// Registry for source and sink connectors.
-///
-/// Connector names (e.g., "postgres", "kafka") are resolved against this
-/// registry at `CREATE SOURCE` / `CREATE SINK` time.
 pub struct ConnectorRegistry {
 	sources: HashMap<String, SourceFactory>,
 	sinks: HashMap<String, SinkFactory>,
@@ -32,7 +28,6 @@ impl ConnectorRegistry {
 		}
 	}
 
-	/// Register a native Rust source connector by its metadata name.
 	pub fn register_source<S: FFISource + FFISourceMetadata>(&mut self) {
 		let name = S::NAME.to_string();
 		self.sources.insert(
@@ -44,7 +39,6 @@ impl ConnectorRegistry {
 		);
 	}
 
-	/// Register a native Rust sink connector by its metadata name.
 	pub fn register_sink<S: FFISink + FFISinkMetadata>(&mut self) {
 		let name = S::NAME.to_string();
 		self.sinks.insert(
@@ -56,7 +50,6 @@ impl ConnectorRegistry {
 		);
 	}
 
-	/// Create a source connector instance by name.
 	pub fn create_source(&self, name: &str, config: &HashMap<String, Value>) -> SdkResult<Box<dyn FFISource>> {
 		let factory = self
 			.sources
@@ -65,7 +58,6 @@ impl ConnectorRegistry {
 		factory(config)
 	}
 
-	/// Create a sink connector instance by name.
 	pub fn create_sink(&self, name: &str, config: &HashMap<String, Value>) -> SdkResult<Box<dyn FFISink>> {
 		let factory = self
 			.sinks
@@ -74,12 +66,10 @@ impl ConnectorRegistry {
 		factory(config)
 	}
 
-	/// Check if a source connector is registered.
 	pub fn has_source(&self, name: &str) -> bool {
 		self.sources.contains_key(name)
 	}
 
-	/// Check if a sink connector is registered.
 	pub fn has_sink(&self, name: &str) -> bool {
 		self.sinks.contains_key(name)
 	}

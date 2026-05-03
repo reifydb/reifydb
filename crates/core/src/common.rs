@@ -112,7 +112,6 @@ pub enum IndexType {
 	Primary,
 }
 
-/// How a window is measured - either by time duration or by event count.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WindowSize {
 	Duration(Duration),
@@ -139,37 +138,27 @@ impl WindowSize {
 	}
 }
 
-/// A fully specified window kind. Each variant carries only the parameters
-/// that make sense for that kind.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WindowKind {
-	/// Fixed-size, non-overlapping windows.
-	/// Each event belongs to exactly one window.
 	Tumbling {
 		size: WindowSize,
 	},
-	/// Fixed-size, overlapping windows.
-	/// Each event can belong to multiple windows.
-	/// Invariant: slide < size, and both must be the same measure type.
+
 	Sliding {
 		size: WindowSize,
 		slide: WindowSize,
 	},
-	/// Continuously maintained window of the most recent N events
-	/// or most recent T duration. One window per group. Triggers every event.
+
 	Rolling {
 		size: WindowSize,
 	},
-	/// Gap-based window. Stays open while events arrive within `gap`.
-	/// Closes after `gap` duration of inactivity per group key.
+
 	Session {
 		gap: Duration,
 	},
 }
 
 impl WindowKind {
-	/// Returns the primary size measure for Tumbling, Sliding, and Rolling.
-	/// Returns None for Session (which uses gap instead).
 	pub fn size(&self) -> Option<&WindowSize> {
 		match self {
 			WindowKind::Tumbling {

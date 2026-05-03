@@ -31,7 +31,6 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_drop(&mut self) -> Result<AstDrop<'bump>> {
 		let token = self.consume_keyword(Keyword::Drop)?;
 
-		// Check what we're dropping
 		if (self.consume_if(TokenKind::Keyword(Keyword::Table))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
 				return self.parse_drop_policy(token, AstPolicyTargetType::Table);
@@ -99,7 +98,6 @@ impl<'bump> Parser<'bump> {
 			return self.parse_drop_policy(token, AstPolicyTargetType::Function);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Procedure))?).is_some() {
-			// `DROP PROCEDURE POLICY ...` vs `DROP PROCEDURE [IF EXISTS] ns::name`
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
 				return self.parse_drop_policy(token, AstPolicyTargetType::Procedure);
 			}
@@ -136,7 +134,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse IF EXISTS clause, returning true if present.
 	pub(crate) fn parse_if_exists(&mut self) -> Result<bool> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::If))?).is_some() {
 			self.consume_keyword(Keyword::Exists)?;
@@ -146,18 +143,15 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	/// Parse optional CASCADE or RESTRICT clause, defaulting to RESTRICT (false).
 	fn parse_cascade(&mut self) -> Result<bool> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::Cascade))?).is_some() {
 			Ok(true)
 		} else {
-			// Consume optional RESTRICT keyword (it's the default behavior)
 			let _ = self.consume_if(TokenKind::Keyword(Keyword::Restrict))?;
 			Ok(false)
 		}
 	}
-	/// Parse a standard DROP entity: IF EXISTS, qualified identifier, CASCADE.
-	/// Calls `make_identifier` with (name, namespace) and `wrap` to produce the AstDrop variant.
+
 	fn parse_drop_qualified<I>(
 		&mut self,
 		token: Token<'bump>,

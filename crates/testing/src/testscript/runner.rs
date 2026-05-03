@@ -25,69 +25,36 @@ use crate::{
 	},
 };
 
-/// Runs testscript commands, returning their output.
 pub trait Runner {
-	/// Runs a testscript command, returning its output, or an error if the
-	/// command fails.
-	///
-	/// Arguments can be accessed directly via [`Command::args`], or by
-	/// using the [`Command::consume_args`] helper for more convenient
-	/// processing.
-	///
-	/// Error cases are typically tested by running the command with a `!`
-	/// prefix (expecting a failure), but the runner can also handle these
-	/// itself and return an `Ok` result with appropriate output.
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>>;
 
-	/// Called at the start of a testscript. Used e.g. for initial setup.
-	/// Can't return output, since it's not called in the context of a
-	/// block.
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		Ok(())
 	}
 
-	/// Called at the end of a testscript. Used e.g. for state assertions.
-	/// Can't return output, since it's not called in the context of a
-	/// block.
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
 		Ok(())
 	}
 
-	/// Called at the start of a block. Used e.g. to output initial state.
-	/// Any output is prepended to the block's output.
 	fn start_block(&mut self) -> Result<String, Box<dyn Error>> {
 		Ok(String::new())
 	}
 
-	/// Called at the end of a block. Used e.g. to output final state.
-	/// Any output is appended to the block's output.
 	fn end_block(&mut self) -> Result<String, Box<dyn Error>> {
 		Ok(String::new())
 	}
 
-	/// Called at the start of a command. Used e.g. for setup. Any output is
-	/// prepended to the command's output, and is affected e.g. by the
-	/// prefix and silencing of the command.
 	#[allow(unused_variables)]
 	fn start_command(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		Ok(String::new())
 	}
 
-	/// Called at the end of a command. Used e.g. for cleanup. Any output is
-	/// appended to the command's output, and is affected e.g. by the prefix
-	/// and silencing of the command.
 	#[allow(unused_variables)]
 	fn end_command(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		Ok(String::new())
 	}
 }
 
-/// Runs a testscript at the given path.
-///
-/// Panics if the script output differs from the current input file. Errors on
-/// IO, parser, or runner failure. If the environment variable
-/// `UPDATE_TESTFILES=1` is set, the new output file will replace the input
-/// file.
 pub fn run_path<R: Runner, P: AsRef<Path>>(runner: &mut R, path: P) -> io::Result<()> {
 	let path = path.as_ref();
 	let Some(dir) = path.parent() else {
@@ -130,9 +97,8 @@ pub fn try_run<R: Runner, S: Into<String>>(mut runner: R, test: S) -> io::Result
 	Mint::new(dir).new_goldenfile(&file_name)?.write_all(output.as_bytes())
 }
 
-/// Generates output for a testscript input, without comparing them.
 pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
-	let mut output = String::with_capacity(input.len()); // common case: output == input
+	let mut output = String::with_capacity(input.len());
 	let eol = detect_eol(input);
 	let blocks = parse_blocks(input)?;
 
@@ -277,7 +243,6 @@ fn apply_blank_line_prefix(mut block_output: String) -> String {
 	block_output
 }
 
-/// Appends a newline if the string is not empty and doesn't already have one.
 fn ensure_eol(mut s: String, eol: &str) -> String {
 	if let Some(c) = s.chars().next_back()
 		&& c != '\n'
@@ -287,7 +252,6 @@ fn ensure_eol(mut s: String, eol: &str) -> String {
 	s
 }
 
-// NB: most tests are done as testscripts under tests/.
 #[cfg(test)]
 pub mod tests {
 	use super::*;

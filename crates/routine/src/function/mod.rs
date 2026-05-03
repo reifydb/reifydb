@@ -25,7 +25,6 @@ use crate::{
 	routine::registry::RoutinesConfigurator,
 };
 
-/// Register all built-in native functions directly into a `Routines` builder.
 pub fn default_native_functions(builder: RoutinesConfigurator) -> RoutinesConfigurator {
 	builder.register_builtin_function(Arc::new(math::sum::Sum::new()))
 		.register_builtin_function(Arc::new(math::avg::Avg::new()))

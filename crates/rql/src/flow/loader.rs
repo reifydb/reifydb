@@ -17,12 +17,10 @@ use crate::{
 	},
 };
 
-/// Loads a Flow from the catalog by reconstructing it from nodes and edges
 pub fn load_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<FlowDag> {
 	let node_defs = catalog.list_flow_nodes_by_flow(txn, flow_id)?;
 	let edge_defs = catalog.list_flow_edges_by_flow(txn, flow_id)?;
 
-	// Look up tick duration from Flow
 	let tick = catalog
 		.find_flow(txn, flow_id)?
 		.and_then(|def| def.tick)
@@ -30,7 +28,6 @@ pub fn load_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, flow_id: Flow
 
 	let mut builder = FlowDag::builder(flow_id).tick(tick);
 
-	// Deserialize and add all nodes
 	for node_def in node_defs {
 		let node_type: FlowNodeType = from_bytes(node_def.data.as_ref())
 			.map_err(|e| Error(Box::new(internal!("Failed to deserialize FlowNodeType: {}", e))))?;

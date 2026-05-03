@@ -62,7 +62,6 @@ pub fn parse_duration(fragment: Fragment) -> Result<Duration, Error> {
 	parse_human_duration(fragment)
 }
 
-/// Parse human-readable duration format: `1y2mo3d4h5m6s500ms100us50ns`
 fn parse_human_duration(fragment: Fragment) -> Result<Duration, Error> {
 	let input = fragment.text();
 	let bytes = input.as_bytes();
@@ -82,11 +81,10 @@ fn parse_human_duration(fragment: Fragment) -> Result<Duration, Error> {
 	let mut nanos = 0i64;
 	let mut pos = 0;
 	let mut found_any = false;
-	// Track component order: y=1, mo=2, d=3, h=4, m=5, s=6, ms=7, us=8, ns=9
+
 	let mut last_order = 0u8;
 
 	while pos < len {
-		// Parse number
 		let num_start = pos;
 		while pos < len && bytes[pos].is_ascii_digit() {
 			pos += 1;
@@ -113,7 +111,6 @@ fn parse_human_duration(fragment: Fragment) -> Result<Duration, Error> {
 			err
 		})?;
 
-		// Parse unit suffix
 		let (order, advance) = if pos + 1 < len && bytes[pos] == b'n' && bytes[pos + 1] == b's' {
 			nanos += value;
 			(9u8, 2)
@@ -180,7 +177,6 @@ fn parse_human_duration(fragment: Fragment) -> Result<Duration, Error> {
 	Ok(Duration::new(months, days, nanos)?)
 }
 
-/// Parse ISO 8601 duration format: `P[n]Y[n]M[n]DT[n]H[n]M[n.n]S`
 fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 	let fragment_value = fragment.text();
 
@@ -193,13 +189,13 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 		.into());
 	}
 
-	let chars = fragment_value.chars().skip(1); // Skip 'P'
+	let chars = fragment_value.chars().skip(1);
 	let mut months = 0i32;
 	let mut days = 0i32;
 	let mut nanos = 0i64;
 	let mut current_number = String::new();
 	let mut in_time_part = false;
-	let mut current_position = 1; // Start after 'P'
+	let mut current_position = 1;
 
 	let mut seen_date_components = collections::HashSet::new();
 	let mut seen_time_components = collections::HashSet::new();

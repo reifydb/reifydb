@@ -19,7 +19,6 @@ use reifydb_type::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Wire format for a single typed value: `{"type": "Int2", "value": "1234"}`
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WireValue {
 	#[serde(rename = "type")]
@@ -27,11 +26,6 @@ pub struct WireValue {
 	pub value: String,
 }
 
-/// Wire format for query parameters.
-///
-/// Either positional or named:
-/// - Positional: `[{"type":"Int2","value":"1234"}, ...]`
-/// - Named: `{"key": {"type":"Int2","value":"1234"}, ...}`
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum WireParams {

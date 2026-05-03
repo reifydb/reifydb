@@ -9,32 +9,26 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionPolicy};
 
 impl MaterializedCatalog {
-	/// List all policies (returns latest version of each)
 	pub fn list_all_policies(&self) -> Vec<Policy> {
 		self.policies.iter().filter_map(|entry| entry.value().get_latest()).collect()
 	}
 
-	/// List all policies at a specific version
 	pub fn list_all_policies_at(&self, version: CommitVersion) -> Vec<Policy> {
 		self.policies.iter().filter_map(|entry| entry.value().get(version)).collect()
 	}
 
-	/// List policy operations for a specific policy
 	pub fn list_policy_operations(&self, policy_id: PolicyId) -> Option<Vec<PolicyOperation>> {
 		self.policy_operations.get(&policy_id).map(|entry| entry.value().clone())
 	}
 
-	/// Set policy operations for a specific policy
 	pub fn set_policy_operations(&self, policy_id: PolicyId, ops: Vec<PolicyOperation>) {
 		self.policy_operations.insert(policy_id, ops);
 	}
 
-	/// Remove policy operations for a specific policy
 	pub fn remove_policy_operations(&self, policy_id: PolicyId) {
 		self.policy_operations.remove(&policy_id);
 	}
 
-	/// Find a policy by ID at a specific version
 	pub fn find_policy_at(&self, id: PolicyId, version: CommitVersion) -> Option<Policy> {
 		self.policies.get(&id).and_then(|entry| {
 			let multi = entry.value();
@@ -42,7 +36,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a policy by name at a specific version
 	pub fn find_policy_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Policy> {
 		self.policies_by_name.get(name).and_then(|entry| {
 			let policy_id = *entry.value();
@@ -50,7 +43,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a policy by ID (returns latest version)
 	pub fn find_policy(&self, id: PolicyId) -> Option<Policy> {
 		self.policies.get(&id).and_then(|entry| {
 			let multi = entry.value();

@@ -76,7 +76,7 @@ impl RequestInterceptor for RequestMetricsInterceptor {
 					fingerprint: ctx.metrics.fingerprint,
 					statements: ctx.metrics.statements.clone(),
 				},
-				Operation::Subscribe => return, // Ignore for request metrics
+				Operation::Subscribe => return,
 			};
 
 			let timestamp = DateTime::from_timestamp_millis(clock.now_millis()).unwrap();

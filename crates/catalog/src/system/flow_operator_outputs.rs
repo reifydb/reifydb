@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::flow_operator_outputs::*, vtable::FLOW_OPERATOR_OUTPUTS};
 
-/// Returns the static definition for the system.flow_operator_outputs virtual table
-/// This table exposes output column definitions for FFI operators
 pub fn flow_operator_outputs() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

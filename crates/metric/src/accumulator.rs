@@ -8,7 +8,6 @@ use reifydb_core::fingerprint::StatementFingerprint;
 
 use crate::statement::StatementStats;
 
-/// Lock-free per-fingerprint query stats accumulator.
 pub struct StatementStatsAccumulator {
 	map: DashMap<StatementFingerprint, Arc<StatementStats>>,
 }
@@ -35,13 +34,11 @@ impl StatementStatsAccumulator {
 		rows: u64,
 		success: bool,
 	) {
-		// Fast path: read lock only, no Arc clone
 		if let Some(stats) = self.map.get(&fingerprint) {
 			stats.record(duration_us, compute_us, rows, success);
 			return;
 		}
 
-		// Slow path: write lock for insertion
 		let stats =
 			self.map.entry(fingerprint)
 				.or_insert_with(|| Arc::new(StatementStats::new(normalized_rql.to_owned())))

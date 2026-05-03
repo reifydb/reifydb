@@ -8,8 +8,6 @@ use Type::*;
 use crate::value::r#type::Type;
 
 impl Type {
-	/// Promote two Types to a common supertype, similar to Postgres
-	/// expression evaluation.
 	pub fn promote(left: Type, right: Type) -> Type {
 		if matches!(left, Any) || matches!(right, Any) {
 			return Any;

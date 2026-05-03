@@ -45,7 +45,6 @@ impl EncodedIndexKey {
 		}
 	}
 
-	/// Creates an EncodedIndexKey from a byte slice
 	pub fn from_bytes(bytes: &[u8]) -> Self {
 		Self(CowVec::new(bytes.to_vec()))
 	}

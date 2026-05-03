@@ -74,7 +74,6 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	/// Save metadata for a specific partition. Global uses empty key → RingBufferMetadataKey.
 	pub(crate) fn save_partition_metadata(
 		txn: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,

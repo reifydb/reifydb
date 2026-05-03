@@ -16,7 +16,6 @@ use crate::{
 	return_internal_error,
 };
 
-/// ShapeId represents identifiers for catalog primitives that use u64-based IDs.
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum ShapeId {
 	Table(TableId),
@@ -65,7 +64,6 @@ impl ShapeId {
 		Self::Series(id.into())
 	}
 
-	/// Get the inner u64 value from the ID variant.
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		match self {
@@ -189,7 +187,6 @@ impl From<ShapeId> for u64 {
 }
 
 impl ShapeId {
-	/// Returns the type discriminant as a u8 value
 	pub fn to_type_u8(&self) -> u8 {
 		match self {
 			ShapeId::Table(_) => 1,
@@ -201,7 +198,6 @@ impl ShapeId {
 		}
 	}
 
-	/// Returns the raw u64 value regardless of the object type
 	pub fn as_u64(&self) -> u64 {
 		match self {
 			ShapeId::Table(id) => id.0,
@@ -213,7 +209,6 @@ impl ShapeId {
 		}
 	}
 
-	/// Creates a next object id for range operations (numerically next)
 	pub fn next(&self) -> ShapeId {
 		match self {
 			ShapeId::Table(table) => ShapeId::table(table.0 + 1),
@@ -225,10 +220,6 @@ impl ShapeId {
 		}
 	}
 
-	/// Creates a previous object id for range operations (numerically
-	/// previous) In descending order encoding, this gives us the next
-	/// value in sort order Uses wrapping_sub to handle ID 0 correctly
-	/// (wraps to u64::MAX)
 	pub fn prev(&self) -> ShapeId {
 		match self {
 			ShapeId::Table(table) => ShapeId::table(table.0.wrapping_sub(1)),

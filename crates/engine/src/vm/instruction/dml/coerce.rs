@@ -17,18 +17,6 @@ use crate::{
 	vm::volcano::query::QueryContext,
 };
 
-/// Attempts to coerce a single Value to match the target column type using the
-/// existing casting infrastructure
-///
-/// # Arguments
-/// * `value` - The value that needs coercing
-/// * `target` - The type of the target table column from namespace
-/// * `column` - The resolved column for error reporting and policies
-/// * `ctx` - ExecutionContext for accessing params
-///
-/// # Returns
-/// * `Ok(Value)` - Successfully coerced value matching target type
-/// * `Err(Error)` - Coercion failed with descriptive error
 pub(crate) fn coerce_value_to_column_type(
 	value: Value,
 	target: Type,
@@ -39,7 +27,6 @@ pub(crate) fn coerce_value_to_column_type(
 		return Ok(value);
 	}
 
-	// For Option targets, accept values matching the inner type
 	if let Type::Option(inner) = &target
 		&& value.get_type() == **inner
 	{

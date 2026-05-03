@@ -27,7 +27,6 @@ use uuid::Uuid;
 
 use crate::error::DecodeError;
 
-/// Decode an Any-typed column from plain-encoded data.
 pub(crate) fn decode_any_column(row_count: usize, data: &[u8]) -> Result<FrameColumnData, DecodeError> {
 	let mut values = Vec::with_capacity(row_count);
 	let mut dpos = 0;
@@ -39,7 +38,6 @@ pub(crate) fn decode_any_column(row_count: usize, data: &[u8]) -> Result<FrameCo
 	Ok(FrameColumnData::Any(AnyContainer::new(values)))
 }
 
-/// Decode a single type-tagged Value from a byte slice.
 pub(crate) fn decode_any_value(data: &[u8], pos: usize) -> Result<(Value, usize), DecodeError> {
 	if pos >= data.len() {
 		return Err(DecodeError::UnexpectedEof {

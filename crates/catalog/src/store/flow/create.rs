@@ -38,8 +38,6 @@ impl CatalogStore {
 		Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)
 	}
 
-	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
-	/// This skips the name uniqueness check since the ID is guaranteed unique by the sequence.
 	pub(crate) fn create_flow_with_id(
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,

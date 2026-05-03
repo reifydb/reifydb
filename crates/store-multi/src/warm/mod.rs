@@ -113,8 +113,6 @@ impl TierStorage for WarmStorage {
 	}
 }
 
-// On wasm32 / no-sqlite, `WarmStorage` is uninhabited (no variants). The
-// `match *self {}` pattern is exhaustive over an uninhabited value.
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl TierStorage for WarmStorage {
 	fn get(&self, _table: EntryKind, _key: &[u8], _version: CommitVersion) -> Result<Option<CowVec<u8>>> {

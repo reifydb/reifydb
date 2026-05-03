@@ -23,7 +23,6 @@ use crate::{
 	},
 };
 
-/// Wire format chosen by the client for a given subscription.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum WireFormat {
 	#[default]
@@ -32,8 +31,6 @@ pub enum WireFormat {
 }
 
 impl WireFormat {
-	/// Resolve from the on-wire i32 value of the proto `Format` enum.
-	/// `FORMAT_UNSPECIFIED` is treated as `FORMAT_PROTO` for backwards compatibility.
 	pub fn from_proto_i32(format: i32) -> Self {
 		match Format::try_from(format).unwrap_or(Format::Unspecified) {
 			Format::Rbcf => WireFormat::Rbcf,
@@ -52,7 +49,7 @@ struct BatchState {
 	tx: mpsc::UnboundedSender<Result<BatchSubscriptionEvent, Status>>,
 	format: WireFormat,
 	member_ids: Vec<SubscriptionId>,
-	/// Per-member accumulation within the current poller tick. Drained on flush().
+
 	pending: DashMap<SubscriptionId, Vec<Frame>>,
 }
 
@@ -114,11 +111,6 @@ impl GrpcSubscriptionRegistry {
 		self.batches.clear();
 	}
 
-	/// Register a batch subscription grouping the given members.
-	///
-	/// Each member must already be registered via `register()` first. After this call,
-	/// `try_deliver` for each member will buffer into the batch's pending envelope
-	/// instead of pushing directly to the per-member tx.
 	pub fn register_batch(
 		&self,
 		member_ids: Vec<SubscriptionId>,
@@ -146,9 +138,6 @@ impl GrpcSubscriptionRegistry {
 		batch_id
 	}
 
-	/// Cascade-unregister a batch and its members.
-	///
-	/// Returns the list of member subscription ids (for caller-side database cleanup of local members).
 	pub fn unsubscribe_batch(&self, batch_id: BatchId) -> Option<Vec<SubscriptionId>> {
 		let (_, state) = self.batches.remove(&batch_id)?;
 		let members = state.member_ids.clone();
@@ -159,15 +148,10 @@ impl GrpcSubscriptionRegistry {
 		Some(members)
 	}
 
-	/// Look up which batch (if any) a subscription belongs to.
 	pub fn batch_for(&self, subscription_id: &SubscriptionId) -> Option<BatchId> {
 		self.subscriptions.get(subscription_id).and_then(|state| state.batch_id)
 	}
 
-	/// Push pre-materialised Frames into a batch member's pending envelope.
-	///
-	/// Used by remote-subscription proxy tasks. Returns `false` when the batch
-	/// is no longer registered.
 	pub fn push_batch_frames(
 		&self,
 		batch_id: BatchId,
@@ -184,7 +168,6 @@ impl GrpcSubscriptionRegistry {
 		true
 	}
 
-	/// Emit a `BatchMemberClosed` event; keeps the batch alive.
 	pub fn emit_batch_member_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> bool {
 		let Some(batch) = self.batches.get(&batch_id) else {
 			return false;
@@ -201,7 +184,6 @@ impl GrpcSubscriptionRegistry {
 
 impl SubscriptionDelivery for GrpcSubscriptionRegistry {
 	fn try_deliver(&self, subscription_id: &SubscriptionId, columns: Columns) -> DeliveryResult {
-		// Batched members: buffer into the batch's pending envelope. Flush emits the coalesced push.
 		if let Some(batch_id) = self.batch_for(subscription_id) {
 			if let Some(batch) = self.batches.get(&batch_id) {
 				batch.pending.entry(*subscription_id).or_default().push(Frame::from(columns));
@@ -296,7 +278,6 @@ impl SubscriptionDelivery for GrpcSubscriptionRegistry {
 	}
 }
 
-/// Encode a `Vec<Frame>` as a `change_event::Payload` in the requested wire format.
 fn encode_change_payload(frames: Vec<Frame>, format: WireFormat) -> change_event::Payload {
 	match format {
 		WireFormat::Rbcf => {

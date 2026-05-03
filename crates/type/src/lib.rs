@@ -12,5 +12,4 @@ pub mod storage;
 pub mod util;
 pub mod value;
 
-/// Result type alias for this crate
 pub type Result<T> = std::result::Result<T, error::Error>;

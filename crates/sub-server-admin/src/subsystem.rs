@@ -23,36 +23,23 @@ use tracing::{error, info, warn};
 
 use crate::{routes::router, state::AdminState};
 
-/// Admin server subsystem.
-///
-/// Manages an Axum-based admin HTTP server with support for:
-/// - Graceful startup and shutdown
-/// - Health monitoring
 pub struct AdminSubsystem {
-	/// Address to bind the server to.
 	bind_addr: String,
-	/// Actual bound address (available after start).
+
 	actual_addr: RwLock<Option<SocketAddr>>,
-	/// Shared application state.
+
 	state: AdminState,
-	/// Flag indicating if the server is running.
+
 	running: Arc<AtomicBool>,
-	/// Channel to send shutdown signal.
+
 	shutdown_tx: Option<oneshot::Sender<()>>,
-	/// Channel to receive shutdown completion.
+
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	/// Shared tokio runtime.
+
 	runtime: SharedRuntime,
 }
 
 impl AdminSubsystem {
-	/// Create a new admin subsystem.
-	///
-	/// # Arguments
-	///
-	/// * `bind_addr` - Address and port to bind to (e.g., "127.0.0.1:9090")
-	/// * `state` - Shared application state
-	/// * `runtime` - Shared runtime
 	pub fn new(bind_addr: String, state: AdminState, runtime: SharedRuntime) -> Self {
 		Self {
 			bind_addr,
@@ -65,17 +52,14 @@ impl AdminSubsystem {
 		}
 	}
 
-	/// Get the bind address.
 	pub fn bind_addr(&self) -> &str {
 		&self.bind_addr
 	}
 
-	/// Get the actual bound address (available after start).
 	pub fn local_addr(&self) -> Option<SocketAddr> {
 		*self.actual_addr.read().unwrap()
 	}
 
-	/// Get the actual bound port (available after start).
 	pub fn port(&self) -> Option<u16> {
 		self.local_addr().map(|a| a.port())
 	}
@@ -101,7 +85,6 @@ impl Subsystem for AdminSubsystem {
 	}
 
 	fn start(&mut self) -> Result<()> {
-		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
 		}
@@ -135,10 +118,8 @@ impl Subsystem for AdminSubsystem {
 		let runtime = self.runtime.clone();
 
 		runtime.spawn(async move {
-			// Mark as running
 			running.store(true, Ordering::SeqCst);
 
-			// Create router and serve
 			let app = router(state);
 			let listener = listener.tap_io(|tcp_stream| {
 				if let Err(e) = tcp_stream.set_nodelay(true) {
@@ -150,12 +131,10 @@ impl Subsystem for AdminSubsystem {
 				info!("Admin server received shutdown signal");
 			});
 
-			// Run until shutdown
 			if let Err(e) = server.await {
 				error!("Admin server error: {}", e);
 			}
 
-			// Mark as stopped
 			running.store(false, Ordering::SeqCst);
 			let _ = complete_tx.send(());
 			info!("Admin server stopped");
@@ -184,7 +163,6 @@ impl Subsystem for AdminSubsystem {
 		if self.running.load(Ordering::SeqCst) {
 			HealthStatus::Healthy
 		} else if self.shutdown_tx.is_some() {
-			// Started but not yet running (startup in progress)
 			HealthStatus::Warning {
 				description: "Starting up".to_string(),
 			}

@@ -37,7 +37,6 @@ impl From<DistinctNode> for DistinctCompiler {
 	}
 }
 
-// Helper function to convert ResolvedColumn to ColumnIdentifier for expression system
 fn resolved_to_column_identifier(resolved: ResolvedColumn) -> ColumnIdentifier {
 	let shape = match resolved.shape() {
 		ResolvedShape::Table(t) => ColumnShape::Qualified {
@@ -65,7 +64,6 @@ impl CompileOperator for DistinctCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 
-		// Convert resolved columns to column expressions via ColumnIdentifier
 		let expressions: Vec<Expression> = self
 			.columns
 			.into_iter()

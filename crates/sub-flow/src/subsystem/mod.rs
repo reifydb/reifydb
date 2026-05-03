@@ -63,8 +63,6 @@ use crate::{
 	},
 };
 
-/// Thin wrapper around the deferred coordinator that intercepts new flows
-/// and registers transactional ones before forwarding to the coordinator.
 struct FlowConsumeDispatcher {
 	coordinator: FlowConsumeRef,
 	registrar: TransactionalFlowRegistry,
@@ -74,37 +72,27 @@ struct FlowConsumeDispatcher {
 
 impl CdcConsume for FlowConsumeDispatcher {
 	fn consume(&self, cdcs: Vec<Cdc>, reply: Box<dyn FnOnce(Result<()>) + Send>) {
-		// Check for newly-created flows that might be transactional views.
 		let new_flow_ids = extract_new_flow_ids(&cdcs);
 		if !new_flow_ids.is_empty()
 			&& let Ok(mut query) = self.engine.begin_query(IdentityId::system())
 		{
 			for flow_id in new_flow_ids {
 				match self.flow_catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
-					Ok((flow, true)) => {
-						// Newly-loaded flow: try to register as transactional.
-						// If transactional, FlowCatalog now caches it so the
-						// coordinator's get_or_load_flow sees is_new=false.
-						match self.registrar.try_register(flow) {
-							Ok(true) => { /* transactional, leave cached */ }
-							Ok(false) => {
-								// NOT transactional - remove from cache so
-								// the coordinator discovers it as new.
-								self.flow_catalog.remove(flow_id);
-							}
-							Err(e) => {
-								self.flow_catalog.remove(flow_id);
-								warn!(
-									flow_id = flow_id.0,
-									error = %e,
-									"failed to register transactional flow"
-								);
-							}
+					Ok((flow, true)) => match self.registrar.try_register(flow) {
+						Ok(true) => {}
+						Ok(false) => {
+							self.flow_catalog.remove(flow_id);
 						}
-					}
-					Ok((_, false)) => {
-						// Already cached - nothing to do.
-					}
+						Err(e) => {
+							self.flow_catalog.remove(flow_id);
+							warn!(
+								flow_id = flow_id.0,
+								error = %e,
+								"failed to register transactional flow"
+							);
+						}
+					},
+					Ok((_, false)) => {}
 					Err(e) => {
 						warn!(
 							flow_id = flow_id.0,
@@ -116,14 +104,10 @@ impl CdcConsume for FlowConsumeDispatcher {
 			}
 		}
 
-		// Forward CDC batch to the deferred coordinator.
-		// Transactional flows will have is_new=false in the coordinator's
-		// get_or_load_flow call (shared cache), so they are skipped automatically.
 		self.coordinator.consume(cdcs, reply);
 	}
 }
 
-/// Flow subsystem - single-threaded flow processing.
 pub struct FlowSubsystem {
 	consumer: PollConsumer<StandardEngine, FlowConsumeDispatcher>,
 	worker_handles: Vec<FlowHandle>,
@@ -147,8 +131,6 @@ impl FlowSubsystem {
 		let num_workers = actor_system.pools().system_thread_count();
 		info!(num_workers, "initializing flow coordinator with {} workers", num_workers);
 
-		// Shared flow catalog: clones share the same cache so the dispatcher,
-		// coordinator, and workers see the same flow-cache state.
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
 		let (worker_refs, worker_handles) =
@@ -306,10 +288,6 @@ impl FlowSubsystem {
 				},
 			}));
 
-			// test_pre_commit rebuilds the shared transactional flow engine from
-			// all catalog flows (including uncommitted ones visible through the
-			// admin transaction) so capture_testing_pre_commit can process flows
-			// for views that haven't been committed yet.
 			let hook_flow_engine = test_flow_engine.clone();
 			let hook_engine = test_engine.clone();
 			let hook_catalog = test_catalog.clone();
@@ -382,8 +360,6 @@ impl Subsystem for FlowSubsystem {
 			let _ = handle.join();
 		}
 
-		// Clear the transactional flow engine to drop all Arc<Operators>,
-		// which triggers FFI operator cleanup and frees LRU caches.
 		if let Ok(mut engine) = self.transactional_flow_engine.write() {
 			engine.clear();
 		}

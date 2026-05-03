@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system enum (sumtype) information
 pub struct SystemEnums {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

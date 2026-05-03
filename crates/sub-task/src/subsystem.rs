@@ -30,28 +30,25 @@ use crate::{
 	task::ScheduledTask,
 };
 
-/// Task scheduler subsystem
 pub struct TaskSubsystem {
-	/// Whether the subsystem is running
 	running: AtomicBool,
-	/// Handle to interact with the task scheduler
+
 	handle: Option<TaskHandle>,
-	/// Sender to the coordinator
+
 	coordinator_tx: Option<Sender<TaskCoordinatorMessage>>,
-	/// Join handle for the coordinator task
+
 	coordinator_handle: Option<JoinHandle<()>>,
-	/// Shared runtime for spawning tasks
+
 	runtime: SharedRuntime,
-	/// Database engine for task execution
+
 	engine: StandardEngine,
-	/// Registry of scheduled tasks
+
 	registry: TaskRegistry,
-	/// Initial tasks to register on startup
+
 	initial_tasks: Vec<ScheduledTask>,
 }
 
 impl TaskSubsystem {
-	/// Create a new task subsystem
 	#[instrument(name = "task::subsystem::new", level = "debug", skip(ioc, initial_tasks))]
 	pub fn new(ioc: &IocContainer, initial_tasks: Vec<ScheduledTask>) -> Self {
 		let runtime = ioc.resolve::<SharedRuntime>().expect("SharedRuntime not registered in IoC");
@@ -70,9 +67,6 @@ impl TaskSubsystem {
 		}
 	}
 
-	/// Get a handle to interact with the task scheduler
-	///
-	/// Returns None if the subsystem is not running
 	pub fn handle(&self) -> Option<TaskHandle> {
 		self.handle.clone()
 	}
@@ -86,16 +80,13 @@ impl Subsystem for TaskSubsystem {
 	#[instrument(name = "task::subsystem::start", level = "debug", skip(self))]
 	fn start(&mut self) -> Result<()> {
 		if self.running.load(Ordering::Acquire) {
-			// Already running
 			return Ok(());
 		}
 
 		info!("Starting task subsystem");
 
-		// Create coordinator channel
 		let (coordinator_tx, coordinator_rx) = mpsc::channel(100);
 
-		// Register initial tasks in the registry
 		for task in self.initial_tasks.drain(..) {
 			let next_execution = self.runtime.clock().instant() + task.schedule.initial_delay();
 			self.registry.insert(
@@ -107,10 +98,8 @@ impl Subsystem for TaskSubsystem {
 			);
 		}
 
-		// Create handle
 		let handle = TaskHandle::new(self.registry.clone(), coordinator_tx.clone());
 
-		// Spawn coordinator
 		let registry = self.registry.clone();
 		let runtime = self.runtime.clone();
 		let engine = self.engine.clone();
@@ -119,7 +108,6 @@ impl Subsystem for TaskSubsystem {
 			coordinator::run_coordinator(registry, coordinator_rx, runtime, engine).await;
 		});
 
-		// Store handle and coordinator_tx
 		self.handle = Some(handle);
 		self.coordinator_tx = Some(coordinator_tx);
 		self.coordinator_handle = Some(join_handle);
@@ -133,18 +121,15 @@ impl Subsystem for TaskSubsystem {
 	#[instrument(name = "task::subsystem::shutdown", level = "debug", skip(self))]
 	fn shutdown(&mut self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
-			// Already shutdown
 			return Ok(());
 		}
 
 		info!("Shutting down task subsystem");
 
-		// Send shutdown message to coordinator
 		if let Some(coordinator_tx) = self.coordinator_tx.take() {
 			let _ = coordinator_tx.blocking_send(TaskCoordinatorMessage::Shutdown);
 		}
 
-		// Wait for the coordinator task to finish
 		if let Some(join_handle) = self.coordinator_handle.take() {
 			let _ = self.runtime.block_on(join_handle);
 		}

@@ -14,11 +14,6 @@ use crate::{
 	snapshot::{MetricSnapshot, TakeSnapshot},
 };
 
-/// Registry for metrics backed by `'static` references.
-///
-/// Holds a single uniform list of [`TakeSnapshot`] sources; the typed
-/// `register_*` methods exist for convenience / type-safety at the call
-/// site but internally all push into the same list.
 pub struct StaticMetricRegistry {
 	sources: Mutex<Vec<&'static dyn TakeSnapshot>>,
 }
@@ -58,7 +53,6 @@ impl StaticMetricRegistry {
 	}
 }
 
-/// Registry for per-object metrics.
 pub struct MetricRegistry {
 	gauges: DashMap<MetricId, Arc<Gauge>>,
 }
@@ -100,5 +94,4 @@ impl MetricRegistry {
 	}
 }
 
-/// Global static-metric registry singleton.
 pub static STATIC_REGISTRY: LazyLock<StaticMetricRegistry> = LazyLock::new(StaticMetricRegistry::new);

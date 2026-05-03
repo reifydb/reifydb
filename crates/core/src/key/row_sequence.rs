@@ -19,7 +19,7 @@ impl EncodableKey for RowSequenceKey {
 	const KIND: KeyKind = KeyKind::RowSequence;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(11); // 1 + 1 + 9
+		let mut serializer = KeySerializer::with_capacity(11);
 		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
 		serializer.to_encoded_key()
 	}

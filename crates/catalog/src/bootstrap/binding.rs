@@ -12,9 +12,6 @@ use reifydb_type::value::identity::IdentityId;
 use super::ensure_namespace;
 use crate::{Result, catalog::Catalog, materialized::MaterializedCatalog};
 
-/// Create the `system::bindings` namespace (persistent, idempotent).
-/// Binding catalog rows themselves are persisted via `Catalog::create_binding`
-/// and loaded from storage by `MaterializedCatalogLoader::load_bindings`.
 pub fn bootstrap_system_bindings(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,

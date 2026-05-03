@@ -6,18 +6,16 @@ use std::{error::Error as StdError, fmt};
 use reifydb_auth::service::AuthService;
 use reifydb_type::value::identity::IdentityId;
 
-/// Authentication error types.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthError {
-	/// The authorization header is malformed or contains invalid UTF-8.
 	InvalidHeader,
-	/// No credentials were provided (no Authorization header or auth token).
+
 	MissingCredentials,
-	/// The provided token is invalid or cannot be verified.
+
 	InvalidToken,
-	/// The token has expired.
+
 	Expired,
-	/// The token is valid but the user lacks required permissions.
+
 	InsufficientPermissions,
 }
 
@@ -35,14 +33,8 @@ impl fmt::Display for AuthError {
 
 impl StdError for AuthError {}
 
-/// Result type for authentication operations.
 pub type AuthResult<T> = Result<T, AuthError>;
 
-/// Extract identity from HTTP Authorization header value.
-///
-/// Supports the following authentication schemes:
-/// - `Bearer <token>` - Session token validated against AuthService
-/// - `Basic <base64>` - Basic authentication (username:password)
 pub fn extract_identity_from_auth_header(auth_service: &AuthService, auth_header: &str) -> AuthResult<IdentityId> {
 	if let Some(token) = auth_header.strip_prefix("Bearer ") {
 		validate_bearer_token(auth_service, token.trim())
@@ -53,9 +45,6 @@ pub fn extract_identity_from_auth_header(auth_service: &AuthService, auth_header
 	}
 }
 
-/// Extract identity from WebSocket authentication message.
-///
-/// Called when a WebSocket client sends an Auth message with a token.
 pub fn extract_identity_from_ws_auth(auth_service: &AuthService, token: Option<&str>) -> AuthResult<IdentityId> {
 	match token {
 		Some(t) if !t.is_empty() => validate_bearer_token(auth_service, t),
@@ -63,7 +52,6 @@ pub fn extract_identity_from_ws_auth(auth_service: &AuthService, token: Option<&
 	}
 }
 
-/// Validate a bearer token and return the associated identity.
 fn validate_bearer_token(auth_service: &AuthService, token: &str) -> AuthResult<IdentityId> {
 	if token.is_empty() {
 		return Err(AuthError::InvalidToken);
@@ -75,7 +63,6 @@ fn validate_bearer_token(auth_service: &AuthService, token: &str) -> AuthResult<
 	}
 }
 
-/// Validate basic authentication credentials (Base64-encoded username:password).
 fn validate_basic_auth(_auth_service: &AuthService, _credentials: &str) -> AuthResult<IdentityId> {
 	// TODO: Implement Basic auth (Base64 decode → username:password → auth_service.authenticate)
 	Err(AuthError::InvalidToken)

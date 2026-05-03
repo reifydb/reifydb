@@ -54,10 +54,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeDayOfWeek {
 				for i in 0..row_count {
 					if let Some(dt) = container.get(i) {
 						let date = dt.date();
-						// ISO 8601: Mon=1, Sun=7
-						// 1970-01-01 was Thursday (ISO day 4), so days_since_epoch 0 = Thursday
-						// (days + 3) % 7 shifts Thursday=0 to Monday=0 base
-						// +7) % 7 handles negative days, +1 converts to 1-based
+
 						let days = date.to_days_since_epoch();
 						let dow = ((days % 7 + 3) % 7 + 7) % 7 + 1;
 						result.push(dow);

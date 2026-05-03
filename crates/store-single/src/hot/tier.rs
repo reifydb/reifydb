@@ -12,33 +12,25 @@ use super::memory::storage::MemoryPrimitiveStorage;
 use super::sqlite::storage::SqlitePrimitiveStorage;
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
-/// Hot storage tier.
-///
-/// Provides a single interface for hot tier storage operations, dispatching
-/// to either Memory or SQLite implementations.
 #[derive(Clone)]
 #[repr(u8)]
 pub enum HotTier {
-	/// In-memory storage (non-persistent)
 	Memory(MemoryPrimitiveStorage) = 0,
-	/// SQLite-based persistent storage
+
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(SqlitePrimitiveStorage) = 1,
 }
 
 impl HotTier {
-	/// Create a new in-memory backend
 	pub fn memory() -> Self {
 		Self::Memory(MemoryPrimitiveStorage::new())
 	}
 
-	/// Create a new SQLite backend with in-memory database
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite_in_memory() -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::in_memory())
 	}
 
-	/// Create a new SQLite backend with the given configuration
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(config: SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePrimitiveStorage::new(config))

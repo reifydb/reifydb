@@ -116,7 +116,6 @@ pub fn parse<'bump>(
 	parser.parse()
 }
 
-/// Maximum nesting depth to prevent stack overflow on deeply nested input.
 const MAX_PARSE_DEPTH: usize = 128;
 
 pub(crate) struct Parser<'bump> {
@@ -143,7 +142,6 @@ impl<'bump> Parser<'bump> {
 		self.bump
 	}
 
-	/// Extract the source text from `start_offset` to the end of the most recently consumed token.
 	pub(crate) fn source_since(&self, start_offset: usize) -> &'bump str {
 		let end = if self.position > 0 {
 			let prev = &self.tokens[self.position - 1];
@@ -166,7 +164,6 @@ impl<'bump> Parser<'bump> {
 		Ok(result)
 	}
 
-	/// Parse a single statement (possibly with pipes)
 	pub(crate) fn parse_statement(&mut self) -> Result<AstStatement<'bump>> {
 		let start_offset = if let Ok(current) = self.current() {
 			current.fragment.offset()
@@ -174,7 +171,6 @@ impl<'bump> Parser<'bump> {
 			self.source.len()
 		};
 
-		// Check for OUTPUT prefix
 		let is_output = if !self.is_eof() && self.current()?.is_keyword(Keyword::Output) {
 			self.advance()?;
 			true
@@ -191,8 +187,6 @@ impl<'bump> Parser<'bump> {
 
 			let node = self.parse_node(Precedence::None)?;
 
-			// Check if this is a DDL statement (CREATE, ALTER, DROP)
-			// These should stand alone and not have arbitrary expressions after them
 			let is_ddl = matches!(
 				node,
 				Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Grant(_) | Ast::Revoke(_)
@@ -201,16 +195,13 @@ impl<'bump> Parser<'bump> {
 			nodes.push(node);
 
 			if !self.is_eof() {
-				// Check for pipe operator or newline as
-				// separator
 				if self.current()?.is_operator(Operator::Pipe) {
-					self.advance()?; // consume the pipe
+					self.advance()?;
 					has_pipes = true;
 				} else {
 					self.consume_if(TokenKind::Separator(NewLine))?;
 				}
 
-				// If we just parsed a DDL statement, check for unexpected trailing tokens
 				if is_ddl
 					&& !self.is_eof() && !matches!(
 					self.current()?.kind,
@@ -235,7 +226,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse statement content without handling termination (for use within other constructs)
 	pub(crate) fn parse_statement_content(&mut self) -> Result<AstStatement<'bump>> {
 		let start_offset = if let Ok(current) = self.current() {
 			current.fragment.offset()
@@ -246,12 +236,10 @@ impl<'bump> Parser<'bump> {
 		let mut nodes = Vec::with_capacity(8);
 		let mut has_pipes = false;
 		loop {
-			// Don't check for semicolon termination - that's handled by the outer context
 			if self.is_eof() {
 				break;
 			}
 
-			// Check if we hit a semicolon - if so, stop but don't consume it
 			if let Ok(current) = self.current()
 				&& current.is_separator(Separator::Semicolon)
 			{
@@ -260,9 +248,8 @@ impl<'bump> Parser<'bump> {
 
 			nodes.push(self.parse_node(Precedence::None)?);
 			if !self.is_eof() {
-				// Check for pipe operator or newline as separator
 				if self.current()?.is_operator(Operator::Pipe) {
-					self.advance()?; // consume the pipe
+					self.advance()?;
 					has_pipes = true;
 				} else {
 					self.consume_if(TokenKind::Separator(NewLine))?;
@@ -297,8 +284,6 @@ impl<'bump> Parser<'bump> {
 	fn parse_node_inner(&mut self, precedence: Precedence) -> Result<Ast<'bump>> {
 		let mut left = self.parse_primary()?;
 
-		// DDL statements (CREATE, ALTER, DROP, GRANT, REVOKE) cannot be used in infix expressions
-		// They must stand alone
 		if matches!(left, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_) | Ast::Grant(_) | Ast::Revoke(_)) {
 			return Ok(left);
 		}
@@ -308,8 +293,6 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Check token type before consuming
-			// Use an enum to track what we found
 			enum SpecialInfix {
 				Between,
 				In,
@@ -325,7 +308,6 @@ impl<'bump> Parser<'bump> {
 					TokenKind::Keyword(Keyword::Is) => Some(SpecialInfix::Is),
 					TokenKind::Keyword(Keyword::Contains) => Some(SpecialInfix::Contains),
 					TokenKind::Operator(Operator::Not) => {
-						// Check if next token is IN for NOT IN
 						if self.is_next_keyword(Keyword::In) {
 							Some(SpecialInfix::NotIn)
 						} else {
@@ -486,8 +468,6 @@ impl<'bump> Parser<'bump> {
 		self.advance()
 	}
 
-	/// Consume a token that is either an Identifier or a Keyword, returning it as an Identifier.
-	/// Used in contexts where a keyword-colliding name (e.g. enum variant `Pending`) should be accepted.
 	pub(crate) fn consume_name(&mut self) -> Result<Token<'bump>> {
 		let token = self.advance()?;
 		if matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
@@ -510,7 +490,6 @@ impl<'bump> Parser<'bump> {
 		Ok(self.tokens[self.position])
 	}
 
-	/// Check if the next token (position + 1) is a specific keyword
 	pub(crate) fn is_next_keyword(&self, keyword: Keyword) -> bool {
 		if self.position + 1 >= self.tokens.len() {
 			return false;
@@ -523,8 +502,6 @@ impl<'bump> Parser<'bump> {
 		if got.kind == expected {
 			Ok(())
 		} else {
-			// Use specific error for identifier expectations to
-			// match test format
 			if let TokenKind::Identifier = expected {
 				Err(AstError::ExpectedIdentifier {
 					fragment: got.fragment.to_owned(),
@@ -560,7 +537,6 @@ impl<'bump> Parser<'bump> {
 		let current = self.current()?;
 		match current.kind {
 			TokenKind::Operator(operator) => {
-				// Check for NOT IN (NOT followed by IN keyword)
 				if operator == Operator::Not && self.is_next_keyword(Keyword::In) {
 					return Ok(Precedence::Comparison);
 				}
@@ -578,10 +554,6 @@ impl<'bump> Parser<'bump> {
 		self.position >= self.tokens.len()
 	}
 
-	/// Look ahead from current position to find a pipe operator (|)
-	/// Returns true if pipe found before semicolon or EOF at depth 0
-	/// Returns false if semicolon or EOF found first, or if a closing
-	/// bracket/brace/paren is hit at depth 0 (we're inside a nested context)
 	pub(crate) fn has_pipe_ahead(&self) -> bool {
 		let mut pos = self.position;
 		let mut depth = 0;
@@ -609,7 +581,6 @@ impl<'bump> Parser<'bump> {
 			pos += 1;
 		}
 
-		// Reached EOF without finding pipe or semicolon
 		false
 	}
 
@@ -632,9 +603,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse an IN expression: `value IN [list]` or `value NOT IN [list]`
 	pub(crate) fn parse_in(&mut self, value: Ast<'bump>, negated: bool) -> Result<AstInfix<'bump>> {
-		// For NOT IN, consume NOT first
 		if negated {
 			self.consume_operator(Operator::Not)?;
 		}
@@ -655,7 +624,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse a CONTAINS expression: `value CONTAINS (list)`
 	pub(crate) fn parse_contains(&mut self, value: Ast<'bump>) -> Result<AstInfix<'bump>> {
 		let contains_token = self.consume_keyword(Keyword::Contains)?;
 		let right = Ast::List(self.parse_list()?);
@@ -668,7 +636,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse an IS expression: `value IS [namespace.]SumType::Variant`
 	pub(crate) fn parse_is(&mut self, left: Ast<'bump>) -> Result<Ast<'bump>> {
 		let is_token = self.consume_keyword(Keyword::Is)?;
 
@@ -695,11 +662,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse a comma-separated list of expressions with optional braces
-	/// Returns (nodes, had_braces) tuple
-	///
-	/// - `allow_colon_alias`: if true, allows `{alias: expr}` syntax which is converted to `expr AS alias`
-	/// - `allow_as_keyword`: if true, allows `{expr as alias}` syntax. When false, only colon syntax is accepted.
 	pub(crate) fn parse_expressions(
 		&mut self,
 		allow_colon_alias: bool,
@@ -709,17 +671,14 @@ impl<'bump> Parser<'bump> {
 		let has_braces = self.current()?.is_operator(Operator::OpenCurly);
 
 		if has_braces {
-			self.advance()?; // consume opening brace
+			self.advance()?;
 		}
 
-		// Handle empty braces
 		if has_braces && !self.is_eof() && self.current()?.is_operator(Operator::CloseCurly) {
 			self.advance()?;
 			return Ok((Vec::new(), true));
 		}
 
-		// When allow_as_keyword is false, use Assignment precedence to stop at AS
-		// This allows parsing or/xor (LogicOr precedence) but stops at as (Assignment precedence)
 		let precedence = if allow_as_keyword {
 			Precedence::None
 		} else {
@@ -728,7 +687,6 @@ impl<'bump> Parser<'bump> {
 
 		let mut nodes = Vec::with_capacity(4);
 		loop {
-			// Break on keyword before parsing next expression
 			if let Some(kw) = break_on
 				&& !self.is_eof() && self.current()?.is_keyword(kw)
 			{
@@ -749,12 +707,10 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// consume comma and continue
 			if self.current()?.is_separator(Separator::Comma) {
 				self.advance()?;
 			} else if has_braces && self.current()?.is_operator(Operator::CloseCurly) {
-				// If we have braces, look for closing brace
-				self.advance()?; // consume closing brace
+				self.advance()?;
 				break;
 			} else {
 				break;
@@ -764,9 +720,6 @@ impl<'bump> Parser<'bump> {
 		Ok((nodes, has_braces))
 	}
 
-	/// Parse a keyword followed by braced, comma-separated expressions.
-	/// Used by MAP, EXTEND, PATCH and similar operators that require `{ expr, ... }`.
-	/// Returns `(keyword_token, parsed_expressions, rql_source)`.
 	pub(crate) fn parse_keyword_with_braced_expressions(
 		&mut self,
 		keyword: Keyword,
@@ -788,9 +741,6 @@ impl<'bump> Parser<'bump> {
 		Ok((token, nodes, self.source_since(start)))
 	}
 
-	/// Parse a keyword followed by an optional-braces single expression.
-	/// Used by FILTER, GATE and similar operators that accept `keyword { expr }` or `keyword expr`.
-	/// Returns `(keyword_token, parsed_node, rql_source)`.
 	pub(crate) fn parse_keyword_with_optional_braces_single(
 		&mut self,
 		keyword: Keyword,
@@ -816,7 +766,6 @@ impl<'bump> Parser<'bump> {
 		Ok((token, BumpBox::new_in(node, self.bump()), self.source_since(start)))
 	}
 
-	/// Fast lookahead: is the current position a `key:` colon-alias pattern?
 	fn is_colon_alias(&self) -> bool {
 		if self.position + 1 >= self.tokens.len() {
 			return false;
@@ -827,9 +776,6 @@ impl<'bump> Parser<'bump> {
 		is_valid_key && self.tokens[self.position + 1].is_operator(Operator::Colon)
 	}
 
-	/// Try to parse "key: expression" syntax and convert it to
-	/// "expression AS key" where key can be identifier, keyword, or string literal.
-	/// Returns `None` if the current position is not a colon-alias pattern (no error constructed).
 	pub(crate) fn try_parse_colon_alias(&mut self) -> Option<Result<Ast<'bump>>> {
 		if !self.is_colon_alias() {
 			return None;
@@ -839,18 +785,15 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_colon_alias_inner(&mut self) -> Result<Ast<'bump>> {
-		// Parse the key (identifier, keyword, or string literal)
 		let key = if matches!(self.tokens[self.position].kind, TokenKind::Literal(Literal::Text)) {
 			Ast::Literal(self.parse_literal_text()?)
 		} else {
 			Ast::Identifier(self.parse_as_identifier()?)
 		};
-		let colon_token = self.advance()?; // consume colon
+		let colon_token = self.advance()?;
 
-		// Parse the expression
 		let mut expression = self.parse_node(Precedence::None)?;
 
-		// Detect simplified struct variant syntax: `Identifier { ... }`
 		if let Ast::Identifier(ref ident) = expression
 			&& !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly)
 		{
@@ -866,7 +809,6 @@ impl<'bump> Parser<'bump> {
 			});
 		}
 
-		// Return as "expression AS key"
 		Ok(Ast::Infix(AstInfix {
 			token: *expression.token(),
 			left: BumpBox::new_in(expression, self.bump()),

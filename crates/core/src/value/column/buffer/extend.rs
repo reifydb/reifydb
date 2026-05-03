@@ -13,7 +13,6 @@ use crate::{
 impl ColumnBuffer {
 	pub fn extend(&mut self, other: ColumnBuffer) -> Result<()> {
 		match (&mut *self, other) {
-			// Same type extensions
 			(ColumnBuffer::Bool(l), ColumnBuffer::Bool(r)) => l.extend(&r)?,
 			(ColumnBuffer::Float4(l), ColumnBuffer::Float4(r)) => l.extend(&r)?,
 			(ColumnBuffer::Float8(l), ColumnBuffer::Float8(r)) => l.extend(&r)?,
@@ -87,7 +86,6 @@ impl ColumnBuffer {
 			(ColumnBuffer::DictionaryId(l), ColumnBuffer::DictionaryId(r)) => l.extend(&r)?,
 			(ColumnBuffer::Any(l), ColumnBuffer::Any(r)) => l.extend(&r)?,
 
-			// Option + Option: extend inner + bitvec
 			(
 				ColumnBuffer::Option {
 					inner: l_inner,
@@ -99,10 +97,8 @@ impl ColumnBuffer {
 				},
 			) => {
 				if l_inner.get_type() == r_inner.get_type() {
-					// Same inner type: normal extend
 					l_inner.extend(*r_inner)?;
 				} else if DataBitVec::count_ones(&r_bitvec) == 0 {
-					// Right is all-none with different type: extend left inner with defaults
 					let r_len = r_inner.len();
 					with_container!(l_inner.as_mut(), |c| {
 						for _ in 0..r_len {
@@ -110,8 +106,6 @@ impl ColumnBuffer {
 						}
 					});
 				} else if DataBitVec::count_ones(l_bitvec) == 0 {
-					// Left is all-none with different type: replace left inner type to match
-					// right's
 					let l_len = l_inner.len();
 					let r_type = r_inner.get_type();
 					let (mut new_inner, _) =
@@ -119,13 +113,11 @@ impl ColumnBuffer {
 					new_inner.extend(*r_inner)?;
 					**l_inner = new_inner;
 				} else {
-					// Type mismatch with both having defined values
 					return_internal_error!("column type mismatch in Option extend");
 				}
 				DataBitVec::extend_from(l_bitvec, &r_bitvec);
 			}
 
-			// Option + bare: extend inner with bare data, extend bitvec with all-true
 			(
 				ColumnBuffer::Option {
 					inner,
@@ -135,7 +127,6 @@ impl ColumnBuffer {
 			) => {
 				let other_len = other.len();
 				if inner.get_type() != other.get_type() && DataBitVec::count_ones(bitvec) == 0 {
-					// Left is all-none with different type: replace inner type to match bare data
 					let l_len = inner.len();
 					let r_type = other.get_type();
 					let (mut new_inner, _) =
@@ -150,7 +141,6 @@ impl ColumnBuffer {
 				}
 			}
 
-			// bare + Option: promote bare to Option, then extend
 			(
 				_,
 				ColumnBuffer::Option {
@@ -168,7 +158,6 @@ impl ColumnBuffer {
 				if boxed_inner.get_type() != r_inner.get_type()
 					&& DataBitVec::count_ones(&r_bitvec) == 0
 				{
-					// Right is all-none with different type: extend left with defaults
 					with_container!(boxed_inner.as_mut(), |c| {
 						for _ in 0..r_len {
 							c.push_default();
@@ -184,7 +173,6 @@ impl ColumnBuffer {
 				};
 			}
 
-			// Type mismatch
 			(_, _) => {
 				return_internal_error!("column type mismatch");
 			}

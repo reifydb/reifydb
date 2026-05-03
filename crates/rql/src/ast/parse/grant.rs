@@ -11,7 +11,6 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `GRANT role TO user`
 	pub(crate) fn parse_grant(&mut self) -> Result<AstGrant<'bump>> {
 		let token = self.consume_keyword(Keyword::Grant)?;
 		let role_token = self.consume(TokenKind::Identifier)?;
@@ -25,7 +24,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse `REVOKE role FROM user`
 	pub(crate) fn parse_revoke(&mut self) -> Result<AstRevoke<'bump>> {
 		let token = self.consume_keyword(Keyword::Revoke)?;
 		let role_token = self.consume(TokenKind::Identifier)?;

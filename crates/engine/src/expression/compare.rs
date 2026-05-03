@@ -25,10 +25,8 @@ use reifydb_type::{
 use super::option::binary_op_unwrap_option;
 use crate::Result;
 
-/// Generates a complete match expression dispatching all numeric type pairs for comparison.
-/// Uses push-down accumulation to build the cross-product of type arms.
 macro_rules! dispatch_compare {
-	// Entry point
+
 	(
 		$left:expr, $right:expr;
 		$fragment:expr;
@@ -42,7 +40,7 @@ macro_rules! dispatch_compare {
 		)
 	};
 
-	// Recursive: process one fixed-left type pair, generating all 15 right-side arms
+
 	(@rows
 		($left:expr, $right:expr) ($fragment:expr)
 		[($L:ident, $Lt:ty) $($rest:tt)*]
@@ -74,7 +72,7 @@ macro_rules! dispatch_compare {
 		)
 	};
 
-	// Base case: all fixed-left types processed, emit the match with arb-left arms
+
 	(@rows
 		($left:expr, $right:expr) ($fragment:expr)
 		[]
@@ -82,10 +80,10 @@ macro_rules! dispatch_compare {
 		{$($acc:tt)*}
 	) => {
 		match ($left, $right) {
-			// Fixed × all (12 × 15 = 180 arms)
+
 			$($acc)*
 
-			// Int × all (15 arms)
+
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, Int, f32>(l, r, $fragment)); },
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, Int, f64>(l, r, $fragment)); },
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, Int, i8>(l, r, $fragment)); },
@@ -102,7 +100,7 @@ macro_rules! dispatch_compare {
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Int, Uint>(l, r, $fragment)); },
 			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Int, Decimal>(l, r, $fragment)); },
 
-			// Uint × all (15 arms)
+
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, Uint, f32>(l, r, $fragment)); },
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, Uint, f64>(l, r, $fragment)); },
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, Uint, i8>(l, r, $fragment)); },
@@ -119,7 +117,7 @@ macro_rules! dispatch_compare {
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Uint>(l, r, $fragment)); },
 			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Uint, Decimal>(l, r, $fragment)); },
 
-			// Decimal × all (15 arms)
+
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Float4(r)) => { return Ok(compare_number::<Op, Decimal, f32>(l, r, $fragment)); },
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Float8(r)) => { return Ok(compare_number::<Op, Decimal, f64>(l, r, $fragment)); },
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int1(r)) => { return Ok(compare_number::<Op, Decimal, i8>(l, r, $fragment)); },
@@ -136,13 +134,12 @@ macro_rules! dispatch_compare {
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Uint>(l, r, $fragment)); },
 			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => { return Ok(compare_number::<Op, Decimal, Decimal>(l, r, $fragment)); },
 
-			// Additional arms
+
 			$($extra)*
 		}
 	};
 }
 
-// Trait for comparison operations - monomorphized for fast execution
 pub(crate) trait CompareOp {
 	fn compare_ordering(ordering: Option<Ordering>) -> bool;
 	fn compare_bool(_l: bool, _r: bool) -> Option<bool> {

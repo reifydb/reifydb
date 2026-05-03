@@ -49,9 +49,7 @@ impl ColumnPropertyKind {
 pub enum ColumnSaturationStrategy {
 	#[default]
 	Error,
-	// Saturate,
-	// Wrap,
-	// Zero,
+
 	None,
 }
 

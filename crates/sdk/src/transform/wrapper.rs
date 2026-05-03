@@ -31,11 +31,6 @@ impl<T: FFITransform> TransformWrapper<T> {
 	}
 }
 
-/// # Safety
-///
-/// - `instance` must be a valid pointer to a `TransformWrapper<T>`.
-/// - `ctx` must point to a valid `ContextFFI`.
-/// - `input` must point to a valid `ColumnsFFI`.
 pub unsafe extern "C" fn ffi_transform<T: FFITransform>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
@@ -44,7 +39,6 @@ pub unsafe extern "C" fn ffi_transform<T: FFITransform>(
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = TransformWrapper::<T>::from_ptr(instance);
 
-		// Zero-copy: borrow input columns directly from the FFI struct.
 		let borrowed_input = unsafe { BorrowedColumns::from_ffi(input) };
 		let mut tctx = FFITransformContext::new(ctx);
 
@@ -68,9 +62,6 @@ pub unsafe extern "C" fn ffi_transform<T: FFITransform>(
 	code
 }
 
-/// # Safety
-///
-/// - `instance` must be a valid pointer to a `TransformWrapper<T>`, or null.
 pub unsafe extern "C" fn ffi_transform_destroy<T: FFITransform>(instance: *mut c_void) {
 	if instance.is_null() {
 		return;

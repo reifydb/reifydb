@@ -20,7 +20,6 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateTableNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		// Get namespace name from the MaybeQualified type (join all segments for nested namespaces)
 		let ns_segments: Vec<&str> = create.table.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.table.namespace.first() {

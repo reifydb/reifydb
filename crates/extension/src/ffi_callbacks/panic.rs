@@ -9,9 +9,6 @@ use std::{
 
 use tracing::error;
 
-/// Run `f` (an unsafe FFI vtable call) under `catch_unwind`. On panic, log
-/// `label` plus the panic payload and `abort()` - panics across the FFI
-/// boundary are undefined behaviour, so the host has no safe way to recover.
 pub fn call_with_abort_on_panic<F>(label: &str, f: F) -> i32
 where
 	F: FnOnce() -> i32,

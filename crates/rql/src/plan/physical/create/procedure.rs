@@ -22,12 +22,10 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateProcedureNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		// If this is a handler-style procedure (has on_event), delegate to handler compiler
 		if create.on_event.is_some() {
 			return self.compile_create_handler(rx, create);
 		}
 
-		// Resolve namespace
 		let ns_segments: Vec<&str> = create.procedure.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.procedure.namespace.first() {
@@ -39,7 +37,6 @@ impl<'bump> Compiler<'bump> {
 			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};
 
-		// Convert params
 		let mut params = Vec::with_capacity(create.params.len());
 		for param in &create.params {
 			let constraint = convert_data_type_with_constraints(&param.param_type)?;

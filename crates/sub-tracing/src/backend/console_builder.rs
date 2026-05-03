@@ -11,7 +11,6 @@ pub struct ConsoleBuilder {
 }
 
 impl ConsoleBuilder {
-	/// Create a new console builder with default settings
 	pub fn new() -> Self {
 		Self {
 			use_color: true,
@@ -19,33 +18,20 @@ impl ConsoleBuilder {
 		}
 	}
 
-	/// Enable or disable colored output
-	///
-	/// # Arguments
-	/// * `enabled` - true to enable colors, false for plain text
 	pub fn color(mut self, enabled: bool) -> Self {
 		self.use_color = enabled;
 		self
 	}
 
-	/// Use stderr for error and critical level logs
-	///
-	/// Note: This setting is provided for API compatibility but is not
-	/// currently used by tracing_subscriber's default fmt layer.
-	///
-	/// # Arguments
-	/// * `enabled` - true to send errors to stderr, false to send all to stdout
 	pub fn stderr_for_errors(mut self, enabled: bool) -> Self {
 		self.stderr_for_errors = enabled;
 		self
 	}
 
-	/// Get the color setting
 	pub fn use_color(&self) -> bool {
 		self.use_color
 	}
 
-	/// Get the stderr for errors setting
 	pub fn use_stderr_for_errors(&self) -> bool {
 		self.stderr_for_errors
 	}

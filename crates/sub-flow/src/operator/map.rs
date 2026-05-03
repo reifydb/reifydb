@@ -29,7 +29,6 @@ use reifydb_type::{
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
-// Static empty params instance for use in EvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
@@ -69,7 +68,6 @@ impl MapOperator {
 		}
 	}
 
-	/// Project all rows in Columns using expressions
 	fn project(&self, columns: &Columns) -> Result<Columns> {
 		let row_count = columns.row_count();
 		if row_count == 0 {

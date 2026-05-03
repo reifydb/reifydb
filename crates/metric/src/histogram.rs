@@ -5,19 +5,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::snapshot::{HistogramSnapshot, Percentiles};
 
-/// A distribution of observed values, bucketed by upper-bound thresholds.
-///
-/// All values are f64. The sum is stored as f64 bits in an `AtomicU64`;
-/// bucket counts and observation count remain integer.
-///
-/// Not `const`-constructable (requires heap-allocated bucket vec).
-/// Use `LazyLock<Histogram>` for statics.
 pub struct Histogram {
 	pub name: &'static str,
 	pub help: &'static str,
 	pub boundaries: &'static [f64],
 	buckets: Vec<AtomicU64>,
-	sum: AtomicU64, // stores f64::to_bits()
+	sum: AtomicU64,
 	count: AtomicU64,
 }
 
@@ -39,7 +32,6 @@ impl Histogram {
 		let idx = self.boundaries.partition_point(|&b| b < value);
 		self.buckets[idx].fetch_add(1, Ordering::Relaxed);
 
-		// CAS loop for f64 sum
 		let mut current = self.sum.load(Ordering::Relaxed);
 		loop {
 			let new = f64::from_bits(current) + value;
@@ -76,7 +68,6 @@ impl Histogram {
 	}
 }
 
-/// Quantiles to compute, in ascending order. Each entry is (quantile, index into SETTERS).
 const QUANTILES: &[f64] = &[
 	0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90,
 	0.95, 0.96, 0.97, 0.98, 0.99,
@@ -87,7 +78,6 @@ fn compute_percentiles(buckets: &[u64], count: u64, boundaries: &[f64]) -> Perce
 		return Percentiles::default();
 	}
 
-	// Pre-compute targets: ceil(count * quantile)
 	let targets: Vec<u64> = QUANTILES.iter().map(|&q| (count as f64 * q).ceil() as u64).collect();
 
 	let mut result = [0.0f64; 23];

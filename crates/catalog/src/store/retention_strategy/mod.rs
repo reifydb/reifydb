@@ -14,7 +14,6 @@ use reifydb_core::{
 
 use self::shape::retention_strategy;
 
-/// Encode a RetentionStrategy into EncodedRow
 pub(crate) fn encode_retention_strategy(strategy: &RetentionStrategy) -> EncodedRow {
 	let mut row = retention_strategy::SHAPE.allocate();
 
@@ -25,7 +24,6 @@ pub(crate) fn encode_retention_strategy(strategy: &RetentionStrategy) -> Encoded
 				retention_strategy::STRATEGY_TYPE,
 				retention_strategy::STRATEGY_KEEP_FOREVER,
 			);
-			// Other fields remain 0/default
 		}
 		RetentionStrategy::KeepVersions {
 			count,
@@ -48,7 +46,6 @@ pub(crate) fn encode_retention_strategy(strategy: &RetentionStrategy) -> Encoded
 	row
 }
 
-/// Decode a RetentionStrategy from EncodedRow
 pub(crate) fn decode_retention_strategy(row: &EncodedRow) -> Option<RetentionStrategy> {
 	let strategy_type = retention_strategy::SHAPE.get_u8(row, retention_strategy::STRATEGY_TYPE);
 

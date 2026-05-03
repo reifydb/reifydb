@@ -57,7 +57,6 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		// SCALAR: Horizontal Sum (summing columns in each row)
 		if args.is_empty() {
 			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
@@ -70,8 +69,6 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 		let mut results = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			// Basic implementation: just use first arg for now or add them if possible
-			// In a full implementation we would use a unified adder
 			let val1 = args[0].get_value(i);
 			results.push(Box::new(val1));
 		}

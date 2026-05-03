@@ -13,7 +13,6 @@ use tracing_subscriber::{
 
 use crate::{backend::console_builder::ConsoleBuilder, subsystem::TracingSubsystem};
 
-/// Builder for configuring the tracing subsystem with tracing_subscriber
 pub struct TracingConfigurator {
 	filter: Option<String>,
 	console_config: Option<ConsoleBuilder>,
@@ -28,7 +27,6 @@ impl Default for TracingConfigurator {
 }
 
 impl TracingConfigurator {
-	/// Create a new TracingConfigurator with default settings
 	pub fn new() -> Self {
 		Self {
 			filter: None,
@@ -38,13 +36,6 @@ impl TracingConfigurator {
 		}
 	}
 
-	/// Configure console output
-	///
-	/// # Example
-	/// ```ignore
-	/// TracingConfigurator::new()
-	///     .with_console(|console| console.color(true).stderr_for_errors(true))
-	/// ```
 	pub fn with_console<F>(mut self, builder_fn: F) -> Self
 	where
 		F: FnOnce(ConsoleBuilder) -> ConsoleBuilder,
@@ -54,70 +45,21 @@ impl TracingConfigurator {
 		self
 	}
 
-	/// Disable console logging entirely
-	///
-	/// This is useful when you only want OpenTelemetry tracing without
-	/// the performance overhead of console output.
-	///
-	/// # Example
-	/// ```ignore
-	/// TracingConfigurator::new()
-	///     .without_console()  // Disable console output
-	///     .with_layer(otel_layer)  // Only use OpenTelemetry
-	///     .with_filter("trace")  // Can still filter what spans are recorded
-	///     .build()
-	/// ```
 	pub fn without_console(mut self) -> Self {
 		self.console_config = None;
 		self
 	}
 
-	/// Set the log filter using tracing_subscriber's EnvFilter syntax
-	///
-	/// # Examples
-	/// ```ignore
-	/// // Global info level
-	/// builder.with_filter("info")
-	///
-	/// // Per-crate filtering
-	/// builder.with_filter("warn,reifydb_engine=debug,reifydb_catalog=trace")
-	///
-	/// // Filter specific modules
-	/// builder.with_filter("reifydb_catalog::transaction=trace")
-	///
-	/// // Filter by span name
-	/// builder.with_filter("reifydb_catalog[slow]=debug")
-	/// ```
 	pub fn with_filter(mut self, filter: &str) -> Self {
 		self.filter = Some(filter.to_string());
 		self
 	}
 
-	/// Enable span events (enter/exit logging)
-	/// This adds more verbose output but helps trace execution flow
 	pub fn with_span_events(mut self, enabled: bool) -> Self {
 		self.with_spans = enabled;
 		self
 	}
 
-	/// Add an external layer to the tracing subscriber
-	///
-	/// This allows other subsystems (like OpenTelemetry) to contribute
-	/// a layer to the tracing subscriber before it's initialized.
-	///
-	/// Note: Only one external layer can be added. If called multiple times,
-	/// the last layer will be used.
-	///
-	/// # Example
-	/// ```ignore
-	/// let tracer = opentelemetry::global::tracer("reifydb");
-	/// let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-	///
-	/// TracingConfigurator::new()
-	///     .with_layer(otel_layer)
-	///     .with_filter("info")
-	///     .build()
-	/// ```
 	pub fn with_layer<L>(mut self, layer: L) -> Self
 	where
 		L: Layer<Registry> + Send + Sync + 'static,
@@ -126,9 +68,6 @@ impl TracingConfigurator {
 		self
 	}
 
-	/// Build and initialize the tracing subsystem
-	///
-	/// This sets up the global tracing subscriber. It should only be called once.
 	pub fn configure(self) -> TracingSubsystem {
 		let filter = build_filter(self.filter.as_deref());
 		let fmt_layer = build_console_layer(self.console_config.as_ref(), self.with_spans);

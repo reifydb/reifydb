@@ -140,12 +140,12 @@ impl<'bump> PartialEq for BumpBitVec<'bump> {
 		if self.len != other.len {
 			return false;
 		}
-		// Compare full bytes
+
 		let full_bytes = self.len / 8;
 		if self.bits[..full_bytes] != other.bits[..full_bytes] {
 			return false;
 		}
-		// Compare remaining bits in last partial byte
+
 		let remainder = self.len % 8;
 		if remainder > 0 {
 			let mask = (1u8 << remainder) - 1;
@@ -215,7 +215,6 @@ impl<'bump> DataBitVec for BumpBitVec<'bump> {
 	fn count_ones(&self) -> usize {
 		let mut count: usize = self.bits.iter().map(|&byte: &u8| byte.count_ones() as usize).sum();
 
-		// Adjust for partial last byte
 		let full_bytes = self.len / 8;
 		let remainder_bits = self.len % 8;
 

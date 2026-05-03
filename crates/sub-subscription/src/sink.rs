@@ -35,18 +35,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::store::SubscriptionStore;
 
-/// Staged delivery buffer for subscription sinks.
-///
-/// During a single CDC-batch pass, every sink writes into an in-memory staging
-/// map instead of pushing to the `SubscriptionStore` directly. At the end of
-/// the pass, `commit_batch` drains the staging map and applies all pushes to
-/// the store atomically (from the poller's point of view). This prevents the
-/// poller from observing a partial batch - where, for example, one batch
-/// member's diff has been pushed but another's is still in flight.
-///
-/// Only one CDC pass runs at a time per subsystem (the `PollConsumer` is
-/// single-threaded), so contention on `staging` is nil; the `Mutex` exists to
-/// satisfy `Send + Sync` requirements from the sink operator path.
 pub struct DeliveryBuffer {
 	store: Arc<SubscriptionStore>,
 	staging: Mutex<HashMap<SubscriptionId, Vec<Columns>>>,
@@ -60,14 +48,10 @@ impl DeliveryBuffer {
 		}
 	}
 
-	/// Stage one diff payload for `subscription_id`. Called by the sink operator
-	/// during flow processing.
 	pub fn push(&self, subscription_id: SubscriptionId, columns: Columns) {
 		self.staging.lock().unwrap().entry(subscription_id).or_default().push(columns);
 	}
 
-	/// Commit all staged diffs to the store as a single atomic batch. Safe to
-	/// call with an empty staging map (no-op).
 	pub fn commit_batch(&self) {
 		let staged = {
 			let mut guard = self.staging.lock().unwrap();
@@ -82,9 +66,6 @@ struct DeliveredState {
 	rows: BTreeSet<RowNumber>,
 }
 
-/// Ephemeral subscription sink operator. Stages output diffs in a
-/// `DeliveryBuffer` buffer; the surrounding CDC consumer is responsible for
-/// calling `commit_batch` once all flows have processed.
 pub struct EphemeralSinkSubscriptionOperator {
 	#[allow(dead_code)]
 	parent: Arc<Operators>,
@@ -126,7 +107,6 @@ impl EphemeralSinkSubscriptionOperator {
 			.map_err(|e| Error(Box::new(internal!("Failed to deserialize DeliveredState: {}", e))))
 	}
 
-	/// Add implicit columns (_op) to the columns.
 	fn add_implicit_columns(columns: &Columns, op: DiffType) -> Columns {
 		let row_count = columns.row_count();
 

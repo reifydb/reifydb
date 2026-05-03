@@ -69,7 +69,7 @@ impl QueryNode for AggregateNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.input.initialize(rx, ctx)?;
-		// Already has context from constructor
+
 		Ok(())
 	}
 
@@ -190,33 +190,21 @@ fn parse_keys_and_aggregates<'a>(
 				})
 			}
 			Expression::AccessSource(access) => {
-				// Handle qualified column references like
-				// departments.dept_name
 				keys.push(access.column.name.text());
 				projections.push(Projection::Group {
 					column: access.column.name.text().to_string(),
 					alias: access.column.name.clone(),
 				})
 			}
-			// _ => return
-			// Err(reifydb_type::error::Error::Unsupported("Non-column
-			// group by not supported".into())),
+
 			expr => panic!("Non-column group by not supported: {expr:#?}"),
 		}
 	}
 
 	for p in project {
-		// Extract the actual expression, handling aliases
 		let (actual_expr, alias) = match p {
-			Expression::Alias(alias_expr) => {
-				// This is an aliased expression like
-				// "total_count: count(value)"
-				(alias_expr.expression.as_ref(), alias_expr.alias.0.clone())
-			}
-			expr => {
-				// Non-aliased expression, derive a deterministic display label.
-				(expr, display_label(expr))
-			}
+			Expression::Alias(alias_expr) => (alias_expr.expression.as_ref(), alias_expr.alias.0.clone()),
+			expr => (expr, display_label(expr)),
 		};
 
 		match actual_expr {
@@ -227,7 +215,7 @@ fn parse_keys_and_aggregates<'a>(
 						function: call.func.0.clone(),
 					}
 				})?;
-				let _ = FunctionKind::Aggregate; // ensure kinds enum is in scope
+				let _ = FunctionKind::Aggregate;
 
 				let mut fn_ctx = FunctionContext {
 					fragment: call.func.0.clone(),
@@ -253,9 +241,6 @@ fn parse_keys_and_aggregates<'a>(
 						});
 					}
 					Some(Expression::AccessSource(access)) => {
-						// Handle qualified column
-						// references in aggregate
-						// functions
 						projections.push(Projection::Aggregate {
 							column: access.column.name.text().to_string(),
 							column_fragment: access.column.name.clone(),
@@ -289,9 +274,7 @@ fn parse_keys_and_aggregates<'a>(
 					}
 				}
 			}
-			// _ => return
-			// Err(reifydb_type::error::Error::Unsupported("Expected
-			// aggregate call expression".into())),
+
 			_ => panic!("Expected aggregate call expression, got: {actual_expr:#?}"),
 		}
 	}

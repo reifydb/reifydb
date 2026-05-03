@@ -14,20 +14,12 @@ use crate::{
 	fragment::Fragment,
 };
 
-/// A duration value representing a duration between two points in time.
-///
-/// All non-zero components must share the same sign. Nanos are normalized
-/// so that `|nanos| < NANOS_PER_DAY`, with excess rolling into `days`.
-///
-/// `#[repr(C)]` locks the field layout for the FFI ABI. The wire format for
-/// a `Vec<Duration>` borrow is `(months: i32, days: i32, nanos: i64)` packed
-/// = 16 bytes per element, native endian.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Duration {
-	months: i32, // Store years*12 + months
-	days: i32,   // Separate days
-	nanos: i64,  // All time components as nanoseconds
+	months: i32,
+	days: i32,
+	nanos: i64,
 }
 
 const NANOS_PER_DAY: i64 = 86_400_000_000_000;
@@ -70,8 +62,6 @@ impl Duration {
 			.checked_add(extra_days)
 			.ok_or_else(|| Box::new(Self::overflow_err("days overflow during normalization")))?;
 
-		// Days and nanos must share the same sign (they are commensurable).
-		// Months may differ in sign from days/nanos (months are variable-length).
 		if (days > 0 && nanos < 0) || (days < 0 && nanos > 0) {
 			return Err(Box::new(Self::mixed_sign_err(days, nanos)));
 		}
@@ -205,7 +195,6 @@ impl Duration {
 		}
 	}
 
-	/// Format as ISO 8601 duration string: `P[n]Y[n]M[n]DT[n]H[n]M[n.n]S`
 	pub fn to_iso_string(&self) -> String {
 		if self.months == 0 && self.days == 0 && self.nanos == 0 {
 			return "PT0S".to_string();
@@ -272,18 +261,11 @@ impl PartialOrd for Duration {
 
 impl Ord for Duration {
 	fn cmp(&self, other: &Self) -> cmp::Ordering {
-		// Compare months first
 		match self.months.cmp(&other.months) {
-			cmp::Ordering::Equal => {
-				// Then days
-				match self.days.cmp(&other.days) {
-					cmp::Ordering::Equal => {
-						// Finally nanos
-						self.nanos.cmp(&other.nanos)
-					}
-					other_order => other_order,
-				}
-			}
+			cmp::Ordering::Equal => match self.days.cmp(&other.days) {
+				cmp::Ordering::Equal => self.nanos.cmp(&other.nanos),
+				other_order => other_order,
+			},
 			other_order => other_order,
 		}
 	}

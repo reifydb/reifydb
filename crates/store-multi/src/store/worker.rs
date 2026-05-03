@@ -28,12 +28,10 @@ use tracing::{Span, debug, error, instrument};
 use super::drop::find_keys_to_drop;
 use crate::{hot::storage::HotStorage, tier::TierStorage};
 
-/// Configuration for the drop worker.
 #[derive(Debug, Clone)]
 pub struct DropWorkerConfig {
-	/// How many drop requests to batch before executing.
 	pub batch_size: usize,
-	/// Maximum time to wait before flushing a partial batch.
+
 	pub flush_interval: Duration,
 }
 
@@ -48,7 +46,6 @@ impl Default for DropWorkerConfig {
 
 use reifydb_core::actors::drop::{DropMessage, DropRequest};
 
-/// Actor that processes drop operations asynchronously.
 pub struct DropActor {
 	storage: HotStorage,
 	event_bus: EventBus,
@@ -56,15 +53,13 @@ pub struct DropActor {
 	clock: Clock,
 }
 
-/// State for the drop actor.
 pub struct DropActorState {
-	/// Pending requests waiting to be processed.
 	pending_requests: Vec<DropRequest>,
-	/// Last time we flushed the batch.
+
 	last_flush: Instant,
-	/// Handle to the periodic timer (for cleanup).
+
 	_timer_handle: Option<TimerHandle>,
-	/// Number of flushes since startup, used to schedule periodic maintenance.
+
 	flush_count: u64,
 }
 
@@ -89,14 +84,12 @@ impl DropActor {
 		system.spawn_system("drop-worker", actor).actor_ref().clone()
 	}
 
-	/// Maybe flush if batch is full.
 	fn maybe_flush(&self, state: &mut DropActorState) {
 		if state.pending_requests.len() >= self.config.batch_size {
 			self.flush(state);
 		}
 	}
 
-	/// Flush all pending requests.
 	fn flush(&self, state: &mut DropActorState) {
 		if state.pending_requests.is_empty() {
 			return;
@@ -113,14 +106,12 @@ impl DropActor {
 
 	#[instrument(name = "drop::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
 	fn process_batch(storage: &HotStorage, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
-		// Collect all keys to drop, grouped by table: (key, version) pairs
 		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>> = HashMap::new();
-		// Collect drop stats for metrics
+
 		let mut drops_with_stats = Vec::new();
 		let mut max_pending_version = CommitVersion(0);
 
 		for request in requests.drain(..) {
-			// Track highest version for event (prefer pending_version if set, otherwise use commit_version)
 			let version_for_event = request.pending_version.unwrap_or(request.commit_version);
 			if version_for_event > max_pending_version {
 				max_pending_version = version_for_event;
@@ -129,13 +120,11 @@ impl DropActor {
 			match find_keys_to_drop(storage, request.table, request.key.as_ref(), request.pending_version) {
 				Ok(entries_to_drop) => {
 					for entry in entries_to_drop {
-						// Collect stats for metrics
 						drops_with_stats.push(MultiDrop {
 							key: EncodedKey(request.key.clone()),
 							value_bytes: entry.value_bytes,
 						});
 
-						// Queue for physical deletion: (key, version) pair
 						batches.entry(request.table)
 							.or_default()
 							.push((entry.key, entry.version));
@@ -167,7 +156,6 @@ impl Actor for DropActor {
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		debug!("Drop actor started");
 
-		// Schedule periodic tick for flushing partial batches
 		let timer_handle = ctx.schedule_repeat(Duration::from_millis(10), DropMessage::Tick);
 
 		DropActorState {
@@ -179,9 +167,7 @@ impl Actor for DropActor {
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
-		// Check for cancellation
 		if ctx.is_cancelled() {
-			// Flush remaining requests before stopping
 			self.flush(state);
 			return Directive::Stop;
 		}
@@ -204,7 +190,7 @@ impl Actor for DropActor {
 			}
 			DropMessage::Shutdown => {
 				debug!("Drop actor received shutdown signal");
-				// Process any remaining requests before shutdown
+
 				self.flush(state);
 				return Directive::Stop;
 			}

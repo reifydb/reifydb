@@ -15,14 +15,12 @@ use reifydb_transaction::transaction::Transaction;
 use super::decode_ttl_config;
 use crate::{CatalogStore, Result};
 
-/// A shape TTL configuration entry
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowTtlEntry {
 	pub shape: ShapeId,
 	pub config: Ttl,
 }
 
-/// A per-operator TTL configuration entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorTtlEntry {
 	pub node: FlowNodeId,
@@ -30,7 +28,6 @@ pub struct OperatorTtlEntry {
 }
 
 impl CatalogStore {
-	/// List all TTL configurations for shapes
 	#[allow(dead_code)]
 	pub fn list_row_ttls(rx: &mut Transaction<'_>) -> Result<Vec<RowTtlEntry>> {
 		let mut result = Vec::new();
@@ -52,7 +49,6 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	/// List all per-operator TTL configurations.
 	#[allow(dead_code)]
 	pub fn list_operator_ttls(rx: &mut Transaction<'_>) -> Result<Vec<OperatorTtlEntry>> {
 		let mut result = Vec::new();

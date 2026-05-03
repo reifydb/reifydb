@@ -19,8 +19,6 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-/// Add a row to a state entry (left or right)
-/// Takes Columns + row index instead of Row to avoid allocation
 pub(crate) fn add_to_state_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
@@ -37,7 +35,6 @@ pub(crate) fn add_to_state_entry(
 	Ok(())
 }
 
-/// Add multiple rows to a state entry
 pub(crate) fn add_to_state_entry_batch(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
@@ -55,7 +52,6 @@ pub(crate) fn add_to_state_entry_batch(
 	Ok(())
 }
 
-/// Remove a row from state entry and cleanup if empty
 pub(crate) fn remove_from_state_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
@@ -67,17 +63,16 @@ pub(crate) fn remove_from_state_entry(
 
 		if entry.rows.is_empty() {
 			store.remove(txn, key_hash)?;
-			Ok(true) // Entry was removed
+			Ok(true)
 		} else {
 			store.set(txn, key_hash, &entry)?;
-			Ok(false) // Entry still has rows
+			Ok(false)
 		}
 	} else {
-		Ok(false) // Entry didn't exist
+		Ok(false)
 	}
 }
 
-/// Update a row in-place within a state entry
 pub(crate) fn update_row_in_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
@@ -97,17 +92,14 @@ pub(crate) fn update_row_in_entry(
 	Ok(false)
 }
 
-/// Check if a right side has any rows for a given key
 pub(crate) fn has_right_rows(txn: &mut FlowTransaction, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
 	right_store.contains_key(txn, key_hash)
 }
 
-/// Check if it's the first right row being added for a key
 pub(crate) fn is_first_right_row(txn: &mut FlowTransaction, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
 	Ok(!right_store.contains_key(txn, key_hash)?)
 }
 
-/// Get all rows from a store for a given key as Columns (no Row conversion)
 pub(crate) fn pull_from_store(
 	txn: &mut FlowTransaction,
 	store: &Store,
@@ -121,10 +113,6 @@ pub(crate) fn pull_from_store(
 	}
 }
 
-/// Context for the "opposite side" of a join emit operation.
-///
-/// Groups the parameters that describe which opposite-side data to look up
-/// and how to combine it with the primary side.
 pub(crate) struct JoinEmitContext<'a> {
 	pub opposite_store: &'a Store,
 	pub key_hash: &'a Hash128,
@@ -132,8 +120,6 @@ pub(crate) struct JoinEmitContext<'a> {
 	pub opposite_parent: &'a Arc<Operators>,
 }
 
-/// Emit joined columns when inserting a row that has matches on the opposite side.
-/// Uses index-based access, no Row allocation.
 pub(crate) fn emit_joined_columns(
 	txn: &mut FlowTransaction,
 	primary: &Columns,
@@ -158,7 +144,6 @@ pub(crate) fn emit_joined_columns(
 	}
 }
 
-/// Emit removal of joined columns
 pub(crate) fn emit_remove_joined_columns(
 	txn: &mut FlowTransaction,
 	primary: &Columns,
@@ -183,7 +168,6 @@ pub(crate) fn emit_remove_joined_columns(
 	}
 }
 
-/// Emit updates for joined columns when a row is updated
 pub(crate) fn emit_update_joined_columns(
 	txn: &mut FlowTransaction,
 	pre: &Columns,
@@ -215,7 +199,6 @@ pub(crate) fn emit_update_joined_columns(
 	}
 }
 
-/// Emit joined columns for a batch of rows with the same key
 pub(crate) fn emit_joined_columns_batch(
 	txn: &mut FlowTransaction,
 	primary: &Columns,
@@ -262,7 +245,6 @@ pub(crate) fn emit_joined_columns_batch(
 	}
 }
 
-/// Emit removal of joined columns for a batch
 pub(crate) fn emit_remove_joined_columns_batch(
 	txn: &mut FlowTransaction,
 	primary: &Columns,
@@ -309,7 +291,6 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	}
 }
 
-/// Get all left rows for a given key as Columns
 pub(crate) fn pull_left_columns(
 	txn: &mut FlowTransaction,
 	left_store: &Store,

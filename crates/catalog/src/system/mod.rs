@@ -110,9 +110,6 @@ use virtual_table_columns::virtual_table_columns;
 
 use crate::system::ringbuffers::ringbuffers;
 
-/// Nine slots, one per primitive variant shared between storage and cdc
-/// (table, view, table_virtual, ringbuffer, dictionary, series, flow,
-/// flow_node, system).
 const METRIC_PRIMITIVE_SLOTS: usize = 9;
 
 static METRICS_STORAGE_CACHE: [OnceLock<Arc<VTable>>; METRIC_PRIMITIVE_SLOTS] = [
@@ -871,19 +868,16 @@ pub mod ids {
 		pub const TAG_VARIANTS: VTableId = VTableId(51);
 		pub const SUBSCRIPTIONS: VTableId = VTableId(52);
 
-		// `system::procedures::*` virtual tables.
 		pub const PROCEDURES_RQL: VTableId = VTableId(53);
 		pub const PROCEDURES_TEST: VTableId = VTableId(54);
 		pub const PROCEDURES_NATIVE: VTableId = VTableId(55);
 		pub const PROCEDURES_FFI: VTableId = VTableId(56);
 		pub const PROCEDURES_WASM: VTableId = VTableId(57);
 
-		// `system::bindings::*` virtual tables.
 		pub const BINDINGS_HTTP: VTableId = VTableId(58);
 		pub const BINDINGS_GRPC: VTableId = VTableId(59);
 		pub const BINDINGS_WS: VTableId = VTableId(60);
 
-		// `system::metrics::storage::*` virtual tables.
 		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
 		pub const METRICS_STORAGE_VIEW: VTableId = VTableId(1025);
 		pub const METRICS_STORAGE_TABLE_VIRTUAL: VTableId = VTableId(1026);
@@ -894,7 +888,6 @@ pub mod ids {
 		pub const METRICS_STORAGE_FLOW_NODE: VTableId = VTableId(1031);
 		pub const METRICS_STORAGE_SYSTEM: VTableId = VTableId(1032);
 
-		// `system::metrics::cdc::*` virtual tables.
 		pub const METRICS_CDC_TABLE: VTableId = VTableId(1033);
 		pub const METRICS_CDC_VIEW: VTableId = VTableId(1034);
 		pub const METRICS_CDC_TABLE_VIRTUAL: VTableId = VTableId(1035);
@@ -989,140 +982,112 @@ struct SystemCatalogInner {
 }
 
 impl SystemCatalog {
-	/// Create a new SystemCatalog with the provided
-	/// versions are set once at construction and never change
 	pub fn new(versions: Vec<SystemVersion>) -> Self {
 		Self(Arc::new(SystemCatalogInner {
 			versions,
 		}))
 	}
 
-	/// Get all system versions
 	pub fn get_system_versions(&self) -> &[SystemVersion] {
 		&self.0.versions
 	}
 
-	/// Get the sequences virtual table definition
 	pub fn get_system_sequences_table() -> Arc<VTable> {
 		sequences()
 	}
 
-	/// Get the namespaces virtual table definition
 	pub fn get_system_namespaces_table() -> Arc<VTable> {
 		namespaces()
 	}
 
-	/// Get the tables virtual table definition
 	pub fn get_system_tables_table() -> Arc<VTable> {
 		tables()
 	}
 
-	/// Get the views virtual table definition
 	pub fn get_system_views_table() -> Arc<VTable> {
 		views()
 	}
 
-	/// Get the flows virtual table definition
 	pub fn get_system_flows_table() -> Arc<VTable> {
 		flows()
 	}
 
-	/// Get the flow_watermarks virtual table definition
 	pub fn get_system_flow_watermarks_table() -> Arc<VTable> {
 		flow_watermarks()
 	}
 
-	/// Get the subscriptions virtual table definition
 	pub fn get_system_subscriptions_table() -> Arc<VTable> {
 		subscriptions()
 	}
 
-	/// Get the columns virtual table definition
 	pub fn get_system_columns_table() -> Arc<VTable> {
 		columns()
 	}
 
-	/// Get the primary_keys virtual table definition
 	pub fn get_system_primary_keys_table() -> Arc<VTable> {
 		primary_keys()
 	}
 
-	/// Get the primary_key_columns virtual table definition
 	pub fn get_system_primary_key_columns_table() -> Arc<VTable> {
 		primary_key_columns()
 	}
 
-	/// Get the column_properties virtual table definition
 	pub fn get_system_column_properties_table() -> Arc<VTable> {
 		column_properties()
 	}
 
-	/// Get the system versions virtual table definition
 	pub fn get_system_versions_table() -> Arc<VTable> {
 		versions()
 	}
 
-	/// Get the shape_retention_strategies virtual table definition
 	pub fn get_system_shape_retention_strategies_table() -> Arc<VTable> {
 		shape_retention_strategies()
 	}
 
-	/// Get the operator_retention_strategies virtual table definition
 	pub fn get_system_operator_retention_strategies_table() -> Arc<VTable> {
 		operator_retention_strategies()
 	}
 
-	/// Get the cdc_consumers virtual table definition
 	pub fn get_system_cdc_consumers_table() -> Arc<VTable> {
 		cdc_consumers()
 	}
 
-	/// Get the flow_operators virtual table definition
 	pub fn get_system_flow_operators_table() -> Arc<VTable> {
 		flow_operators()
 	}
 
-	/// Get the flow_nodes virtual table definition
 	pub fn get_system_flow_nodes_table() -> Arc<VTable> {
 		flow_nodes()
 	}
 
-	/// Get the flow_edges virtual table definition
 	pub fn get_system_flow_edges_table() -> Arc<VTable> {
 		flow_edges()
 	}
 
-	/// Get the dictionaries virtual table definition
 	pub fn get_system_dictionaries_table() -> Arc<VTable> {
 		dictionaries()
 	}
 
-	/// Get the virtual_tables virtual table definition
 	pub fn get_system_virtual_tables_table() -> Arc<VTable> {
 		virtual_tables()
 	}
 
-	/// Get the types virtual table definition
 	pub fn get_system_types_table() -> Arc<VTable> {
 		types()
 	}
 
-	/// Get the flow_node_types virtual table definition
 	pub fn get_system_flow_node_types_table() -> Arc<VTable> {
 		flow_node_types()
 	}
 
-	/// Get the flow_operator_inputs virtual table definition
 	pub fn get_system_flow_operator_inputs_table() -> Arc<VTable> {
 		flow_operator_inputs()
 	}
 
-	/// Get the flow_operator_outputs virtual table definition
 	pub fn get_system_flow_operator_outputs_table() -> Arc<VTable> {
 		flow_operator_outputs()
 	}
 
-	/// Get the ringbuffers virtual table definition
 	pub fn get_system_ringbuffers_table() -> Arc<VTable> {
 		ringbuffers()
 	}
@@ -1199,137 +1164,110 @@ impl SystemCatalog {
 		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_SYSTEM, "system", 8)
 	}
 
-	/// Get the shapes virtual table definition
 	pub fn get_system_shapes_table() -> Arc<VTable> {
 		shapes()
 	}
 
-	/// Get the shape_fields virtual table definition
 	pub fn get_system_shape_fields_table() -> Arc<VTable> {
 		shape_fields()
 	}
 
-	/// Get the enums virtual table definition
 	pub fn get_system_enums_table() -> Arc<VTable> {
 		enums()
 	}
 
-	/// Get the enum_variants virtual table definition
 	pub fn get_system_enum_variants_table() -> Arc<VTable> {
 		enum_variants()
 	}
 
-	/// Get the events virtual table definition
 	pub fn get_system_events_table() -> Arc<VTable> {
 		events()
 	}
 
-	/// Get the event_variants virtual table definition
 	pub fn get_system_event_variants_table() -> Arc<VTable> {
 		event_variants()
 	}
 
-	/// Get the `system::procedures::rql` virtual table definition.
 	pub fn get_system_procedures_rql_table() -> Arc<VTable> {
 		procedures_rql()
 	}
 
-	/// Get the `system::procedures::test` virtual table definition.
 	pub fn get_system_procedures_test_table() -> Arc<VTable> {
 		procedures_test()
 	}
 
-	/// Get the `system::procedures::native` virtual table definition.
 	pub fn get_system_procedures_native_table() -> Arc<VTable> {
 		procedures_native()
 	}
 
-	/// Get the `system::procedures::ffi` virtual table definition.
 	pub fn get_system_procedures_ffi_table() -> Arc<VTable> {
 		procedures_ffi()
 	}
 
-	/// Get the `system::procedures::wasm` virtual table definition.
 	pub fn get_system_procedures_wasm_table() -> Arc<VTable> {
 		procedures_wasm()
 	}
 
-	/// Get the `system::bindings::http` virtual table definition.
 	pub fn get_system_bindings_http_table() -> Arc<VTable> {
 		bindings_http()
 	}
 
-	/// Get the `system::bindings::grpc` virtual table definition.
 	pub fn get_system_bindings_grpc_table() -> Arc<VTable> {
 		bindings_grpc()
 	}
 
-	/// Get the `system::bindings::ws` virtual table definition.
 	pub fn get_system_bindings_ws_table() -> Arc<VTable> {
 		bindings_ws()
 	}
 
-	/// Get the handlers virtual table definition
 	pub fn get_system_handlers_table() -> Arc<VTable> {
 		handlers()
 	}
 
-	/// Get the tags virtual table definition
 	pub fn get_system_tags_table() -> Arc<VTable> {
 		tags()
 	}
 
-	/// Get the tag_variants virtual table definition
 	pub fn get_system_tag_variants_table() -> Arc<VTable> {
 		tag_variants()
 	}
 
-	/// Get the series virtual table definition
 	pub fn get_system_series_table() -> Arc<VTable> {
 		series()
 	}
 
-	/// Get the identities virtual table definition
 	pub fn get_system_identities_table() -> Arc<VTable> {
 		identities()
 	}
 
-	/// Get the roles virtual table definition
 	pub fn get_system_roles_table() -> Arc<VTable> {
 		roles()
 	}
 
-	/// Get the granted_roles virtual table definition
 	pub fn get_system_granted_roles_table() -> Arc<VTable> {
 		granted_roles()
 	}
 
-	/// Get the policies virtual table definition
 	pub fn get_system_policies_table() -> Arc<VTable> {
 		policies()
 	}
 
-	/// Get the policy_operations virtual table definition
 	pub fn get_system_policy_operations_table() -> Arc<VTable> {
 		policy_operations()
 	}
 
-	/// Get the migrations virtual table definition
 	pub fn get_system_migrations_table() -> Arc<VTable> {
 		migrations()
 	}
 
-	/// Get the authentications virtual table definition
 	pub fn get_system_authentications_table() -> Arc<VTable> {
 		authentications()
 	}
 
-	/// Get the configs virtual table definition
 	pub fn get_configs_table() -> Arc<VTable> {
 		configs()
 	}
 
-	/// Get the virtual_table_columns virtual table definition
 	pub fn get_system_virtual_table_columns_table() -> Arc<VTable> {
 		virtual_table_columns()
 	}

@@ -12,7 +12,6 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionRingBuffer};
 
 impl MaterializedCatalog {
-	/// Find a ringbuffer by ID at a specific version
 	pub fn find_ringbuffer_at(&self, ringbuffer: RingBufferId, version: CommitVersion) -> Option<RingBuffer> {
 		self.ringbuffers.get(&ringbuffer).and_then(|entry| {
 			let multi = entry.value();
@@ -20,7 +19,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a ringbuffer by name in a namespace at a specific version
 	pub fn find_ringbuffer_by_name_at(
 		&self,
 		namespace: NamespaceId,
@@ -33,7 +31,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a ringbuffer by ID (returns latest version)
 	pub fn find_ringbuffer(&self, ringbuffer: RingBufferId) -> Option<RingBuffer> {
 		self.ringbuffers.get(&ringbuffer).and_then(|entry| {
 			let multi = entry.value();
@@ -41,12 +38,10 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// List the latest version of all ringbuffers.
 	pub fn list_ringbuffers(&self) -> Vec<RingBuffer> {
 		self.ringbuffers.iter().filter_map(|entry| entry.value().get_latest()).collect()
 	}
 
-	/// Find a ringbuffer by name in a namespace (returns latest version)
 	pub fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<RingBuffer> {
 		self.ringbuffers_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let ringbuffer_id = *entry.value();
@@ -55,7 +50,6 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_ringbuffer(&self, id: RingBufferId, version: CommitVersion, ringbuffer: Option<RingBuffer>) {
-		// Look up the current ringbuffer to update the index
 		if let Some(entry) = self.ringbuffers.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{

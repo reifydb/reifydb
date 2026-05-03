@@ -8,9 +8,6 @@ use reifydb_core::interface::catalog::series::{Series, SeriesKey, SeriesMetadata
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BucketId(pub u64);
 
-// A half-open interval `[start, end)` over the series-key domain (keys are
-// encoded as `u64` by `Series::key_to_u64`). `width` is redundant but cached
-// so bucket arithmetic stays O(1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bucket {
 	pub start: u64,
@@ -19,9 +16,6 @@ pub struct Bucket {
 }
 
 impl Bucket {
-	// Stable id for map lookup - the bucket's start, which is unique within a
-	// given `(series_id, width)` combination. The registry scopes buckets by
-	// `SeriesId`, so the start alone is enough to identify.
 	pub fn id(&self) -> BucketId {
 		BucketId(self.start)
 	}
@@ -39,9 +33,6 @@ impl Bucket {
 	}
 }
 
-// Compute the bucket that contains `key` given a fixed bucket `width`. Buckets
-// are aligned to multiples of `width`, i.e. `bucket.start = (key / width) * width`.
-// Panics if `width == 0`.
 pub fn bucket_for(key: u64, width: u64) -> Bucket {
 	assert!(width > 0, "bucket_for: width must be > 0");
 	let start = (key / width) * width;
@@ -52,12 +43,6 @@ pub fn bucket_for(key: u64, width: u64) -> Bucket {
 	}
 }
 
-// A bucket is closed when its end has been passed - no more rows should land
-// in it. Rules differ per series-key kind:
-// - `DateTime`: bucket closed when `now - bucket_end_wall > grace`.
-// - `Integer`: bucket closed when `metadata.newest_key >= bucket.end`; the `grace` parameter is ignored because integer
-//   keys don't have a natural wall-clock correspondence. Late-arrival re-materialization is handled upstream by
-//   comparing `sequence_counter` across ticks.
 pub fn is_closed(
 	bucket: &Bucket,
 	series: &Series,

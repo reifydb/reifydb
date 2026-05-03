@@ -27,7 +27,6 @@ use crate::handler::{BinaryKind, encode_rbcf_envelope};
 
 pub type ConnectionId = Uuid7;
 
-/// A member's contribution to a batch envelope: already encoded into the batch's wire format.
 #[derive(Debug, Clone)]
 pub struct BatchChangeEntryPush {
 	pub subscription_id: SubscriptionId,
@@ -35,89 +34,74 @@ pub struct BatchChangeEntryPush {
 	pub body: JsonValue,
 }
 
-/// Message sent to a connection for push delivery.
 #[derive(Debug, Clone)]
 pub enum PushMessage {
-	/// A JSON-encoded change notification for a subscription.
 	ChangeJson {
 		subscription_id: SubscriptionId,
 		content_type: String,
 		body: JsonValue,
 	},
-	/// A pre-encoded RBCF binary envelope ready to be sent as Message::Binary.
+
 	ChangeRbcf {
 		subscription_id: SubscriptionId,
 		envelope: Vec<u8>,
 	},
-	/// The remote subscription has closed (upstream stream ended).
+
 	Closed {
 		subscription_id: SubscriptionId,
 	},
-	/// A JSON-encoded batch change: one envelope containing entries from N members.
+
 	BatchChangeJson {
 		batch_id: BatchId,
 		entries: Vec<BatchChangeEntryPush>,
 	},
-	/// A pre-encoded RBCF binary envelope for a batch change.
+
 	BatchChangeRbcf {
 		batch_id: BatchId,
 		envelope: Vec<u8>,
 	},
-	/// One member of a batch has been closed; the rest of the batch stays alive.
+
 	BatchMemberClosed {
 		batch_id: BatchId,
 		subscription_id: SubscriptionId,
 	},
-	/// The entire batch has been closed (all members torn down).
+
 	BatchClosed {
 		batch_id: BatchId,
 	},
 }
 
-/// Internal state for a subscription.
 struct SubscriptionState {
 	connection_id: ConnectionId,
 	push_tx: mpsc::UnboundedSender<PushMessage>,
 	format: WireFormat,
 	#[allow(dead_code)]
 	query: String,
-	/// Set when this subscription is a member of a batch. Deliveries for batched
-	/// members are buffered in the batch's pending envelope rather than pushed
-	/// directly to `push_tx`.
+
 	batch_id: Option<BatchId>,
 }
 
-/// Internal state for a batch subscription.
 struct BatchState {
 	connection_id: ConnectionId,
 	push_tx: mpsc::UnboundedSender<PushMessage>,
 	format: WireFormat,
-	/// Members (fixed at batch creation time).
+
 	member_ids: Vec<SubscriptionId>,
-	/// Per-member accumulation of `Frame` produced within the current poller tick.
-	/// Local members convert Columns→Frame via `try_deliver`; remote members append via
-	/// `push_batch_frames` (already Frame).
-	/// Drained on each `flush()`.
+
 	pending: DashMap<SubscriptionId, Vec<Frame>>,
 }
 
-/// Registry tracking subscriptions across all WebSocket connections.
-///
-/// The registry is thread-safe and can be shared across connection handler
-/// and the push broadcast thread.
 pub struct SubscriptionRegistry {
-	/// subscription_id → subscription state
 	subscriptions: DashMap<SubscriptionId, SubscriptionState>,
-	/// connection_id → list of subscription_ids (for cleanup on disconnect)
+
 	connections: DashMap<ConnectionId, Vec<SubscriptionId>>,
-	/// batch_id → batch state
+
 	batches: DashMap<BatchId, BatchState>,
-	/// connection_id → list of batch_ids (for cleanup on disconnect)
+
 	connection_batches: DashMap<ConnectionId, Vec<BatchId>>,
 }
 
 impl SubscriptionRegistry {
-	/// Create a new empty registry.
 	pub fn new() -> Self {
 		Self {
 			subscriptions: DashMap::new(),
@@ -127,9 +111,6 @@ impl SubscriptionRegistry {
 		}
 	}
 
-	/// Register a new subscription for a connection using the provided subscription ID.
-	///
-	/// The subscription ID should be the database subscription ID returned from CREATE SUBSCRIPTION.
 	pub fn subscribe(
 		&self,
 		subscription_id: SubscriptionId,
@@ -138,7 +119,6 @@ impl SubscriptionRegistry {
 		push_tx: mpsc::UnboundedSender<PushMessage>,
 		format: WireFormat,
 	) {
-		// Store subscription state
 		self.subscriptions.insert(
 			subscription_id,
 			SubscriptionState {
@@ -150,17 +130,11 @@ impl SubscriptionRegistry {
 			},
 		);
 
-		// Track subscription for connection cleanup
 		self.connections.entry(connection_id).or_default().push(subscription_id);
 
 		debug!("Registered subscription {} for connection {}", subscription_id, connection_id);
 	}
 
-	/// Register a batch subscription grouping the given members.
-	///
-	/// Each member must already be registered via `subscribe()` first. After this call,
-	/// `try_deliver` for each member will buffer into the batch's pending envelope
-	/// instead of pushing directly to the per-member `push_tx`.
 	pub fn register_batch(
 		&self,
 		connection_id: ConnectionId,
@@ -200,11 +174,6 @@ impl SubscriptionRegistry {
 		batch_id
 	}
 
-	/// Unsubscribe all members of a batch.
-	///
-	/// Returns the list of **local** member subscription ids that were removed from
-	/// the subscriptions map (these need database-side cleanup). Remote members are
-	/// returned as well so the caller can abort their proxy tasks.
 	pub fn unsubscribe_batch(&self, batch_id: BatchId) -> Option<Vec<SubscriptionId>> {
 		let (_, state) = self.batches.remove(&batch_id)?;
 
@@ -223,14 +192,12 @@ impl SubscriptionRegistry {
 			}
 		}
 
-		// Drop empty connection entry if this was the last subscription
 		let remove_connection =
 			self.connections.get(&connection_id).map(|subs| subs.is_empty()).unwrap_or(false);
 		if remove_connection {
 			self.connections.remove(&connection_id);
 		}
 
-		// Remove batch from connection_batches
 		let batches_empty = {
 			if let Some(mut batches) = self.connection_batches.get_mut(&connection_id) {
 				batches.retain(|id| *id != batch_id);
@@ -247,21 +214,14 @@ impl SubscriptionRegistry {
 		Some(members)
 	}
 
-	/// Look up which batch (if any) a subscription belongs to.
 	pub fn batch_for(&self, subscription_id: &SubscriptionId) -> Option<BatchId> {
 		self.subscriptions.get(subscription_id).and_then(|state| state.batch_id)
 	}
 
-	/// Number of registered batches.
 	pub fn batch_count(&self) -> usize {
 		self.batches.len()
 	}
 
-	/// Push pre-materialised `Frame`s into a batch member's pending envelope.
-	///
-	/// Used by remote-subscription proxy tasks: the remote node delivers `Vec<Frame>`
-	/// which this method appends directly. Returns `false` when
-	/// the batch is no longer registered (e.g. client disconnected).
 	pub fn push_batch_frames(
 		&self,
 		batch_id: BatchId,
@@ -278,10 +238,6 @@ impl SubscriptionRegistry {
 		true
 	}
 
-	/// Emit a `BatchMemberClosed` push for a batch member (e.g. upstream remote stream ended).
-	///
-	/// The batch itself stays alive so the other members keep delivering. Returns `false`
-	/// if the batch's push channel is gone (caller should stop its proxy task).
 	pub fn emit_batch_member_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> bool {
 		let Some(batch) = self.batches.get(&batch_id) else {
 			return false;
@@ -294,14 +250,10 @@ impl SubscriptionRegistry {
 			.is_ok()
 	}
 
-	/// Get the push channel for a subscription.
-	///
-	/// Returns None if the subscription doesn't exist.
 	pub fn get_push_channel(&self, subscription_id: &SubscriptionId) -> Option<mpsc::UnboundedSender<PushMessage>> {
 		self.subscriptions.get(subscription_id).map(|state| state.push_tx.clone())
 	}
 
-	/// Get the push channel and chosen wire format for a subscription.
 	pub fn get_push_target(
 		&self,
 		subscription_id: &SubscriptionId,
@@ -309,14 +261,10 @@ impl SubscriptionRegistry {
 		self.subscriptions.get(subscription_id).map(|state| (state.push_tx.clone(), state.format))
 	}
 
-	/// Unsubscribe a specific subscription.
-	///
-	/// Returns true if the subscription existed and was removed.
 	pub fn unsubscribe(&self, subscription_id: SubscriptionId) -> bool {
 		if let Some((_, state)) = self.subscriptions.remove(&subscription_id) {
 			let connection_id = state.connection_id;
 
-			// Remove from connection's subscription list and check if empty
 			let should_remove_connection = {
 				if let Some(mut subs) = self.connections.get_mut(&connection_id) {
 					subs.retain(|id| *id != subscription_id);
@@ -326,7 +274,6 @@ impl SubscriptionRegistry {
 				}
 			};
 
-			// If the connection has no more subscriptions, remove the entry entirely
 			if should_remove_connection {
 				self.connections.remove(&connection_id);
 			}
@@ -338,12 +285,7 @@ impl SubscriptionRegistry {
 		}
 	}
 
-	/// Cleanup all subscriptions and batches for a connection.
-	///
-	/// Called when a WebSocket connection is closed.
-	/// Returns the list of subscription IDs that were cleaned up (including batch members).
 	pub fn cleanup_connection(&self, connection_id: ConnectionId) -> Vec<SubscriptionId> {
-		// Drop all batches for this connection first (members are cleaned up below via subscriptions).
 		if let Some((_, batch_ids)) = self.connection_batches.remove(&connection_id) {
 			for batch_id in &batch_ids {
 				self.batches.remove(batch_id);
@@ -361,11 +303,6 @@ impl SubscriptionRegistry {
 		}
 	}
 
-	/// Broadcast a message to all active subscriptions.
-	///
-	/// Used by the test push thread to send periodic updates. Subscriptions that
-	/// requested RBCF format still receive JSON here because this helper is only
-	/// used by tests that supply a ready-made JSON body.
 	pub async fn broadcast(&self, content_type: String, body: JsonValue) {
 		for entry in self.subscriptions.iter() {
 			let subscription_id = *entry.key();
@@ -377,26 +314,22 @@ impl SubscriptionRegistry {
 				body: body.clone(),
 			};
 
-			// Try to send, ignore if channel is closed
 			if let Err(e) = state.push_tx.send(msg) {
 				warn!("Failed to push to subscription {}: {}", subscription_id, e);
 			}
 		}
 	}
 
-	/// Get the number of active subscriptions.
 	#[allow(dead_code)]
 	pub fn subscription_count(&self) -> usize {
 		self.subscriptions.len()
 	}
 
-	/// Get the number of connections with subscriptions.
 	#[allow(dead_code)]
 	pub fn connection_count(&self) -> usize {
 		self.connections.len()
 	}
 
-	/// Log registry stats for debugging resource usage.
 	#[allow(dead_code)]
 	pub fn log_stats(&self) {
 		info!(
@@ -415,14 +348,12 @@ impl Default for SubscriptionRegistry {
 
 impl SubscriptionDelivery for SubscriptionRegistry {
 	fn try_deliver(&self, subscription_id: &SubscriptionId, columns: Columns) -> DeliveryResult {
-		// Batched members: buffer into the batch's pending envelope and return early.
-		// The actual push happens in `flush()` at the end of the poller tick.
 		if let Some(batch_id) = self.batch_for(subscription_id) {
 			if let Some(batch) = self.batches.get(&batch_id) {
 				batch.pending.entry(*subscription_id).or_default().push(Frame::from(columns));
 				return DeliveryResult::Delivered;
 			}
-			// batch dropped since lookup - fall through to Disconnected
+
 			return DeliveryResult::Disconnected;
 		}
 
@@ -447,8 +378,6 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 	}
 
 	fn flush(&self) {
-		// Drain pending envelope entries per batch, encode, and push as a single envelope.
-		// If a batch's push channel is dead, schedule the batch for removal.
 		let mut dead_batches: Vec<BatchId> = Vec::new();
 
 		for entry in self.batches.iter() {
@@ -559,9 +488,6 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 	}
 }
 
-/// Encode a single `Columns` delivery to a `PushMessage` in the requested format.
-///
-/// Returns `None` if encoding fails (caller should treat as `Disconnected`).
 fn encode_change(subscription_id: SubscriptionId, columns: Columns, format: WireFormat) -> Option<PushMessage> {
 	match format {
 		WireFormat::Rbcf => {
@@ -611,9 +537,6 @@ fn encode_change(subscription_id: SubscriptionId, columns: Columns, format: Wire
 	}
 }
 
-/// Build an RBCF batch envelope with kind `BatchChange`:
-/// `[u8 kind][u32 LE batch_id_len][batch_id bytes][u32 LE num_entries]` then N entries of
-/// `[u32 LE sub_id_len][sub_id bytes][u32 LE rbcf_len][rbcf_bytes]`.
 fn encode_rbcf_batch_envelope(batch_id: &str, entries: &[(String, Vec<u8>)]) -> Vec<u8> {
 	let batch_id_bytes = batch_id.as_bytes();
 	let mut total_entries_bytes = 0usize;

@@ -17,7 +17,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes Native (built-in Rust) procedures from the materialized cache.
 pub struct SystemProceduresNative {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,

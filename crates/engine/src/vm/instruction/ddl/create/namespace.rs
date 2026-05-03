@@ -19,7 +19,6 @@ pub(crate) fn create_namespace(
 ) -> Result<Columns> {
 	let full_name: String = plan.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
 
-	// Auto-create parent namespaces (mkdir -p semantics)
 	let mut parent_id = NamespaceId::ROOT;
 	for i in 0..plan.segments.len().saturating_sub(1) {
 		let prefix: String = plan.segments[..=i].iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
@@ -44,7 +43,6 @@ pub(crate) fn create_namespace(
 		}
 	}
 
-	// Create the final (leaf) namespace
 	if let Some(existing) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)?
 		&& plan.if_not_exists
 	{

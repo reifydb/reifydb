@@ -71,8 +71,6 @@ impl ReifyDbReplication for ReplicationService {
 			let mut cursor = since;
 
 			loop {
-				// Register for notification BEFORE reading so we don't miss
-				// entries written between the read and the await.
 				let notified = notify.notified();
 
 				let batch = store.read_range(Bound::Excluded(cursor), Bound::Unbounded, batch_size);
@@ -87,20 +85,17 @@ impl ReifyDbReplication for ReplicationService {
 								return;
 							}
 						}
-						// If there are more, immediately continue without waiting
+
 						if batch.has_more {
 							continue;
 						}
 					}
-					Ok(_) => {
-						// No entries available
-					}
+					Ok(_) => {}
 					Err(e) => {
 						error!("CDC read error: {:?}", e);
 					}
 				}
 
-				// Wait for new CDC entries, or exit on shutdown.
 				select! {
 					_ = notified => {}
 					_ = shutdown_rx.changed() => {

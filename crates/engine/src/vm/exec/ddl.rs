@@ -11,8 +11,6 @@ use crate::{
 	vm::{services::Services, stack::Variable, vm::Vm},
 };
 
-/// Extract an AdminTransaction from the current transaction context.
-/// DDL operations require either an Admin or Test transaction.
 pub(crate) fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a mut AdminTransaction> {
 	match tx {
 		Transaction::Admin(txn) => Ok(txn),
@@ -22,8 +20,6 @@ pub(crate) fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a m
 }
 
 impl<'a> Vm<'a> {
-	/// Execute a DDL operation that requires an AdminTransaction.
-	/// Extracts the transaction, calls the handler, and pushes the result onto the stack.
 	pub(crate) fn exec_ddl<F>(
 		&mut self,
 		services: &Arc<Services>,
@@ -39,7 +35,6 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	/// Execute a DDL operation for subscriptions (CREATE/DROP SUBSCRIPTION).
 	pub(crate) fn exec_ddl_sub<F>(
 		&mut self,
 		services: &Arc<Services>,

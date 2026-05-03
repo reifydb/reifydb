@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::enums::*, vtable::ENUMS};
 
-/// Returns the static definition for the system.enums virtual table
-/// This table exposes information about all sumtypes (enums) in the database
 pub fn enums() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

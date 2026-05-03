@@ -44,7 +44,6 @@ impl PartialOrd for ReadyEntry {
 
 impl Ord for ReadyEntry {
 	fn cmp(&self, other: &Self) -> CmpOrdering {
-		// Reverse for min-heap: smaller logical_ts = higher priority
 		other.logical_ts.cmp(&self.logical_ts).then_with(|| other.actor_id.cmp(&self.actor_id))
 	}
 }
@@ -93,22 +92,20 @@ impl<A: Actor> DstProcessable for DstActorCell<A> {
 	}
 }
 
-/// Result of a single `step()` call.
 pub enum StepResult {
-	/// A message was processed by the given actor.
 	Processed {
 		actor_id: usize,
 	},
-	/// An actor panicked during message handling.
+
 	Panicked {
 		actor_id: usize,
 		payload: Box<dyn Any + Send>,
 	},
-	/// An actor returned `Directive::Stop`.
+
 	Stopped {
 		actor_id: usize,
 	},
-	/// No actors had pending messages.
+
 	Idle,
 }
 
@@ -117,33 +114,23 @@ struct DstActorSystemInner {
 	clock: Clock,
 	mock_clock: MockClock,
 
-	/// Global FIFO ready queue (min-heap by logical timestamp).
 	ready_queue: RefCell<BinaryHeap<ReadyEntry>>,
-	/// Monotonically increasing logical clock, incremented on each send().
+
 	logical_clock: Cell<u64>,
 
-	/// Timer heap (min-heap by deadline_nanos).
 	timer_heap: DstTimerHeap,
 
-	/// Type-erased actor cells. Dead actors have their slot set to None.
 	actors: RefCell<Vec<Option<Rc<dyn DstProcessable>>>>,
 
-	/// Number of currently alive actors.
 	alive_count: Cell<usize>,
 
-	/// Panics captured during init() - drained by step() as StepResult::Panicked.
 	init_panics: RefCell<Vec<(usize, Box<dyn Any + Send>)>>,
 
-	/// Panics captured during post_stop() - drained by step() as StepResult::Panicked.
 	post_stop_panics: RefCell<Vec<(usize, Box<dyn Any + Send>)>>,
 
-	/// Child scopes for hierarchical shutdown and clock propagation.
 	children: RefCell<Vec<ActorSystem>>,
 }
 
-/// Deterministic actor system for testing.
-///
-/// Uses `Rc` internally (single-threaded). Cheap to clone.
 pub struct ActorSystem {
 	inner: Rc<DstActorSystemInner>,
 }
@@ -157,18 +144,11 @@ impl Clone for ActorSystem {
 }
 
 // SAFETY: DST is single-threaded. These impls are required because the Actor
-// trait bounds require Send + Sync + 'static and Context holds an ActorSystem.
+
 unsafe impl Send for ActorSystem {}
 unsafe impl Sync for ActorSystem {}
 
 impl ActorSystem {
-	/// Create a new DST actor system.
-	///
-	/// Pools are ignored in DST (single-threaded execution).
-	///
-	/// # Panics
-	///
-	/// Panics if `clock` is `Clock::Real`. DST requires a `MockClock`.
 	pub fn new(_pools: Pools, clock: Clock) -> Self {
 		let mock_clock = match &clock {
 			Clock::Mock(mc) => mc.clone(),
@@ -192,12 +172,6 @@ impl ActorSystem {
 		}
 	}
 
-	/// Create a scoped child system sharing timers but with own cancel/actors/clock.
-	///
-	/// The child's cancellation token is a child of the parent's, so parent
-	/// shutdown propagates downward. The child gets its own `MockClock`
-	/// initialized to the parent's current time; parent `advance_time()`
-	/// propagates to children but not vice versa.
 	pub fn scope(&self) -> Self {
 		let child_mock_clock = MockClock::new(self.inner.mock_clock.now_nanos());
 		let child = Self {
@@ -219,28 +193,21 @@ impl ActorSystem {
 		child
 	}
 
-	/// Get the pools for this system.
-	///
-	/// In DST, returns a zero-size marker (no real thread pools).
 	pub fn pools(&self) -> Pools {
 		Pools::default()
 	}
 
-	/// Get the cancellation token for this system.
 	pub fn cancellation_token(&self) -> CancellationToken {
 		self.inner.cancel.clone()
 	}
 
-	/// Check if the system has been cancelled.
 	pub fn is_cancelled(&self) -> bool {
 		self.inner.cancel.is_cancelled()
 	}
 
-	/// Signal shutdown to all actors and child scopes.
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
 
-		// Propagate shutdown to child scopes.
 		for child in self.inner.children.borrow().iter() {
 			child.shutdown();
 		}
@@ -257,42 +224,29 @@ impl ActorSystem {
 		self.inner.alive_count.set(0);
 	}
 
-	/// Get the clock for this system.
 	pub fn clock(&self) -> &Clock {
 		&self.inner.clock
 	}
 
-	/// Get the mock clock (DST-specific).
 	pub(crate) fn mock_clock(&self) -> &MockClock {
 		&self.inner.mock_clock
 	}
 
-	/// Get the timer heap (DST-specific).
 	pub(crate) fn timer_heap(&self) -> &DstTimerHeap {
 		&self.inner.timer_heap
 	}
 
-	/// Wait for all actors to finish after shutdown (no-op in DST).
 	pub fn join(&self) -> Result<(), JoinError> {
 		Ok(())
 	}
 
-	/// Wait for all actors to finish after shutdown with timeout (no-op in DST).
 	pub fn join_timeout(&self, _timeout: Duration) -> Result<(), JoinError> {
 		Ok(())
 	}
 
-	/// Spawn an actor on the system pool.
-	///
-	/// The actor is initialized synchronously. Messages sent during init
-	/// are enqueued and will be processed by subsequent `step()` calls.
-	///
-	/// If the system has already been shut down, returns a handle to a
-	/// pre-terminated actor (sends will fail with `SendError::Closed`).
 	pub fn spawn_system<A: Actor>(&self, _name: &str, actor: A) -> ActorHandle<A::Message> {
 		let (actor_ref, queue) = create_dst_mailbox::<A::Message>();
 
-		// If the system is already shut down, return a dead actor handle.
 		if self.is_cancelled() {
 			actor_ref.mark_stopped();
 			return ActorHandle {
@@ -311,7 +265,6 @@ impl ActorSystem {
 			actor_ref: actor_ref.clone(),
 		});
 
-		// Register the actor and get its ID.
 		let actor_id = {
 			let mut actors = self.inner.actors.borrow_mut();
 			let id = actors.len();
@@ -319,8 +272,6 @@ impl ActorSystem {
 			id
 		};
 
-		// Install notify callback: on each send(), increment logical clock
-		// and push a ReadyEntry.
 		let inner = self.inner.clone();
 		actor_ref.set_notify(Box::new(move || {
 			let ts = inner.logical_clock.get();
@@ -331,15 +282,12 @@ impl ActorSystem {
 			});
 		}));
 
-		// Initialize actor synchronously, catching panics.
 		match catch_unwind(AssertUnwindSafe(|| cell.actor.init(&ctx))) {
 			Ok(initial_state) => {
 				*cell.state.borrow_mut() = Some(initial_state);
 				self.inner.alive_count.set(self.inner.alive_count.get() + 1);
 			}
 			Err(payload) => {
-				// Init panicked - mark actor dead immediately and stash
-				// the panic so step() can report it as StepResult::Panicked.
 				cell.mark_dead();
 				self.inner.init_panics.borrow_mut().push((actor_id, payload));
 			}
@@ -350,16 +298,11 @@ impl ActorSystem {
 		}
 	}
 
-	/// Spawn an actor on the query pool. In DST, same as [`spawn_system`].
 	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
 		self.spawn_system(name, actor)
 	}
 
-	/// Process one message from the actor with the smallest logical timestamp.
-	///
-	/// Returns immediately - either processes one message or reports idle.
 	pub fn step(&self) -> StepResult {
-		// Drain any init panics first (from spawn() calls that caught a panic).
 		{
 			let mut panics = self.inner.init_panics.borrow_mut();
 			if let Some((actor_id, payload)) = panics.pop() {
@@ -370,7 +313,6 @@ impl ActorSystem {
 			}
 		}
 
-		// Drain any post_stop panics (from prior step() calls where post_stop panicked).
 		{
 			let mut panics = self.inner.post_stop_panics.borrow_mut();
 			if let Some((actor_id, payload)) = panics.pop() {
@@ -393,16 +335,14 @@ impl ActorSystem {
 				let actors = self.inner.actors.borrow();
 				match actors.get(actor_id) {
 					Some(Some(cell)) => cell.clone(),
-					_ => continue, // slot cleared
+					_ => continue,
 				}
 			};
 
-			// Skip dead actors or actors with no pending messages.
 			if !cell.is_alive() || !cell.has_pending() {
 				continue;
 			}
 
-			// Catch panics for reproducibility.
 			let result = catch_unwind(AssertUnwindSafe(|| cell.process_one()));
 
 			match result {
@@ -422,7 +362,6 @@ impl ActorSystem {
 					};
 				}
 				Ok(None) => {
-					// No message was actually available (edge case).
 					continue;
 				}
 				Err(payload) => {
@@ -440,10 +379,6 @@ impl ActorSystem {
 		}
 	}
 
-	/// Advance mock time by `delta`, firing timers in deadline order.
-	///
-	/// Timer callbacks enqueue messages but do NOT process them.
-	/// Call `step()` or `run_until_idle()` afterwards to process.
 	pub fn advance_time(&self, delta: Duration) {
 		let target_nanos = self.inner.mock_clock.now_nanos() + delta.as_nanos() as u64;
 
@@ -452,7 +387,6 @@ impl ActorSystem {
 
 			match next_deadline {
 				Some(deadline) if deadline <= target_nanos => {
-					// Advance clock to this deadline so timers see correct time.
 					self.inner.mock_clock.set_nanos(deadline);
 					fire_due_timers(&self.inner.timer_heap, deadline);
 				}
@@ -460,16 +394,13 @@ impl ActorSystem {
 			}
 		}
 
-		// Set clock to final position.
 		self.inner.mock_clock.set_nanos(target_nanos);
 
-		// Propagate time advancement to child scopes.
 		for child in self.inner.children.borrow().iter() {
 			child.advance_time(delta);
 		}
 	}
 
-	/// Process messages until no actors have pending messages.
 	pub fn run_until_idle(&self) {
 		loop {
 			match self.step() {
@@ -479,12 +410,10 @@ impl ActorSystem {
 		}
 	}
 
-	/// Check if any actors have pending messages in the ready queue.
 	pub fn has_pending(&self) -> bool {
 		!self.inner.ready_queue.borrow().is_empty()
 	}
 
-	/// Get the number of alive actors.
 	pub fn alive_count(&self) -> usize {
 		self.inner.alive_count.get()
 	}
@@ -499,31 +428,26 @@ impl fmt::Debug for ActorSystem {
 	}
 }
 
-/// Handle to a spawned actor.
 pub struct ActorHandle<M> {
 	pub actor_ref: ActorRef<M>,
 }
 
 impl<M> ActorHandle<M> {
-	/// Get the actor reference for sending messages.
 	pub fn actor_ref(&self) -> &ActorRef<M> {
 		&self.actor_ref
 	}
 
-	/// Wait for the actor to complete (no-op in DST).
 	pub fn join(self) -> Result<(), JoinError> {
 		Ok(())
 	}
 }
 
-/// Error returned when joining an actor fails.
 #[derive(Debug)]
 pub struct JoinError {
 	message: String,
 }
 
 impl JoinError {
-	/// Create a new JoinError with a message.
 	pub fn new(message: impl Into<String>) -> Self {
 		Self {
 			message: message.into(),

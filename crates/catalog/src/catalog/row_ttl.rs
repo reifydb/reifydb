@@ -13,9 +13,6 @@ use crate::catalog::Catalog;
 
 impl ListRowTtls for Catalog {
 	fn list_row_ttls(&self) -> Vec<(ShapeId, Ttl)> {
-		// Ideally this should fall back to reading from storage if not loaded in materialized,
-		// but ListRowTtls does not provide a Transaction context required by CatalogStore.
-		// For now we read directly from materialized which is populated on startup.
 		self.materialized
 			.row_ttls
 			.iter()

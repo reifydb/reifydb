@@ -11,17 +11,10 @@ use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
 use super::AuthService;
 
 impl AuthService {
-	/// Validate a bearer token and return the associated token definition.
-	///
-	/// Checks in order:
-	/// 1. Persisted session tokens (from login)
-	/// 2. Catalog tokens (from `CREATE AUTHENTICATION ... { method: token }`)
 	pub fn validate_token(&self, token: &str) -> Option<Token> {
-		// 1. Check persisted session tokens
 		let mut txn = self.engine.begin_query().ok()?;
 
 		if let Ok(Some(def)) = find_token_by_value(&mut Transaction::Query(&mut txn), token) {
-			// Check expiry
 			if let Some(expires_at) = def.expires_at
 				&& expires_at < self.now().ok()?
 			{
@@ -30,11 +23,9 @@ impl AuthService {
 			return Some(def);
 		}
 
-		// 2. Fall back to catalog-stored tokens
 		self.validate_catalog_token(token)
 	}
 
-	/// Check if a token matches any catalog-stored token authentication.
 	fn validate_catalog_token(&self, token: &str) -> Option<Token> {
 		let provider = self.auth_registry.get("token")?;
 
@@ -47,7 +38,6 @@ impl AuthService {
 
 		for auth in auths {
 			if let Ok(AuthStep::Authenticated) = provider.authenticate(&auth.properties, &creds) {
-				// Look up the identity via materialized catalog (no transaction needed)
 				if let Some(ident) = catalog.materialized.find_identity(auth.identity)
 					&& ident.enabled
 				{
@@ -65,7 +55,6 @@ impl AuthService {
 		None
 	}
 
-	/// Revoke a specific session token.
 	pub fn revoke_token(&self, token: &str) -> bool {
 		let mut txn = match self.engine.begin_query() {
 			Ok(txn) => txn,
@@ -90,7 +79,6 @@ impl AuthService {
 		admin.commit().is_ok()
 	}
 
-	/// Revoke all session tokens for a given identity.
 	pub fn revoke_all(&self, identity: IdentityId) {
 		if let Ok(mut admin) = self.engine.begin_admin()
 			&& drop_tokens_by_identity(&mut admin, identity).is_ok()
@@ -99,7 +87,6 @@ impl AuthService {
 		}
 	}
 
-	/// Clean up expired sessions and challenges.
 	pub fn cleanup_expired(&self) {
 		if let (Ok(mut admin), Ok(now)) = (self.engine.begin_admin(), self.now())
 			&& drop_expired_tokens(&mut admin, now).is_ok()

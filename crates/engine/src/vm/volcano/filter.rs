@@ -79,9 +79,7 @@ impl QueryNode for FilterNode {
 		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 
 		loop {
-			// Try lazy path first
 			if let Some(mut lazy_batch) = self.input.next_lazy(rx, ctx)? {
-				// Evaluate filter on lazy batch
 				let filter_result =
 					self.evaluate_filter_on_lazy(&lazy_batch, stored_ctx, compiled, rx)?;
 
@@ -90,24 +88,20 @@ impl QueryNode for FilterNode {
 				}
 
 				if lazy_batch.valid_row_count() == 0 {
-					continue; // Skip to next batch
+					continue;
 				}
 
-				// Save dictionary metadata before consuming the lazy batch
 				let dictionaries: Vec<Option<Dictionary>> =
 					lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
 
-				// Materialize surviving rows
 				let mut columns = lazy_batch.into_columns();
 
-				// Decode dictionary columns back to actual values
 				decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
 
 				strip_udf_columns(&mut columns, &self.udf_names);
 				return Ok(Some(columns));
 			}
 
-			// Fall back to materialized path
 			if let Some(columns) = self.input.next(rx, ctx)? {
 				let transform_ctx = TransformContext {
 					routines: &ctx.services.routines,
@@ -120,7 +114,6 @@ impl QueryNode for FilterNode {
 					return Ok(Some(columns));
 				}
 			} else {
-				// No more batches
 				return Ok(None);
 			}
 		}
@@ -189,8 +182,6 @@ impl Transform for FilterNode {
 }
 
 impl FilterNode {
-	/// Evaluate filter expressions on a lazy batch using column-oriented evaluation.
-	/// Returns a filter mask indicating which rows pass all filter expressions.
 	fn evaluate_filter_on_lazy<'a>(
 		&self,
 		lazy_batch: &LazyBatch,
@@ -198,8 +189,6 @@ impl FilterNode {
 		compiled: &[CompiledExpr],
 		rx: &mut Transaction<'a>,
 	) -> Result<Option<BitVec>> {
-		// Materialize to columns for column-oriented evaluation,
-		// then decode dictionary columns so filters can compare actual values.
 		let dictionaries: Vec<Option<Dictionary>> =
 			lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
 		let mut columns = lazy_batch.clone().into_columns();

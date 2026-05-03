@@ -31,7 +31,7 @@ pub(crate) fn add_columns(
 			&left.data(), &right.data();
 			fixed: add_numeric, arb: add_numeric_clone (ctx, target, fragment);
 
-			// Duration + Duration
+
 			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => {
 				let mut container = TemporalContainer::with_capacity(l.len());
 				for i in 0..l.len() {
@@ -43,7 +43,7 @@ pub(crate) fn add_columns(
 				Ok(ColumnWithName::new(fragment.fragment(), ColumnBuffer::Duration(container)))
 			}
 
-			// String concatenation
+
 			(
 				ColumnBuffer::Utf8 {
 					container: l,
@@ -55,7 +55,7 @@ pub(crate) fn add_columns(
 				},
 			) => concat_strings(l, r, target, fragment.fragment()),
 
-			// String + Other types (auto-promote to string)
+
 			(
 				ColumnBuffer::Utf8 {
 					container: l,
@@ -64,7 +64,7 @@ pub(crate) fn add_columns(
 				r,
 			) if can_promote_to_string(r) => concat_string_with_other(l, r, true, target, fragment.fragment()),
 
-			// Other types + String (auto-promote to string)
+
 			(
 				l,
 				ColumnBuffer::Utf8 {

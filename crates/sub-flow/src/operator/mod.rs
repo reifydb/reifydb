@@ -49,9 +49,6 @@ pub trait Operator: Send + Sync {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change>;
 
-	/// Periodic tick for time-based maintenance (e.g., window eviction, state row).
-	/// Returns Some(Change) with diffs if maintenance produced output to propagate downstream.
-	/// State eviction is silent and returns Ok(None).
 	fn tick(&self, _txn: &mut FlowTransaction, _tick: Tick) -> Result<Option<Change>> {
 		Ok(None)
 	}

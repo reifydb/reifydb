@@ -12,18 +12,15 @@ use crate::{
 };
 
 pub fn parse_int(fragment: Fragment) -> Result<Int, Error> {
-	// Fragment is already owned, no conversion needed
 	let raw_value = fragment.text();
 
-	// Fast path: check if we need any string processing
 	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
 		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
-		(false, false) => Cow::Borrowed(raw_value), // Fast path -
-		// no processing
-		// needed
+		(false, false) => Cow::Borrowed(raw_value),
+
 		(true, false) => Cow::Borrowed(raw_value.trim()),
 		(false, true) => Cow::Owned(raw_value.replace('_', "")),
 		(true, true) => Cow::Owned(raw_value.trim().replace('_', "")),
@@ -37,12 +34,9 @@ pub fn parse_int(fragment: Fragment) -> Result<Int, Error> {
 		.into());
 	}
 
-	// Try parsing as BigInt first
 	match value.parse::<BigInt>() {
 		Ok(v) => Ok(Int::from(v)),
 		Err(_) => {
-			// If BigInt parsing fails, try parsing as f64 for
-			// scientific notation and truncation
 			if let Ok(f) = value.parse::<f64>() {
 				if f.is_infinite() {
 					Err(TypeError::NumberOutOfRange {
@@ -53,7 +47,7 @@ pub fn parse_int(fragment: Fragment) -> Result<Int, Error> {
 					.into())
 				} else {
 					let truncated = f.trunc();
-					// Convert the truncated float to BigInt
+
 					if let Ok(bigint) = format!("{:.0}", truncated).parse::<BigInt>() {
 						Ok(Int::from(bigint))
 					} else {

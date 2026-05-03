@@ -15,7 +15,6 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-/// Load and merge all batches from a node into a single Columns
 pub(crate) fn load_and_merge_all<'a>(
 	node: &mut Box<dyn QueryNode>,
 	rx: &mut Transaction<'a>,
@@ -35,12 +34,10 @@ pub(crate) fn load_and_merge_all<'a>(
 	Ok(result)
 }
 
-/// Result of resolving column names for joins
 pub struct ResolvedColumnNames {
 	pub qualified_names: Vec<String>,
 }
 
-/// Resolve column name conflicts between left and right tables
 pub fn resolve_column_names(
 	left_columns: &Columns,
 	right_columns: &Columns,
@@ -49,14 +46,11 @@ pub fn resolve_column_names(
 ) -> ResolvedColumnNames {
 	let mut qualified_names = Vec::new();
 
-	// Add left columns (never prefixed)
 	for col in left_columns.iter() {
 		qualified_names.push(col.name().text().to_string());
 	}
 
-	// Add right columns with ALWAYS-prefix behavior
 	for (idx, col) in right_columns.iter().enumerate() {
-		// Skip excluded columns (used in natural join)
 		if let Some(excluded) = excluded_right_indices
 			&& excluded.contains(&idx)
 		{
@@ -65,11 +59,9 @@ pub fn resolve_column_names(
 
 		let col_name = col.name().text();
 
-		// ALWAYS prefix right columns with alias (should always be Some now)
 		let alias_text = alias.as_ref().map(|a| a.text()).unwrap_or("other");
 		let prefixed_name = format!("{}_{}", alias_text, col_name);
 
-		// Check for secondary conflict (prefixed name already exists)
 		let mut final_name = prefixed_name.clone();
 		if qualified_names.contains(&final_name) {
 			let mut counter = 2;
@@ -91,7 +83,6 @@ pub fn resolve_column_names(
 	}
 }
 
-/// Build evaluation columns for join conditions
 pub fn build_eval_columns(
 	left_columns: &Columns,
 	right_columns: &Columns,
@@ -132,7 +123,6 @@ pub fn build_eval_columns(
 	eval_columns
 }
 
-/// Common context holder for join nodes
 pub struct JoinContext {
 	pub context: Option<Arc<QueryContext>>,
 	pub compiled: Vec<CompiledExpr>,
@@ -165,9 +155,6 @@ impl JoinContext {
 	}
 }
 
-/// Compute a hash over the values at the given column indices for a single row.
-/// Returns `None` if any key value is `Undefined` (NULL != NULL semantics).
-/// The `buf` parameter is a reusable scratch buffer to avoid per-row allocation.
 pub(crate) fn compute_join_hash(
 	columns: &Columns,
 	col_indices: &[usize],
@@ -186,7 +173,6 @@ pub(crate) fn compute_join_hash(
 	Some(xxh3_128(buf))
 }
 
-/// Check actual key equality between two rows by column indices.
 pub(crate) fn keys_equal_by_index(
 	left: &Columns,
 	left_row: usize,
@@ -205,7 +191,6 @@ pub(crate) fn keys_equal_by_index(
 	true
 }
 
-/// Evaluate compiled join condition predicates for a (left_row, right_row) pair.
 pub(crate) fn eval_join_condition(
 	compiled: &[CompiledExpr],
 	left_columns: &Columns,

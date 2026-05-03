@@ -31,18 +31,11 @@ pub trait FFIOperatorMetadata {
 	const CAPABILITIES: u32;
 }
 
-/// Tick context passed to operators on each periodic firing.
-///
-/// Plain struct (not enum) so it maps directly onto the FFI vtable's
-/// `tick(instance, ctx, timestamp_nanos: u64)` signature - the host wraps
-/// `Tick { now }` and unwraps it at the FFI boundary, no discriminant
-/// negotiation across the C ABI.
 pub struct Tick {
 	pub now: DateTime,
 }
 
 pub trait FFIOperator: 'static {
-	/// Construct an operator instance.
 	fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self>
 	where
 		Self: Sized;

@@ -14,17 +14,6 @@ use crate::{
 	snapshot::{Snapshot, SnapshotId, SnapshotMeta, SnapshotSource},
 };
 
-// Process-local snapshot registry. Three `DashMap`s:
-// - `snapshots` - primary store keyed by `SnapshotId`.
-// - `latest_table` - per-`TableId`, the highest `CommitVersion` materialized.
-// - `latest_series` - per-`SeriesId`, the newest closed `BucketId`.
-//
-// Cheap to clone (`Arc`-backed). Lock-free reads. Writers are the two
-// materialization actors; they write to disjoint primary-key spaces, so there
-// is no shard contention between them. `insert` is atomic at the `DashMap`
-// per-key granularity - readers holding `Arc<Snapshot>` observe either the
-// old or the new entry, never a partial state, so bucket replacement is safe
-// under concurrent reads.
 #[derive(Clone)]
 pub struct SnapshotRegistry {
 	snapshots: Arc<DashMap<SnapshotId, Arc<Snapshot>>>,
@@ -41,9 +30,6 @@ impl SnapshotRegistry {
 		}
 	}
 
-	// Insert (or replace) a snapshot. Secondary indices are updated
-	// monotonically: `latest_table` only advances, `latest_series` tracks the
-	// newest-seen bucket id per series.
 	pub fn insert(&self, snapshot: Arc<Snapshot>) {
 		let id = snapshot.id;
 		match &snapshot.source {
@@ -106,8 +92,6 @@ impl SnapshotRegistry {
 		})
 	}
 
-	// Closed buckets for a series, in ascending order. Scans the primary map;
-	// O(snapshots) but fine for v1 usage (listing is not on the hot path).
 	pub fn series_buckets(&self, series_id: SeriesId) -> Vec<BucketId> {
 		let mut buckets: Vec<BucketId> = self
 			.snapshots

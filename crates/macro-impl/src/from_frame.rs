@@ -11,7 +11,6 @@ use crate::{
 	parse::{ParsedField, ParsedStruct},
 };
 
-/// Expand a parsed struct into the FromFrame implementation.
 pub fn expand(parsed: ParsedStruct) -> TokenStream {
 	let struct_name = parsed.name.to_string();
 	let struct_name_lit = literal_str(&struct_name);
@@ -19,28 +18,20 @@ pub fn expand(parsed: ParsedStruct) -> TokenStream {
 
 	let mut tokens = Vec::new();
 
-	// impl ::crate_path::value::frame::from_frame::FromFrame for StructName
 	tokens.push(ident("impl"));
 	tokens.extend(path(&["", crate_path, "value", "frame", "from_frame", "FromFrame"]));
 	tokens.push(ident("for"));
 	tokens.push(TokenTree::Ident(parsed.name.clone()));
 
-	// Implementation body
 	let impl_body = generate_from_frame_impl(&parsed.fields, &struct_name_lit, crate_path);
 	tokens.push(braces(impl_body));
-
-	// Note: TryFrom<&Frame> impl is NOT generated because it would violate orphan rules
-	// when the derive is used outside reifydb-type. Use FromFrame::from_frame() instead.
 
 	tokens.into_iter().collect()
 }
 
-/// Generate the FromFrame::from_frame method body.
 fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree, crate_path: &str) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 
-	// fn from_frame(frame: &::crate_path::value::frame::frame::Frame) -> Result<Vec<Self>,
-	// ::crate_path::value::frame::from_frame::FromFrameError>
 	tokens.push(ident("fn"));
 	tokens.push(ident("from_frame"));
 	tokens.push(parens([ident("frame"), punct(':'), punct('&')]
@@ -57,10 +48,8 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree,
 	tokens.extend(path(&["", crate_path, "value", "frame", "from_frame", "FromFrameError"]));
 	tokens.push(punct('>'));
 
-	// Method body
 	let mut body = Vec::new();
 
-	// Column lookups
 	for field in fields {
 		if field.attrs.skip {
 			continue;
@@ -68,7 +57,6 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree,
 		body.extend(generate_column_lookup(field, struct_name_lit, crate_path));
 	}
 
-	// Row count
 	body.push(ident("let"));
 	body.push(ident("row_count"));
 	body.push(punct('='));
@@ -96,7 +84,6 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree,
 	body.push(parens([literal_usize(0)]));
 	body.push(punct(';'));
 
-	// Field extractions
 	for field in fields {
 		if field.attrs.skip {
 			continue;
@@ -104,7 +91,6 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree,
 		body.extend(generate_field_extraction(field, crate_path));
 	}
 
-	// Result construction
 	body.push(ident("let"));
 	body.push(ident("mut"));
 	body.push(ident("result"));
@@ -115,7 +101,6 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree,
 	body.push(parens([ident("row_count")]));
 	body.push(punct(';'));
 
-	// for loop
 	body.push(ident("for"));
 	body.push(ident("i"));
 	body.push(ident("in"));
@@ -123,13 +108,11 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree,
 	body.extend([punct_joint('.'), punct('.')]);
 	body.push(ident("row_count"));
 
-	// Loop body
 	let mut loop_body = Vec::new();
 	loop_body.push(ident("result"));
 	loop_body.push(punct('.'));
 	loop_body.push(ident("push"));
 
-	// Self { field: values_field[i].clone(), ... }
 	let mut constructor = vec![ident("Self")];
 	let mut field_inits = Vec::new();
 	for (i, field) in fields.iter().enumerate() {
@@ -156,7 +139,6 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree,
 
 	body.push(braces(loop_body));
 
-	// Ok(result)
 	body.push(ident("Ok"));
 	body.push(parens([ident("result")]));
 
@@ -164,7 +146,6 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree,
 	tokens
 }
 
-/// Generate column lookup for a field.
 fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree, crate_path: &str) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 	let column_name = field.column_name();
@@ -175,7 +156,6 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree, crat
 	tokens.push(punct(':'));
 
 	if field.attrs.optional {
-		// Option<&::crate_path::value::frame::column::FrameColumn>
 		tokens.push(ident("Option"));
 		tokens.push(punct('<'));
 		tokens.push(punct('&'));
@@ -202,7 +182,6 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree, crat
 			literal_str(&column_name),
 		]));
 	} else {
-		// &::crate_path::value::frame::column::FrameColumn
 		tokens.push(punct('&'));
 		tokens.extend(path(&["", crate_path, "value", "frame", "column", "FrameColumn"]));
 		tokens.push(punct('='));
@@ -228,7 +207,6 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree, crat
 		tokens.push(punct('.'));
 		tokens.push(ident("ok_or_else"));
 
-		// || ::crate_path::value::frame::from_frame::FromFrameError::MissingColumn { ... }
 		let mut error_closure = Vec::new();
 		error_closure.extend([punct('|'), punct('|')]);
 		error_closure.extend(path(&[
@@ -261,7 +239,6 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree, crat
 	tokens
 }
 
-/// Generate field extraction for a field.
 fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 	let column_name = field.column_name();
@@ -272,7 +249,6 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 	tokens.push(ident(&values_var));
 	tokens.push(punct(':'));
 
-	// Type: Vec<FieldType>
 	tokens.push(ident("Vec"));
 	tokens.push(punct('<'));
 	tokens.extend(field.ty.iter().cloned());
@@ -291,16 +267,13 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 	};
 
 	if field.attrs.optional {
-		// let values_x = match col_x { Some(col) => ..., None => vec![None; row_count] };
 		tokens.push(punct('='));
 
-		// match col_var { Some(col) => ..., None => vec![None; row_count] }
 		tokens.push(ident("match"));
 		tokens.push(ident(&col_var));
 
 		let mut match_body = Vec::new();
 
-		// Some(col) => { ... }
 		match_body.push(ident("Some"));
 		match_body.push(parens([ident("col")]));
 		match_body.extend(fat_arrow());
@@ -326,7 +299,7 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 		)));
 		some_body.push(punct('.'));
 		some_body.push(ident("collect"));
-		// ::<Result<_, ::crate_path::FromFrameError>>
+
 		some_body.extend(path_sep());
 		some_body.push(punct('<'));
 		some_body.push(ident("Result"));
@@ -342,7 +315,6 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 		match_body.push(braces(some_body));
 		match_body.push(punct(','));
 
-		// None => vec![None; row_count]
 		match_body.push(ident("None"));
 		match_body.extend(fat_arrow());
 		match_body.push(ident("vec"));
@@ -352,7 +324,6 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 
 		tokens.push(braces(match_body));
 	} else {
-		// let values_x = col_x.data.iter()...collect::<Result<_, FromFrameError>>()?;
 		tokens.push(punct('='));
 
 		tokens.push(ident(&col_var));
@@ -375,7 +346,7 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 		)));
 		tokens.push(punct('.'));
 		tokens.push(ident("collect"));
-		// ::<Result<_, ::crate_path::FromFrameError>>
+
 		tokens.extend(path_sep());
 		tokens.push(punct('<'));
 		tokens.push(ident("Result"));
@@ -393,7 +364,6 @@ fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<Token
 	tokens
 }
 
-/// Generate the map closure for optional fields.
 fn generate_optional_map_closure(
 	trait_name: &str,
 	method_name: &str,
@@ -402,12 +372,10 @@ fn generate_optional_map_closure(
 ) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 
-	// |(row, v)| { if matches!(v, ...) { Ok(None) } else { ... } }
 	tokens.push(punct('|'));
 	tokens.push(parens([ident("row"), punct(','), ident("v")]));
 	tokens.push(punct('|'));
 
-	// if matches!(v, ::crate_path::Value::None { .. })
 	let mut body = vec![
 		ident("if"),
 		ident("matches"),
@@ -418,10 +386,8 @@ fn generate_optional_map_closure(
 			.chain([braces([punct_joint('.'), punct('.')])])),
 	];
 
-	// { Ok(None) }
 	body.push(braces([ident("Ok"), parens([ident("None")])]));
 
-	// else { <_ as Trait>::method(&v).map(Some).map_err(...) }
 	body.push(ident("else"));
 
 	let mut else_body = Vec::new();
@@ -446,7 +412,6 @@ fn generate_optional_map_closure(
 	tokens
 }
 
-/// Generate the map closure for required fields.
 fn generate_required_map_closure(
 	trait_name: &str,
 	method_name: &str,
@@ -456,7 +421,6 @@ fn generate_required_map_closure(
 ) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 
-	// |(row, v)| { <Type as Trait>::method(&v).map_err(...) }
 	tokens.push(punct('|'));
 	tokens.push(parens([ident("row"), punct(','), ident("v")]));
 	tokens.push(punct('|'));
@@ -478,11 +442,9 @@ fn generate_required_map_closure(
 	tokens
 }
 
-/// Generate the error closure for map_err.
 fn generate_error_closure(column_name: &str, crate_path: &str) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 
-	// |e| ::crate_path::FromFrameError::ValueError { column: "...", row, error: e }
 	tokens.push(punct('|'));
 	tokens.push(ident("e"));
 	tokens.push(punct('|'));

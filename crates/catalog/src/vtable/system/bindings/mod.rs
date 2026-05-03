@@ -11,7 +11,6 @@ use reifydb_core::{
 };
 use reifydb_type::fragment::Fragment;
 
-/// Helper to create the first 4 common columns for any binding virtual table.
 pub(crate) fn common_vtable_columns(bindings: &[Binding]) -> Vec<ColumnWithName> {
 	let mut ids = ColumnBuffer::uint8_with_capacity(bindings.len());
 	let mut namespace_ids = ColumnBuffer::uint8_with_capacity(bindings.len());

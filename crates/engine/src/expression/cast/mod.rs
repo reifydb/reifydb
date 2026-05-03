@@ -25,7 +25,6 @@ pub fn cast_column_data(
 	target: Type,
 	lazy_fragment: impl LazyFragment + Clone,
 ) -> Result<ColumnBuffer> {
-	// Handle Option-wrapped data: cast the inner data, then re-wrap with the bitvec
 	if let ColumnBuffer::Option {
 		inner,
 		bitvec,
@@ -43,15 +42,11 @@ pub fn cast_column_data(
 		}
 
 		if defined_count < total_len {
-			// Compact: keep only defined positions (avoids parsing placeholders like "" for text)
 			let mut compacted = inner.as_ref().clone();
 			compacted.filter(bitvec)?;
 
-			// Cast only real values
 			let mut cast_compacted = cast_column_data(ctx, &compacted, inner_target, lazy_fragment)?;
 
-			// Expand back to full length: defined positions → compacted index, None positions → sentinel
-			// (gets type default)
 			let sentinel = defined_count;
 			let mut expand_indices = Vec::with_capacity(total_len);
 			let mut src_idx = 0usize;
@@ -76,7 +71,6 @@ pub fn cast_column_data(
 			});
 		}
 
-		// All positions defined - cast directly (fast path)
 		let cast_inner = cast_column_data(ctx, inner, inner_target, lazy_fragment)?;
 		return Ok(match cast_inner {
 			already @ ColumnBuffer::Option {
@@ -88,7 +82,7 @@ pub fn cast_column_data(
 			},
 		});
 	}
-	// Handle bare data -> Option(T) target: cast to inner type, wrap with all-defined bitvec
+
 	if let Type::Option(inner_target) = &target {
 		let cast_inner = cast_column_data(ctx, data, *inner_target.clone(), lazy_fragment)?;
 		return Ok(match cast_inner {

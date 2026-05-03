@@ -262,8 +262,6 @@ mod read_configs_tests {
 	}
 }
 
-/// Find a namespace by its full `::`-separated path, or create it with the given id
-/// and parent if it doesn't exist. Returns the resolved namespace id.
 pub(crate) fn ensure_namespace(
 	catalog_api: &Catalog,
 	admin: &mut AdminTransaction,

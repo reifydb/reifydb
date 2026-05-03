@@ -15,24 +15,15 @@ use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::column
 struct SubscriptionBuffer {
 	queue: VecDeque<Columns>,
 	capacity: usize,
-	/// Column names for the subscription schema (includes implicit _op).
+
 	column_names: Vec<String>,
 }
 
-/// Central store for all active subscription buffers.
-///
-/// Thread-safe: accessed by the subscription CDC consumer (via `commit_staged`
-/// after each CDC pass), the poller (via `drain` during a `begin_poll` guard),
-/// and DDL (register/unregister) concurrently.
-///
-/// Uses ring buffer semantics: when a buffer is full, the oldest entry is evicted
-/// to make room for new data, preventing data loss due to backpressure.
 pub struct SubscriptionStore {
 	inner: DashMap<SubscriptionId, SubscriptionBuffer>,
 	next_id: AtomicU64,
 	default_capacity: usize,
-	/// Coordinates the boundary between per-CDC-batch commits and poller drain cycles.
-	/// Commits take write; poll cycles take read. Held briefly in both cases.
+
 	coord: RwLock<()>,
 }
 
@@ -46,12 +37,10 @@ impl SubscriptionStore {
 		}
 	}
 
-	/// Generate a new unique SubscriptionId.
 	pub fn next_id(&self) -> SubscriptionId {
 		SubscriptionId(self.next_id.fetch_add(1, Ordering::Relaxed))
 	}
 
-	/// Register a subscription with a bounded buffer and column schema.
 	pub fn register(&self, id: SubscriptionId, column_names: Vec<String>) {
 		self.inner.insert(
 			id,
@@ -63,19 +52,14 @@ impl SubscriptionStore {
 		);
 	}
 
-	/// Get the column names for a subscription's schema.
 	pub fn column_names(&self, id: &SubscriptionId) -> Option<Vec<String>> {
 		self.inner.get(id).map(|buf| buf.column_names.clone())
 	}
 
-	/// Unregister a subscription, dropping its buffer.
-	/// Returns true if it existed.
 	pub fn unregister(&self, id: &SubscriptionId) -> bool {
 		self.inner.remove(id).is_some()
 	}
 
-	/// Drain up to `max_batches` from a subscription's buffer.
-	/// Non-blocking: returns immediately with whatever is available.
 	pub fn drain(&self, id: &SubscriptionId, max_batches: usize) -> Vec<Columns> {
 		match self.inner.get_mut(id) {
 			Some(mut buf) => {
@@ -86,17 +70,10 @@ impl SubscriptionStore {
 		}
 	}
 
-	/// Get the list of active subscription IDs.
 	pub fn active_subscriptions(&self) -> Vec<SubscriptionId> {
 		self.inner.iter().map(|entry| *entry.key()).collect()
 	}
 
-	/// Atomically apply a batch of staged pushes. From the poller's point of view,
-	/// either all entries in `staged` become visible together, or none of them do.
-	///
-	/// Each subscription's staged diffs are appended in the given order, with
-	/// ring-buffer eviction if the buffer is at capacity. Entries for
-	/// subscriptions that no longer exist are silently dropped.
 	pub fn commit_staged(&self, staged: HashMap<SubscriptionId, Vec<Columns>>) {
 		if staged.is_empty() {
 			return;
@@ -115,9 +92,6 @@ impl SubscriptionStore {
 		}
 	}
 
-	/// Acquire a read guard for the duration of a poll cycle. While held,
-	/// `commit_staged` is blocked, so the poller sees a consistent snapshot
-	/// of what has been committed up to this point.
 	pub fn begin_poll(&self) -> RwLockReadGuard<'_, ()> {
 		self.coord.read().unwrap()
 	}

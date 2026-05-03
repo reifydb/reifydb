@@ -16,7 +16,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes variant and field information for tag sumtypes
 pub struct SystemTagVariants {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

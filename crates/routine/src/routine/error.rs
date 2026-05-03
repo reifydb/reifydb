@@ -8,14 +8,6 @@ use reifydb_type::{
 	value::r#type::Type,
 };
 
-/// Unified error type for all routines (functions and procedures).
-///
-/// Replaces the previously-separate `FunctionError` and `ProcedureError`.
-/// Variant names are prefixed (`Function*` / `Procedure*`) so the user-visible
-/// diagnostic wording can stay distinct, but the field names within each
-/// variant follow the legacy convention (`function:` / `procedure:`) so the
-/// migration from the legacy types only changes the variant name, not the
-/// per-variant struct layout.
 #[derive(Debug, thiserror::Error)]
 pub enum RoutineError {
 	#[error("function {} expects {expected} arguments, got {actual}", function.text())]
@@ -268,10 +260,6 @@ impl IntoDiagnostic for RoutineError {
 }
 
 impl RoutineError {
-	/// Attach routine name context to Wrapped errors.
-	///
-	/// `is_procedure` selects whether the wrapped diagnostic uses the FUNCTION_007
-	/// or PROCEDURE_003 code so the user-visible wording stays correct.
 	pub fn with_context(self, fragment: Fragment, is_procedure: bool) -> Error {
 		match self {
 			RoutineError::Wrapped(inner) => {

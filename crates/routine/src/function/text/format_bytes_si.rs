@@ -13,7 +13,6 @@ use crate::{
 
 const SI_UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
 
-/// Formats bytes using SI/decimal units (1000-based: B, KB, MB, GB, TB, PB)
 pub struct FormatBytesSi {
 	info: RoutineInfo,
 }

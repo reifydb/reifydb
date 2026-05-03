@@ -105,7 +105,7 @@ impl CatalogStore {
 		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::NAMESPACE, namespace);
 		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::NAME, to_create.name.text());
 		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::CAPACITY, to_create.capacity);
-		// Initialize with no primary key
+
 		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
 		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::PARTITION_BY, to_create.partition_by.join(","));
 		ringbuffer::SHAPE.set_u8(
@@ -181,8 +181,6 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	/// Create a ring buffer with a specific ID and column IDs. Used for bootstrapping system shapes.
-	/// Skips duplicate check - caller must ensure uniqueness.
 	pub(crate) fn create_ringbuffer_with_id(
 		txn: &mut AdminTransaction,
 		ringbuffer_id: RingBufferId,

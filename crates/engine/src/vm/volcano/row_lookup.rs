@@ -22,7 +22,6 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-/// O(1) point lookup by row number
 pub(crate) struct RowPointLookupNode {
 	source: ResolvedShape,
 	row_number: u64,
@@ -81,7 +80,6 @@ impl QueryNode for RowPointLookupNode {
 		let shape_id = get_shape_id(&self.source)?;
 		let encoded_key = RowKey::encoded(shape_id, RowNumber(self.row_number));
 
-		// O(1) point lookup
 		if let Some(multi_values) = rx.get(&encoded_key)? {
 			let mut columns = columns_from_shape(&self.source);
 			let shape = self.get_or_load_shape(rx, &multi_values.row)?;
@@ -89,7 +87,6 @@ impl QueryNode for RowPointLookupNode {
 
 			Ok(Some(columns))
 		} else {
-			// Row not found - return empty result
 			Ok(None)
 		}
 	}
@@ -99,7 +96,6 @@ impl QueryNode for RowPointLookupNode {
 	}
 }
 
-/// O(k) list lookup by row numbers
 pub(crate) struct RowListLookupNode {
 	source: ResolvedShape,
 	row_numbers: Vec<u64>,
@@ -162,24 +158,20 @@ impl QueryNode for RowListLookupNode {
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
-		// Process up to batch_size rows
 		let end_index = (self.current_index + batch_size).min(self.row_numbers.len());
 
 		for &row_num in &self.row_numbers[self.current_index..end_index] {
 			let encoded_key = RowKey::encoded(shape_id, RowNumber(row_num));
 
-			// O(1) point lookup for each row
 			if let Some(multi_values) = rx.get(&encoded_key)? {
 				batch_rows.push(multi_values.row);
 				found_row_numbers.push(RowNumber(row_num));
 			}
-			// Skip rows that don't exist
 		}
 
 		self.current_index = end_index;
 
 		if batch_rows.is_empty() {
-			// If no rows found in this batch but more to process, try next batch
 			if self.current_index < self.row_numbers.len() {
 				return self.next(rx, ctx);
 			}
@@ -198,7 +190,6 @@ impl QueryNode for RowListLookupNode {
 	}
 }
 
-/// Range scan by row numbers (start..=end)
 pub(crate) struct RowRangeScanNode {
 	source: ResolvedShape,
 	#[allow(dead_code)]
@@ -266,7 +257,6 @@ impl QueryNode for RowRangeScanNode {
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
-		// Fetch up to batch_size rows in the range
 		let batch_end = (self.current_row + batch_size as u64 - 1).min(self.end);
 
 		for row_num in self.current_row..=batch_end {
@@ -276,7 +266,6 @@ impl QueryNode for RowRangeScanNode {
 				batch_rows.push(multi_values.row);
 				found_row_numbers.push(RowNumber(row_num));
 			}
-			// Skip rows that don't exist (sparse storage)
 		}
 
 		self.current_row = batch_end + 1;
@@ -285,7 +274,6 @@ impl QueryNode for RowRangeScanNode {
 		}
 
 		if batch_rows.is_empty() {
-			// No rows found in this range segment
 			if !self.exhausted {
 				return self.next(rx, ctx);
 			}
@@ -303,8 +291,6 @@ impl QueryNode for RowRangeScanNode {
 		Some(self.headers.clone())
 	}
 }
-
-// Helper functions
 
 fn build_headers_and_storage_types(source: &ResolvedShape) -> Result<(ColumnHeaders, Vec<Type>)> {
 	let columns = match source {

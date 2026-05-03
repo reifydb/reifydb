@@ -13,13 +13,11 @@ use crate::{
 	subsystem::AdminSubsystem,
 };
 
-/// Factory for creating admin subsystem instances.
 pub struct AdminSubsystemFactory {
 	config_fn: Box<dyn FnOnce() -> AdminConfig + Send>,
 }
 
 impl AdminSubsystemFactory {
-	/// Create a new admin subsystem factory with the given configurator.
 	pub fn new<F>(configurator: F) -> Self
 	where
 		F: FnOnce(AdminConfigurator) -> AdminConfigurator + Send + 'static,
@@ -41,7 +39,6 @@ impl SubsystemFactory for AdminSubsystemFactory {
 		let actor_system = runtime.actor_system();
 		let clock = runtime.clock().clone();
 
-		// Create admin state from config
 		let state = AdminState::new(
 			engine,
 			config.max_connections,

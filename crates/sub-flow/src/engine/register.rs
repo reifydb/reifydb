@@ -206,8 +206,6 @@ impl FlowEngine {
 			SinkSubscription {
 				..
 			} => {
-				// Subscriptions are now ephemeral and handled by reifydb-sub-subscription.
-				// Persistent subscription flows are no longer created.
 				return Err(Error(Box::new(internal!(
 					"SinkSubscription nodes are no longer supported in persistent flows"
 				))));
@@ -510,24 +508,8 @@ impl FlowEngine {
 		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
 		self.add_source(flow.id, node.id, ShapeId::view(view.id()));
 
-		// Both deferred and transactional view sinks write view-shape rows into
-		// the view's underlying backing shape, so CDC on that shape carries
-		// view-shape rows. Registering it as a source makes a SourceView in any
-		// consumer flow see view output identically regardless of view kind.
 		self.add_source(flow.id, node.id, view.underlying_id());
 
-		// Legacy transactional-view propagation: a downstream DEFERRED flow
-		// reading from a transactional view must also be woken up by the
-		// view's UPSTREAM primitive CDC, because the deferred coordinator
-		// handles cascading transactional-view changes through pre-commit
-		// interceptors that bypass CDC.
-		//
-		// Skip when:
-		//  - the current flow is itself transactional (its pre-commit path already propagates changes through
-		//    `available_changes`), or
-		//  - the current flow is an ephemeral subscription (a `SinkSubscription` is its terminal node).
-		//    Subscription consumers rely on the `view.underlying_id()` CDC registration above, identical across
-		//    view kinds. Registering upstream primitives here would leak raw base-table rows to the subscriber.
 		if view.kind() == ViewKind::Transactional {
 			let current_flow_is_transactional = flow.get_node_ids().any(|nid| {
 				if let Some(n) = flow.get_node(&nid) {

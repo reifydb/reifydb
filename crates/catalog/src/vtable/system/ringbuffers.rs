@@ -19,7 +19,6 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system ring buffer information
 pub struct SystemRingBuffers {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,

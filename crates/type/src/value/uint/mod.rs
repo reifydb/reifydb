@@ -15,33 +15,27 @@ use serde::{Deserialize, Serialize};
 
 pub mod parse;
 
-/// A wrapper type for arbitrary-precision unsigned integers (Uint)
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Uint(pub StdBigInt);
 
 impl Uint {
-	/// Create a new Uint from a u64
 	pub fn from_u64(value: u64) -> Self {
 		Uint(StdBigInt::from(value))
 	}
 
-	/// Create a new Uint from a u128
 	pub fn from_u128(value: u128) -> Self {
 		Uint(StdBigInt::from(value))
 	}
 
-	/// Create a Uint representing zero
 	pub fn zero() -> Self {
 		Uint(StdBigInt::from(0))
 	}
 
-	/// Create a Uint representing one
 	pub fn one() -> Self {
 		Uint(StdBigInt::from(1))
 	}
 
-	/// Ensure the value is non-negative, converting negative values to zero
 	fn ensure_non_negative(value: StdBigInt) -> StdBigInt {
 		if value.is_negative() {
 			StdBigInt::from(0)
@@ -113,7 +107,6 @@ impl From<u128> for Uint {
 	}
 }
 
-// Handle signed integer conversions by ensuring non-negative values
 impl From<i8> for Uint {
 	fn from(value: i8) -> Self {
 		Uint(Self::ensure_non_negative(StdBigInt::from(value)))

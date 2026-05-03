@@ -12,7 +12,6 @@ use crate::{
 const MAX_ITERATIONS: usize = 10_000;
 
 impl<'a> Vm<'a> {
-	/// Jump to address. Returns true if the jump was taken (caller should `continue`).
 	pub(crate) fn exec_jump(&mut self, addr: usize) -> Result<()> {
 		self.iteration_count += 1;
 		if self.iteration_count > MAX_ITERATIONS {
@@ -28,7 +27,6 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	/// Jump if top-of-stack is falsy (pops the value). Returns true if the jump was taken.
 	pub(crate) fn exec_jump_if_false_pop(&mut self, addr: usize) -> Result<bool> {
 		let value = self.pop_value()?;
 		if !value_is_truthy(&value) {
@@ -39,7 +37,6 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	/// Jump if top-of-stack is truthy (pops the value). Returns true if the jump was taken.
 	pub(crate) fn exec_jump_if_true_pop(&mut self, addr: usize) -> Result<bool> {
 		let value = self.pop_value()?;
 		if value_is_truthy(&value) {

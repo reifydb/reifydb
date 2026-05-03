@@ -14,22 +14,17 @@ use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_series(txn: &mut AdminTransaction, series: SeriesId) -> Result<()> {
-		// First, find the series to get its namespace and primary key
 		let pk_id = if let Some(series_def) = Self::find_series(&mut Transaction::Admin(&mut *txn), series)? {
-			// Remove the namespace-series link (secondary index)
 			txn.remove(&NamespaceSeriesKey::encoded(series_def.namespace, series))?;
 			series_def.primary_key.as_ref().map(|pk| pk.id)
 		} else {
 			None
 		};
 
-		// Clean up all associated metadata (columns, policies, sequences, pk)
 		drop_shape_metadata(txn, series.into(), pk_id)?;
 
-		// Remove the series metadata
 		txn.remove(&SeriesMetadataKey::encoded(series))?;
 
-		// Remove the series definition
 		txn.remove(&SeriesKey::encoded(series))?;
 
 		Ok(())

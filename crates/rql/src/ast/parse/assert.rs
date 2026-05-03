@@ -21,7 +21,6 @@ impl<'bump> Parser<'bump> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Assert)?;
 
-		// Check for ASSERT ERROR
 		let expect_error = if !self.is_eof() && self.current()?.kind == TokenKind::Keyword(Keyword::Error) {
 			self.advance()?;
 			true
@@ -31,15 +30,11 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::OpenCurly)?;
 
-		// Determine if the body is multi-statement by checking for semicolons
-		// before the matching close-curly. We peek ahead without consuming.
 		let is_multi = expect_error || self.is_multi_statement_block();
 
 		let (node, rql) = if is_multi {
-			// Multi-statement or ASSERT ERROR: capture body source text
 			let body_start_pos = self.position;
 
-			// Parse and discard body nodes to advance past them
 			loop {
 				self.skip_new_line()?;
 
@@ -49,18 +44,15 @@ impl<'bump> Parser<'bump> {
 
 				let _node = self.parse_node(Precedence::None)?;
 
-				// Handle pipe operator
 				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
 					self.advance()?;
 					continue;
 				}
 
-				// Try to consume separator
 				self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 				self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 			}
 
-			// Capture body source
 			let body_end_pos = self.position;
 			let rql = if body_start_pos < body_end_pos {
 				let start = self.tokens[body_start_pos].fragment.offset();
@@ -72,14 +64,12 @@ impl<'bump> Parser<'bump> {
 
 			(None, Some(rql))
 		} else {
-			// Single-expression ASSERT (pipeline-compatible)
 			let node = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 			(Some(node), None)
 		};
 
 		self.consume_operator(Operator::CloseCurly)?;
 
-		// Optionally consume a trailing string literal message
 		let message = if !self.is_eof() && self.current()?.kind == TokenKind::Literal(Literal::Text) {
 			Some(self.advance()?)
 		} else {
@@ -96,8 +86,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Peek ahead to detect if a curly-brace block contains multiple statements
-	/// (semicolons or newlines separating nodes). Does not consume any tokens.
 	fn is_multi_statement_block(&self) -> bool {
 		let mut depth = 1u32;
 		let mut pos = self.position;

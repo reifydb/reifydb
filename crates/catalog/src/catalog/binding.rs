@@ -220,7 +220,6 @@ impl Catalog {
 
 	#[instrument(name = "catalog::binding::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_binding(&self, txn: &mut AdminTransaction, to_create: BindingToCreate) -> Result<Binding> {
-		// Namespace-local binding-name uniqueness.
 		if let Some(existing) = self.materialized.find_binding_by_name(to_create.namespace, &to_create.name) {
 			let _ = existing;
 			return Err(CatalogError::AlreadyExists {
@@ -232,7 +231,6 @@ impl Catalog {
 			.into());
 		}
 
-		// Protocol-scoped global uniqueness.
 		match &to_create.protocol {
 			BindingProtocol::Http {
 				method,

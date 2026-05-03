@@ -27,29 +27,16 @@ pub(crate) fn alter_table_sequence(
 	txn: &mut AdminTransaction,
 	plan: AlterSequenceNode,
 ) -> Result<Columns> {
-	// let namespace_name = plan.sequence.namespace().name();
-	// let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
-	// 	return_error!(namespace_not_found(
-	// 		plan.sequence.identifier().clone(),
-	// 		namespace_name,
-	// 	));
-	// };
-
-	// Get the table from the resolved column's source
 	let table = match plan.column.shape() {
 		ResolvedShape::Table(t) => t.def().clone(),
 		_ => unimplemented!(),
 	};
 
-	// The column is already resolved, so we can use its def directly
 	let column = plan.column.def().clone();
 
 	if !column.auto_increment {
 		return_error!(can_not_alter_not_auto_increment(plan.column.identifier().clone()));
 	}
-
-	// For catalog operations, use empty params since no
-	// ExecutionContext is available
 
 	static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);

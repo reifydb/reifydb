@@ -41,14 +41,12 @@ impl QueryNode for VariableNode {
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "VariableNode::next() called before initialize()");
 
-		// Variables execute once and return their data
 		if self.executed {
 			return Ok(None);
 		}
 
 		let variable_name = self.variable_expr.name();
 
-		// Look up the variable in the stack
 		match ctx.symbols.get(variable_name) {
 			Some(Variable::Columns {
 				columns,
@@ -60,30 +58,22 @@ impl QueryNode for VariableNode {
 				columns,
 				..
 			}) => {
-				// Return the iterator's columns
 				self.executed = true;
 
 				Ok(Some(columns.clone()))
 			}
-			Some(Variable::Closure(_)) => {
-				// Closures cannot be used as data sources in queries
-				Err(EngineError::VariableNotFound {
-					name: variable_name.to_string(),
-				}
-				.into())
+			Some(Variable::Closure(_)) => Err(EngineError::VariableNotFound {
+				name: variable_name.to_string(),
 			}
-			None => {
-				// Variable not found - return error
-				Err(EngineError::VariableNotFound {
-					name: variable_name.to_string(),
-				}
-				.into())
+			.into()),
+			None => Err(EngineError::VariableNotFound {
+				name: variable_name.to_string(),
 			}
+			.into()),
 		}
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
-		// Variable headers depend on the variable type, can't determine ahead of time
 		None
 	}
 }

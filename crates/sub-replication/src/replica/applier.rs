@@ -15,7 +15,6 @@ use crate::{
 	replica::watermark::ReplicaWatermark,
 };
 
-/// Applies replicated CDC entries to local storage.
 pub struct ReplicaApplier {
 	engine: StandardEngine,
 	last_applied: AtomicU64,
@@ -34,9 +33,6 @@ impl ReplicaApplier {
 		}
 	}
 
-	/// Apply domain-typed system changes at a given version: create a replica
-	/// transaction, apply each system change through the catalog, commit at
-	/// the primary's version, and advance the replica watermark.
 	pub fn apply_changes(&self, version: CommitVersion, system_changes: &[SystemChange]) -> Result<()> {
 		self.validate_version_order(version)?;
 		if system_changes.is_empty() {
@@ -80,13 +76,11 @@ impl ReplicaApplier {
 		self.watermark.store(version);
 	}
 
-	/// Apply a single proto CDC entry (delegates to apply_changes after conversion).
 	pub fn apply(&self, entry: &CdcEntry) -> Result<()> {
 		let (version, system_changes) = proto_entry_to_system_changes(entry);
 		self.apply_changes(version, &system_changes)
 	}
 
-	/// Apply a batch of CDC entries in order.
 	pub fn apply_batch(&self, entries: &[CdcEntry]) -> Result<()> {
 		for entry in entries {
 			self.apply(entry)?;
@@ -94,7 +88,6 @@ impl ReplicaApplier {
 		Ok(())
 	}
 
-	/// Get the last successfully applied CDC entry version.
 	pub fn current_version(&self) -> CommitVersion {
 		CommitVersion(self.last_applied.load(Ordering::Acquire))
 	}

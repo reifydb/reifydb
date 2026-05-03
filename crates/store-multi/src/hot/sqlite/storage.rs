@@ -38,23 +38,12 @@ use super::{
 };
 use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
-/// SQLite-based primitive storage with split current/historical layout.
-///
-/// Per logical table we maintain two physical tables:
-/// - `<name>__current` holds at most one row per logical key: the latest visible version. This is the hot read path -
-///   point gets and range scans of "the current state" hit this table only.
-/// - `<name>__historical` holds older versions superseded by current, plus any out-of-order writes (a write whose
-///   version is below the existing current). Cold path; only consulted for snapshot reads at versions older than
-///   current's version.
 #[derive(Clone)]
 pub struct SqlitePrimitiveStorage {
 	inner: Arc<SqlitePrimitiveStorageInner>,
 }
 
 struct SqlitePrimitiveStorageInner {
-	/// Single connection protected by Mutex for thread-safe access.
-	/// rusqlite::Connection is Send but not Sync, so a mutex is required.
-	/// (M2 will replace this with per-worker readers + a writer mutex.)
 	conn: Mutex<Connection>,
 }
 
@@ -151,7 +140,6 @@ impl SqlitePrimitiveStorage {
 		Ok(out)
 	}
 
-	/// Create both physical tables (current + historical) for a logical table.
 	fn create_tables_if_needed(conn: &Connection, current_name: &str, historical_name: &str) -> SqliteResult<()> {
 		conn.execute(&build_create_current_sql(current_name), [])?;
 		conn.execute(&build_create_historical_sql(historical_name), [])?;
@@ -159,7 +147,6 @@ impl SqlitePrimitiveStorage {
 	}
 }
 
-/// Decode a `(version, value)` row that may come from either physical table.
 fn decode_versioned_value_row(row: &Row<'_>) -> SqliteResult<(CommitVersion, Option<Vec<u8>>)> {
 	let version_bytes: Vec<u8> = row.get(0)?;
 	let value: Option<Vec<u8>> = row.get(1)?;
@@ -173,9 +160,6 @@ impl TierStorage for SqlitePrimitiveStorage {
 		let historical_name = historical_table_name(table);
 		let conn = self.inner.conn.lock();
 
-		// Probe __current first. If the row exists and its version is <=
-		// snapshot, that's the answer (value or tombstone). Otherwise
-		// (no row, or current.version > snapshot) consult historical.
 		let current_sql = build_get_current_sql(&current_name);
 		let current_result = match conn.prepare_cached(&current_sql) {
 			Ok(mut stmt) => stmt.query_row(params![key], decode_versioned_value_row),
@@ -187,12 +171,11 @@ impl TierStorage for SqlitePrimitiveStorage {
 			Ok((cur_version, value)) if cur_version <= version => {
 				return Ok(value.map(CowVec::new));
 			}
-			Ok(_) => {}                    // current.version > snapshot, fall through
-			Err(QueryReturnedNoRows) => {} // not in current, fall through
+			Ok(_) => {}
+			Err(QueryReturnedNoRows) => {}
 			Err(e) => return Err(error!(internal(format!("Failed to read current: {}", e)))),
 		}
 
-		// Historical fallback.
 		let historical_sql = build_get_historical_sql(&historical_name);
 		let historical_result = match conn.prepare_cached(&historical_sql) {
 			Ok(mut stmt) => stmt.query_row(
@@ -231,8 +214,6 @@ impl TierStorage for SqlitePrimitiveStorage {
 			let current_name = current_table_name(table);
 			let historical_name = historical_table_name(table);
 
-			// Make sure both tables exist before writing. Cheap when they
-			// already do (idempotent CREATE TABLE IF NOT EXISTS).
 			Self::create_tables_if_needed(&tx, &current_name, &historical_name)
 				.map_err(|e| error!(internal(format!("Failed to ensure tables: {}", e))))?;
 
@@ -358,8 +339,6 @@ impl TierStorage for SqlitePrimitiveStorage {
 		let limit = (batch_size as i64).saturating_add(1);
 		let conn = self.inner.conn.lock();
 
-		// Why: rewrite `(key, version) > (last_key, last_version)` so the (key,
-		// version) PK index can be used directly.
 		let (resume_clause, mut params): (&str, Vec<SqliteValue>) =
 			match (cursor.last_key.as_ref(), cursor.last_version) {
 				(Some(k), Some(v)) => (
@@ -447,9 +426,6 @@ impl SqlitePrimitiveStorage {
 		let current_name = current_table_name(table);
 		let historical_name = historical_table_name(table);
 
-		// Collapse the cursor's last_key into the appropriate bound.
-		// Forward scan: cursor moves the start bound forward (Excluded
-		// last_key). Reverse scan: cursor moves the end bound backward.
 		let (effective_start, effective_end) = match (reverse, &cursor.last_key) {
 			(false, Some(last)) => (Bound::Excluded(last.as_slice().to_vec()), bound_to_owned(end)),
 			(false, None) => (bound_to_owned(start), bound_to_owned(end)),
@@ -504,15 +480,6 @@ impl SqlitePrimitiveStorage {
 			collected
 		};
 
-		// has_more and cursor.last_key are derived from raw_rows (the
-		// `__current` rows the SQL LIMIT actually saw), not from the
-		// post-fallback `entries` list. Otherwise a current row whose
-		// version > snapshot and which has no visible historical
-		// version (the row gets dropped from `entries`) silently makes
-		// has_more=false even though SQL returned batch_size+1 rows.
-		// That truncates the iteration short and skips every key past
-		// the LIMIT window. Cursor must advance past every raw row we
-		// looked at, regardless of whether it ended up in the result.
 		let has_more = raw_rows.len() > batch_size;
 		let process_count = if has_more {
 			batch_size
@@ -525,9 +492,6 @@ impl SqlitePrimitiveStorage {
 			None
 		};
 
-		// For each row whose current.version > snapshot, fall back to
-		// historical. Most rows in the steady state pass the snapshot
-		// check, so this loop is usually pure pass-through.
 		let mut entries: Vec<RawEntry> = Vec::with_capacity(process_count);
 		let mut historical_stmt: Option<CachedStatement<'_>> = None;
 		let historical_sql = build_get_historical_sql(&historical_name);
@@ -542,8 +506,6 @@ impl SqlitePrimitiveStorage {
 				continue;
 			}
 
-			// Snapshot is older than this key's current. Look up
-			// historical for the largest version <= snapshot.
 			if historical_stmt.is_none() {
 				historical_stmt = match conn.prepare_cached(&historical_sql) {
 					Ok(s) => Some(s),
@@ -568,10 +530,7 @@ impl SqlitePrimitiveStorage {
 					version: hv,
 					value: hvalue.map(CowVec::new),
 				}),
-				Err(QueryReturnedNoRows) => {
-					// No visible historical version - skip the key.
-					// (Caller treats absence as "not present at this snapshot".)
-				}
+				Err(QueryReturnedNoRows) => {}
 				Err(e) if e.to_string().contains("no such table") => {}
 				Err(e) => {
 					return Err(error!(internal(format!(
@@ -601,8 +560,6 @@ impl SqlitePrimitiveStorage {
 
 impl TierBackend for SqlitePrimitiveStorage {}
 
-/// Apply a set batch to the split-table layout, mirroring the memory tier's
-/// `process_table` logic. Caller is responsible for table creation.
 fn apply_set_to_split_tables(
 	tx: &SqliteTransaction,
 	current_name: &str,
@@ -638,7 +595,6 @@ fn apply_set_to_split_tables(
 
 		match prior {
 			None => {
-				// First write for this key: install in current.
 				upsert_current.execute(params![
 					key_slice,
 					new_version_bytes.as_slice(),
@@ -646,10 +602,6 @@ fn apply_set_to_split_tables(
 				])?;
 			}
 			Some((prior_version, _)) if prior_version < version => {
-				// New write supersedes the prior current. Demote
-				// the prior to historical, then install the new
-				// row as current. Reading the prior value back
-				// from `prior` keeps us off a second SQL round trip.
 				let (_, prior_value) = prior.as_ref().unwrap();
 				let prior_version_bytes = version_to_bytes(prior_version);
 				insert_historical.execute(params![
@@ -664,9 +616,6 @@ fn apply_set_to_split_tables(
 				])?;
 			}
 			Some((prior_version, _)) if prior_version > version => {
-				// Out-of-order write: the prior current is from a
-				// later commit. Park the new row in historical and
-				// leave current alone.
 				insert_historical.execute(params![
 					key_slice,
 					new_version_bytes.as_slice(),
@@ -674,9 +623,6 @@ fn apply_set_to_split_tables(
 				])?;
 			}
 			Some(_) => {
-				// prior_version == version. Idempotent overwrite of
-				// current's value. (Matches the legacy
-				// INSERT OR REPLACE semantics.)
 				upsert_current.execute(params![
 					key_slice,
 					new_version_bytes.as_slice(),
@@ -689,14 +635,6 @@ fn apply_set_to_split_tables(
 	Ok(())
 }
 
-/// Apply a drop batch (physical removal of specific (key, version) pairs)
-/// to the split layout. When every stored version of a key is in the drop
-/// batch (the row TTL case) we take a fast path that deletes from both
-/// physical tables in a single round trip per key, skipping the cascading
-/// historical->current promotions the per-version path would otherwise do.
-/// Otherwise we fall back to the per-version logic: dropping the current
-/// promotes the next-newest historical row; dropping a historical version
-/// just deletes it.
 fn drop_versions_from_split(
 	tx: &SqliteTransaction,
 	current_name: &str,

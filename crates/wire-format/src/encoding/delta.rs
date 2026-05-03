@@ -3,7 +3,6 @@
 
 use crate::error::DecodeError;
 
-/// Try delta-encoding an i32 column. Returns None if not beneficial.
 pub fn try_delta_i32(slice: &[i32]) -> Option<Vec<u8>> {
 	if slice.len() < 2 {
 		return None;
@@ -12,7 +11,6 @@ pub fn try_delta_i32(slice: &[i32]) -> Option<Vec<u8>> {
 	let deltas: Vec<i64> = slice.windows(2).map(|w| w[1] as i64 - w[0] as i64).collect();
 	let width = delta_width(&deltas);
 
-	// Delta size: 1 (width) + 4 (baseline) + (n-1) * width
 	let delta_size = 1 + 4 + (slice.len() - 1) * width;
 	let plain_size = slice.len() * 4;
 
@@ -27,7 +25,6 @@ pub fn try_delta_i32(slice: &[i32]) -> Option<Vec<u8>> {
 	Some(buf)
 }
 
-/// Try delta-encoding an i64 column.
 pub fn try_delta_i64(slice: &[i64]) -> Option<Vec<u8>> {
 	if slice.len() < 2 {
 		return None;
@@ -50,7 +47,6 @@ pub fn try_delta_i64(slice: &[i64]) -> Option<Vec<u8>> {
 	Some(buf)
 }
 
-/// Try delta-encoding a u64 column (DateTime, Time).
 pub fn try_delta_u64(slice: &[u64]) -> Option<Vec<u8>> {
 	if slice.len() < 2 {
 		return None;
@@ -73,7 +69,6 @@ pub fn try_delta_u64(slice: &[u64]) -> Option<Vec<u8>> {
 	Some(buf)
 }
 
-/// Try DeltaRLE encoding on i32 values. Returns None if not beneficial.
 pub fn try_delta_rle_i32(slice: &[i32]) -> Option<Vec<u8>> {
 	if slice.len() < 2 {
 		return None;
@@ -83,7 +78,6 @@ pub fn try_delta_rle_i32(slice: &[i32]) -> Option<Vec<u8>> {
 	let width = delta_width(&deltas);
 	let runs = rle_runs(&deltas);
 
-	// DeltaRLE size: 1 (width) + 4 (baseline) + runs * (width + 4)
 	let drle_size = 1 + 4 + runs.len() * (width + 4);
 	let plain_size = slice.len() * 4;
 
@@ -98,7 +92,6 @@ pub fn try_delta_rle_i32(slice: &[i32]) -> Option<Vec<u8>> {
 	Some(buf)
 }
 
-/// Try DeltaRLE encoding on i64 values. Returns None if not beneficial.
 pub fn try_delta_rle_i64(slice: &[i64]) -> Option<Vec<u8>> {
 	if slice.len() < 2 {
 		return None;
@@ -122,7 +115,6 @@ pub fn try_delta_rle_i64(slice: &[i64]) -> Option<Vec<u8>> {
 	Some(buf)
 }
 
-/// Try DeltaRLE encoding on u64 values (DateTime, Time).
 pub fn try_delta_rle_u64(slice: &[u64]) -> Option<Vec<u8>> {
 	if slice.len() < 2 {
 		return None;
@@ -146,7 +138,6 @@ pub fn try_delta_rle_u64(slice: &[u64]) -> Option<Vec<u8>> {
 	Some(buf)
 }
 
-/// Decode delta-encoded i32 data.
 pub fn decode_delta_i32(data: &[u8], row_count: usize) -> Result<Vec<i32>, DecodeError> {
 	if row_count == 0 {
 		return Ok(vec![]);
@@ -172,7 +163,6 @@ pub fn decode_delta_i32(data: &[u8], row_count: usize) -> Result<Vec<i32>, Decod
 	Ok(values)
 }
 
-/// Decode delta-encoded i64 data.
 pub fn decode_delta_i64(data: &[u8], row_count: usize) -> Result<Vec<i64>, DecodeError> {
 	if row_count == 0 {
 		return Ok(vec![]);
@@ -198,7 +188,6 @@ pub fn decode_delta_i64(data: &[u8], row_count: usize) -> Result<Vec<i64>, Decod
 	Ok(values)
 }
 
-/// Decode delta-encoded u64 data.
 pub fn decode_delta_u64(data: &[u8], row_count: usize) -> Result<Vec<u64>, DecodeError> {
 	if row_count == 0 {
 		return Ok(vec![]);
@@ -224,7 +213,6 @@ pub fn decode_delta_u64(data: &[u8], row_count: usize) -> Result<Vec<u64>, Decod
 	Ok(values)
 }
 
-/// Decode DeltaRLE-encoded i32 data.
 pub fn decode_delta_rle_i32(data: &[u8], row_count: usize) -> Result<Vec<i32>, DecodeError> {
 	if row_count == 0 {
 		return Ok(vec![]);
@@ -266,7 +254,6 @@ pub fn decode_delta_rle_i32(data: &[u8], row_count: usize) -> Result<Vec<i32>, D
 	Ok(values)
 }
 
-/// Decode DeltaRLE-encoded i64 data.
 pub fn decode_delta_rle_i64(data: &[u8], row_count: usize) -> Result<Vec<i64>, DecodeError> {
 	if row_count == 0 {
 		return Ok(vec![]);
@@ -308,7 +295,6 @@ pub fn decode_delta_rle_i64(data: &[u8], row_count: usize) -> Result<Vec<i64>, D
 	Ok(values)
 }
 
-/// Decode DeltaRLE-encoded u64 data.
 pub fn decode_delta_rle_u64(data: &[u8], row_count: usize) -> Result<Vec<u64>, DecodeError> {
 	if row_count == 0 {
 		return Ok(vec![]);

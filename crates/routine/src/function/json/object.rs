@@ -37,7 +37,6 @@ impl<'a> Routine<FunctionContext<'a>> for JsonObject {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		// Check for any option columns and unwrap them
 		let mut unwrapped: Vec<_> = Vec::with_capacity(args.len());
 		let mut combined_bv: Option<BitVec> = None;
 
@@ -60,7 +59,6 @@ impl<'a> Routine<FunctionContext<'a>> for JsonObject {
 			});
 		}
 
-		// Validate that key columns (even indices) are Utf8
 		for i in (0..unwrapped.len()).step_by(2) {
 			let col_data = unwrapped[i];
 			match col_data {

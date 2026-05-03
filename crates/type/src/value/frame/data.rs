@@ -57,7 +57,7 @@ pub enum FrameColumnData {
 	Decimal(NumberContainer<Decimal>),
 	Any(AnyContainer),
 	DictionaryId(DictionaryContainer),
-	// nullable wrapper
+
 	Option {
 		inner: Box<FrameColumnData>,
 		bitvec: BitVec,

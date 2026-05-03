@@ -12,7 +12,6 @@ use reifydb_core::{
 use crate::materialized::{MaterializedCatalog, MultiVersionTest};
 
 impl MaterializedCatalog {
-	/// Find a test by ID at a specific version
 	pub fn find_test_at(&self, test: TestId, version: CommitVersion) -> Option<Test> {
 		self.tests.get(&test).and_then(|entry| {
 			let multi = entry.value();
@@ -20,7 +19,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a test by name in a namespace at a specific version
 	pub fn find_test_by_name_at(&self, namespace: NamespaceId, name: &str, version: CommitVersion) -> Option<Test> {
 		self.tests_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let test_id = *entry.value();
@@ -28,7 +26,6 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// List all tests in a namespace at a specific version
 	pub fn list_tests_in_namespace_at(&self, namespace: NamespaceId, version: CommitVersion) -> Vec<Test> {
 		self.tests_by_name
 			.iter()
@@ -37,7 +34,6 @@ impl MaterializedCatalog {
 			.collect()
 	}
 
-	/// List all tests at a specific version
 	pub fn list_all_tests_at(&self, version: CommitVersion) -> Vec<Test> {
 		self.tests.iter().filter_map(|entry| entry.value().get(version)).collect()
 	}
@@ -46,7 +42,6 @@ impl MaterializedCatalog {
 		if let Some(entry) = self.tests.get(&id)
 			&& let Some(pre) = entry.value().get_latest()
 		{
-			// Remove old name from index
 			self.tests_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 

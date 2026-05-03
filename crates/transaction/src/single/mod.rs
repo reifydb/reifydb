@@ -38,12 +38,10 @@ struct SingleTransactionInner {
 
 impl SingleTransactionInner {
 	fn get_or_create_lock(&self, key: &EncodedKey) -> Arc<RwLock<()>> {
-		// Check if lock exists
 		if let Some(entry) = self.key_locks.get(key) {
 			return entry.value().clone();
 		}
 
-		// Create new lock
 		let lock = Arc::new(RwLock::new(()));
 		self.key_locks.insert(key.clone(), lock.clone());
 		lock
@@ -67,7 +65,6 @@ impl SingleTransaction {
 		Self::new(SingleStore::testing_memory(), EventBus::new(&actor_system))
 	}
 
-	/// Helper for single-version queries.
 	pub fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
@@ -77,7 +74,6 @@ impl SingleTransaction {
 		f(&mut tx)
 	}
 
-	/// Helper for single-version commands.
 	pub fn with_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
@@ -99,10 +95,8 @@ impl SingleTransaction {
 			"SVL transactions must declare keys upfront - empty keysets are not allowed"
 		);
 
-		// Sort keys to establish consistent lock ordering and prevent deadlocks
 		keys_vec.sort();
 
-		// Acquire read locks on all keys in sorted order
 		let mut locks = Vec::new();
 		for key in &keys_vec {
 			let arc = self.inner.get_or_create_lock(key);
@@ -126,10 +120,8 @@ impl SingleTransaction {
 			"SVL transactions must declare keys upfront - empty keysets are not allowed"
 		);
 
-		// Sort keys to establish consistent lock ordering and prevent deadlocks
 		keys_vec.sort();
 
-		// Acquire write locks on all keys in sorted order
 		let mut locks = Vec::new();
 		for key in &keys_vec {
 			let arc = self.inner.get_or_create_lock(key);

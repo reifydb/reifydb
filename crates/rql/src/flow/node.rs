@@ -103,8 +103,6 @@ pub enum FlowNodeType {
 }
 
 impl FlowNodeType {
-	/// Returns a discriminator value for this node type variant.
-	/// Must match indices in FLOW_NODE_TYPE_NAMES in catalog/vtable/system/flow_node_types.rs
 	pub fn discriminator(&self) -> u8 {
 		match self {
 			FlowNodeType::SourceInlineData {
@@ -174,12 +172,6 @@ impl FlowNodeType {
 		}
 	}
 
-	/// If this node is a primitive data source (table, ring buffer, or series),
-	/// returns its [`ShapeId`]. Returns `None` for all other node types.
-	///
-	/// Uses an exhaustive match so that adding a new variant to [`FlowNodeType`]
-	/// produces a compiler error, forcing the author to decide whether the new
-	/// variant is a primitive source.
 	pub fn primitive_source_shape_id(&self) -> Option<ShapeId> {
 		match self {
 			FlowNodeType::SourceTable {

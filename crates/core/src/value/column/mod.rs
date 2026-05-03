@@ -65,9 +65,6 @@ impl ColumnWithName {
 		}
 	}
 
-	// Build a named column from a polymorphic `Column` trait-object handle.
-	// Materializes via `to_canonical` + `to_buffer` (Arc-bumps the inner
-	// buffer when the `Column` is already canonical).
 	pub fn from_column(name: impl Into<Fragment>, column: Column) -> Self {
 		let buffer = column
 			.to_canonical()
@@ -106,10 +103,6 @@ impl ColumnWithName {
 		&mut self.data
 	}
 
-	// Return a polymorphic `Column` handle (trait-object wrapper around the
-	// canonical form of `self.data`). Use this when you need encoding-agnostic
-	// read operators (`filter`, `take`, `slice`, ...) or downcasting to
-	// specialized impls - compressed encodings live behind this boundary.
 	pub fn column(&self) -> Column {
 		Column::from_column_buffer(self.data.clone())
 	}

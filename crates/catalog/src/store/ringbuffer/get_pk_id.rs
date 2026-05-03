@@ -10,8 +10,6 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer};
 
 impl CatalogStore {
-	/// Get the primary key ID for a ring buffer
-	/// Returns None if the ring buffer doesn't exist or has no primary key
 	pub(crate) fn get_ringbuffer_pk_id(
 		rx: &mut Transaction<'_>,
 		ringbuffer_id: RingBufferId,

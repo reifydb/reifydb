@@ -32,14 +32,11 @@ pub(crate) fn execute_rollback_migration(
 		}
 	};
 
-	// List all migrations, sorted by name descending (rollback in reverse order)
 	let mut migrations = services.catalog.list_migrations(&mut Transaction::Admin(&mut *txn))?;
 	migrations.sort_by(|a, b| b.name.cmp(&a.name));
 
-	// List all migration events
 	let events = services.catalog.list_migration_events(&mut Transaction::Admin(&mut *txn))?;
 
-	// Determine applied migrations (latest event is "Applied"), in reverse name order
 	let applied: Vec<Migration> = migrations
 		.into_iter()
 		.filter(|m| {
@@ -48,9 +45,7 @@ pub(crate) fn execute_rollback_migration(
 		})
 		.collect();
 
-	// Determine which to rollback
 	let to_rollback: Vec<Migration> = if let Some(ref target) = plan.target {
-		// Rollback until we reach the target (exclusive - the target stays applied)
 		let mut result = Vec::new();
 		for m in applied {
 			if m.name == *target {
@@ -60,13 +55,11 @@ pub(crate) fn execute_rollback_migration(
 		}
 		result
 	} else {
-		// Rollback the last applied migration only
 		applied.into_iter().take(1).collect()
 	};
 
 	let rollback_count = to_rollback.len();
 
-	// Execute each rollback body
 	for migration in &to_rollback {
 		let rollback_body = match &migration.rollback_body {
 			Some(body) if !body.is_empty() => body.clone(),
@@ -115,7 +108,6 @@ pub(crate) fn execute_rollback_migration(
 			}
 		}
 
-		// Record "Rollback" event
 		services.catalog.create_migration_event(txn, migration, MigrationAction::Rollback)?;
 	}
 
