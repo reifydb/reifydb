@@ -334,12 +334,8 @@ pub mod tests {
 		callbacks::builder::EmitDiffKind, data::column::ColumnTypeCode, flow::diff::DiffType,
 		operator::capabilities::CAPABILITY_ALL_STANDARD,
 	};
-	use reifydb_core::{
-		common::CommitVersion,
-		encoded::{key::IntoEncodedKey, shape::RowShape},
-		interface::catalog::flow::FlowNodeId,
-	};
-	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
+	use reifydb_core::{common::CommitVersion, encoded::key::IntoEncodedKey, interface::catalog::flow::FlowNodeId};
+	use reifydb_type::value::row_number::RowNumber;
 
 	use super::{super::helpers::encode_key, *};
 	use crate::{

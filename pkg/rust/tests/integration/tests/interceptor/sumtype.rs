@@ -11,7 +11,7 @@ fn create_enum_propagates_to_materialized_cache() {
 	admin(&db, "create enum demo::status { Active, Inactive }");
 
 	let cat = db.catalog();
-	let mat = cat.materialized();
+	let mat = cat.cache();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let st = mat.find_sumtype_by_name(ns.id(), "status").unwrap();
 	assert_eq!(st.name, "status");

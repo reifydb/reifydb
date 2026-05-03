@@ -29,7 +29,7 @@ impl CatalogChangeApplier for SinkApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let s = decode_sink(row);
-		catalog.materialized.set_sink(s.id, txn.version(), Some(s));
+		catalog.cache.set_sink(s.id, txn.version(), Some(s));
 		Ok(())
 	}
 
@@ -38,7 +38,7 @@ impl CatalogChangeApplier for SinkApplier {
 		let id = SinkKey::decode(key).map(|k| k.sink).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Sink,
 		})?;
-		catalog.materialized.set_sink(id, txn.version(), None);
+		catalog.cache.set_sink(id, txn.version(), None);
 		Ok(())
 	}
 }

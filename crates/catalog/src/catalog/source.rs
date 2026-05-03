@@ -44,8 +44,7 @@ impl Catalog {
 	) -> Result<Option<Source>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(source) =
-					self.materialized.find_source_by_name_at(namespace, name, cmd.version())
+				if let Some(source) = self.cache.find_source_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(source));
 				}
@@ -56,7 +55,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Source '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Source '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(source));
@@ -76,7 +75,7 @@ impl Catalog {
 				}
 
 				if let Some(source) =
-					self.materialized.find_source_by_name_at(namespace, name, admin.version())
+					self.cache.find_source_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(source));
 				}
@@ -87,7 +86,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Source '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Source '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(source));
@@ -96,8 +95,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(source) =
-					self.materialized.find_source_by_name_at(namespace, name, qry.version())
+				if let Some(source) = self.cache.find_source_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(source));
 				}
@@ -108,7 +106,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Source '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Source '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(source));
@@ -138,8 +136,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(source) =
-					self.materialized.find_source_by_name_at(namespace, name, rep.version())
+				if let Some(source) = self.cache.find_source_by_name_at(namespace, name, rep.version())
 				{
 					return Ok(Some(source));
 				}
@@ -150,7 +147,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Source '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Source '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(source));

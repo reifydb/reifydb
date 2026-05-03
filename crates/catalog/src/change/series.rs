@@ -16,9 +16,9 @@ use reifydb_type::value::sumtype::SumTypeId;
 use super::CatalogChangeApplier;
 use crate::{
 	CatalogStore, Result,
+	cache::CatalogCache,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	materialized::MaterializedCatalog,
 	store::series::shape::series::{self, ID, KEY_COLUMN, KEY_KIND, NAME, NAMESPACE, PRECISION, PRIMARY_KEY, TAG},
 };
 
@@ -27,9 +27,9 @@ pub(super) struct SeriesApplier;
 impl CatalogChangeApplier for SeriesApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		let mut s = decode_series(row, &catalog.materialized, txn.version());
+		let mut s = decode_series(row, &catalog.cache, txn.version());
 		s.columns = CatalogStore::list_columns(txn, s.id)?;
-		catalog.materialized.set_series(s.id, txn.version(), Some(s));
+		catalog.cache.set_series(s.id, txn.version(), Some(s));
 		Ok(())
 	}
 
@@ -38,12 +38,12 @@ impl CatalogChangeApplier for SeriesApplier {
 		let id = SeriesKey::decode(key).map(|k| k.series).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Series,
 		})?;
-		catalog.materialized.set_series(id, txn.version(), None);
+		catalog.cache.set_series(id, txn.version(), None);
 		Ok(())
 	}
 }
 
-fn decode_series(row: &EncodedRow, materialized: &MaterializedCatalog, version: CommitVersion) -> Series {
+fn decode_series(row: &EncodedRow, materialized: &CatalogCache, version: CommitVersion) -> Series {
 	let id = SeriesId(series::SHAPE.get_u64(row, ID));
 	let namespace = NamespaceId(series::SHAPE.get_u64(row, NAMESPACE));
 	let name = series::SHAPE.get_utf8(row, NAME).to_string();

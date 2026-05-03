@@ -26,7 +26,7 @@ impl CatalogChangeApplier for ViewApplier {
 		txn.set(key, row.clone())?;
 		let pk_raw = SHAPE.get_u64(row, PRIMARY_KEY);
 		let primary_key = if pk_raw > 0 {
-			catalog.materialized.find_primary_key_at(PrimaryKeyId(pk_raw), txn.version())
+			catalog.cache.find_primary_key_at(PrimaryKeyId(pk_raw), txn.version())
 		} else {
 			None
 		};
@@ -35,7 +35,7 @@ impl CatalogChangeApplier for ViewApplier {
 		})?;
 		let columns = CatalogStore::list_columns(txn, view_id)?;
 		let view = decode_view(row, columns, primary_key)?;
-		catalog.materialized.set_view(view.id(), txn.version(), Some(view));
+		catalog.cache.set_view(view.id(), txn.version(), Some(view));
 		Ok(())
 	}
 
@@ -44,7 +44,7 @@ impl CatalogChangeApplier for ViewApplier {
 		let id = ViewKey::decode(key).map(|k| k.view).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::View,
 		})?;
-		catalog.materialized.set_view(id, txn.version(), None);
+		catalog.cache.set_view(id, txn.version(), None);
 		Ok(())
 	}
 }

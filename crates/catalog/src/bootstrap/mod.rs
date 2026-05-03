@@ -24,11 +24,11 @@ use tracing::{info, warn};
 
 use crate::{
 	Result,
-	catalog::{Catalog, namespace::NamespaceToCreate},
-	materialized::{
-		MaterializedCatalog,
-		load::{MaterializedCatalogLoader, config::load_configs},
+	cache::{
+		CatalogCache,
+		load::{CatalogCacheLoader, config::load_configs},
 	},
+	catalog::{Catalog, namespace::NamespaceToCreate},
 	store::config::convert_config,
 };
 
@@ -40,7 +40,7 @@ pub mod procedure;
 pub fn bootstrap_system_objects(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
-	catalog: &MaterializedCatalog,
+	catalog: &CatalogCache,
 	eventbus: &EventBus,
 ) -> Result<()> {
 	identity::bootstrap_root_identity(multi, single, catalog, eventbus)?;
@@ -53,7 +53,7 @@ pub fn bootstrap_system_objects(
 pub fn apply_bootstrap_configs(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
-	catalog: &MaterializedCatalog,
+	catalog: &CatalogCache,
 	eventbus: &EventBus,
 	configs: &[(ConfigKey, Value)],
 ) -> Result<()> {
@@ -82,13 +82,9 @@ pub fn apply_bootstrap_configs(
 	Ok(())
 }
 
-pub fn load_materialized_catalog(
-	multi: &MultiTransaction,
-	single: &SingleTransaction,
-	catalog: &MaterializedCatalog,
-) -> Result<()> {
+pub fn load_catalog_cache(multi: &MultiTransaction, single: &SingleTransaction, catalog: &CatalogCache) -> Result<()> {
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
-	MaterializedCatalogLoader::load_all(&mut Transaction::Query(&mut qt), catalog)?;
+	CatalogCacheLoader::load_all(&mut Transaction::Query(&mut qt), catalog)?;
 	Ok(())
 }
 

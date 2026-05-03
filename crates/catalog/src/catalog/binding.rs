@@ -45,7 +45,7 @@ impl Catalog {
 	pub fn find_binding(&self, txn: &mut Transaction<'_>, id: BindingId) -> Result<Option<Binding>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(binding) = self.materialized.find_binding_at(id, cmd.version()) {
+				if let Some(binding) = self.cache.find_binding_at(id, cmd.version()) {
 					return Ok(Some(binding));
 				}
 				Ok(None)
@@ -57,13 +57,13 @@ impl Catalog {
 				if TransactionalBindingChanges::is_binding_deleted(admin, id) {
 					return Ok(None);
 				}
-				if let Some(binding) = self.materialized.find_binding_at(id, admin.version()) {
+				if let Some(binding) = self.cache.find_binding_at(id, admin.version()) {
 					return Ok(Some(binding));
 				}
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(binding) = self.materialized.find_binding_at(id, qry.version()) {
+				if let Some(binding) = self.cache.find_binding_at(id, qry.version()) {
 					return Ok(Some(binding));
 				}
 				Ok(None)
@@ -75,13 +75,13 @@ impl Catalog {
 				if TransactionalBindingChanges::is_binding_deleted(t.inner, id) {
 					return Ok(None);
 				}
-				if let Some(binding) = self.materialized.find_binding_at(id, t.inner.version()) {
+				if let Some(binding) = self.cache.find_binding_at(id, t.inner.version()) {
 					return Ok(Some(binding));
 				}
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(binding) = self.materialized.find_binding_at(id, rep.version()) {
+				if let Some(binding) = self.cache.find_binding_at(id, rep.version()) {
 					return Ok(Some(binding));
 				}
 				Ok(None)
@@ -99,7 +99,7 @@ impl Catalog {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(binding) =
-					self.materialized.find_binding_by_name_at(namespace, name, cmd.version())
+					self.cache.find_binding_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(binding));
 				}
@@ -119,7 +119,7 @@ impl Catalog {
 					return Ok(None);
 				}
 				if let Some(binding) =
-					self.materialized.find_binding_by_name_at(namespace, name, admin.version())
+					self.cache.find_binding_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(binding));
 				}
@@ -131,7 +131,7 @@ impl Catalog {
 			}
 			Transaction::Query(qry) => {
 				if let Some(binding) =
-					self.materialized.find_binding_by_name_at(namespace, name, qry.version())
+					self.cache.find_binding_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(binding));
 				}
@@ -147,7 +147,7 @@ impl Catalog {
 					return Ok(None);
 				}
 				if let Some(binding) =
-					self.materialized.find_binding_by_name_at(namespace, name, t.inner.version())
+					self.cache.find_binding_by_name_at(namespace, name, t.inner.version())
 				{
 					return Ok(Some(binding));
 				}
@@ -155,7 +155,7 @@ impl Catalog {
 			}
 			Transaction::Replica(rep) => {
 				if let Some(binding) =
-					self.materialized.find_binding_by_name_at(namespace, name, rep.version())
+					self.cache.find_binding_by_name_at(namespace, name, rep.version())
 				{
 					return Ok(Some(binding));
 				}
@@ -172,11 +172,11 @@ impl Catalog {
 	) -> Result<Vec<Binding>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				Ok(self.materialized.list_bindings_for_procedure_at(procedure_id, cmd.version()))
+				Ok(self.cache.list_bindings_for_procedure_at(procedure_id, cmd.version()))
 			}
 			Transaction::Admin(admin) => {
 				let mut bindings =
-					self.materialized.list_bindings_for_procedure_at(procedure_id, admin.version());
+					self.cache.list_bindings_for_procedure_at(procedure_id, admin.version());
 
 				for change in &admin.changes.binding {
 					if let Some(b) = &change.post
@@ -192,12 +192,11 @@ impl Catalog {
 				Ok(bindings)
 			}
 			Transaction::Query(qry) => {
-				Ok(self.materialized.list_bindings_for_procedure_at(procedure_id, qry.version()))
+				Ok(self.cache.list_bindings_for_procedure_at(procedure_id, qry.version()))
 			}
 			Transaction::Test(t) => {
-				let mut bindings = self
-					.materialized
-					.list_bindings_for_procedure_at(procedure_id, t.inner.version());
+				let mut bindings =
+					self.cache.list_bindings_for_procedure_at(procedure_id, t.inner.version());
 
 				for change in &t.inner.changes.binding {
 					if let Some(b) = &change.post
@@ -213,14 +212,14 @@ impl Catalog {
 				Ok(bindings)
 			}
 			Transaction::Replica(rep) => {
-				Ok(self.materialized.list_bindings_for_procedure_at(procedure_id, rep.version()))
+				Ok(self.cache.list_bindings_for_procedure_at(procedure_id, rep.version()))
 			}
 		}
 	}
 
 	#[instrument(name = "catalog::binding::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_binding(&self, txn: &mut AdminTransaction, to_create: BindingToCreate) -> Result<Binding> {
-		if let Some(existing) = self.materialized.find_binding_by_name(to_create.namespace, &to_create.name) {
+		if let Some(existing) = self.cache.find_binding_by_name(to_create.namespace, &to_create.name) {
 			let _ = existing;
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Binding,
@@ -236,7 +235,7 @@ impl Catalog {
 				method,
 				path,
 			} => {
-				if self.materialized.find_http_binding_by_method_path(method.as_str(), path).is_some() {
+				if self.cache.find_http_binding_by_method_path(method.as_str(), path).is_some() {
 					return Err(CatalogError::AlreadyExists {
 						kind: CatalogObjectKind::Binding,
 						namespace: to_create.namespace.to_string(),
@@ -249,7 +248,7 @@ impl Catalog {
 			BindingProtocol::Grpc {
 				name,
 			} => {
-				if self.materialized.find_grpc_binding_by_name(name).is_some() {
+				if self.cache.find_grpc_binding_by_name(name).is_some() {
 					return Err(CatalogError::AlreadyExists {
 						kind: CatalogObjectKind::Binding,
 						namespace: to_create.namespace.to_string(),
@@ -262,7 +261,7 @@ impl Catalog {
 			BindingProtocol::Ws {
 				name,
 			} => {
-				if self.materialized.find_ws_binding_by_name(name).is_some() {
+				if self.cache.find_ws_binding_by_name(name).is_some() {
 					return Err(CatalogError::AlreadyExists {
 						kind: CatalogObjectKind::Binding,
 						namespace: to_create.namespace.to_string(),

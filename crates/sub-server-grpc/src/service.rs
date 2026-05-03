@@ -646,7 +646,7 @@ impl ReifyDb for ReifyDbService {
 			.state
 			.engine()
 			.catalog()
-			.materialized()
+			.cache()
 			.find_grpc_binding_by_name(&inner.name)
 			.ok_or_else(|| Status::not_found(format!("no gRPC binding named `{}`", inner.name)))?;
 
@@ -654,14 +654,14 @@ impl ReifyDb for ReifyDbService {
 			.state
 			.engine()
 			.catalog()
-			.materialized()
+			.cache()
 			.find_procedure(binding.procedure_id)
 			.ok_or_else(|| Status::internal("binding references missing procedure"))?;
 		let namespace = self
 			.state
 			.engine()
 			.catalog()
-			.materialized()
+			.cache()
 			.find_namespace(binding.namespace)
 			.ok_or_else(|| Status::internal("binding references missing namespace"))?;
 

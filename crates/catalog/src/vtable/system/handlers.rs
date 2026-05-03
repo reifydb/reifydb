@@ -62,7 +62,7 @@ impl BaseVTable for SystemHandlers {
 			}
 		};
 
-		for entry in self.catalog.materialized.procedures.iter() {
+		for entry in self.catalog.cache.procedures.iter() {
 			if let Some(ref proc_def) = entry.value().get_latest() {
 				collect(proc_def);
 			}

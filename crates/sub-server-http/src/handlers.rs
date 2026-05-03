@@ -337,7 +337,7 @@ pub async fn handle_binding(
 	};
 	let request_path = format!("/{}", path);
 
-	let bindings = state.engine().catalog().materialized().list_http_bindings();
+	let bindings = state.engine().catalog().cache().list_http_bindings();
 	let mut any_path_match = false;
 	let mut matched: Option<(Binding, HashMap<String, String>)> = None;
 	for b in &bindings {
@@ -367,14 +367,10 @@ pub async fn handle_binding(
 		None => return Err(AppError::NotFound(format!("no binding for `{}`", request_path))),
 	};
 
-	let procedure =
-		state.engine().catalog().materialized().find_procedure(binding.procedure_id).ok_or_else(|| {
-			AppError::Internal(format!(
-				"binding references missing procedure id {:?}",
-				binding.procedure_id
-			))
-		})?;
-	let namespace = state.engine().catalog().materialized().find_namespace(binding.namespace).ok_or_else(|| {
+	let procedure = state.engine().catalog().cache().find_procedure(binding.procedure_id).ok_or_else(|| {
+		AppError::Internal(format!("binding references missing procedure id {:?}", binding.procedure_id))
+	})?;
+	let namespace = state.engine().catalog().cache().find_namespace(binding.namespace).ok_or_else(|| {
 		AppError::Internal(format!("binding references missing namespace id {:?}", binding.namespace))
 	})?;
 

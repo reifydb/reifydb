@@ -75,7 +75,7 @@ fn try_reconstruct(
 	fingerprint: RowShapeFingerprint,
 	field_count: u16,
 ) -> Result<()> {
-	if catalog.materialized.find_row_shape(fingerprint).is_some() {
+	if catalog.cache.find_row_shape(fingerprint).is_some() {
 		return Ok(());
 	}
 
@@ -113,6 +113,6 @@ fn try_reconstruct(
 	}
 
 	let shape = RowShape::from_parts(fingerprint, fields);
-	catalog.materialized.set_row_shape(shape);
+	catalog.cache.set_row_shape(shape);
 	Ok(())
 }

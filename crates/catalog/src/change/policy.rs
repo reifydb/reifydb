@@ -17,7 +17,7 @@ impl CatalogChangeApplier for PolicyApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let p = decode_policy(row);
-		catalog.materialized.set_policy(p.id, txn.version(), Some(p));
+		catalog.cache.set_policy(p.id, txn.version(), Some(p));
 		Ok(())
 	}
 
@@ -26,7 +26,7 @@ impl CatalogChangeApplier for PolicyApplier {
 		let id = PolicyKey::decode(key).map(|k| k.policy).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Policy,
 		})?;
-		catalog.materialized.set_policy(id, txn.version(), None);
+		catalog.cache.set_policy(id, txn.version(), None);
 		Ok(())
 	}
 }

@@ -14,7 +14,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, rep
 use reifydb_type::value::identity::IdentityId;
 
 #[test]
-fn test_row_ttl_sync_to_materialized_catalog() {
+fn test_row_ttl_sync_to_catalog_cache() {
 	let engine = TestEngine::new();
 	let catalog = engine.catalog();
 
@@ -26,7 +26,7 @@ fn test_row_ttl_sync_to_materialized_catalog() {
 		};
 	"#);
 
-	// 2. Check if TTL is in MaterializedCatalog immediately
+	// 2. Check if TTL is in CatalogCache immediately
 	let mut txn = engine.begin_admin(IdentityId::system()).unwrap();
 	let ns_id = NamespaceId(16385); // 'test' namespace
 	let table = catalog

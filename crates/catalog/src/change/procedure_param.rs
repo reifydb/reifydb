@@ -40,6 +40,6 @@ fn reload_parent_procedure(catalog: &Catalog, txn: &mut Transaction<'_>, key: &E
 
 	let params = load_params(txn, procedure_id)?;
 	let procedure = decode_procedure(&entry.row, params);
-	catalog.materialized.set_procedure(procedure_id, txn.version(), Some(procedure));
+	catalog.cache.set_procedure(procedure_id, txn.version(), Some(procedure));
 	Ok(())
 }

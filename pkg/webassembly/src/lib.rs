@@ -18,9 +18,9 @@ use reifydb_auth::{
 };
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{bootstrap_system_objects, load_materialized_catalog},
+	bootstrap::{bootstrap_system_objects, load_catalog_cache},
+	cache::CatalogCache,
 	catalog::Catalog,
-	materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -221,7 +221,7 @@ impl WasmDB {
 
 		// Create transactions
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-		let materialized_catalog = MaterializedCatalog::new();
+		let catalog_cache = CatalogCache::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
@@ -229,14 +229,14 @@ impl WasmDB {
 			actor_system.clone(),
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			Arc::new(materialized_catalog.clone()),
+			Arc::new(catalog_cache.clone()),
 		)
 		.map_err(|e| JsError::from_error(&e))?;
 
 		// Setup IoC container
 		let mut ioc = IocContainer::new();
 
-		ioc = ioc.register(materialized_catalog.clone());
+		ioc = ioc.register(catalog_cache.clone());
 
 		ioc = ioc.register(runtime.clone());
 
@@ -254,9 +254,8 @@ impl WasmDB {
 		let ioc_ref = ioc.clone();
 
 		// Run shared bootstrap: load catalog, config defaults, system procedures, shapes
-		load_materialized_catalog(&multi, &single, &materialized_catalog)
-			.map_err(|e| JsError::from_error(&e))?;
-		bootstrap_system_objects(&multi, &single, &materialized_catalog, &eventbus)
+		load_catalog_cache(&multi, &single, &catalog_cache).map_err(|e| JsError::from_error(&e))?;
+		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
 
 		let routines = {
@@ -272,7 +271,7 @@ impl WasmDB {
 			single.clone(),
 			eventbus,
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog),
+			Catalog::new(catalog_cache),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 				routines,

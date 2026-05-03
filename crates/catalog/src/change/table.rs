@@ -24,9 +24,9 @@ pub(super) struct TableApplier;
 impl CatalogChangeApplier for TableApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		let mut table = decode_table(row, &catalog.materialized, txn.version());
+		let mut table = decode_table(row, &catalog.cache, txn.version());
 		table.columns = CatalogStore::list_columns(txn, table.id)?;
-		catalog.materialized.set_table(table.id, txn.version(), Some(table));
+		catalog.cache.set_table(table.id, txn.version(), Some(table));
 		Ok(())
 	}
 
@@ -35,16 +35,16 @@ impl CatalogChangeApplier for TableApplier {
 		let id = TableKey::decode(key).map(|k| k.table).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Table,
 		})?;
-		catalog.materialized.set_table(id, txn.version(), None);
+		catalog.cache.set_table(id, txn.version(), None);
 		Ok(())
 	}
 }
 
 use reifydb_core::common::CommitVersion;
 
-use crate::materialized::MaterializedCatalog;
+use crate::cache::CatalogCache;
 
-fn decode_table(row: &EncodedRow, materialized: &MaterializedCatalog, version: CommitVersion) -> Table {
+fn decode_table(row: &EncodedRow, materialized: &CatalogCache, version: CommitVersion) -> Table {
 	let id = TableId(table::SHAPE.get_u64(row, ID));
 	let namespace = NamespaceId(table::SHAPE.get_u64(row, NAMESPACE));
 	let name = table::SHAPE.get_utf8(row, NAME).to_string();

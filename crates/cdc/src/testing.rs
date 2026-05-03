@@ -3,7 +3,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_catalog::{catalog::Catalog, materialized::MaterializedCatalog};
+use reifydb_catalog::{cache::CatalogCache, catalog::Catalog};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
@@ -46,7 +46,7 @@ impl TestCdcHost {
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 		let single = SingleTransaction::new(single_store, event_bus.clone());
-		let materialized_catalog = MaterializedCatalog::new();
+		let catalog_cache = CatalogCache::new();
 		let mock = MockClock::new(initial_nanos);
 		let clock = Clock::Mock(mock.clone());
 		let multi = MultiTransaction::new(
@@ -56,14 +56,14 @@ impl TestCdcHost {
 			actor_system,
 			clock.clone(),
 			Rng::seeded(42),
-			Arc::new(materialized_catalog.clone()),
+			Arc::new(catalog_cache.clone()),
 		)
 		.unwrap();
 		Self {
 			multi,
 			single,
 			event_bus,
-			catalog: Catalog::new(materialized_catalog),
+			catalog: Catalog::new(catalog_cache),
 			clock,
 			mock,
 		}

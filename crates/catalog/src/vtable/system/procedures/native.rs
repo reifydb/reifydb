@@ -49,7 +49,7 @@ impl BaseVTable for SystemProceduresNative {
 		let mut names = Vec::new();
 		let mut native_names = Vec::new();
 
-		for entry in self.catalog.materialized.procedures.iter() {
+		for entry in self.catalog.cache.procedures.iter() {
 			if let Some(Procedure::Native {
 				id,
 				namespace,

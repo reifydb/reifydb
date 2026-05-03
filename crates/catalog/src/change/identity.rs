@@ -17,7 +17,7 @@ impl CatalogChangeApplier for IdentityApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let id_entity = decode_identity(row);
-		catalog.materialized.set_identity(id_entity.id, txn.version(), Some(id_entity));
+		catalog.cache.set_identity(id_entity.id, txn.version(), Some(id_entity));
 		Ok(())
 	}
 
@@ -26,7 +26,7 @@ impl CatalogChangeApplier for IdentityApplier {
 		let id = IdentityKey::decode(key).map(|k| k.identity).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Identity,
 		})?;
-		catalog.materialized.set_identity(id, txn.version(), None);
+		catalog.cache.set_identity(id, txn.version(), None);
 		Ok(())
 	}
 }

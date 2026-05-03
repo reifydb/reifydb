@@ -14,7 +14,7 @@ fn grant_role_propagates_to_materialized_cache() {
 	admin(&db, "grant analyst to alice");
 
 	let cat = db.catalog();
-	let mat = cat.materialized();
+	let mat = cat.cache();
 	let alice = mat.find_identity_by_name_at("alice", CommitVersion(u64::MAX)).unwrap();
 	let analyst = mat.find_role_by_name_at("analyst", CommitVersion(u64::MAX)).unwrap();
 	let granted = mat.find_granted_roles_at(alice.id, CommitVersion(u64::MAX));

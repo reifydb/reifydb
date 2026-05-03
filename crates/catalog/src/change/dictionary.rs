@@ -23,7 +23,7 @@ impl CatalogChangeApplier for DictionaryApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let dict = decode_dictionary(row);
-		catalog.materialized.set_dictionary(dict.id, txn.version(), Some(dict));
+		catalog.cache.set_dictionary(dict.id, txn.version(), Some(dict));
 		Ok(())
 	}
 
@@ -34,7 +34,7 @@ impl CatalogChangeApplier for DictionaryApplier {
 				kind: KeyKind::Dictionary,
 			},
 		)?;
-		catalog.materialized.set_dictionary(id, txn.version(), None);
+		catalog.cache.set_dictionary(id, txn.version(), None);
 		Ok(())
 	}
 }

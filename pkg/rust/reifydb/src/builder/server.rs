@@ -4,7 +4,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use reifydb_auth::service::AuthConfigurator;
-use reifydb_catalog::{bootstrap::read_configs, materialized::MaterializedCatalog};
+use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
 use reifydb_core::interface::catalog::config::ConfigKey;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_metric::{
@@ -311,13 +311,13 @@ impl ServerBuilder {
 		let actor_system = runtime.actor_system().scope();
 		let (multi_store, single_store, transaction_single, eventbus) =
 			self.storage_factory.create_with_multi_buffer(multi_buffer, &actor_system);
-		let materialized_catalog = MaterializedCatalog::new();
+		let catalog_cache = CatalogCache::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			actor_system.clone(),
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			Arc::new(materialized_catalog.clone()),
+			Arc::new(catalog_cache.clone()),
 		);
 
 		let cdc_backend = match &self.storage_factory {
@@ -326,7 +326,7 @@ impl ServerBuilder {
 			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone()),
 		};
 
-		let mut database_builder = DatabaseBuilder::new(materialized_catalog, multi, single, eventbus.clone())
+		let mut database_builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus.clone())
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone())
 			.with_actor_system(actor_system.clone())

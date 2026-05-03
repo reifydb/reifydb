@@ -11,7 +11,7 @@ fn create_migration_propagates_to_materialized_cache() {
 	admin(&db, "migrate;");
 
 	let cat = db.catalog();
-	let mat = cat.materialized();
+	let mat = cat.cache();
 	let migration = mat.find_migration_by_name("m1").unwrap();
 	assert_eq!(migration.name, "m1");
 	assert!(migration.body.contains("create namespace demo"));

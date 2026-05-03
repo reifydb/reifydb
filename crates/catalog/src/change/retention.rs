@@ -21,7 +21,7 @@ impl CatalogChangeApplier for ShapeRetentionStrategyApplier {
 		if let Some(k) = ShapeRetentionStrategyKey::decode(key)
 			&& let Some(policy) = decode_retention_strategy(row)
 		{
-			catalog.materialized.set_shape_retention_strategy(k.shape, txn.version(), Some(policy));
+			catalog.cache.set_shape_retention_strategy(k.shape, txn.version(), Some(policy));
 		}
 		Ok(())
 	}
@@ -29,7 +29,7 @@ impl CatalogChangeApplier for ShapeRetentionStrategyApplier {
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
 		txn.remove(key)?;
 		if let Some(k) = ShapeRetentionStrategyKey::decode(key) {
-			catalog.materialized.set_shape_retention_strategy(k.shape, txn.version(), None);
+			catalog.cache.set_shape_retention_strategy(k.shape, txn.version(), None);
 		}
 		Ok(())
 	}
@@ -43,7 +43,7 @@ impl CatalogChangeApplier for OperatorRetentionStrategyApplier {
 		if let Some(k) = OperatorRetentionStrategyKey::decode(key)
 			&& let Some(policy) = decode_retention_strategy(row)
 		{
-			catalog.materialized.set_operator_retention_strategy(k.operator, txn.version(), Some(policy));
+			catalog.cache.set_operator_retention_strategy(k.operator, txn.version(), Some(policy));
 		}
 		Ok(())
 	}
@@ -51,7 +51,7 @@ impl CatalogChangeApplier for OperatorRetentionStrategyApplier {
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
 		txn.remove(key)?;
 		if let Some(k) = OperatorRetentionStrategyKey::decode(key) {
-			catalog.materialized.set_operator_retention_strategy(k.operator, txn.version(), None);
+			catalog.cache.set_operator_retention_strategy(k.operator, txn.version(), None);
 		}
 		Ok(())
 	}

@@ -17,7 +17,7 @@ impl CatalogChangeApplier for GrantedRoleApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let gr = decode_granted_role(row);
-		catalog.materialized.set_granted_role(gr.identity, gr.role_id, txn.version(), Some(gr));
+		catalog.cache.set_granted_role(gr.identity, gr.role_id, txn.version(), Some(gr));
 		Ok(())
 	}
 
@@ -26,7 +26,7 @@ impl CatalogChangeApplier for GrantedRoleApplier {
 		let k = GrantedRoleKey::decode(key).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::GrantedRole,
 		})?;
-		catalog.materialized.set_granted_role(k.identity, k.role, txn.version(), None);
+		catalog.cache.set_granted_role(k.identity, k.role, txn.version(), None);
 		Ok(())
 	}
 }

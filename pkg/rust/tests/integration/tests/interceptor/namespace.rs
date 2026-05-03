@@ -9,6 +9,6 @@ fn create_namespace_propagates_to_materialized_cache() {
 
 	admin(&db, "create namespace demo");
 
-	let ns = db.catalog().materialized().find_namespace_by_name("demo").unwrap();
+	let ns = db.catalog().cache().find_namespace_by_name("demo").unwrap();
 	assert_eq!(ns.name(), "demo");
 }

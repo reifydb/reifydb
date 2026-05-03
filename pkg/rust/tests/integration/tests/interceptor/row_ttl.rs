@@ -19,7 +19,7 @@ fn create_table_with_row_ttl_propagates_to_materialized_cache() {
 	);
 
 	let cat = db.catalog();
-	let mat = cat.materialized();
+	let mat = cat.cache();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let table = mat.find_table_by_name(ns.id(), "t").unwrap();
 	let ttl = mat.find_row_ttl(ShapeId::Table(table.id)).unwrap();

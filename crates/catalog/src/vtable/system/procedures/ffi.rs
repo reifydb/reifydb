@@ -51,7 +51,7 @@ impl BaseVTable for SystemProceduresFfi {
 		let mut library_col = ColumnBuffer::utf8_with_capacity(0);
 		let mut entry_col = ColumnBuffer::utf8_with_capacity(0);
 
-		for entry in self.catalog.materialized.procedures.iter() {
+		for entry in self.catalog.cache.procedures.iter() {
 			if let Some(Procedure::Ffi {
 				id,
 				namespace,

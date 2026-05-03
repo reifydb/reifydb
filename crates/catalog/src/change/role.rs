@@ -17,7 +17,7 @@ impl CatalogChangeApplier for RoleApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let r = decode_role(row);
-		catalog.materialized.set_role(r.id, txn.version(), Some(r));
+		catalog.cache.set_role(r.id, txn.version(), Some(r));
 		Ok(())
 	}
 
@@ -26,7 +26,7 @@ impl CatalogChangeApplier for RoleApplier {
 		let id = RoleKey::decode(key).map(|k| k.role).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Role,
 		})?;
-		catalog.materialized.set_role(id, txn.version(), None);
+		catalog.cache.set_role(id, txn.version(), None);
 		Ok(())
 	}
 }

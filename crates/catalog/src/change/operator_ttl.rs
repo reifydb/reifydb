@@ -18,7 +18,7 @@ impl CatalogChangeApplier for OperatorTtlApplier {
 		if let Some(k) = OperatorTtlKey::decode(key)
 			&& let Some(config) = decode_ttl_config(row)
 		{
-			catalog.materialized.set_operator_ttl(k.node, txn.version(), Some(config));
+			catalog.cache.set_operator_ttl(k.node, txn.version(), Some(config));
 		}
 		Ok(())
 	}
@@ -26,7 +26,7 @@ impl CatalogChangeApplier for OperatorTtlApplier {
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
 		txn.remove(key)?;
 		if let Some(k) = OperatorTtlKey::decode(key) {
-			catalog.materialized.set_operator_ttl(k.node, txn.version(), None);
+			catalog.cache.set_operator_ttl(k.node, txn.version(), None);
 		}
 		Ok(())
 	}

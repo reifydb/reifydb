@@ -36,30 +36,30 @@ use std::sync::Arc;
 
 use reifydb_core::interface::catalog::vtable::VTable;
 
-use crate::{Result, materialized::MaterializedCatalog};
+use crate::{Result, cache::CatalogCache};
 
 #[derive(Debug, Clone)]
 pub struct Catalog {
-	pub(crate) materialized: MaterializedCatalog,
+	pub(crate) cache: CatalogCache,
 }
 
 impl Catalog {
-	pub fn new(materialized: MaterializedCatalog) -> Self {
+	pub fn new(cache: CatalogCache) -> Self {
 		Self {
-			materialized,
+			cache,
 		}
 	}
 
 	pub fn testing() -> Self {
-		Self::new(MaterializedCatalog::new())
+		Self::new(CatalogCache::new())
 	}
 
-	pub fn materialized(&self) -> &MaterializedCatalog {
-		&self.materialized
+	pub fn cache(&self) -> &CatalogCache {
+		&self.cache
 	}
 
 	pub fn register_vtable_user(&self, def: Arc<VTable>) -> Result<()> {
-		self.materialized.register_vtable_user(def)
+		self.cache.register_vtable_user(def)
 	}
 }
 
@@ -71,10 +71,10 @@ use reifydb_type::value::Value;
 
 impl GetConfig for Catalog {
 	fn get_config(&self, key: ConfigKey) -> Value {
-		self.materialized.get_config(key)
+		self.cache.get_config(key)
 	}
 
 	fn get_config_at(&self, key: ConfigKey, version: CommitVersion) -> Value {
-		self.materialized.get_config_at(key, version)
+		self.cache.get_config_at(key, version)
 	}
 }

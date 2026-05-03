@@ -17,7 +17,7 @@ impl CatalogChangeApplier for NamespaceApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let ns = decode_namespace(row);
-		catalog.materialized.set_namespace(ns.id(), txn.version(), Some(ns));
+		catalog.cache.set_namespace(ns.id(), txn.version(), Some(ns));
 		Ok(())
 	}
 
@@ -26,7 +26,7 @@ impl CatalogChangeApplier for NamespaceApplier {
 		let id = NamespaceKey::decode(key).map(|k| k.namespace).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Namespace,
 		})?;
-		catalog.materialized.set_namespace(id, txn.version(), None);
+		catalog.cache.set_namespace(id, txn.version(), None);
 		Ok(())
 	}
 }

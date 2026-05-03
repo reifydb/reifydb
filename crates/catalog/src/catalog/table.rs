@@ -87,13 +87,13 @@ impl Catalog {
 	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Option<Table>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(table) = self.materialized.find_table_at(id, cmd.version()) {
+				if let Some(table) = self.cache.find_table_at(id, cmd.version()) {
 					return Ok(Some(table));
 				}
 
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Command(&mut *cmd), id)?
 				{
-					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Table with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(table));
 				}
 
@@ -108,25 +108,25 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(table) = self.materialized.find_table_at(id, admin.version()) {
+				if let Some(table) = self.cache.find_table_at(id, admin.version()) {
 					return Ok(Some(table));
 				}
 
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Admin(&mut *admin), id)?
 				{
-					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Table with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(table));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(table) = self.materialized.find_table_at(id, qry.version()) {
+				if let Some(table) = self.cache.find_table_at(id, qry.version()) {
 					return Ok(Some(table));
 				}
 
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Query(&mut *qry), id)? {
-					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Table with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(table));
 				}
 
@@ -147,13 +147,13 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(table) = self.materialized.find_table_at(id, rep.version()) {
+				if let Some(table) = self.cache.find_table_at(id, rep.version()) {
 					return Ok(Some(table));
 				}
 
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Replica(&mut *rep), id)?
 				{
-					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Table with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(table));
 				}
 
@@ -171,9 +171,7 @@ impl Catalog {
 	) -> Result<Option<Table>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(table) =
-					self.materialized.find_table_by_name_at(namespace, name, cmd.version())
-				{
+				if let Some(table) = self.cache.find_table_by_name_at(namespace, name, cmd.version()) {
 					return Ok(Some(table));
 				}
 
@@ -183,7 +181,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Table '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(table));
@@ -202,8 +200,7 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(table) =
-					self.materialized.find_table_by_name_at(namespace, name, admin.version())
+				if let Some(table) = self.cache.find_table_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(table));
 				}
@@ -214,7 +211,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Table '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(table));
@@ -223,9 +220,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(table) =
-					self.materialized.find_table_by_name_at(namespace, name, qry.version())
-				{
+				if let Some(table) = self.cache.find_table_by_name_at(namespace, name, qry.version()) {
 					return Ok(Some(table));
 				}
 
@@ -235,7 +230,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Table '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(table));
@@ -262,9 +257,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(table) =
-					self.materialized.find_table_by_name_at(namespace, name, rep.version())
-				{
+				if let Some(table) = self.cache.find_table_by_name_at(namespace, name, rep.version()) {
 					return Ok(Some(table));
 				}
 
@@ -274,7 +267,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Table '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(table));

@@ -19,7 +19,7 @@ impl CatalogChangeApplier for BindingApplier {
 			kind: KeyKind::Binding,
 		})?;
 		let binding = decode_binding(row);
-		catalog.materialized.set_binding(id, txn.version(), Some(binding));
+		catalog.cache.set_binding(id, txn.version(), Some(binding));
 		Ok(())
 	}
 
@@ -28,7 +28,7 @@ impl CatalogChangeApplier for BindingApplier {
 		let id = BindingKey::decode(key).map(|k| k.binding).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Binding,
 		})?;
-		catalog.materialized.set_binding(id, txn.version(), None);
+		catalog.cache.set_binding(id, txn.version(), None);
 		Ok(())
 	}
 }

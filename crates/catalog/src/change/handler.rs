@@ -26,7 +26,7 @@ impl CatalogChangeApplier for HandlerApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let handler = decode_handler(row);
-		catalog.materialized.set_handler(handler.id, txn.version(), Some(handler));
+		catalog.cache.set_handler(handler.id, txn.version(), Some(handler));
 		Ok(())
 	}
 
@@ -35,7 +35,7 @@ impl CatalogChangeApplier for HandlerApplier {
 		let id = HandlerKey::decode(key).map(|k| k.handler).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Handler,
 		})?;
-		catalog.materialized.set_handler(id, txn.version(), None);
+		catalog.cache.set_handler(id, txn.version(), None);
 		Ok(())
 	}
 }

@@ -16,9 +16,9 @@ use std::{
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{bootstrap_system_objects, load_materialized_catalog},
+	bootstrap::{bootstrap_system_objects, load_catalog_cache},
+	cache::CatalogCache,
 	catalog::Catalog,
-	materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -101,7 +101,7 @@ impl Bridge {
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 		// Create transactions
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-		let materialized_catalog = MaterializedCatalog::new();
+		let catalog_cache = CatalogCache::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
@@ -109,11 +109,11 @@ impl Bridge {
 			actor_system.clone(),
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			Arc::new(materialized_catalog.clone()),
+			Arc::new(catalog_cache.clone()),
 		)?;
 
 		let mut ioc = IocContainer::new();
-		ioc = ioc.register(materialized_catalog.clone());
+		ioc = ioc.register(catalog_cache.clone());
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
 
@@ -125,8 +125,8 @@ impl Bridge {
 
 		let ioc_ref = ioc.clone();
 
-		load_materialized_catalog(&multi, &single, &materialized_catalog)?;
-		bootstrap_system_objects(&multi, &single, &materialized_catalog, &eventbus)?;
+		load_catalog_cache(&multi, &single, &catalog_cache)?;
+		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus)?;
 
 		let routines = {
 			let b = Routines::builder();
@@ -140,7 +140,7 @@ impl Bridge {
 			single.clone(),
 			eventbus,
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog),
+			Catalog::new(catalog_cache),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 				routines,

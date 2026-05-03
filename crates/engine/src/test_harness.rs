@@ -4,12 +4,12 @@
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_catalog::{
+	cache::CatalogCache,
 	catalog::{
 		Catalog,
 		namespace::NamespaceToCreate,
 		table::{TableColumnToCreate, TableToCreate},
 	},
-	materialized::MaterializedCatalog,
 };
 use reifydb_cdc::{
 	produce::{
@@ -178,7 +178,7 @@ impl TestEngineBuilder {
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let runtime = make_test_runtime(&mock_clock);
-		let materialized_catalog = MaterializedCatalog::new();
+		let catalog_cache = CatalogCache::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
@@ -186,12 +186,12 @@ impl TestEngineBuilder {
 			actor_system,
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			Arc::new(materialized_catalog.clone()),
+			Arc::new(catalog_cache.clone()),
 		)
 		.unwrap();
 
 		let mut ioc = IocContainer::new();
-		ioc = ioc.register(materialized_catalog.clone());
+		ioc = ioc.register(catalog_cache.clone());
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
 
@@ -214,7 +214,7 @@ impl TestEngineBuilder {
 			single.clone(),
 			eventbus.clone(),
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog),
+			Catalog::new(catalog_cache),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 				routines: {
@@ -303,7 +303,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 		actor_system,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
-		Arc::new(MaterializedCatalog::new()),
+		Arc::new(CatalogCache::new()),
 	)
 	.unwrap();
 
@@ -333,7 +333,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		actor_system,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
-		Arc::new(MaterializedCatalog::new()),
+		Arc::new(CatalogCache::new()),
 	)
 	.unwrap();
 	let mut result = AdminTransaction::new(
@@ -346,8 +346,8 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	)
 	.unwrap();
 
-	let materialized_catalog = MaterializedCatalog::new();
-	let catalog = Catalog::new(materialized_catalog);
+	let catalog_cache = CatalogCache::new();
+	let catalog = Catalog::new(catalog_cache);
 
 	let namespace = catalog
 		.create_namespace(

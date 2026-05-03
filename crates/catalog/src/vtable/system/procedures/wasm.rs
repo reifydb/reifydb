@@ -50,7 +50,7 @@ impl BaseVTable for SystemProceduresWasm {
 		let mut native_col = ColumnBuffer::utf8_with_capacity(0);
 		let mut module_col = ColumnBuffer::uint8_with_capacity(0);
 
-		for entry in self.catalog.materialized.procedures.iter() {
+		for entry in self.catalog.cache.procedures.iter() {
 			if let Some(Procedure::Wasm {
 				id,
 				namespace,

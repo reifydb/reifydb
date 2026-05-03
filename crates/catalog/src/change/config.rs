@@ -39,6 +39,6 @@ fn apply_config(catalog: &Catalog, key: &EncodedKey, row: &EncodedRow, version: 
 		Value::Any(inner) => *inner,
 		other => other,
 	};
-	catalog.materialized.set_config(config_key, version, value)?;
+	catalog.cache.set_config(config_key, version, value)?;
 	Ok(())
 }

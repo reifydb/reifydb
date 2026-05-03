@@ -18,7 +18,7 @@ impl CatalogChangeApplier for RowTtlApplier {
 		if let Some(k) = RowTtlKey::decode(key)
 			&& let Some(config) = decode_ttl_config(row)
 		{
-			catalog.materialized.set_row_ttl(k.shape, txn.version(), Some(config));
+			catalog.cache.set_row_ttl(k.shape, txn.version(), Some(config));
 		}
 		Ok(())
 	}
@@ -26,7 +26,7 @@ impl CatalogChangeApplier for RowTtlApplier {
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
 		txn.remove(key)?;
 		if let Some(k) = RowTtlKey::decode(key) {
-			catalog.materialized.set_row_ttl(k.shape, txn.version(), None);
+			catalog.cache.set_row_ttl(k.shape, txn.version(), None);
 		}
 		Ok(())
 	}

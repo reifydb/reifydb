@@ -22,7 +22,7 @@ use reifydb_transaction::{
 use reifydb_type::value::{constraint::TypeConstraint, identity::IdentityId, r#type::Type};
 
 use super::ensure_namespace;
-use crate::{Result, catalog::Catalog, materialized::MaterializedCatalog};
+use crate::{Result, cache::CatalogCache, catalog::Catalog};
 
 static EPHEMERAL_ID: AtomicU64 = AtomicU64::new(ProcedureId::SYSTEM_RESERVED_START);
 
@@ -55,7 +55,7 @@ pub enum EphemeralProcedureDescriptor {
 }
 
 pub fn load_ephemeral_procedures(
-	catalog: &MaterializedCatalog,
+	catalog: &CatalogCache,
 	descriptors: Vec<EphemeralProcedureDescriptor>,
 	version: CommitVersion,
 ) -> Result<()> {
@@ -134,7 +134,7 @@ pub fn load_ephemeral_procedures(
 pub fn bootstrap_system_procedures(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
-	catalog: &MaterializedCatalog,
+	catalog: &CatalogCache,
 	eventbus: &EventBus,
 ) -> Result<()> {
 	let catalog_api = Catalog::new(catalog.clone());

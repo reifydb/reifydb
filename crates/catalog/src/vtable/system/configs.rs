@@ -13,7 +13,7 @@ use reifydb_type::fragment::Fragment;
 
 use crate::{
 	Result,
-	materialized::MaterializedCatalog,
+	cache::CatalogCache,
 	system::SystemCatalog,
 	vtable::{BaseVTable, Batch, VTableContext},
 };
@@ -46,7 +46,7 @@ impl BaseVTable for SystemConfigs {
 		}
 
 		let version = txn.version();
-		let mut configs = match self.ioc.resolve::<MaterializedCatalog>() {
+		let mut configs = match self.ioc.resolve::<CatalogCache>() {
 			Ok(catalog) => catalog.list_configs_at(version),
 			Err(_) => vec![],
 		};

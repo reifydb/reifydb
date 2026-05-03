@@ -31,42 +31,42 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(policy) = self.materialized.find_policy_by_name_at(name, admin.version()) {
+				if let Some(policy) = self.cache.find_policy_by_name_at(name, admin.version()) {
 					return Ok(Some(policy));
 				}
 
 				if let Some(policy) =
 					CatalogStore::find_policy_by_name(&mut Transaction::Admin(&mut *admin), name)?
 				{
-					warn!("Policy '{}' found in storage but not in MaterializedCatalog", name);
+					warn!("Policy '{}' found in storage but not in CatalogCache", name);
 					return Ok(Some(policy));
 				}
 
 				Ok(None)
 			}
 			Transaction::Command(cmd) => {
-				if let Some(policy) = self.materialized.find_policy_by_name_at(name, cmd.version()) {
+				if let Some(policy) = self.cache.find_policy_by_name_at(name, cmd.version()) {
 					return Ok(Some(policy));
 				}
 
 				if let Some(policy) =
 					CatalogStore::find_policy_by_name(&mut Transaction::Command(&mut *cmd), name)?
 				{
-					warn!("Policy '{}' found in storage but not in MaterializedCatalog", name);
+					warn!("Policy '{}' found in storage but not in CatalogCache", name);
 					return Ok(Some(policy));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(policy) = self.materialized.find_policy_by_name_at(name, qry.version()) {
+				if let Some(policy) = self.cache.find_policy_by_name_at(name, qry.version()) {
 					return Ok(Some(policy));
 				}
 
 				if let Some(policy) =
 					CatalogStore::find_policy_by_name(&mut Transaction::Query(&mut *qry), name)?
 				{
-					warn!("Policy '{}' found in storage but not in MaterializedCatalog", name);
+					warn!("Policy '{}' found in storage but not in CatalogCache", name);
 					return Ok(Some(policy));
 				}
 
@@ -91,14 +91,14 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(policy) = self.materialized.find_policy_by_name_at(name, rep.version()) {
+				if let Some(policy) = self.cache.find_policy_by_name_at(name, rep.version()) {
 					return Ok(Some(policy));
 				}
 
 				if let Some(policy) =
 					CatalogStore::find_policy_by_name(&mut Transaction::Replica(&mut *rep), name)?
 				{
-					warn!("Policy '{}' found in storage but not in MaterializedCatalog", name);
+					warn!("Policy '{}' found in storage but not in CatalogCache", name);
 					return Ok(Some(policy));
 				}
 
@@ -115,7 +115,7 @@ impl Catalog {
 	) -> Result<(Policy, Vec<PolicyOperation>)> {
 		let (policy, ops) = CatalogStore::create_policy(txn, to_create)?;
 		txn.track_policy_created(policy.clone())?;
-		self.materialized.set_policy_operations(policy.id, ops.clone());
+		self.cache.set_policy_operations(policy.id, ops.clone());
 		Ok((policy, ops))
 	}
 
@@ -142,7 +142,7 @@ impl Catalog {
 		} else {
 			CatalogStore::drop_policy(txn, policy_id)?;
 		}
-		self.materialized.remove_policy_operations(policy_id);
+		self.cache.remove_policy_operations(policy_id);
 		Ok(())
 	}
 
@@ -165,7 +165,7 @@ impl Catalog {
 			policies.sort_by_key(|p| p.id);
 			return Ok(policies);
 		}
-		let cached = self.materialized.list_all_policies_at(txn.version());
+		let cached = self.cache.list_all_policies_at(txn.version());
 		if !cached.is_empty() {
 			return Ok(cached);
 		}
@@ -177,7 +177,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		policy_id: PolicyId,
 	) -> Result<Vec<PolicyOperation>> {
-		if let Some(ops) = self.materialized.list_policy_operations(policy_id) {
+		if let Some(ops) = self.cache.list_policy_operations(policy_id) {
 			return Ok(ops);
 		}
 		CatalogStore::list_policy_operations(txn, policy_id)

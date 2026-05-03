@@ -66,12 +66,12 @@ impl Catalog {
 	pub fn find_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<Option<View>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(view) = self.materialized.find_view_at(id, cmd.version()) {
+				if let Some(view) = self.cache.find_view_at(id, cmd.version()) {
 					return Ok(Some(view));
 				}
 
 				if let Some(view) = CatalogStore::find_view(&mut Transaction::Command(&mut *cmd), id)? {
-					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("View with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(view));
 				}
 
@@ -86,24 +86,24 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(view) = self.materialized.find_view_at(id, admin.version()) {
+				if let Some(view) = self.cache.find_view_at(id, admin.version()) {
 					return Ok(Some(view));
 				}
 
 				if let Some(view) = CatalogStore::find_view(&mut Transaction::Admin(&mut *admin), id)? {
-					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("View with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(view));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(view) = self.materialized.find_view_at(id, qry.version()) {
+				if let Some(view) = self.cache.find_view_at(id, qry.version()) {
 					return Ok(Some(view));
 				}
 
 				if let Some(view) = CatalogStore::find_view(&mut Transaction::Query(&mut *qry), id)? {
-					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("View with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(view));
 				}
 
@@ -124,12 +124,12 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(view) = self.materialized.find_view_at(id, rep.version()) {
+				if let Some(view) = self.cache.find_view_at(id, rep.version()) {
 					return Ok(Some(view));
 				}
 
 				if let Some(view) = CatalogStore::find_view(&mut Transaction::Replica(&mut *rep), id)? {
-					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("View with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(view));
 				}
 
@@ -147,9 +147,7 @@ impl Catalog {
 	) -> Result<Option<View>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(view) =
-					self.materialized.find_view_by_name_at(namespace, name, cmd.version())
-				{
+				if let Some(view) = self.cache.find_view_by_name_at(namespace, name, cmd.version()) {
 					return Ok(Some(view));
 				}
 
@@ -159,7 +157,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"View '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(view));
@@ -177,9 +175,7 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(view) =
-					self.materialized.find_view_by_name_at(namespace, name, admin.version())
-				{
+				if let Some(view) = self.cache.find_view_by_name_at(namespace, name, admin.version()) {
 					return Ok(Some(view));
 				}
 
@@ -189,7 +185,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"View '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(view));
@@ -198,9 +194,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(view) =
-					self.materialized.find_view_by_name_at(namespace, name, qry.version())
-				{
+				if let Some(view) = self.cache.find_view_by_name_at(namespace, name, qry.version()) {
 					return Ok(Some(view));
 				}
 
@@ -210,7 +204,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"View '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(view));
@@ -237,9 +231,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(view) =
-					self.materialized.find_view_by_name_at(namespace, name, rep.version())
-				{
+				if let Some(view) = self.cache.find_view_by_name_at(namespace, name, rep.version()) {
 					return Ok(Some(view));
 				}
 
@@ -249,7 +241,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"View '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(view));

@@ -44,16 +44,13 @@ impl Catalog {
 	pub fn find_sumtype(&self, txn: &mut Transaction<'_>, id: SumTypeId) -> Result<Option<SumType>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(def) = self.materialized.find_sumtype_at(id, cmd.version()) {
+				if let Some(def) = self.cache.find_sumtype_at(id, cmd.version()) {
 					return Ok(Some(def));
 				}
 
 				if let Some(def) = CatalogStore::find_sumtype(&mut Transaction::Command(&mut *cmd), id)?
 				{
-					warn!(
-						"SumType with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("SumType with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(def));
 				}
 
@@ -68,31 +65,25 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(def) = self.materialized.find_sumtype_at(id, admin.version()) {
+				if let Some(def) = self.cache.find_sumtype_at(id, admin.version()) {
 					return Ok(Some(def));
 				}
 
 				if let Some(def) = CatalogStore::find_sumtype(&mut Transaction::Admin(&mut *admin), id)?
 				{
-					warn!(
-						"SumType with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("SumType with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(def));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(def) = self.materialized.find_sumtype_at(id, qry.version()) {
+				if let Some(def) = self.cache.find_sumtype_at(id, qry.version()) {
 					return Ok(Some(def));
 				}
 
 				if let Some(def) = CatalogStore::find_sumtype(&mut Transaction::Query(&mut *qry), id)? {
-					warn!(
-						"SumType with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("SumType with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(def));
 				}
 
@@ -116,16 +107,13 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(def) = self.materialized.find_sumtype_at(id, rep.version()) {
+				if let Some(def) = self.cache.find_sumtype_at(id, rep.version()) {
 					return Ok(Some(def));
 				}
 
 				if let Some(def) = CatalogStore::find_sumtype(&mut Transaction::Replica(&mut *rep), id)?
 				{
-					warn!(
-						"SumType with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("SumType with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(def));
 				}
 
@@ -143,9 +131,7 @@ impl Catalog {
 	) -> Result<Option<SumType>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(def) =
-					self.materialized.find_sumtype_by_name_at(namespace, name, cmd.version())
-				{
+				if let Some(def) = self.cache.find_sumtype_by_name_at(namespace, name, cmd.version()) {
 					return Ok(Some(def));
 				}
 
@@ -155,7 +141,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"SumType '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"SumType '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(def));
@@ -174,8 +160,7 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(def) =
-					self.materialized.find_sumtype_by_name_at(namespace, name, admin.version())
+				if let Some(def) = self.cache.find_sumtype_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(def));
 				}
@@ -186,7 +171,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"SumType '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"SumType '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(def));
@@ -195,9 +180,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(def) =
-					self.materialized.find_sumtype_by_name_at(namespace, name, qry.version())
-				{
+				if let Some(def) = self.cache.find_sumtype_by_name_at(namespace, name, qry.version()) {
 					return Ok(Some(def));
 				}
 
@@ -207,7 +190,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"SumType '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"SumType '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(def));
@@ -237,9 +220,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(def) =
-					self.materialized.find_sumtype_by_name_at(namespace, name, rep.version())
-				{
+				if let Some(def) = self.cache.find_sumtype_by_name_at(namespace, name, rep.version()) {
 					return Ok(Some(def));
 				}
 
@@ -249,7 +230,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"SumType '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"SumType '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(def));

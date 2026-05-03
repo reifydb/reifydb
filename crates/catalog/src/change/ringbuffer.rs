@@ -24,9 +24,9 @@ pub(super) struct RingBufferApplier;
 impl CatalogChangeApplier for RingBufferApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		let mut rb = decode_ringbuffer(row, &catalog.materialized, txn.version());
+		let mut rb = decode_ringbuffer(row, &catalog.cache, txn.version());
 		rb.columns = CatalogStore::list_columns(txn, rb.id)?;
-		catalog.materialized.set_ringbuffer(rb.id, txn.version(), Some(rb));
+		catalog.cache.set_ringbuffer(rb.id, txn.version(), Some(rb));
 		Ok(())
 	}
 
@@ -37,16 +37,16 @@ impl CatalogChangeApplier for RingBufferApplier {
 				kind: KeyKind::RingBuffer,
 			},
 		)?;
-		catalog.materialized.set_ringbuffer(id, txn.version(), None);
+		catalog.cache.set_ringbuffer(id, txn.version(), None);
 		Ok(())
 	}
 }
 
 use reifydb_core::common::CommitVersion;
 
-use crate::materialized::MaterializedCatalog;
+use crate::cache::CatalogCache;
 
-fn decode_ringbuffer(row: &EncodedRow, materialized: &MaterializedCatalog, version: CommitVersion) -> RingBuffer {
+fn decode_ringbuffer(row: &EncodedRow, materialized: &CatalogCache, version: CommitVersion) -> RingBuffer {
 	let id = RingBufferId(ringbuffer::SHAPE.get_u64(row, ID));
 	let namespace = NamespaceId(ringbuffer::SHAPE.get_u64(row, NAMESPACE));
 	let name = ringbuffer::SHAPE.get_utf8(row, NAME).to_string();

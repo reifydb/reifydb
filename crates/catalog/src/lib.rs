@@ -15,11 +15,11 @@ use reifydb_core::interface::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
 pub mod bootstrap;
+pub mod cache;
 pub mod catalog;
 pub mod change;
 pub mod error;
 pub mod interceptor;
-pub mod materialized;
 pub mod shape;
 pub mod store;
 pub mod system;

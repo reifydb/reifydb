@@ -7,7 +7,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb_catalog::materialized::MaterializedCatalog;
+use reifydb_catalog::cache::CatalogCache;
 use reifydb_cdc::{
 	produce::{producer::spawn_cdc_producer, watermark::CdcProducerWatermark},
 	storage::{CdcStorage, memory::MemoryCdcStorage},
@@ -47,7 +47,7 @@ struct TtlFixture {
 	handle: CdcProduceHandle,
 	storage: MemoryCdcStorage,
 	mock: MockClock,
-	catalog: MaterializedCatalog,
+	catalog: CatalogCache,
 	event_bus: EventBus,
 }
 
@@ -60,7 +60,7 @@ impl TtlFixture {
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::with_clock(initial_nanos);
-		let catalog = host.catalog.materialized().clone();
+		let catalog = host.catalog.cache().clone();
 		let mock = host.mock.clone();
 		let clock = host.clock.clone();
 
@@ -89,7 +89,7 @@ impl TtlFixture {
 	}
 }
 
-fn set_ttl_secs(catalog: &MaterializedCatalog, secs: i64) {
+fn set_ttl_secs(catalog: &CatalogCache, secs: i64) {
 	catalog.set_config(
 		ConfigKey::CdcTtlDuration,
 		CommitVersion(1),
@@ -319,7 +319,7 @@ fn ttl_does_not_emit_event_when_nothing_is_evicted() {
 fn ttl_setting_zero_duration_is_rejected_by_catalog() {
 	// Sanity check that the validate hook is wired in - the catalog rejects zero TTLs at
 	// the set_config boundary, so a misconfigured operator never reaches the producer.
-	let catalog = MaterializedCatalog::new();
+	let catalog = CatalogCache::new();
 	let zero = Value::Duration(TypeDuration::from_seconds(0).unwrap());
 	let err = catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), zero).unwrap_err();
 	assert_eq!(err.code, "CA_053");

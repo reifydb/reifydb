@@ -13,7 +13,7 @@ use std::{
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
-	interceptor::MaterializedCatalogInterceptor,
+	interceptor::CatalogCacheInterceptor,
 	vtable::{
 		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
@@ -398,9 +398,7 @@ impl StandardEngine {
 
 		let catalog_for_interceptor = catalog.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
-			interceptors
-				.post_commit
-				.add(Arc::new(MaterializedCatalogInterceptor::new(&catalog_for_interceptor)));
+			interceptors.post_commit.add(Arc::new(CatalogCacheInterceptor::new(&catalog_for_interceptor)));
 		}));
 
 		let interceptors = Arc::new(interceptors);

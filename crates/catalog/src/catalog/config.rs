@@ -15,7 +15,7 @@ impl Catalog {
 	pub fn set_config(&self, txn: &mut AdminTransaction, key: ConfigKey, value: Value) -> Result<()> {
 		let value = key.accept(value).map_err(|e| CatalogError::from((key, e)))?;
 
-		let pre_value = self.materialized.get_config(key);
+		let pre_value = self.cache.get_config(key);
 		let pre = Config {
 			key,
 			value: pre_value,

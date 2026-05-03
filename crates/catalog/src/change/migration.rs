@@ -21,7 +21,7 @@ impl CatalogChangeApplier for MigrationApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let m = migration_from_row(row);
-		catalog.materialized.set_migration(m.id, txn.version(), Some(m));
+		catalog.cache.set_migration(m.id, txn.version(), Some(m));
 		Ok(())
 	}
 
@@ -30,7 +30,7 @@ impl CatalogChangeApplier for MigrationApplier {
 		let id = MigrationKey::decode(key).map(|k| k.migration).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Migration,
 		})?;
-		catalog.materialized.set_migration(id, txn.version(), None);
+		catalog.cache.set_migration(id, txn.version(), None);
 		Ok(())
 	}
 }
@@ -41,7 +41,7 @@ impl CatalogChangeApplier for MigrationEventApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let evt = migration_event_from_row(row);
-		catalog.materialized.set_migration_event(evt.id, txn.version(), Some(evt));
+		catalog.cache.set_migration_event(evt.id, txn.version(), Some(evt));
 		Ok(())
 	}
 
@@ -51,7 +51,7 @@ impl CatalogChangeApplier for MigrationEventApplier {
 			MigrationEventKey::decode(key).map(|k| k.event).ok_or(CatalogChangeError::KeyDecodeFailed {
 				kind: KeyKind::MigrationEvent,
 			})?;
-		catalog.materialized.set_migration_event(id, txn.version(), None);
+		catalog.cache.set_migration_event(id, txn.version(), None);
 		Ok(())
 	}
 }

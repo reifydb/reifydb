@@ -39,22 +39,22 @@ impl Catalog {
 		let fingerprint = shape.fingerprint();
 		Span::current().record("fingerprint", field::debug(&fingerprint));
 
-		if let Some(cached) = self.materialized.find_row_shape(fingerprint) {
+		if let Some(cached) = self.cache.find_row_shape(fingerprint) {
 			return Ok(cached);
 		}
 
-		if let Some(cached) = self.materialized.find_row_shape(fingerprint) {
+		if let Some(cached) = self.cache.find_row_shape(fingerprint) {
 			return Ok(cached);
 		}
 
 		if let Some(stored_shape) = find_row_shape_by_fingerprint(txn, fingerprint)? {
-			self.materialized.set_row_shape(stored_shape.clone());
+			self.cache.set_row_shape(stored_shape.clone());
 			return Ok(stored_shape);
 		}
 
 		create_row_shape(txn, &shape)?;
 
-		self.materialized.set_row_shape(shape.clone());
+		self.cache.set_row_shape(shape.clone());
 
 		Ok(shape)
 	}
@@ -74,7 +74,7 @@ impl Catalog {
 		fingerprint: RowShapeFingerprint,
 		txn: &mut Transaction<'_>,
 	) -> Result<Option<RowShape>> {
-		if let Some(shape) = self.materialized.find_row_shape(fingerprint) {
+		if let Some(shape) = self.cache.find_row_shape(fingerprint) {
 			Span::current().record("cache_hit", true);
 			Span::current().record("field_count", shape.field_count());
 			return Ok(Some(shape));
@@ -131,13 +131,13 @@ impl Catalog {
 		let shape = RowShape::from_parts(fingerprint, fields);
 		Span::current().record("cache_hit", false);
 		Span::current().record("field_count", shape.field_count());
-		self.materialized.set_row_shape(shape.clone());
+		self.cache.set_row_shape(shape.clone());
 
 		Ok(Some(shape))
 	}
 
 	pub fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Option<RowShape> {
-		self.materialized.find_row_shape(fingerprint)
+		self.cache.find_row_shape(fingerprint)
 	}
 
 	pub fn get_or_create_row_shape_pending(
@@ -148,11 +148,11 @@ impl Catalog {
 		let shape = RowShape::new(fields);
 		let fingerprint = shape.fingerprint();
 
-		if let Some(cached) = self.materialized.find_row_shape(fingerprint) {
+		if let Some(cached) = self.cache.find_row_shape(fingerprint) {
 			return cached;
 		}
 
-		self.materialized.set_row_shape(shape.clone());
+		self.cache.set_row_shape(shape.clone());
 		pending.push(shape.clone());
 
 		shape

@@ -21,11 +21,11 @@ use tracing::info;
 use super::ensure_namespace;
 use crate::{
 	Result,
+	cache::CatalogCache,
 	catalog::{
 		Catalog,
 		ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
 	},
-	materialized::MaterializedCatalog,
 };
 
 const REQUEST_HISTORY_CAPACITY: u64 = 10_000;
@@ -34,7 +34,7 @@ const STATEMENT_STATS_CAPACITY: u64 = 5_000;
 pub fn bootstrap_metric_ringbuffers(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
-	catalog: &MaterializedCatalog,
+	catalog: &CatalogCache,
 	eventbus: &EventBus,
 ) -> Result<()> {
 	let catalog_api = Catalog::new(catalog.clone());

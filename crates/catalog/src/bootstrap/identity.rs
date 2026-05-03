@@ -13,13 +13,13 @@ use reifydb_type::value::identity::IdentityId;
 
 use crate::{
 	CatalogStore, Result,
-	materialized::{MaterializedCatalog, load::identity::load_identities},
+	cache::{CatalogCache, load::identity::load_identities},
 };
 
 pub fn bootstrap_root_identity(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
-	catalog: &MaterializedCatalog,
+	catalog: &CatalogCache,
 	eventbus: &EventBus,
 ) -> Result<()> {
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());

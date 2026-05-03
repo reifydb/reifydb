@@ -10,12 +10,12 @@ use reifydb_transaction::{
 use reifydb_type::value::identity::IdentityId;
 
 use super::ensure_namespace;
-use crate::{Result, catalog::Catalog, materialized::MaterializedCatalog};
+use crate::{Result, cache::CatalogCache, catalog::Catalog};
 
 pub fn bootstrap_system_bindings(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
-	catalog: &MaterializedCatalog,
+	catalog: &CatalogCache,
 	eventbus: &EventBus,
 ) -> Result<()> {
 	let catalog_api = Catalog::new(catalog.clone());

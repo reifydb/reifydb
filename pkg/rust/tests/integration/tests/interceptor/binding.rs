@@ -17,7 +17,7 @@ fn create_binding_propagates_to_materialized_cache() {
 	);
 
 	let cat = db.catalog();
-	let mat = cat.materialized();
+	let mat = cat.cache();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let binding = mat.find_binding_by_name(ns.id(), "greet_http").unwrap();
 	let proc = mat.find_procedure_by_name(ns.id(), "greet").unwrap();

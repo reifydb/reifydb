@@ -29,7 +29,7 @@ impl CatalogChangeApplier for SourceApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let src = decode_source(row);
-		catalog.materialized.set_source(src.id, txn.version(), Some(src));
+		catalog.cache.set_source(src.id, txn.version(), Some(src));
 		Ok(())
 	}
 
@@ -38,7 +38,7 @@ impl CatalogChangeApplier for SourceApplier {
 		let id = SourceKey::decode(key).map(|k| k.source).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Source,
 		})?;
-		catalog.materialized.set_source(id, txn.version(), None);
+		catalog.cache.set_source(id, txn.version(), None);
 		Ok(())
 	}
 }

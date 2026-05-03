@@ -28,7 +28,7 @@ impl CatalogChangeApplier for SumTypeApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let def = decode_sumtype(row);
-		catalog.materialized.set_sumtype(def.id, txn.version(), Some(def));
+		catalog.cache.set_sumtype(def.id, txn.version(), Some(def));
 		Ok(())
 	}
 
@@ -37,7 +37,7 @@ impl CatalogChangeApplier for SumTypeApplier {
 		let id = SumTypeKey::decode(key).map(|k| k.sumtype).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::SumType,
 		})?;
-		catalog.materialized.set_sumtype(id, txn.version(), None);
+		catalog.cache.set_sumtype(id, txn.version(), None);
 		Ok(())
 	}
 }

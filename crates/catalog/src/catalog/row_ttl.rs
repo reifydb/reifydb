@@ -14,13 +14,13 @@ use crate::catalog::Catalog;
 
 impl Catalog {
 	pub fn find_row_ttl(&self, txn: &mut Transaction<'_>, shape: ShapeId) -> Option<Ttl> {
-		self.materialized.find_row_ttl_at(shape, txn.version())
+		self.cache.find_row_ttl_at(shape, txn.version())
 	}
 }
 
 impl ListRowTtls for Catalog {
 	fn list_row_ttls(&self) -> Vec<(ShapeId, Ttl)> {
-		self.materialized
+		self.cache
 			.row_ttls
 			.iter()
 			.filter_map(|entry| {

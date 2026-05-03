@@ -15,10 +15,10 @@ impl Catalog {
 		namespace: NamespaceId,
 		name: &str,
 	) -> Option<Arc<VTable>> {
-		self.materialized.find_vtable_user_by_name(namespace, name)
+		self.cache.find_vtable_user_by_name(namespace, name)
 	}
 
 	pub fn list_user_vtables(&self) -> Vec<Arc<VTable>> {
-		self.materialized.list_vtable_user_all()
+		self.cache.list_vtable_user_all()
 	}
 }

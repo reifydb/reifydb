@@ -25,7 +25,7 @@ impl CatalogChangeApplier for ProcedureApplier {
 		})?;
 		let params = load_params(txn, id)?;
 		let procedure = decode_procedure(row, params);
-		catalog.materialized.set_procedure(id, txn.version(), Some(procedure));
+		catalog.cache.set_procedure(id, txn.version(), Some(procedure));
 		Ok(())
 	}
 
@@ -34,7 +34,7 @@ impl CatalogChangeApplier for ProcedureApplier {
 		let id = ProcedureKey::decode(key).map(|k| k.procedure).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Procedure,
 		})?;
-		catalog.materialized.set_procedure(id, txn.version(), None);
+		catalog.cache.set_procedure(id, txn.version(), None);
 		Ok(())
 	}
 }

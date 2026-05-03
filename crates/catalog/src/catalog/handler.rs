@@ -28,7 +28,7 @@ impl Catalog {
 	pub fn find_handler_by_id(&self, txn: &mut Transaction<'_>, id: HandlerId) -> Result<Option<Handler>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(handler) = self.materialized.find_handler_at(id, cmd.version()) {
+				if let Some(handler) = self.cache.find_handler_at(id, cmd.version()) {
 					return Ok(Some(handler));
 				}
 				Ok(None)
@@ -42,14 +42,14 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(handler) = self.materialized.find_handler_at(id, admin.version()) {
+				if let Some(handler) = self.cache.find_handler_at(id, admin.version()) {
 					return Ok(Some(handler));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(handler) = self.materialized.find_handler_at(id, qry.version()) {
+				if let Some(handler) = self.cache.find_handler_at(id, qry.version()) {
 					return Ok(Some(handler));
 				}
 				Ok(None)
@@ -63,14 +63,14 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(handler) = self.materialized.find_handler_at(id, t.inner.version()) {
+				if let Some(handler) = self.cache.find_handler_at(id, t.inner.version()) {
 					return Ok(Some(handler));
 				}
 
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(handler) = self.materialized.find_handler_at(id, rep.version()) {
+				if let Some(handler) = self.cache.find_handler_at(id, rep.version()) {
 					return Ok(Some(handler));
 				}
 				Ok(None)
@@ -88,7 +88,7 @@ impl Catalog {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(handler) =
-					self.materialized.find_handler_by_name_at(namespace, name, cmd.version())
+					self.cache.find_handler_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(handler));
 				}
@@ -106,7 +106,7 @@ impl Catalog {
 				}
 
 				if let Some(handler) =
-					self.materialized.find_handler_by_name_at(namespace, name, admin.version())
+					self.cache.find_handler_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(handler));
 				}
@@ -115,7 +115,7 @@ impl Catalog {
 			}
 			Transaction::Query(qry) => {
 				if let Some(handler) =
-					self.materialized.find_handler_by_name_at(namespace, name, qry.version())
+					self.cache.find_handler_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(handler));
 				}
@@ -133,7 +133,7 @@ impl Catalog {
 				}
 
 				if let Some(handler) =
-					self.materialized.find_handler_by_name_at(namespace, name, t.inner.version())
+					self.cache.find_handler_by_name_at(namespace, name, t.inner.version())
 				{
 					return Ok(Some(handler));
 				}
@@ -142,7 +142,7 @@ impl Catalog {
 			}
 			Transaction::Replica(rep) => {
 				if let Some(handler) =
-					self.materialized.find_handler_by_name_at(namespace, name, rep.version())
+					self.cache.find_handler_by_name_at(namespace, name, rep.version())
 				{
 					return Ok(Some(handler));
 				}
@@ -159,11 +159,10 @@ impl Catalog {
 	) -> Result<Vec<Handler>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				Ok(self.materialized.list_handlers_for_variant_at(variant, cmd.version()))
+				Ok(self.cache.list_handlers_for_variant_at(variant, cmd.version()))
 			}
 			Transaction::Admin(admin) => {
-				let mut handlers =
-					self.materialized.list_handlers_for_variant_at(variant, admin.version());
+				let mut handlers = self.cache.list_handlers_for_variant_at(variant, admin.version());
 
 				for change in &admin.changes.handler {
 					if let Some(h) = &change.post
@@ -177,12 +176,9 @@ impl Catalog {
 
 				Ok(handlers)
 			}
-			Transaction::Query(qry) => {
-				Ok(self.materialized.list_handlers_for_variant_at(variant, qry.version()))
-			}
+			Transaction::Query(qry) => Ok(self.cache.list_handlers_for_variant_at(variant, qry.version())),
 			Transaction::Test(t) => {
-				let mut handlers =
-					self.materialized.list_handlers_for_variant_at(variant, t.inner.version());
+				let mut handlers = self.cache.list_handlers_for_variant_at(variant, t.inner.version());
 
 				for change in &t.inner.changes.handler {
 					if let Some(h) = &change.post
@@ -197,7 +193,7 @@ impl Catalog {
 				Ok(handlers)
 			}
 			Transaction::Replica(rep) => {
-				Ok(self.materialized.list_handlers_for_variant_at(variant, rep.version()))
+				Ok(self.cache.list_handlers_for_variant_at(variant, rep.version()))
 			}
 		}
 	}

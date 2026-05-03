@@ -19,7 +19,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::{CatalogStore, Result, catalog::Catalog, error::CatalogError, materialized::MaterializedCatalog};
+use crate::{CatalogStore, Result, cache::CatalogCache, catalog::Catalog, error::CatalogError};
 
 #[derive(Debug, Clone)]
 pub enum ResolvedProcedure {
@@ -84,7 +84,7 @@ impl Catalog {
 	pub fn find_procedure(&self, txn: &mut Transaction<'_>, id: ProcedureId) -> Result<Option<Procedure>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(procedure) = self.materialized.find_procedure_at(id, cmd.version()) {
+				if let Some(procedure) = self.cache.find_procedure_at(id, cmd.version()) {
 					return Ok(Some(procedure));
 				}
 				Ok(None)
@@ -98,14 +98,14 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(procedure) = self.materialized.find_procedure_at(id, admin.version()) {
+				if let Some(procedure) = self.cache.find_procedure_at(id, admin.version()) {
 					return Ok(Some(procedure));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(procedure) = self.materialized.find_procedure_at(id, qry.version()) {
+				if let Some(procedure) = self.cache.find_procedure_at(id, qry.version()) {
 					return Ok(Some(procedure));
 				}
 				Ok(None)
@@ -119,14 +119,14 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(procedure) = self.materialized.find_procedure_at(id, t.inner.version()) {
+				if let Some(procedure) = self.cache.find_procedure_at(id, t.inner.version()) {
 					return Ok(Some(procedure));
 				}
 
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(procedure) = self.materialized.find_procedure_at(id, rep.version()) {
+				if let Some(procedure) = self.cache.find_procedure_at(id, rep.version()) {
 					return Ok(Some(procedure));
 				}
 				Ok(None)
@@ -144,7 +144,7 @@ impl Catalog {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, cmd.version())
+					self.cache.find_procedure_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(procedure));
 				}
@@ -162,7 +162,7 @@ impl Catalog {
 				}
 
 				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, admin.version())
+					self.cache.find_procedure_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(procedure));
 				}
@@ -171,7 +171,7 @@ impl Catalog {
 			}
 			Transaction::Query(qry) => {
 				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, qry.version())
+					self.cache.find_procedure_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(procedure));
 				}
@@ -190,7 +190,7 @@ impl Catalog {
 				}
 
 				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, t.inner.version())
+					self.cache.find_procedure_by_name_at(namespace, name, t.inner.version())
 				{
 					return Ok(Some(procedure));
 				}
@@ -199,7 +199,7 @@ impl Catalog {
 			}
 			Transaction::Replica(rep) => {
 				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, rep.version())
+					self.cache.find_procedure_by_name_at(namespace, name, rep.version())
 				{
 					return Ok(Some(procedure));
 				}
@@ -254,11 +254,11 @@ impl Catalog {
 	) -> Result<Vec<Procedure>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				Ok(self.materialized.list_procedures_for_variant_at(variant, cmd.version()))
+				Ok(self.cache.list_procedures_for_variant_at(variant, cmd.version()))
 			}
 			Transaction::Admin(admin) => {
 				let mut procedures =
-					self.materialized.list_procedures_for_variant_at(variant, admin.version());
+					self.cache.list_procedures_for_variant_at(variant, admin.version());
 
 				for change in &admin.changes.procedure {
 					if let Some(p) = &change.post
@@ -275,11 +275,11 @@ impl Catalog {
 				Ok(procedures)
 			}
 			Transaction::Query(qry) => {
-				Ok(self.materialized.list_procedures_for_variant_at(variant, qry.version()))
+				Ok(self.cache.list_procedures_for_variant_at(variant, qry.version()))
 			}
 			Transaction::Test(t) => {
 				let mut procedures =
-					self.materialized.list_procedures_for_variant_at(variant, t.inner.version());
+					self.cache.list_procedures_for_variant_at(variant, t.inner.version());
 
 				for change in &t.inner.changes.procedure {
 					if let Some(p) = &change.post
@@ -296,7 +296,7 @@ impl Catalog {
 				Ok(procedures)
 			}
 			Transaction::Replica(rep) => {
-				Ok(self.materialized.list_procedures_for_variant_at(variant, rep.version()))
+				Ok(self.cache.list_procedures_for_variant_at(variant, rep.version()))
 			}
 		}
 	}
@@ -336,7 +336,7 @@ impl Catalog {
 	}
 
 	pub fn register_ephemeral_procedure(
-		catalog: &MaterializedCatalog,
+		catalog: &CatalogCache,
 		version: CommitVersion,
 		procedure: Procedure,
 	) -> Result<()> {

@@ -13,7 +13,7 @@ use crate::catalog::Catalog;
 
 impl ListOperatorTtls for Catalog {
 	fn list_operator_ttls(&self) -> Vec<(FlowNodeId, Ttl)> {
-		self.materialized
+		self.cache
 			.operator_ttls
 			.iter()
 			.filter_map(|entry| {

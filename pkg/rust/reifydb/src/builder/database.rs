@@ -10,9 +10,9 @@ use reifydb_auth::{
 };
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{apply_bootstrap_configs, bootstrap_system_objects, load_materialized_catalog},
+	bootstrap::{apply_bootstrap_configs, bootstrap_system_objects, load_catalog_cache},
+	cache::CatalogCache,
 	catalog::Catalog,
-	materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -128,16 +128,13 @@ pub struct DatabaseBuilder {
 impl DatabaseBuilder {
 	#[allow(unused_mut)]
 	pub fn new(
-		materialized_catalog: MaterializedCatalog,
+		catalog_cache: CatalogCache,
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		eventbus: EventBus,
 	) -> Self {
-		let ioc = IocContainer::new()
-			.register(materialized_catalog)
-			.register(eventbus)
-			.register(multi)
-			.register(single);
+		let ioc =
+			IocContainer::new().register(catalog_cache).register(eventbus).register(multi).register(single);
 
 		Self {
 			interceptors: InterceptorBuilder::new(),
@@ -344,12 +341,12 @@ impl DatabaseBuilder {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
-		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
+		let catalog = self.ioc.resolve::<CatalogCache>()?;
 		let multi = self.ioc.resolve::<MultiTransaction>()?;
 		let single = self.ioc.resolve::<SingleTransaction>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		load_materialized_catalog(&multi, &single, &catalog)?;
+		load_catalog_cache(&multi, &single, &catalog)?;
 
 		// Bootstrap complete - clear conflict window so bootstrap entries
 		// don't participate in conflict detection.

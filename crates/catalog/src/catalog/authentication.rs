@@ -38,17 +38,14 @@ impl Catalog {
 	) -> Result<Option<Authentication>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(auth) = self.materialized.find_authentication_at(id, cmd.version()) {
+				if let Some(auth) = self.cache.find_authentication_at(id, cmd.version()) {
 					return Ok(Some(auth));
 				}
 
 				if let Some(auth) =
 					CatalogStore::find_authentication(&mut Transaction::Command(&mut *cmd), id)?
 				{
-					warn!(
-						"Authentication '{}' found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("Authentication '{}' found in storage but not in CatalogCache", id);
 					return Ok(Some(auth));
 				}
 
@@ -63,34 +60,28 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(auth) = self.materialized.find_authentication_at(id, admin.version()) {
+				if let Some(auth) = self.cache.find_authentication_at(id, admin.version()) {
 					return Ok(Some(auth));
 				}
 
 				if let Some(auth) =
 					CatalogStore::find_authentication(&mut Transaction::Admin(&mut *admin), id)?
 				{
-					warn!(
-						"Authentication '{}' found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("Authentication '{}' found in storage but not in CatalogCache", id);
 					return Ok(Some(auth));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(auth) = self.materialized.find_authentication_at(id, qry.version()) {
+				if let Some(auth) = self.cache.find_authentication_at(id, qry.version()) {
 					return Ok(Some(auth));
 				}
 
 				if let Some(auth) =
 					CatalogStore::find_authentication(&mut Transaction::Query(&mut *qry), id)?
 				{
-					warn!(
-						"Authentication '{}' found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("Authentication '{}' found in storage but not in CatalogCache", id);
 					return Ok(Some(auth));
 				}
 
@@ -106,34 +97,28 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(auth) = self.materialized.find_authentication_at(id, t.inner.version()) {
+				if let Some(auth) = self.cache.find_authentication_at(id, t.inner.version()) {
 					return Ok(Some(auth));
 				}
 
 				if let Some(auth) =
 					CatalogStore::find_authentication(&mut Transaction::Admin(&mut *t.inner), id)?
 				{
-					warn!(
-						"Authentication '{}' found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("Authentication '{}' found in storage but not in CatalogCache", id);
 					return Ok(Some(auth));
 				}
 
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(auth) = self.materialized.find_authentication_at(id, rep.version()) {
+				if let Some(auth) = self.cache.find_authentication_at(id, rep.version()) {
 					return Ok(Some(auth));
 				}
 
 				if let Some(auth) =
 					CatalogStore::find_authentication(&mut Transaction::Replica(&mut *rep), id)?
 				{
-					warn!(
-						"Authentication '{}' found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("Authentication '{}' found in storage but not in CatalogCache", id);
 					return Ok(Some(auth));
 				}
 
@@ -151,7 +136,7 @@ impl Catalog {
 	) -> Result<Option<Authentication>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(auth) = self.materialized.find_authentication_by_identity_and_method_at(
+				if let Some(auth) = self.cache.find_authentication_by_identity_and_method_at(
 					identity,
 					method,
 					cmd.version(),
@@ -165,7 +150,7 @@ impl Catalog {
 					method,
 				)? {
 					warn!(
-						"Authentication for identity {} method '{}' found in storage but not in MaterializedCatalog",
+						"Authentication for identity {} method '{}' found in storage but not in CatalogCache",
 						identity, method
 					);
 					return Ok(Some(auth));
@@ -187,7 +172,7 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(auth) = self.materialized.find_authentication_by_identity_and_method_at(
+				if let Some(auth) = self.cache.find_authentication_by_identity_and_method_at(
 					identity,
 					method,
 					admin.version(),
@@ -201,7 +186,7 @@ impl Catalog {
 					method,
 				)? {
 					warn!(
-						"Authentication for identity {} method '{}' found in storage but not in MaterializedCatalog",
+						"Authentication for identity {} method '{}' found in storage but not in CatalogCache",
 						identity, method
 					);
 					return Ok(Some(auth));
@@ -210,7 +195,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(auth) = self.materialized.find_authentication_by_identity_and_method_at(
+				if let Some(auth) = self.cache.find_authentication_by_identity_and_method_at(
 					identity,
 					method,
 					qry.version(),
@@ -224,7 +209,7 @@ impl Catalog {
 					method,
 				)? {
 					warn!(
-						"Authentication for identity {} method '{}' found in storage but not in MaterializedCatalog",
+						"Authentication for identity {} method '{}' found in storage but not in CatalogCache",
 						identity, method
 					);
 					return Ok(Some(auth));
@@ -246,7 +231,7 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(auth) = self.materialized.find_authentication_by_identity_and_method_at(
+				if let Some(auth) = self.cache.find_authentication_by_identity_and_method_at(
 					identity,
 					method,
 					t.inner.version(),
@@ -260,7 +245,7 @@ impl Catalog {
 					method,
 				)? {
 					warn!(
-						"Authentication for identity {} method '{}' found in storage but not in MaterializedCatalog",
+						"Authentication for identity {} method '{}' found in storage but not in CatalogCache",
 						identity, method
 					);
 					return Ok(Some(auth));
@@ -269,7 +254,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(auth) = self.materialized.find_authentication_by_identity_and_method_at(
+				if let Some(auth) = self.cache.find_authentication_by_identity_and_method_at(
 					identity,
 					method,
 					rep.version(),
@@ -283,7 +268,7 @@ impl Catalog {
 					method,
 				)? {
 					warn!(
-						"Authentication for identity {} method '{}' found in storage but not in MaterializedCatalog",
+						"Authentication for identity {} method '{}' found in storage but not in CatalogCache",
 						identity, method
 					);
 					return Ok(Some(auth));
@@ -302,11 +287,10 @@ impl Catalog {
 	) -> Result<Vec<Authentication>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				Ok(self.materialized.list_authentications_by_method_at(method, cmd.version()))
+				Ok(self.cache.list_authentications_by_method_at(method, cmd.version()))
 			}
 			Transaction::Admin(admin) => {
-				let mut auths =
-					self.materialized.list_authentications_by_method_at(method, admin.version());
+				let mut auths = self.cache.list_authentications_by_method_at(method, admin.version());
 				for change in &admin.changes.authentication {
 					if let Some(auth) = &change.post
 						&& auth.method == method && !auths
@@ -320,11 +304,10 @@ impl Catalog {
 				Ok(auths)
 			}
 			Transaction::Query(qry) => {
-				Ok(self.materialized.list_authentications_by_method_at(method, qry.version()))
+				Ok(self.cache.list_authentications_by_method_at(method, qry.version()))
 			}
 			Transaction::Test(t) => {
-				let mut auths =
-					self.materialized.list_authentications_by_method_at(method, t.inner.version());
+				let mut auths = self.cache.list_authentications_by_method_at(method, t.inner.version());
 				for change in &t.inner.changes.authentication {
 					if let Some(auth) = &change.post
 						&& auth.method == method && !auths
@@ -338,7 +321,7 @@ impl Catalog {
 				Ok(auths)
 			}
 			Transaction::Replica(rep) => {
-				Ok(self.materialized.list_authentications_by_method_at(method, rep.version()))
+				Ok(self.cache.list_authentications_by_method_at(method, rep.version()))
 			}
 		}
 	}

@@ -18,7 +18,7 @@ fn create_handler_propagates_to_materialized_cache() {
 	);
 
 	let cat = db.catalog();
-	let mat = cat.materialized();
+	let mat = cat.cache();
 	let ns = mat.find_namespace_by_name("demo").unwrap();
 	let handler = mat.find_handler_by_name_at(ns.id(), "on_placed", CommitVersion(u64::MAX)).unwrap();
 	assert_eq!(handler.name, "on_placed");

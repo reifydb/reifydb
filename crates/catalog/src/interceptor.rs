@@ -3,21 +3,21 @@
 
 use reifydb_transaction::interceptor::transaction::{PostCommitContext, PostCommitInterceptor};
 
-use crate::{Result, catalog::Catalog, materialized::MaterializedCatalog};
+use crate::{Result, cache::CatalogCache, catalog::Catalog};
 
-pub struct MaterializedCatalogInterceptor {
-	catalog: MaterializedCatalog,
+pub struct CatalogCacheInterceptor {
+	catalog: CatalogCache,
 }
 
-impl MaterializedCatalogInterceptor {
+impl CatalogCacheInterceptor {
 	pub fn new(catalog: &Catalog) -> Self {
 		Self {
-			catalog: catalog.materialized.clone(),
+			catalog: catalog.cache.clone(),
 		}
 	}
 }
 
-impl PostCommitInterceptor for MaterializedCatalogInterceptor {
+impl PostCommitInterceptor for CatalogCacheInterceptor {
 	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
 		let version = ctx.version;
 
