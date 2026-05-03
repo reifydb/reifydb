@@ -88,18 +88,16 @@ fn emit_select_inner(sel: &SelectStatement, cte_names: &HashSet<String>) -> Resu
 		if !map_exprs.is_empty() {
 			parts.push(format!("MAP {{{map_exprs}}}"));
 		}
-	} else {
-		if sel.distinct {
-			if is_all_columns(&sel.columns) {
-				parts.push("DISTINCT {}".into());
-			} else {
-				let cols = emit_select_columns_plain(&sel.columns)?;
-				parts.push(format!("DISTINCT {{{cols}}}"));
-			}
-		} else if !is_all_columns(&sel.columns) {
-			let cols = emit_select_columns(&sel.columns)?;
-			parts.push(format!("MAP {{{cols}}}"));
+	} else if sel.distinct {
+		if is_all_columns(&sel.columns) {
+			parts.push("DISTINCT {}".into());
+		} else {
+			let cols = emit_select_columns_plain(&sel.columns)?;
+			parts.push(format!("DISTINCT {{{cols}}}"));
 		}
+	} else if !is_all_columns(&sel.columns) {
+		let cols = emit_select_columns(&sel.columns)?;
+		parts.push(format!("MAP {{{cols}}}"));
 	}
 
 	if !sel.order_by.is_empty() {

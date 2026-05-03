@@ -632,10 +632,8 @@ impl EncodedKeyRange {
 				if !end_str.is_empty() {
 					end = Bound::Included(EncodedKey(decode_binary(end_str)));
 				}
-			} else {
-				if !end_part.is_empty() {
-					end = Bound::Excluded(EncodedKey(decode_binary(end_part)));
-				}
+			} else if !end_part.is_empty() {
+				end = Bound::Excluded(EncodedKey(decode_binary(end_part)));
 			}
 
 			Self {

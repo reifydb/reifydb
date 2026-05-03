@@ -501,19 +501,17 @@ impl<'bump> Parser<'bump> {
 		let got = self.current()?;
 		if got.kind == expected {
 			Ok(())
-		} else {
-			if let TokenKind::Identifier = expected {
-				Err(AstError::ExpectedIdentifier {
-					fragment: got.fragment.to_owned(),
-				}
-				.into())
-			} else {
-				Err(AstError::UnexpectedToken {
-					expected: format!("{:?}", expected),
-					fragment: got.fragment.to_owned(),
-				}
-				.into())
+		} else if let TokenKind::Identifier = expected {
+			Err(AstError::ExpectedIdentifier {
+				fragment: got.fragment.to_owned(),
 			}
+			.into())
+		} else {
+			Err(AstError::UnexpectedToken {
+				expected: format!("{:?}", expected),
+				fragment: got.fragment.to_owned(),
+			}
+			.into())
 		}
 	}
 

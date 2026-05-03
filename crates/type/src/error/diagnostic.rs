@@ -129,9 +129,6 @@ impl IntoDiagnostic for TypeError {
 					}
 					(_, OperandCategory::Uuid) => {
 						notes.push("To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string());
-						if matches!(&operator, LogicalOp::Xor) {
-
-						}
 						notes.push("UUID types include Uuid4 and Uuid7".to_string());
 					}
 				}

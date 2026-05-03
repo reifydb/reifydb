@@ -638,7 +638,6 @@ impl Parser {
 				self.advance()?;
 			}
 
-			if !self.is_eof() && matches!(self.tokens.get(self.pos), Some(Token::Keyword(Keyword::Set))) {}
 			columns.push(Column {
 				name,
 				data_type,

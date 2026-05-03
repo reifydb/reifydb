@@ -31,10 +31,10 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 		})
 		.collect();
 
-	if let Some(pending_ver) = pending_version {
-		if !versioned_entries.iter().any(|(v, _)| *v == pending_ver) {
-			versioned_entries.push((pending_ver, 0));
-		}
+	if let Some(pending_ver) = pending_version
+		&& !versioned_entries.iter().any(|(v, _)| *v == pending_ver)
+	{
+		versioned_entries.push((pending_ver, 0));
 	}
 
 	versioned_entries.sort_by(|a, b| b.0.cmp(&a.0));

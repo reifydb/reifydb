@@ -275,17 +275,15 @@ impl TierStorage for MemoryPrimitiveStorage {
 					version: *cur_version,
 					value: cur_value.clone(),
 				});
-			} else {
-				if let Some(versions) = historical.get(key) {
-					for (Reverse(v), value) in versions.range(Reverse(version)..) {
-						if *v <= version {
-							entries.push(RawEntry {
-								key: key.clone(),
-								version: *v,
-								value: value.clone(),
-							});
-							break;
-						}
+			} else if let Some(versions) = historical.get(key) {
+				for (Reverse(v), value) in versions.range(Reverse(version)..) {
+					if *v <= version {
+						entries.push(RawEntry {
+							key: key.clone(),
+							version: *v,
+							value: value.clone(),
+						});
+						break;
 					}
 				}
 			}
@@ -405,17 +403,15 @@ impl TierStorage for MemoryPrimitiveStorage {
 					version: *cur_version,
 					value: cur_value.clone(),
 				});
-			} else {
-				if let Some(versions) = historical.get(key) {
-					for (Reverse(v), value) in versions.range(Reverse(version)..) {
-						if *v <= version {
-							entries.push(RawEntry {
-								key: key.clone(),
-								version: *v,
-								value: value.clone(),
-							});
-							break;
-						}
+			} else if let Some(versions) = historical.get(key) {
+				for (Reverse(v), value) in versions.range(Reverse(version)..) {
+					if *v <= version {
+						entries.push(RawEntry {
+							key: key.clone(),
+							version: *v,
+							value: value.clone(),
+						});
+						break;
 					}
 				}
 			}

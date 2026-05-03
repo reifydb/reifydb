@@ -234,9 +234,9 @@ impl<'bump> Compiler<'bump> {
 			}
 
 			Ast::CallFunction(call_node) => {
-				if call_node.function.namespaces.is_empty() {
-					self.compile_call_function(call_node)
-				} else if call_node.function.namespaces.first().map(|ns| ns.text()) == Some("testing") {
+				if call_node.function.namespaces.is_empty()
+					|| call_node.function.namespaces.first().map(|ns| ns.text()) == Some("testing")
+				{
 					self.compile_call_function(call_node)
 				} else {
 					self.compile_scalar_as_map(Ast::CallFunction(call_node))

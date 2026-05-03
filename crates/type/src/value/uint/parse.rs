@@ -35,17 +35,18 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 		.into());
 	}
 
-	if value.starts_with('-') && value != "-0.0" && value != "-0" {
-		if let Ok(bigint) = value.parse::<BigInt>()
-			&& bigint.sign() == Sign::Minus
-		{
-			return Err(TypeError::NumberOutOfRange {
-				target: Type::Uint,
-				fragment,
-				descriptor: None,
-			}
-			.into());
+	if value.starts_with('-')
+		&& value != "-0.0"
+		&& value != "-0"
+		&& let Ok(bigint) = value.parse::<BigInt>()
+		&& bigint.sign() == Sign::Minus
+	{
+		return Err(TypeError::NumberOutOfRange {
+			target: Type::Uint,
+			fragment,
+			descriptor: None,
 		}
+		.into());
 	}
 
 	match value.parse::<BigInt>() {
@@ -96,21 +97,19 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 						.into())
 					}
 				}
-			} else {
-				if value.contains('-') {
-					Err(TypeError::NumberOutOfRange {
-						target: Type::Uint,
-						fragment,
-						descriptor: None,
-					}
-					.into())
-				} else {
-					Err(TypeError::InvalidNumberFormat {
-						target: Type::Uint,
-						fragment,
-					}
-					.into())
+			} else if value.contains('-') {
+				Err(TypeError::NumberOutOfRange {
+					target: Type::Uint,
+					fragment,
+					descriptor: None,
 				}
+				.into())
+			} else {
+				Err(TypeError::InvalidNumberFormat {
+					target: Type::Uint,
+					fragment,
+				}
+				.into())
 			}
 		}
 	}

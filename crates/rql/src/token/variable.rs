@@ -19,14 +19,14 @@ pub fn scan_variable<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 	cursor.consume();
 
-	if let Some(ch) = cursor.peek() {
-		if is_identifier_start(ch) || ch.is_ascii_digit() {
-			cursor.consume_while(is_identifier_char);
-			return Some(Token {
-				kind: TokenKind::Variable,
-				fragment: cursor.make_fragment(start_pos, start_line, start_column),
-			});
-		}
+	if let Some(ch) = cursor.peek()
+		&& (is_identifier_start(ch) || ch.is_ascii_digit())
+	{
+		cursor.consume_while(is_identifier_char);
+		return Some(Token {
+			kind: TokenKind::Variable,
+			fragment: cursor.make_fragment(start_pos, start_line, start_column),
+		});
 	}
 
 	cursor.restore_state(state);

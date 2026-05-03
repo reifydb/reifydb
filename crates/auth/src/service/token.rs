@@ -37,18 +37,17 @@ impl AuthService {
 		let creds = HashMap::from([("token".to_string(), token.to_string())]);
 
 		for auth in auths {
-			if let Ok(AuthStep::Authenticated) = provider.authenticate(&auth.properties, &creds) {
-				if let Some(ident) = catalog.materialized.find_identity(auth.identity)
-					&& ident.enabled
-				{
-					return Some(Token {
-						id: 0,
-						token: token.to_string(),
-						identity: ident.id,
-						expires_at: None,
-						created_at: DateTime::default(),
-					});
-				}
+			if let Ok(AuthStep::Authenticated) = provider.authenticate(&auth.properties, &creds)
+				&& let Some(ident) = catalog.materialized.find_identity(auth.identity)
+				&& ident.enabled
+			{
+				return Some(Token {
+					id: 0,
+					token: token.to_string(),
+					identity: ident.id,
+					expires_at: None,
+					created_at: DateTime::default(),
+				});
 			}
 		}
 

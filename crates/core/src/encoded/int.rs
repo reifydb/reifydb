@@ -22,20 +22,20 @@ impl RowShape {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int);
 
-		if let Some(i128_val) = value.0.to_i128() {
-			if (-(1i128 << 126)..(1i128 << 126)).contains(&i128_val) {
-				self.remove_dynamic_data(row, index);
+		if let Some(i128_val) = value.0.to_i128()
+			&& (-(1i128 << 126)..(1i128 << 126)).contains(&i128_val)
+		{
+			self.remove_dynamic_data(row, index);
 
-				let packed = MODE_INLINE | ((i128_val as u128) & INLINE_VALUE_MASK);
-				unsafe {
-					ptr::write_unaligned(
-						row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
-						packed.to_le(),
-					);
-				}
-				row.set_valid(index, true);
-				return;
+			let packed = MODE_INLINE | ((i128_val as u128) & INLINE_VALUE_MASK);
+			unsafe {
+				ptr::write_unaligned(
+					row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
+					packed.to_le(),
+				);
 			}
+			row.set_valid(index, true);
+			return;
 		}
 
 		let bytes = value.0.to_signed_bytes_le();

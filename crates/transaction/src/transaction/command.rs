@@ -865,10 +865,10 @@ impl WithInterceptors for CommandTransaction {
 
 impl Drop for CommandTransaction {
 	fn drop(&mut self) {
-		if let Some(mut multi) = self.cmd.take() {
-			if self.state == TransactionState::Active || self.state == TransactionState::Poisoned {
-				let _ = multi.rollback();
-			}
+		if let Some(mut multi) = self.cmd.take()
+			&& (self.state == TransactionState::Active || self.state == TransactionState::Poisoned)
+		{
+			let _ = multi.rollback();
 		}
 	}
 }

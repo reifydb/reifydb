@@ -228,16 +228,15 @@ impl FlowGraphAnalyzer {
 
 		for flow_summary in summaries {
 			for source in &flow_summary.sources {
-				if let ShapeReference::View(view_id) = source {
-					if let Some(&producer_flow_id) = sink_views.get(view_id) {
-						if producer_flow_id != flow_summary.id {
-							dependencies.push(FlowDependency {
-								source_flow: producer_flow_id,
-								target_flow: flow_summary.id,
-								via_view: *view_id,
-							});
-						}
-					}
+				if let ShapeReference::View(view_id) = source
+					&& let Some(&producer_flow_id) = sink_views.get(view_id)
+					&& producer_flow_id != flow_summary.id
+				{
+					dependencies.push(FlowDependency {
+						source_flow: producer_flow_id,
+						target_flow: flow_summary.id,
+						via_view: *view_id,
+					});
 				}
 			}
 		}

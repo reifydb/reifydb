@@ -169,9 +169,7 @@ impl WatermarkState {
 
 	fn register_waiter(&mut self, version: u64, waiter: Arc<WaiterHandle>, done_until: &AtomicU64) {
 		let current = done_until.load(Ordering::SeqCst);
-		if current >= version {
-			waiter.notify();
-		} else if version < current.saturating_sub(OLD_VERSION_THRESHOLD) {
+		if current >= version || version < current.saturating_sub(OLD_VERSION_THRESHOLD) {
 			waiter.notify();
 		} else {
 			self.waiters.entry(version).or_default().push(waiter);

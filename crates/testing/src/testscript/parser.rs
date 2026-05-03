@@ -320,11 +320,11 @@ impl<'a> Parser<'a> {
 		let mut args = Vec::new();
 		loop {
 			self.skip_whitespace();
-			if self.peek_char() == Some('[') {
-				if let Some(parsed_tags) = self.parse_taglist()? {
-					tags.extend(parsed_tags);
-					break;
-				}
+			if self.peek_char() == Some('[')
+				&& let Some(parsed_tags) = self.parse_taglist()?
+			{
+				tags.extend(parsed_tags);
+				break;
 			}
 
 			if silent && self.peek_char() == Some(')') {

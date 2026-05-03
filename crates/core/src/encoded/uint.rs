@@ -24,20 +24,20 @@ impl RowShape {
 
 		let unsigned_value = value.0.to_biguint().unwrap_or(BigUint::from(0u32));
 
-		if let Some(u128_val) = unsigned_value.to_u128() {
-			if u128_val < (1u128 << 127) {
-				self.remove_dynamic_data(row, index);
+		if let Some(u128_val) = unsigned_value.to_u128()
+			&& u128_val < (1u128 << 127)
+		{
+			self.remove_dynamic_data(row, index);
 
-				let packed = MODE_INLINE | (u128_val & INLINE_VALUE_MASK);
-				unsafe {
-					ptr::write_unaligned(
-						row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
-						packed.to_le(),
-					);
-				}
-				row.set_valid(index, true);
-				return;
+			let packed = MODE_INLINE | (u128_val & INLINE_VALUE_MASK);
+			unsafe {
+				ptr::write_unaligned(
+					row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
+					packed.to_le(),
+				);
 			}
+			row.set_valid(index, true);
+			return;
 		}
 
 		let bytes = unsigned_value.to_bytes_le();
