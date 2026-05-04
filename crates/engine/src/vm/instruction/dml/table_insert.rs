@@ -269,22 +269,20 @@ fn insert_validated_table_rows(
 	has_returning: bool,
 	pk: Option<&PkContext<'_>>,
 ) -> Result<Vec<(RowNumber, EncodedRow)>> {
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if has_returning {
-		Vec::with_capacity(validated_rows.len())
-	} else {
-		Vec::new()
-	};
+	let mut owned_rows: Vec<EncodedRow> = validated_rows.to_vec();
+	txn.insert_table(target.table, shape, row_numbers, &mut owned_rows)?;
 
-	for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
-		let stored_row = txn.insert_table(target.table, shape, row.clone(), row_number)?;
-		if has_returning {
-			returned_rows.push((row_number, stored_row));
-		}
-		if let Some(pk) = pk {
+	if let Some(pk) = pk {
+		for (row, &row_number) in owned_rows.iter().zip(row_numbers.iter()) {
 			write_insert_table_pk_index(txn, target, shape, pk, row, row_number)?;
 		}
 	}
-	Ok(returned_rows)
+
+	if has_returning {
+		Ok(row_numbers.iter().copied().zip(owned_rows).collect())
+	} else {
+		Ok(Vec::new())
+	}
 }
 
 #[inline]

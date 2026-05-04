@@ -9,14 +9,14 @@ use crate::interceptor::chain::InterceptorChain;
 
 pub struct SeriesRowPreInsertContext<'a> {
 	pub series: &'a Series,
-	pub row: EncodedRow,
+	pub rows: &'a mut [EncodedRow],
 }
 
 impl<'a> SeriesRowPreInsertContext<'a> {
-	pub fn new(series: &'a Series, row: EncodedRow) -> Self {
+	pub fn new(series: &'a Series, rows: &'a mut [EncodedRow]) -> Self {
 		Self {
 			series,
-			row,
+			rows,
 		}
 	}
 }
@@ -26,11 +26,13 @@ pub trait SeriesRowPreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn SeriesRowPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: SeriesRowPreInsertContext) -> Result<EncodedRow> {
+	pub fn execute(&self, mut ctx: SeriesRowPreInsertContext) -> Result<()> {
+		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
+			assert_eq!(ctx.rows.len(), original_len, "pre_insert interceptor changed row count");
 		}
-		Ok(ctx.row)
+		Ok(())
 	}
 }
 
@@ -81,14 +83,14 @@ where
 
 pub struct SeriesRowPostInsertContext<'a> {
 	pub series: &'a Series,
-	pub row: &'a EncodedRow,
+	pub rows: &'a [EncodedRow],
 }
 
 impl<'a> SeriesRowPostInsertContext<'a> {
-	pub fn new(series: &'a Series, row: &'a EncodedRow) -> Self {
+	pub fn new(series: &'a Series, rows: &'a [EncodedRow]) -> Self {
 		Self {
 			series,
-			row,
+			rows,
 		}
 	}
 }
@@ -153,14 +155,14 @@ where
 
 pub struct SeriesRowPreUpdateContext<'a> {
 	pub series: &'a Series,
-	pub row: EncodedRow,
+	pub rows: &'a mut [EncodedRow],
 }
 
 impl<'a> SeriesRowPreUpdateContext<'a> {
-	pub fn new(series: &'a Series, row: EncodedRow) -> Self {
+	pub fn new(series: &'a Series, rows: &'a mut [EncodedRow]) -> Self {
 		Self {
 			series,
-			row,
+			rows,
 		}
 	}
 }
@@ -170,11 +172,13 @@ pub trait SeriesRowPreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn SeriesRowPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: SeriesRowPreUpdateContext) -> Result<EncodedRow> {
+	pub fn execute(&self, mut ctx: SeriesRowPreUpdateContext) -> Result<()> {
+		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
+			assert_eq!(ctx.rows.len(), original_len, "pre_update interceptor changed row count");
 		}
-		Ok(ctx.row)
+		Ok(())
 	}
 }
 
@@ -225,16 +229,17 @@ where
 
 pub struct SeriesRowPostUpdateContext<'a> {
 	pub series: &'a Series,
-	pub post: &'a EncodedRow,
-	pub pre: &'a EncodedRow,
+	pub posts: &'a [EncodedRow],
+	pub pres: &'a [EncodedRow],
 }
 
 impl<'a> SeriesRowPostUpdateContext<'a> {
-	pub fn new(series: &'a Series, post: &'a EncodedRow, pre: &'a EncodedRow) -> Self {
+	pub fn new(series: &'a Series, posts: &'a [EncodedRow], pres: &'a [EncodedRow]) -> Self {
+		assert_eq!(posts.len(), pres.len(), "posts/pres length mismatch");
 		Self {
 			series,
-			post,
-			pre,
+			posts,
+			pres,
 		}
 	}
 }
@@ -369,14 +374,14 @@ where
 
 pub struct SeriesRowPostDeleteContext<'a> {
 	pub series: &'a Series,
-	pub deleted_row: &'a EncodedRow,
+	pub deleted_rows: &'a [EncodedRow],
 }
 
 impl<'a> SeriesRowPostDeleteContext<'a> {
-	pub fn new(series: &'a Series, deleted_row: &'a EncodedRow) -> Self {
+	pub fn new(series: &'a Series, deleted_rows: &'a [EncodedRow]) -> Self {
 		Self {
 			series,
-			deleted_row,
+			deleted_rows,
 		}
 	}
 }
@@ -442,28 +447,28 @@ where
 pub struct SeriesRowInterceptor;
 
 impl SeriesRowInterceptor {
-	pub fn pre_insert(txn: &mut impl WithInterceptors, series: &Series, row: EncodedRow) -> Result<EncodedRow> {
-		let ctx = SeriesRowPreInsertContext::new(series, row);
+	pub fn pre_insert(txn: &mut impl WithInterceptors, series: &Series, rows: &mut [EncodedRow]) -> Result<()> {
+		let ctx = SeriesRowPreInsertContext::new(series, rows);
 		txn.series_row_pre_insert_interceptors().execute(ctx)
 	}
 
-	pub fn post_insert(txn: &mut impl WithInterceptors, series: &Series, row: &EncodedRow) -> Result<()> {
-		let ctx = SeriesRowPostInsertContext::new(series, row);
+	pub fn post_insert(txn: &mut impl WithInterceptors, series: &Series, rows: &[EncodedRow]) -> Result<()> {
+		let ctx = SeriesRowPostInsertContext::new(series, rows);
 		txn.series_row_post_insert_interceptors().execute(ctx)
 	}
 
-	pub fn pre_update(txn: &mut impl WithInterceptors, series: &Series, row: EncodedRow) -> Result<EncodedRow> {
-		let ctx = SeriesRowPreUpdateContext::new(series, row);
+	pub fn pre_update(txn: &mut impl WithInterceptors, series: &Series, rows: &mut [EncodedRow]) -> Result<()> {
+		let ctx = SeriesRowPreUpdateContext::new(series, rows);
 		txn.series_row_pre_update_interceptors().execute(ctx)
 	}
 
 	pub fn post_update(
 		txn: &mut impl WithInterceptors,
 		series: &Series,
-		post: &EncodedRow,
-		pre: &EncodedRow,
+		posts: &[EncodedRow],
+		pres: &[EncodedRow],
 	) -> Result<()> {
-		let ctx = SeriesRowPostUpdateContext::new(series, post, pre);
+		let ctx = SeriesRowPostUpdateContext::new(series, posts, pres);
 		txn.series_row_post_update_interceptors().execute(ctx)
 	}
 
@@ -472,8 +477,12 @@ impl SeriesRowInterceptor {
 		txn.series_row_pre_delete_interceptors().execute(ctx)
 	}
 
-	pub fn post_delete(txn: &mut impl WithInterceptors, series: &Series, deleted_row: &EncodedRow) -> Result<()> {
-		let ctx = SeriesRowPostDeleteContext::new(series, deleted_row);
+	pub fn post_delete(
+		txn: &mut impl WithInterceptors,
+		series: &Series,
+		deleted_rows: &[EncodedRow],
+	) -> Result<()> {
+		let ctx = SeriesRowPostDeleteContext::new(series, deleted_rows);
 		txn.series_row_post_delete_interceptors().execute(ctx)
 	}
 }

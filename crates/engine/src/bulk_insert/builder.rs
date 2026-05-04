@@ -253,10 +253,11 @@ fn write_table_rows(
 	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), table)?;
 	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[Type::Uint8]));
 
-	for (row, &row_number) in encoded_rows.iter().zip(row_numbers.iter()) {
-		txn.insert_table(table, shape, row.clone(), row_number)?;
+	let mut owned_rows = encoded_rows;
+	txn.insert_table(table, shape, &row_numbers, &mut owned_rows)?;
 
-		if let Some(ref pk_def) = pk_def {
+	if let Some(ref pk_def) = pk_def {
+		for (row, &row_number) in owned_rows.iter().zip(row_numbers.iter()) {
 			write_primary_key_index(
 				txn,
 				table,
@@ -676,9 +677,12 @@ fn insert_series_rows<V: ValidationMode>(
 
 		let row = encode_series_row(series, shape, key_value, &values, key_col_idx, clock);
 
-		let row = SeriesRowInterceptor::pre_insert(txn, series, row)?;
+		let mut rows_buf = [row];
+		SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
+		let [row] = rows_buf;
 		txn.set(&encoded_key, row.clone())?;
-		SeriesRowInterceptor::post_insert(txn, series, &row)?;
+		let rows = [row.clone()];
+		SeriesRowInterceptor::post_insert(txn, series, &rows)?;
 
 		update_series_metadata_for_insert(metadata, key_value);
 		inserted_count += 1;

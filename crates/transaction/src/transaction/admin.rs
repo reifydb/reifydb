@@ -351,8 +351,8 @@ impl AdminTransaction {
 		&self.changes
 	}
 
-	pub fn track_row_change(&mut self, change: RowChange) {
-		self.row_changes.push(change);
+	pub fn track_row_change(&mut self, changes: &[RowChange]) {
+		self.row_changes.extend_from_slice(changes);
 	}
 
 	pub fn track_flow_change(&mut self, change: Change) {
@@ -480,8 +480,8 @@ impl Write for AdminTransaction {
 		AdminTransaction::mark_preexisting(self, key)
 	}
 	#[inline]
-	fn track_row_change(&mut self, change: RowChange) {
-		AdminTransaction::track_row_change(self, change)
+	fn track_row_change(&mut self, changes: &[RowChange]) {
+		AdminTransaction::track_row_change(self, changes)
 	}
 	#[inline]
 	fn track_flow_change(&mut self, change: Change) {

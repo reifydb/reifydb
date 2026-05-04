@@ -199,7 +199,8 @@ fn run_series_delete_with_input(
 				txn.mark_preexisting(&encoded_key)?;
 			}
 			txn.unset(&encoded_key, pre_for_cdc.clone())?;
-			SeriesRowInterceptor::post_delete(txn, series, &pre_for_cdc)?;
+			let pre_rows = [pre_for_cdc.clone()];
+			SeriesRowInterceptor::post_delete(txn, series, &pre_rows)?;
 			deleted_count += 1;
 		}
 
@@ -253,7 +254,8 @@ fn run_series_delete_all(
 			txn.mark_preexisting(key)?;
 		}
 		txn.unset(key, pre_for_cdc.clone())?;
-		SeriesRowInterceptor::post_delete(txn, series, &pre_for_cdc)?;
+		let pre_rows = [pre_for_cdc.clone()];
+		SeriesRowInterceptor::post_delete(txn, series, &pre_rows)?;
 		deleted_count += 1;
 	}
 

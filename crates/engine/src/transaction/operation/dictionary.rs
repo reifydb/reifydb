@@ -39,7 +39,9 @@ pub(crate) trait DictionaryOperations {
 
 impl DictionaryOperations for CommandTransaction {
 	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-		let value = DictionaryRowInterceptor::pre_insert(self, dictionary, value.clone())?;
+		let mut values_buf = [value.clone()];
+		DictionaryRowInterceptor::pre_insert(self, dictionary, &mut values_buf)?;
+		let [value] = values_buf;
 
 		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
@@ -68,7 +70,9 @@ impl DictionaryOperations for CommandTransaction {
 
 		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
 
-		DictionaryRowInterceptor::post_insert(self, dictionary, entry_id, &value)?;
+		let ids = [entry_id];
+		let values = [value.clone()];
+		DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
 
 		Ok(entry_id)
 	}
@@ -103,7 +107,9 @@ impl DictionaryOperations for CommandTransaction {
 
 impl DictionaryOperations for AdminTransaction {
 	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-		let value = DictionaryRowInterceptor::pre_insert(self, dictionary, value.clone())?;
+		let mut values_buf = [value.clone()];
+		DictionaryRowInterceptor::pre_insert(self, dictionary, &mut values_buf)?;
+		let [value] = values_buf;
 
 		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
@@ -132,7 +138,9 @@ impl DictionaryOperations for AdminTransaction {
 
 		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
 
-		DictionaryRowInterceptor::post_insert(self, dictionary, entry_id, &value)?;
+		let ids = [entry_id];
+		let values = [value.clone()];
+		DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
 
 		self.track_flow_change(Change {
 			origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),

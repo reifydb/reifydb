@@ -105,12 +105,16 @@ pub(crate) fn update_series(
 			let key_value = extract_series_update_key_value(&columns, &series, row_idx);
 			let row_number = RowNumber::from(u64::from(row_numbers[row_idx]));
 
-			let row = SeriesRowInterceptor::pre_update(txn, &series, row)?;
+			let mut rows_buf = [row];
+			SeriesRowInterceptor::pre_update(txn, &series, &mut rows_buf)?;
+			let [row] = rows_buf;
 			if txn.get_committed(&encoded_key)?.is_some() {
 				txn.mark_preexisting(&encoded_key)?;
 			}
 			txn.set(&encoded_key, row.clone())?;
-			SeriesRowInterceptor::post_update(txn, &series, &row, &pre_values)?;
+			let posts = [row.clone()];
+			let pres = [pre_values.clone()];
+			SeriesRowInterceptor::post_update(txn, &series, &posts, &pres)?;
 
 			let event = SeriesUpdateEvent {
 				columns: &columns,

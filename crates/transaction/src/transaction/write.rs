@@ -15,7 +15,7 @@ pub trait Write {
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
 	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()>;
 
-	fn track_row_change(&mut self, change: RowChange);
+	fn track_row_change(&mut self, changes: &[RowChange]);
 
 	fn track_flow_change(&mut self, change: Change);
 }

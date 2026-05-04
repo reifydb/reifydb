@@ -161,26 +161,27 @@ fn run_table_delete_with_input(
 	let row_numbers_to_delete = collect_row_numbers_to_delete(exec, txn, &mut input_node, &context, target)?;
 
 	let pk_def = primary_key::get_primary_key(&exec.services.catalog, txn, target.table)?;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
-	let mut deleted_count = 0u64;
 
+	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(row_numbers_to_delete.len());
 	for row_number in row_numbers_to_delete {
 		let row_key = RowKey::encoded(target.table.id, row_number);
 		let row_values = match txn.get(&row_key)? {
 			Some(v) => v.row,
 			None => continue,
 		};
-
 		if let Some(ref pk_def) = pk_def {
 			remove_table_pk_index_for(exec.services, txn, target.table, pk_def, &row_values)?;
 		}
-
-		let deleted_values = txn.remove_from_table(target.table.clone(), row_number)?;
-		if has_returning {
-			returned_rows.push((row_number, deleted_values));
-		}
-		deleted_count += 1;
+		filtered_ids.push(row_number);
 	}
+
+	let removed = txn.remove_from_table(target.table, &filtered_ids)?;
+	let deleted_count = removed.len() as u64;
+	let returned_rows: Vec<(RowNumber, EncodedRow)> = if has_returning {
+		removed
+	} else {
+		Vec::new()
+	};
 	Ok((deleted_count, returned_rows))
 }
 
@@ -227,19 +228,22 @@ fn run_table_delete_all(
 		.range(EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap())), 32)?
 		.collect::<Result<Vec<_>>>()?;
 
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
-	let mut deleted_count = 0u64;
+	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(rows.len());
 	for multi in rows {
 		if let Some(ref pk_def) = pk_def {
 			remove_table_pk_index_for(services, txn, table, pk_def, &multi.row)?;
 		}
 		let row_key = RowKey::decode(&multi.key).expect("valid RowKey encoding");
-		let deleted_values = txn.remove_from_table(table.clone(), row_key.row)?;
-		if has_returning {
-			returned_rows.push((row_key.row, deleted_values));
-		}
-		deleted_count += 1;
+		filtered_ids.push(row_key.row);
 	}
+
+	let removed = txn.remove_from_table(table, &filtered_ids)?;
+	let deleted_count = removed.len() as u64;
+	let returned_rows: Vec<(RowNumber, EncodedRow)> = if has_returning {
+		removed
+	} else {
+		Vec::new()
+	};
 	Ok((deleted_count, returned_rows))
 }
 

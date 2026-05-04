@@ -367,8 +367,8 @@ impl CommandTransaction {
 		self.single.begin_command(keys)
 	}
 
-	pub fn track_row_change(&mut self, change: RowChange) {
-		self.row_changes.push(change);
+	pub fn track_row_change(&mut self, changes: &[RowChange]) {
+		self.row_changes.extend_from_slice(changes);
 	}
 
 	pub fn track_flow_change(&mut self, change: Change) {
@@ -510,8 +510,8 @@ impl Write for CommandTransaction {
 		CommandTransaction::mark_preexisting(self, key)
 	}
 	#[inline]
-	fn track_row_change(&mut self, change: RowChange) {
-		CommandTransaction::track_row_change(self, change)
+	fn track_row_change(&mut self, changes: &[RowChange]) {
+		CommandTransaction::track_row_change(self, changes)
 	}
 	#[inline]
 	fn track_flow_change(&mut self, change: Change) {

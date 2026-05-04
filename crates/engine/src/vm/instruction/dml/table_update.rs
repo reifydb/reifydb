@@ -158,10 +158,11 @@ fn run_table_update(
 			return_error!(engine::missing_row_number_column());
 		}
 
-		let row_numbers = columns.row_numbers.clone();
+		let row_numbers: Vec<RowNumber> = columns.row_numbers.iter().copied().collect();
 		let row_count = columns.row_count();
 
-		for row_idx in 0..row_count {
+		let mut prepared_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let mut row = build_updated_table_row(
 				exec.services,
 				txn,
@@ -171,7 +172,6 @@ fn run_table_update(
 				context,
 				row_idx,
 			)?;
-			let row_number = row_numbers[row_idx];
 			let row_key = RowKey::encoded(target.table.id, row_number);
 
 			if let Some(pk_def) = primary_key::get_primary_key(&exec.services.catalog, txn, target.table)? {
@@ -182,11 +182,13 @@ fn run_table_update(
 				txn.get(&row_key)?.expect("row must exist for update").row.created_at_nanos();
 			row.set_timestamps(old_created_at, exec.services.runtime_context.clock.now_nanos());
 
-			let stored_row = txn.update_table(target.table.clone(), row_number, row)?;
-			if has_returning {
-				returned_rows.push((row_number, stored_row));
-			}
-			updated_count += 1;
+			prepared_rows.push(row);
+		}
+
+		let stored = txn.update_table(target.table, &row_numbers, &mut prepared_rows)?;
+		updated_count += stored.len() as u64;
+		if has_returning {
+			returned_rows.extend(stored);
 		}
 	}
 	Ok((updated_count, returned_rows))

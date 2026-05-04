@@ -12,14 +12,14 @@ use crate::interceptor::chain::InterceptorChain;
 
 pub struct DictionaryRowPreInsertContext<'a> {
 	pub dictionary: &'a Dictionary,
-	pub value: Value,
+	pub values: &'a mut [Value],
 }
 
 impl<'a> DictionaryRowPreInsertContext<'a> {
-	pub fn new(dictionary: &'a Dictionary, value: Value) -> Self {
+	pub fn new(dictionary: &'a Dictionary, values: &'a mut [Value]) -> Self {
 		Self {
 			dictionary,
-			value,
+			values,
 		}
 	}
 }
@@ -29,11 +29,13 @@ pub trait DictionaryRowPreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn DictionaryRowPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: DictionaryRowPreInsertContext) -> Result<Value> {
+	pub fn execute(&self, mut ctx: DictionaryRowPreInsertContext) -> Result<()> {
+		let original_len = ctx.values.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
+			assert_eq!(ctx.values.len(), original_len, "pre_insert interceptor changed values count");
 		}
-		Ok(ctx.value)
+		Ok(())
 	}
 }
 
@@ -84,16 +86,17 @@ where
 
 pub struct DictionaryRowPostInsertContext<'a> {
 	pub dictionary: &'a Dictionary,
-	pub id: DictionaryEntryId,
-	pub value: &'a Value,
+	pub ids: &'a [DictionaryEntryId],
+	pub values: &'a [Value],
 }
 
 impl<'a> DictionaryRowPostInsertContext<'a> {
-	pub fn new(dictionary: &'a Dictionary, id: DictionaryEntryId, value: &'a Value) -> Self {
+	pub fn new(dictionary: &'a Dictionary, ids: &'a [DictionaryEntryId], values: &'a [Value]) -> Self {
+		assert_eq!(ids.len(), values.len(), "ids/values length mismatch");
 		Self {
 			dictionary,
-			id,
-			value,
+			ids,
+			values,
 		}
 	}
 }
@@ -158,16 +161,17 @@ where
 
 pub struct DictionaryRowPreUpdateContext<'a> {
 	pub dictionary: &'a Dictionary,
-	pub id: DictionaryEntryId,
-	pub value: Value,
+	pub ids: &'a [DictionaryEntryId],
+	pub values: &'a mut [Value],
 }
 
 impl<'a> DictionaryRowPreUpdateContext<'a> {
-	pub fn new(dictionary: &'a Dictionary, id: DictionaryEntryId, value: Value) -> Self {
+	pub fn new(dictionary: &'a Dictionary, ids: &'a [DictionaryEntryId], values: &'a mut [Value]) -> Self {
+		assert_eq!(ids.len(), values.len(), "ids/values length mismatch");
 		Self {
 			dictionary,
-			id,
-			value,
+			ids,
+			values,
 		}
 	}
 }
@@ -177,11 +181,13 @@ pub trait DictionaryRowPreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn DictionaryRowPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: DictionaryRowPreUpdateContext) -> Result<Value> {
+	pub fn execute(&self, mut ctx: DictionaryRowPreUpdateContext) -> Result<()> {
+		let original_len = ctx.values.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
+			assert_eq!(ctx.values.len(), original_len, "pre_update interceptor changed values count");
 		}
-		Ok(ctx.value)
+		Ok(())
 	}
 }
 
@@ -232,18 +238,25 @@ where
 
 pub struct DictionaryRowPostUpdateContext<'a> {
 	pub dictionary: &'a Dictionary,
-	pub id: DictionaryEntryId,
-	pub post: &'a Value,
-	pub pre: &'a Value,
+	pub ids: &'a [DictionaryEntryId],
+	pub posts: &'a [Value],
+	pub pres: &'a [Value],
 }
 
 impl<'a> DictionaryRowPostUpdateContext<'a> {
-	pub fn new(dictionary: &'a Dictionary, id: DictionaryEntryId, post: &'a Value, pre: &'a Value) -> Self {
+	pub fn new(
+		dictionary: &'a Dictionary,
+		ids: &'a [DictionaryEntryId],
+		posts: &'a [Value],
+		pres: &'a [Value],
+	) -> Self {
+		assert_eq!(ids.len(), posts.len(), "ids/posts length mismatch");
+		assert_eq!(ids.len(), pres.len(), "ids/pres length mismatch");
 		Self {
 			dictionary,
-			id,
-			post,
-			pre,
+			ids,
+			posts,
+			pres,
 		}
 	}
 }
@@ -308,14 +321,14 @@ where
 
 pub struct DictionaryRowPreDeleteContext<'a> {
 	pub dictionary: &'a Dictionary,
-	pub id: DictionaryEntryId,
+	pub ids: &'a [DictionaryEntryId],
 }
 
 impl<'a> DictionaryRowPreDeleteContext<'a> {
-	pub fn new(dictionary: &'a Dictionary, id: DictionaryEntryId) -> Self {
+	pub fn new(dictionary: &'a Dictionary, ids: &'a [DictionaryEntryId]) -> Self {
 		Self {
 			dictionary,
-			id,
+			ids,
 		}
 	}
 }
@@ -380,16 +393,17 @@ where
 
 pub struct DictionaryRowPostDeleteContext<'a> {
 	pub dictionary: &'a Dictionary,
-	pub id: DictionaryEntryId,
-	pub value: &'a Value,
+	pub ids: &'a [DictionaryEntryId],
+	pub values: &'a [Value],
 }
 
 impl<'a> DictionaryRowPostDeleteContext<'a> {
-	pub fn new(dictionary: &'a Dictionary, id: DictionaryEntryId, value: &'a Value) -> Self {
+	pub fn new(dictionary: &'a Dictionary, ids: &'a [DictionaryEntryId], values: &'a [Value]) -> Self {
+		assert_eq!(ids.len(), values.len(), "ids/values length mismatch");
 		Self {
 			dictionary,
-			id,
-			value,
+			ids,
+			values,
 		}
 	}
 }
@@ -455,58 +469,62 @@ where
 pub struct DictionaryRowInterceptor;
 
 impl DictionaryRowInterceptor {
-	pub fn pre_insert(txn: &mut impl WithInterceptors, dictionary: &Dictionary, value: Value) -> Result<Value> {
-		let ctx = DictionaryRowPreInsertContext::new(dictionary, value);
+	pub fn pre_insert(
+		txn: &mut impl WithInterceptors,
+		dictionary: &Dictionary,
+		values: &mut [Value],
+	) -> Result<()> {
+		let ctx = DictionaryRowPreInsertContext::new(dictionary, values);
 		txn.dictionary_row_pre_insert_interceptors().execute(ctx)
 	}
 
 	pub fn post_insert(
 		txn: &mut impl WithInterceptors,
 		dictionary: &Dictionary,
-		id: DictionaryEntryId,
-		value: &Value,
+		ids: &[DictionaryEntryId],
+		values: &[Value],
 	) -> Result<()> {
-		let ctx = DictionaryRowPostInsertContext::new(dictionary, id, value);
+		let ctx = DictionaryRowPostInsertContext::new(dictionary, ids, values);
 		txn.dictionary_row_post_insert_interceptors().execute(ctx)
 	}
 
 	pub fn pre_update(
 		txn: &mut impl WithInterceptors,
 		dictionary: &Dictionary,
-		id: DictionaryEntryId,
-		value: Value,
-	) -> Result<Value> {
-		let ctx = DictionaryRowPreUpdateContext::new(dictionary, id, value);
+		ids: &[DictionaryEntryId],
+		values: &mut [Value],
+	) -> Result<()> {
+		let ctx = DictionaryRowPreUpdateContext::new(dictionary, ids, values);
 		txn.dictionary_row_pre_update_interceptors().execute(ctx)
 	}
 
 	pub fn post_update(
 		txn: &mut impl WithInterceptors,
 		dictionary: &Dictionary,
-		id: DictionaryEntryId,
-		post: &Value,
-		pre: &Value,
+		ids: &[DictionaryEntryId],
+		posts: &[Value],
+		pres: &[Value],
 	) -> Result<()> {
-		let ctx = DictionaryRowPostUpdateContext::new(dictionary, id, post, pre);
+		let ctx = DictionaryRowPostUpdateContext::new(dictionary, ids, posts, pres);
 		txn.dictionary_row_post_update_interceptors().execute(ctx)
 	}
 
 	pub fn pre_delete(
 		txn: &mut impl WithInterceptors,
 		dictionary: &Dictionary,
-		id: DictionaryEntryId,
+		ids: &[DictionaryEntryId],
 	) -> Result<()> {
-		let ctx = DictionaryRowPreDeleteContext::new(dictionary, id);
+		let ctx = DictionaryRowPreDeleteContext::new(dictionary, ids);
 		txn.dictionary_row_pre_delete_interceptors().execute(ctx)
 	}
 
 	pub fn post_delete(
 		txn: &mut impl WithInterceptors,
 		dictionary: &Dictionary,
-		id: DictionaryEntryId,
-		value: &Value,
+		ids: &[DictionaryEntryId],
+		values: &[Value],
 	) -> Result<()> {
-		let ctx = DictionaryRowPostDeleteContext::new(dictionary, id, value);
+		let ctx = DictionaryRowPostDeleteContext::new(dictionary, ids, values);
 		txn.dictionary_row_post_delete_interceptors().execute(ctx)
 	}
 }

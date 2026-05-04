@@ -17,7 +17,10 @@ use reifydb_type::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	encoded::shape::{RowShape, RowShapeField},
+	encoded::{
+		row::EncodedRow,
+		shape::{RowShape, RowShapeField},
+	},
 	interface::catalog::column::Column as CatalogColumn,
 	return_internal_error,
 	row::Row,
@@ -353,6 +356,34 @@ impl Columns {
 			columns: CowVec::new(buffers),
 			names: CowVec::new(name_vec),
 		}
+	}
+
+	pub fn from_encoded_rows(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedRow]) -> Self {
+		assert_eq!(ids.len(), rows.len(), "ids length must match rows length");
+		let fields = shape.fields();
+		let row_count = rows.len();
+
+		let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
+		for field in fields.iter() {
+			columns_vec.push(ColumnWithName {
+				name: Fragment::internal(&field.name),
+				data: ColumnBuffer::with_capacity(field.constraint.get_type(), row_count),
+			});
+		}
+
+		for encoded in rows {
+			for (i, _) in fields.iter().enumerate() {
+				columns_vec[i].data.push_value(shape.get_value(encoded, i));
+			}
+		}
+
+		let row_numbers: Vec<RowNumber> = ids.to_vec();
+		let created_at: Vec<DateTime> =
+			rows.iter().map(|r| DateTime::from_nanos(r.created_at_nanos())).collect();
+		let updated_at: Vec<DateTime> =
+			rows.iter().map(|r| DateTime::from_nanos(r.updated_at_nanos())).collect();
+
+		Self::with_system_columns(columns_vec, row_numbers, created_at, updated_at)
 	}
 }
 

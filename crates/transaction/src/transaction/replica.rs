@@ -191,7 +191,7 @@ impl Write for ReplicaTransaction {
 		ReplicaTransaction::mark_preexisting(self, key)
 	}
 	#[inline]
-	fn track_row_change(&mut self, _change: RowChange) {}
+	fn track_row_change(&mut self, _changes: &[RowChange]) {}
 	#[inline]
 	fn track_flow_change(&mut self, _change: Change) {}
 }

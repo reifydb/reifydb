@@ -606,8 +606,8 @@ impl<'a> Transaction<'a> {
 		Write::mark_preexisting(self.write_ops(), key)
 	}
 
-	pub fn track_row_change(&mut self, change: RowChange) {
-		Write::track_row_change(self.write_ops(), change)
+	pub fn track_row_change(&mut self, changes: &[RowChange]) {
+		Write::track_row_change(self.write_ops(), changes)
 	}
 
 	pub fn track_flow_change(&mut self, change: Change) {

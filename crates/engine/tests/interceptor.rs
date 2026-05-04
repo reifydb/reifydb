@@ -23,7 +23,7 @@ fn test_table_row_pre_insert_mutates_row() {
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.table_row_pre_insert.add(Arc::new(table_row_pre_insert(|ctx| {
 			let shape = RowShape::from(&ctx.table.columns);
-			shape.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
+			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
 	}));
@@ -44,7 +44,7 @@ fn test_table_row_pre_update_mutates_row() {
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.table_row_pre_update.add(Arc::new(table_row_pre_update(|ctx| {
 			let shape = RowShape::from(&ctx.table.columns);
-			shape.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
+			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
 	}));
@@ -66,7 +66,7 @@ fn test_ringbuffer_row_pre_insert_mutates_row() {
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.ringbuffer_row_pre_insert.add(Arc::new(ringbuffer_row_pre_insert(|ctx| {
 			let shape = RowShape::from(&ctx.ringbuffer.columns);
-			shape.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
+			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
 	}));
@@ -87,7 +87,7 @@ fn test_ringbuffer_row_pre_update_mutates_row() {
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.ringbuffer_row_pre_update.add(Arc::new(ringbuffer_row_pre_update(|ctx| {
 			let shape = RowShape::from(&ctx.ringbuffer.columns);
-			shape.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
+			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
 	}));
@@ -108,7 +108,7 @@ fn test_dictionary_row_pre_insert_mutates_value() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.dictionary_row_pre_insert.add(Arc::new(dictionary_row_pre_insert(|ctx| {
-			ctx.value = Value::Utf8("MUTATED".into());
+			ctx.values[0] = Value::Utf8("MUTATED".into());
 			Ok(())
 		})));
 	}));
@@ -136,7 +136,7 @@ fn test_series_row_pre_insert_mutates_row() {
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.series_row_pre_insert.add(Arc::new(series_row_pre_insert(|ctx| {
 			let shape = series_shape();
-			shape.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
+			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
 	}));
@@ -157,7 +157,7 @@ fn test_series_row_pre_update_mutates_row() {
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.series_row_pre_update.add(Arc::new(series_row_pre_update(|ctx| {
 			let shape = series_shape();
-			shape.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
+			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
 	}));

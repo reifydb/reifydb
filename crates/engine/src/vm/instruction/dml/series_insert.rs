@@ -123,9 +123,12 @@ pub(crate) fn insert_series(
 			let data_values = collect_series_data_values(&columns, &data_columns, row_idx);
 			let row = build_encoded_series_row(services, &series, &shape, key_value, &data_values);
 
-			let row = SeriesRowInterceptor::pre_insert(txn, &series, row)?;
+			let mut rows_buf = [row];
+			SeriesRowInterceptor::pre_insert(txn, &series, &mut rows_buf)?;
+			let [row] = rows_buf;
 			txn.set(&encoded_key, row.clone())?;
-			SeriesRowInterceptor::post_insert(txn, &series, &row)?;
+			let rows = [row.clone()];
+			SeriesRowInterceptor::post_insert(txn, &series, &rows)?;
 
 			if has_returning {
 				returned_rows.push((RowNumber::from(sequence), row.clone()));
