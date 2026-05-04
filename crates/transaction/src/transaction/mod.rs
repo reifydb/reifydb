@@ -257,7 +257,7 @@ impl<'a> TestTransaction<'a> {
 				offset,
 				CommitVersion(0),
 				DateTime::from_nanos(self.inner.clock.now_nanos()),
-			),
+			)?,
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,

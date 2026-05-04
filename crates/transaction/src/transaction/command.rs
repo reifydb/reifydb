@@ -206,23 +206,23 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
-		let mut ctx = self.build_pre_commit_context();
+		let mut ctx = self.build_pre_commit_context()?;
 		self.interceptors.pre_commit.execute(&mut ctx)?;
 		self.finalize_commit(ctx, false)
 	}
 
 	#[inline]
-	fn build_pre_commit_context(&mut self) -> PreCommitContext {
+	fn build_pre_commit_context(&mut self) -> Result<PreCommitContext> {
 		let transaction_writes = collect_transaction_writes(self.pending_writes());
-		PreCommitContext {
+		Ok(PreCommitContext {
 			flow_changes: self
 				.accumulator
-				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos())),
+				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos()))?,
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
-		}
+		})
 	}
 
 	fn finalize_commit(&mut self, ctx: PreCommitContext, unchecked: bool) -> Result<CommitVersion> {
@@ -263,7 +263,7 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
 	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
-		let mut ctx = self.build_pre_commit_context();
+		let mut ctx = self.build_pre_commit_context()?;
 		self.interceptors.pre_commit.execute(&mut ctx)?;
 		self.finalize_commit(ctx, true)
 	}

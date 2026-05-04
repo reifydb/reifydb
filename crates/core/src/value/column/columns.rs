@@ -9,6 +9,7 @@ use std::{
 
 use indexmap::IndexMap;
 use reifydb_type::{
+	Result,
 	fragment::Fragment,
 	util::cowvec::CowVec,
 	value::{Value, constraint::Constraint, datetime::DateTime, row_number::RowNumber, r#type::Type},
@@ -18,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	encoded::shape::{RowShape, RowShapeField},
 	interface::catalog::column::Column as CatalogColumn,
+	return_internal_error,
 	row::Row,
 	value::column::{
 		ColumnBuffer, ColumnWithName, buffer::pool::ColumnBufferPool, data::Column, headers::ColumnHeaders,
@@ -458,6 +460,65 @@ impl Columns {
 				up.push(source.updated_at[idx]);
 			}
 		}
+	}
+
+	pub fn append_all(&mut self, source: Columns) -> Result<()> {
+		if source.row_count() == 0 {
+			return Ok(());
+		}
+
+		if self.columns.is_empty() {
+			*self = source;
+			return Ok(());
+		}
+
+		if self.columns.len() != source.columns.len() {
+			return_internal_error!(
+				"Columns::append_all: column count mismatch (self={}, source={})",
+				self.columns.len(),
+				source.columns.len()
+			);
+		}
+
+		if self.row_numbers.is_empty() != source.row_numbers.is_empty() {
+			return_internal_error!(
+				"Columns::append_all: row_numbers population mismatch (self_empty={}, source_empty={})",
+				self.row_numbers.is_empty(),
+				source.row_numbers.is_empty()
+			);
+		}
+		if self.created_at.is_empty() != source.created_at.is_empty() {
+			return_internal_error!(
+				"Columns::append_all: created_at population mismatch (self_empty={}, source_empty={})",
+				self.created_at.is_empty(),
+				source.created_at.is_empty()
+			);
+		}
+		if self.updated_at.is_empty() != source.updated_at.is_empty() {
+			return_internal_error!(
+				"Columns::append_all: updated_at population mismatch (self_empty={}, source_empty={})",
+				self.updated_at.is_empty(),
+				source.updated_at.is_empty()
+			);
+		}
+
+		let dest_cols = self.columns.make_mut();
+		let source_cols = source.columns.into_inner();
+		for (i, src_col) in source_cols.into_iter().enumerate() {
+			dest_cols[i].extend(src_col)?;
+		}
+
+		if !source.row_numbers.is_empty() {
+			self.row_numbers.extend_from_slice(source.row_numbers.as_slice());
+		}
+		if !source.created_at.is_empty() {
+			self.created_at.extend_from_slice(source.created_at.as_slice());
+		}
+		if !source.updated_at.is_empty() {
+			self.updated_at.extend_from_slice(source.updated_at.as_slice());
+		}
+
+		Ok(())
 	}
 
 	pub fn remove_row(&mut self, row_number: RowNumber) -> bool {

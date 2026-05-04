@@ -26,10 +26,12 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::value::{datetime::DateTime, dictionary::DictionaryId};
+use tracing::instrument;
 
 use crate::ffi::arena::Arena;
 
 impl Arena {
+	#[instrument(name = "flow::marshal::change", level = "trace", skip_all, fields(diff_count = change.diffs.len()))]
 	pub fn marshal_change(&mut self, change: &Change) -> ChangeFFI {
 		let diffs_count = change.diffs.len();
 		let diffs_ptr = if diffs_count > 0 {
@@ -91,6 +93,7 @@ impl Arena {
 		}
 	}
 
+	#[instrument(name = "flow::marshal::diff", level = "trace", skip_all, fields(diff_type = ?diff.kind()))]
 	fn marshal_diff(&mut self, diff: &Diff) -> DiffFFI {
 		match diff {
 			Diff::Insert {

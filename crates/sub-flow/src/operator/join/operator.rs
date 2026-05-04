@@ -3,7 +3,6 @@
 
 use std::sync::{Arc, LazyLock};
 
-use indexmap::IndexMap;
 use postcard::to_stdvec;
 use reifydb_core::{
 	common::{CommitVersion, JoinType},
@@ -628,36 +627,20 @@ impl JoinOperator {
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
 		let keys = self.compute_join_keys(post, compiled_exprs)?;
-		let mut inserts_by_key: IndexMap<Hash128, Vec<usize>> = IndexMap::new();
-		let mut inserts_undefined: Vec<usize> = Vec::new();
 
 		for (row_idx, key) in keys.iter().enumerate() {
-			if let Some(key_hash) = key {
-				inserts_by_key.entry(*key_hash).or_default().push(row_idx);
-			} else {
-				inserts_undefined.push(row_idx);
-			}
-		}
-
-		for (key_hash, indices) in inserts_by_key {
 			let mut ctx = JoinContext {
 				side,
 				state,
 				operator: self,
 				version,
 			};
-			let diffs = self.strategy.handle_insert(txn, post, &indices, &key_hash, &mut ctx)?;
-			result.extend(diffs);
-		}
-
-		for idx in inserts_undefined {
-			let mut ctx = JoinContext {
-				side,
-				state,
-				operator: self,
-				version,
+			let diffs = match key {
+				Some(key_hash) => {
+					self.strategy.handle_insert(txn, post, &[row_idx], key_hash, &mut ctx)?
+				}
+				None => self.strategy.handle_insert_undefined(txn, post, row_idx, &mut ctx)?,
 			};
-			let diffs = self.strategy.handle_insert_undefined(txn, post, idx, &mut ctx)?;
 			result.extend(diffs);
 		}
 
@@ -677,36 +660,20 @@ impl JoinOperator {
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
 		let keys = self.compute_join_keys(pre, compiled_exprs)?;
-		let mut removes_by_key: IndexMap<Hash128, Vec<usize>> = IndexMap::new();
-		let mut removes_undefined: Vec<usize> = Vec::new();
 
 		for (row_idx, key) in keys.iter().enumerate() {
-			if let Some(key_hash) = key {
-				removes_by_key.entry(*key_hash).or_default().push(row_idx);
-			} else {
-				removes_undefined.push(row_idx);
-			}
-		}
-
-		for (key_hash, indices) in removes_by_key {
 			let mut ctx = JoinContext {
 				side,
 				state,
 				operator: self,
 				version,
 			};
-			let diffs = self.strategy.handle_remove(txn, pre, &indices, &key_hash, &mut ctx)?;
-			result.extend(diffs);
-		}
-
-		for idx in removes_undefined {
-			let mut ctx = JoinContext {
-				side,
-				state,
-				operator: self,
-				version,
+			let diffs = match key {
+				Some(key_hash) => {
+					self.strategy.handle_remove(txn, pre, &[row_idx], key_hash, &mut ctx)?
+				}
+				None => self.strategy.handle_remove_undefined(txn, pre, row_idx, &mut ctx)?,
 			};
-			let diffs = self.strategy.handle_remove_undefined(txn, pre, idx, &mut ctx)?;
 			result.extend(diffs);
 		}
 
@@ -730,43 +697,23 @@ impl JoinOperator {
 		let post_keys = self.compute_join_keys(post, compiled_exprs)?;
 		let row_count = post.row_count();
 
-		let mut updates_by_key: IndexMap<(Hash128, Hash128), Vec<usize>> = IndexMap::new();
-		let mut updates_undefined: Vec<usize> = Vec::new();
-
 		for row_idx in 0..row_count {
-			match (pre_keys[row_idx], post_keys[row_idx]) {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
+				version,
+			};
+			let diffs = match (pre_keys[row_idx], post_keys[row_idx]) {
 				(Some(pre_key), Some(post_key)) => {
-					updates_by_key.entry((pre_key, post_key)).or_default().push(row_idx);
+					let keys = UpdateKeys {
+						pre: &pre_key,
+						post: &post_key,
+					};
+					self.strategy.handle_update(txn, pre, post, &[row_idx], keys, &mut ctx)?
 				}
-				_ => {
-					updates_undefined.push(row_idx);
-				}
-			}
-		}
-
-		for ((pre_key, post_key), indices) in updates_by_key {
-			let mut ctx = JoinContext {
-				side,
-				state,
-				operator: self,
-				version,
+				_ => self.strategy.handle_update_undefined(txn, pre, post, row_idx, &mut ctx)?,
 			};
-			let keys = UpdateKeys {
-				pre: &pre_key,
-				post: &post_key,
-			};
-			let diffs = self.strategy.handle_update(txn, pre, post, &indices, keys, &mut ctx)?;
-			result.extend(diffs);
-		}
-
-		for row_idx in updates_undefined {
-			let mut ctx = JoinContext {
-				side,
-				state,
-				operator: self,
-				version,
-			};
-			let diffs = self.strategy.handle_update_undefined(txn, pre, post, row_idx, &mut ctx)?;
 			result.extend(diffs);
 		}
 

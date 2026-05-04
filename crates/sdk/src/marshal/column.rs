@@ -30,11 +30,13 @@ use reifydb_type::{
 	},
 };
 use serde::Serialize;
+use tracing::instrument;
 
 use super::util::column_data_to_type_code;
 use crate::ffi::arena::Arena;
 
 impl Arena {
+	#[instrument(name = "flow::marshal::columns", level = "trace", skip_all, fields(row_count = columns.row_count(), column_count = columns.len()))]
 	pub fn marshal_columns(&mut self, columns: &Columns) -> ColumnsFFI {
 		let row_count = columns.row_count();
 		let column_count = columns.len();
@@ -131,6 +133,7 @@ impl Arena {
 }
 
 impl Arena {
+	#[instrument(name = "flow::marshal::column", level = "trace", skip_all, fields(name = name.text()))]
 	pub(super) fn marshal_column_ref(&mut self, name: &Fragment, data: &ColumnBuffer) -> ColumnFFI {
 		let name_bytes = name.text().as_bytes();
 		let name_buf = BufferFFI {
@@ -343,6 +346,29 @@ impl Arena {
 impl Arena {
 	pub(super) fn marshal_column_data_bytes(&mut self, data: &ColumnBuffer) -> (BufferFFI, BufferFFI) {
 		match data {
+			ColumnBuffer::Option {
+				inner,
+				..
+			} => self.marshal_column_data_bytes(inner),
+			ColumnBuffer::Int {
+				..
+			}
+			| ColumnBuffer::Uint {
+				..
+			}
+			| ColumnBuffer::Decimal {
+				..
+			}
+			| ColumnBuffer::Any(_)
+			| ColumnBuffer::DictionaryId(_) => self.marshal_column_data_serialize(data),
+			_ => self.marshal_column_data_zerocopy(data),
+		}
+	}
+
+	#[instrument(name = "flow::marshal::data::zerocopy", level = "trace", skip_all, fields(type_code = ?column_data_to_type_code(data), row_count = data.len()))]
+	#[inline]
+	pub(super) fn marshal_column_data_zerocopy(&mut self, data: &ColumnBuffer) -> (BufferFFI, BufferFFI) {
+		match data {
 			ColumnBuffer::Bool(container) => {
 				let bytes = container.data().as_packed_bytes();
 				(
@@ -439,6 +465,14 @@ impl Arena {
 				)
 			}
 
+			_ => unreachable!("marshal_column_data_zerocopy received non-zerocopy column type"),
+		}
+	}
+
+	#[instrument(name = "flow::marshal::data::serialize", level = "trace", skip_all, fields(type_code = ?column_data_to_type_code(data), row_count = data.len()))]
+	#[inline]
+	pub(super) fn marshal_column_data_serialize(&mut self, data: &ColumnBuffer) -> (BufferFFI, BufferFFI) {
+		match data {
 			ColumnBuffer::Int {
 				container,
 				..
@@ -480,10 +514,7 @@ impl Arena {
 				self.marshal_serialized(&values)
 			}
 
-			ColumnBuffer::Option {
-				inner,
-				..
-			} => self.marshal_column_data_bytes(inner),
+			_ => unreachable!("marshal_column_data_serialize received non-serialize column type"),
 		}
 	}
 
@@ -541,6 +572,7 @@ impl Arena {
 		)
 	}
 
+	#[instrument(name = "flow::marshal::bitvec", level = "trace", skip_all, fields(len = len))]
 	pub(super) fn marshal_bitvec(&mut self, bitvec: &BitVec, len: usize) -> BufferFFI {
 		let byte_count = len.div_ceil(8);
 		let ptr = self.alloc(byte_count);

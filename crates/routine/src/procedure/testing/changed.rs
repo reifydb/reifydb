@@ -224,17 +224,36 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 			} => ("delete", pre.as_ref(), &empty),
 		};
 
-		op_data.push(op);
-		target_data.push(entry.target.as_str());
+		let row_count = match &entry.diff {
+			Diff::Insert {
+				post,
+			} => post.row_count(),
+			Diff::Update {
+				post,
+				..
+			} => post.row_count(),
+			Diff::Remove {
+				pre,
+			} => pre.row_count(),
+		};
 
-		for (i, field_name) in field_names.iter().enumerate() {
-			let old_val =
-				old_cols.column(field_name).map(|col| col.data().get_value(0)).unwrap_or(Value::none());
-			old_columns[i].push(old_val);
+		for row_idx in 0..row_count {
+			op_data.push(op);
+			target_data.push(entry.target.as_str());
 
-			let new_val =
-				new_cols.column(field_name).map(|col| col.data().get_value(0)).unwrap_or(Value::none());
-			new_columns[i].push(new_val);
+			for (i, field_name) in field_names.iter().enumerate() {
+				let old_val = old_cols
+					.column(field_name)
+					.map(|col| col.data().get_value(row_idx))
+					.unwrap_or(Value::none());
+				old_columns[i].push(old_val);
+
+				let new_val = new_cols
+					.column(field_name)
+					.map(|col| col.data().get_value(row_idx))
+					.unwrap_or(Value::none());
+				new_columns[i].push(new_val);
+			}
 		}
 	}
 
