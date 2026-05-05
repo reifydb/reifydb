@@ -4,83 +4,54 @@
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_sqlite::SqliteConfig;
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryPrimitiveStorage;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use super::sqlite::storage::SqlitePrimitiveStorage;
 use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage};
 
 #[derive(Clone)]
 #[repr(u8)]
-pub enum BufferStorage {
+pub enum MultiBufferTier {
 	Memory(MemoryPrimitiveStorage) = 0,
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	Sqlite(SqlitePrimitiveStorage) = 1,
 }
 
-impl BufferStorage {
+impl MultiBufferTier {
 	pub fn memory() -> Self {
 		Self::Memory(MemoryPrimitiveStorage::new())
 	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite_in_memory() -> Self {
-		Self::Sqlite(SqlitePrimitiveStorage::in_memory())
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(config: SqliteConfig) -> Self {
-		Self::Sqlite(SqlitePrimitiveStorage::new(config))
-	}
 }
 
-impl BufferStorage {
+impl MultiBufferTier {
 	pub fn maintenance(&self) {
 		match self {
 			Self::Memory(_) => {}
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => {
-				s.incremental_vacuum();
-				s.shrink_memory();
-			}
 		}
 	}
 
 	pub fn count_current(&self, table: EntryKind) -> Result<u64> {
 		match self {
 			Self::Memory(s) => s.count_current(table),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.count_current(table),
 		}
 	}
 
 	pub fn count_historical(&self, table: EntryKind) -> Result<u64> {
 		match self {
 			Self::Memory(s) => s.count_historical(table),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.count_historical(table),
 		}
 	}
 
 	pub fn list_all_entry_kinds(&self) -> Result<Vec<EntryKind>> {
 		match self {
 			Self::Memory(s) => s.list_all_entry_kinds(),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.list_all_entry_kinds(),
 		}
 	}
 }
 
-impl TierStorage for BufferStorage {
+impl TierStorage for MultiBufferTier {
 	#[inline]
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
 		match self {
 			Self::Memory(s) => s.get(table, key, version),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.get(table, key, version),
 		}
 	}
 
@@ -88,8 +59,6 @@ impl TierStorage for BufferStorage {
 	fn contains(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<bool> {
 		match self {
 			Self::Memory(s) => s.contains(table, key, version),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.contains(table, key, version),
 		}
 	}
 
@@ -97,8 +66,6 @@ impl TierStorage for BufferStorage {
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.set(version, batches),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.set(version, batches),
 		}
 	}
 
@@ -114,8 +81,6 @@ impl TierStorage for BufferStorage {
 	) -> Result<RangeBatch> {
 		match self {
 			Self::Memory(s) => s.range_next(table, cursor, start, end, version, batch_size),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.range_next(table, cursor, start, end, version, batch_size),
 		}
 	}
 
@@ -131,8 +96,6 @@ impl TierStorage for BufferStorage {
 	) -> Result<RangeBatch> {
 		match self {
 			Self::Memory(s) => s.range_rev_next(table, cursor, start, end, version, batch_size),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, version, batch_size),
 		}
 	}
 
@@ -140,8 +103,6 @@ impl TierStorage for BufferStorage {
 	fn ensure_table(&self, table: EntryKind) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.ensure_table(table),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.ensure_table(table),
 		}
 	}
 
@@ -149,8 +110,6 @@ impl TierStorage for BufferStorage {
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.clear_table(table),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.clear_table(table),
 		}
 	}
 
@@ -158,8 +117,6 @@ impl TierStorage for BufferStorage {
 	fn drop(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.drop(batches),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.drop(batches),
 		}
 	}
 
@@ -167,8 +124,6 @@ impl TierStorage for BufferStorage {
 	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
 		match self {
 			Self::Memory(s) => s.get_all_versions(table, key),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.get_all_versions(table, key),
 		}
 	}
 
@@ -182,13 +137,11 @@ impl TierStorage for BufferStorage {
 	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
 		match self {
 			Self::Memory(s) => s.scan_historical_below(table, cutoff, cursor, batch_size),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.scan_historical_below(table, cutoff, cursor, batch_size),
 		}
 	}
 }
 
-impl TierBackend for BufferStorage {}
+impl TierBackend for MultiBufferTier {}
 
 #[cfg(test)]
 pub mod tests {
@@ -196,22 +149,7 @@ pub mod tests {
 
 	#[test]
 	fn test_memory_backend() {
-		let storage = BufferStorage::memory();
-
-		let key = CowVec::new(b"key".to_vec());
-		let version = CommitVersion(1);
-
-		storage.set(
-			version,
-			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"value".to_vec())))])]),
-		)
-		.unwrap();
-		assert_eq!(storage.get(EntryKind::Multi, &key, version).unwrap().as_deref(), Some(b"value".as_slice()));
-	}
-
-	#[test]
-	fn test_sqlite_backend() {
-		let storage = BufferStorage::sqlite_in_memory();
+		let storage = MultiBufferTier::memory();
 
 		let key = CowVec::new(b"key".to_vec());
 		let version = CommitVersion(1);
@@ -226,35 +164,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next_memory() {
-		let storage = BufferStorage::memory();
-
-		let version = CommitVersion(1);
-		storage.set(
-			version,
-			HashMap::from([(
-				EntryKind::Multi,
-				vec![
-					(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-					(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-					(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
-				],
-			)]),
-		)
-		.unwrap();
-
-		let mut cursor = RangeCursor::new();
-		let batch = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 100)
-			.unwrap();
-
-		assert_eq!(batch.entries.len(), 3);
-		assert!(!batch.has_more);
-		assert!(cursor.exhausted);
-	}
-
-	#[test]
-	fn test_range_next_sqlite() {
-		let storage = BufferStorage::sqlite_in_memory();
+		let storage = MultiBufferTier::memory();
 
 		let version = CommitVersion(1);
 		storage.set(

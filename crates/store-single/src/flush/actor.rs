@@ -24,7 +24,7 @@ use tracing::{debug, error};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::TierStorage;
-use crate::{persistent::PersistentTier, store::DirtyMap};
+use crate::{persistent::SinglePersistentTier, store::DirtyMap};
 
 #[derive(Clone)]
 pub enum FlushMessage {
@@ -44,13 +44,13 @@ pub struct FlushActorState {
 #[allow(dead_code)]
 pub struct FlushActor {
 	dirty: Arc<Mutex<DirtyMap>>,
-	persistent: PersistentTier,
+	persistent: SinglePersistentTier,
 	flush_interval: Duration,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl FlushActor {
-	pub fn new(dirty: Arc<Mutex<DirtyMap>>, persistent: PersistentTier, flush_interval: Duration) -> Self {
+	pub fn new(dirty: Arc<Mutex<DirtyMap>>, persistent: SinglePersistentTier, flush_interval: Duration) -> Self {
 		Self {
 			dirty,
 			persistent,
@@ -61,7 +61,7 @@ impl FlushActor {
 	pub fn spawn(
 		system: &ActorSystem,
 		dirty: Arc<Mutex<DirtyMap>>,
-		persistent: PersistentTier,
+		persistent: SinglePersistentTier,
 		flush_interval: Duration,
 	) -> ActorRef<FlushMessage> {
 		let actor = Self::new(dirty, persistent, flush_interval);

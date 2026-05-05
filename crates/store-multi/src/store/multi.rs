@@ -30,8 +30,8 @@ use super::{
 };
 use crate::{
 	Result,
-	buffer::storage::BufferStorage,
-	persistent::PersistentStorage,
+	buffer::tier::MultiBufferTier,
+	persistent::MultiPersistentTier,
 	tier::{RangeBatch, RangeCursor, TierBatch, TierStorage},
 };
 
@@ -349,9 +349,9 @@ pub fn collected_to_batch(
 
 #[inline]
 fn step_all_tiers(
-	buffer: Option<&BufferStorage>,
+	buffer: Option<&MultiBufferTier>,
 	buffer_cursor: &mut RangeCursor,
-	persistent: Option<&PersistentStorage>,
+	persistent: Option<&MultiPersistentTier>,
 	persistent_cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
 	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
@@ -371,8 +371,8 @@ fn step_all_tiers(
 }
 
 pub fn scan_tiers_latest(
-	buffer: Option<&BufferStorage>,
-	persistent: Option<&PersistentStorage>,
+	buffer: Option<&MultiBufferTier>,
+	persistent: Option<&MultiPersistentTier>,
 	range: EncodedKeyRange,
 	version: CommitVersion,
 	max_keys: usize,

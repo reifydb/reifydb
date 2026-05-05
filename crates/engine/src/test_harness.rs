@@ -175,7 +175,7 @@ impl TestEngineBuilder {
 		let actor_system = ActorSystem::new(pools, Clock::Mock(mock_clock.clone()));
 		let eventbus = EventBus::new(&actor_system);
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
-		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
+		let single_store = SingleStore::testing_memory();
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let runtime = make_test_runtime(&mock_clock);
 		let catalog_cache = CatalogCache::new();

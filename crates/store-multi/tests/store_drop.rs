@@ -22,12 +22,11 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
-	buffer::storage::BufferStorage,
+	buffer::tier::MultiBufferTier,
 	config::{BufferConfig, MultiStoreConfig},
 	store::StandardMultiStore,
 };
 use reifydb_testing::{
-	tempdir::temp_dir,
 	testscript,
 	testscript::{command::Command, runner::run_path},
 };
@@ -35,19 +34,10 @@ use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_memory => test_memory }
-test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let storage = BufferStorage::memory();
+	let storage = MultiBufferTier::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
-}
-
-fn test_sqlite(path: &Path) {
-	temp_dir(|_db_path| {
-		let storage = BufferStorage::sqlite_in_memory();
-		run_path(&mut Runner::new(storage), path)
-	})
-	.expect("test failed")
 }
 
 /// Runs drop tests for multi-version store.
@@ -57,7 +47,7 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(storage: BufferStorage) -> Self {
+	fn new(storage: MultiBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let store = StandardMultiStore::new(MultiStoreConfig {

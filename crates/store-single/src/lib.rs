@@ -17,10 +17,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb_core::{
-	event::EventBus,
-	interface::version::{ComponentType, HasVersion, SystemVersion},
-};
+use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_type::Result;
 
 pub mod buffer;
@@ -30,7 +27,7 @@ pub mod persistent;
 pub mod store;
 pub mod tier;
 
-use config::{BufferConfig, SingleStoreConfig};
+use config::SingleStoreConfig;
 use reifydb_core::{
 	delta::Delta,
 	encoded::key::{EncodedKey, EncodedKeyRange},
@@ -75,17 +72,13 @@ impl SingleStore {
 		SingleStore::Standard(StandardSingleStore::testing_memory())
 	}
 
-	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
-		SingleStore::Standard(StandardSingleStore::testing_memory_with_eventbus(event_bus))
-	}
-
-	pub fn buffer(&self) -> Option<&buffer::tier::BufferTier> {
+	pub fn buffer(&self) -> Option<&buffer::tier::SingleBufferTier> {
 		match self {
 			SingleStore::Standard(store) => store.buffer(),
 		}
 	}
 
-	pub fn persistent(&self) -> Option<&persistent::PersistentTier> {
+	pub fn persistent(&self) -> Option<&persistent::SinglePersistentTier> {
 		match self {
 			SingleStore::Standard(store) => store.persistent(),
 		}
@@ -100,13 +93,6 @@ impl SingleStore {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_persistent_sqlite() -> Self {
 		SingleStore::Standard(StandardSingleStore::testing_memory_with_persistent_sqlite())
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
-		SingleStore::Standard(StandardSingleStore::testing_memory_with_persistent_sqlite_with_eventbus(
-			event_bus,
-		))
 	}
 }
 

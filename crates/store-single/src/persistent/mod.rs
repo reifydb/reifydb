@@ -17,13 +17,13 @@ use sqlite::storage::SqlitePersistentStorage;
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
-pub enum PersistentTier {
+pub enum SinglePersistentTier {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(SqlitePersistentStorage) = 0,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl PersistentTier {
+impl SinglePersistentTier {
 	pub fn sqlite(config: SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePersistentStorage::new(config))
 	}
@@ -34,7 +34,7 @@ impl PersistentTier {
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl TierStorage for PersistentTier {
+impl TierStorage for SinglePersistentTier {
 	#[inline]
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		match self {
@@ -105,7 +105,7 @@ impl TierStorage for PersistentTier {
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-impl TierStorage for PersistentTier {
+impl TierStorage for SinglePersistentTier {
 	fn get(&self, _key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		match *self {}
 	}
@@ -147,4 +147,4 @@ impl TierStorage for PersistentTier {
 	}
 }
 
-impl TierBackend for PersistentTier {}
+impl TierBackend for SinglePersistentTier {}

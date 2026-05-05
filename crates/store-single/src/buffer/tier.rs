@@ -3,47 +3,28 @@
 
 use std::ops::Bound;
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_sqlite::SqliteConfig;
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryPrimitiveStorage;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use super::sqlite::storage::SqlitePrimitiveStorage;
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 #[derive(Clone)]
 #[repr(u8)]
-pub enum BufferTier {
+pub enum SingleBufferTier {
 	Memory(MemoryPrimitiveStorage) = 0,
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	Sqlite(SqlitePrimitiveStorage) = 1,
 }
 
-impl BufferTier {
+impl SingleBufferTier {
 	pub fn memory() -> Self {
 		Self::Memory(MemoryPrimitiveStorage::new())
 	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite_in_memory() -> Self {
-		Self::Sqlite(SqlitePrimitiveStorage::in_memory())
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(config: SqliteConfig) -> Self {
-		Self::Sqlite(SqlitePrimitiveStorage::new(config))
-	}
 }
 
-impl TierStorage for BufferTier {
+impl TierStorage for SingleBufferTier {
 	#[inline]
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		match self {
 			Self::Memory(s) => s.get(key),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.get(key),
 		}
 	}
 
@@ -51,8 +32,6 @@ impl TierStorage for BufferTier {
 	fn contains(&self, key: &[u8]) -> Result<bool> {
 		match self {
 			Self::Memory(s) => s.contains(key),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.contains(key),
 		}
 	}
 
@@ -60,8 +39,6 @@ impl TierStorage for BufferTier {
 	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
 		match self {
 			Self::Memory(s) => s.get_with_tombstone(key),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.get_with_tombstone(key),
 		}
 	}
 
@@ -69,8 +46,6 @@ impl TierStorage for BufferTier {
 	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.set(entries),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.set(entries),
 		}
 	}
 
@@ -84,8 +59,6 @@ impl TierStorage for BufferTier {
 	) -> Result<RangeBatch> {
 		match self {
 			Self::Memory(s) => s.range_next(cursor, start, end, batch_size),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.range_next(cursor, start, end, batch_size),
 		}
 	}
 
@@ -99,8 +72,6 @@ impl TierStorage for BufferTier {
 	) -> Result<RangeBatch> {
 		match self {
 			Self::Memory(s) => s.range_rev_next(cursor, start, end, batch_size),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.range_rev_next(cursor, start, end, batch_size),
 		}
 	}
 
@@ -108,8 +79,6 @@ impl TierStorage for BufferTier {
 	fn ensure_table(&self) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.ensure_table(),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.ensure_table(),
 		}
 	}
 
@@ -117,13 +86,11 @@ impl TierStorage for BufferTier {
 	fn clear_table(&self) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.clear_table(),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.clear_table(),
 		}
 	}
 }
 
-impl TierBackend for BufferTier {}
+impl TierBackend for SingleBufferTier {}
 
 #[cfg(test)]
 pub mod tests {
@@ -131,15 +98,7 @@ pub mod tests {
 
 	#[test]
 	fn test_memory_backend() {
-		let storage = BufferTier::memory();
-
-		storage.set(vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))]).unwrap();
-		assert_eq!(storage.get(b"key").unwrap().as_deref(), Some(b"value".as_slice()));
-	}
-
-	#[test]
-	fn test_sqlite_backend() {
-		let storage = BufferTier::sqlite_in_memory();
+		let storage = SingleBufferTier::memory();
 
 		storage.set(vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))]).unwrap();
 		assert_eq!(storage.get(b"key").unwrap().as_deref(), Some(b"value".as_slice()));
@@ -147,26 +106,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next_memory() {
-		let storage = BufferTier::memory();
-
-		storage.set(vec![
-			(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-			(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-			(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
-		])
-		.unwrap();
-
-		let mut cursor = RangeCursor::new();
-		let batch = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100).unwrap();
-
-		assert_eq!(batch.entries.len(), 3);
-		assert!(!batch.has_more);
-		assert!(cursor.exhausted);
-	}
-
-	#[test]
-	fn test_range_next_sqlite() {
-		let storage = BufferTier::sqlite_in_memory();
+		let storage = SingleBufferTier::memory();
 
 		storage.set(vec![
 			(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),

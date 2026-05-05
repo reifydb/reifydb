@@ -14,7 +14,6 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
-	event::EventBus,
 	interface::store::SingleVersionRow,
 };
 use reifydb_runtime::{
@@ -27,12 +26,12 @@ use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
 
 use crate::{
-	BufferConfig, Result, SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet,
-	SingleVersionRange, SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
-	buffer::tier::BufferTier,
-	config::SingleStoreConfig,
+	Result, SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
+	SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
+	buffer::tier::SingleBufferTier,
+	config::{BufferConfig, SingleStoreConfig},
 	flush::actor::FlushMessage,
-	persistent::PersistentTier,
+	persistent::SinglePersistentTier,
 	tier::{RangeCursor, TierStorage},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -44,13 +43,12 @@ pub type DirtyMap = HashMap<CowVec<u8>, Option<CowVec<u8>>>;
 pub struct StandardSingleStore(Arc<StandardSingleStoreInner>);
 
 pub struct StandardSingleStoreInner {
-	pub(crate) buffer: Option<BufferTier>,
-	pub(crate) persistent: Option<PersistentTier>,
+	pub(crate) buffer: Option<SingleBufferTier>,
+	pub(crate) persistent: Option<SinglePersistentTier>,
 	#[allow(dead_code)]
 	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
 	pub(crate) dirty: Arc<Mutex<DirtyMap>>,
 	_actor_system: ActorSystem,
-	pub(crate) event_bus: EventBus,
 }
 
 impl StandardSingleStore {
@@ -80,7 +78,7 @@ impl StandardSingleStore {
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush_actor): (Option<PersistentTier>, Option<ActorRef<FlushMessage>>) = {
+		let (persistent, flush_actor): (Option<SinglePersistentTier>, Option<ActorRef<FlushMessage>>) = {
 			let _ = config.persistent;
 			(None, None)
 		};
@@ -91,15 +89,14 @@ impl StandardSingleStore {
 			flush_actor,
 			dirty,
 			_actor_system: actor_system,
-			event_bus: config.event_bus,
 		})))
 	}
 
-	pub fn buffer(&self) -> Option<&BufferTier> {
+	pub fn buffer(&self) -> Option<&SingleBufferTier> {
 		self.buffer.as_ref()
 	}
 
-	pub fn persistent(&self) -> Option<&PersistentTier> {
+	pub fn persistent(&self) -> Option<&SinglePersistentTier> {
 		self.persistent.as_ref()
 	}
 
@@ -108,7 +105,9 @@ impl StandardSingleStore {
 			return;
 		};
 
-		self.event_bus.wait_for_completion();
+		if self.dirty.lock().unwrap().is_empty() {
+			return;
+		}
 
 		let waiter = Arc::new(WaiterHandle::new());
 		let waiter_for_msg = Arc::clone(&waiter);
@@ -121,7 +120,7 @@ impl StandardSingleStore {
 			return;
 		}
 
-		waiter.wait_timeout(Duration::from_secs(60));
+		waiter.wait_timeout(Duration::from_secs(5));
 	}
 }
 
@@ -137,18 +136,11 @@ impl StandardSingleStore {
 	pub fn testing_memory() -> Self {
 		let pools = Pools::new(PoolConfig::sync_only());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
-		Self::testing_memory_with_eventbus(EventBus::new(&actor_system))
-	}
-
-	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
-		let pools = Pools::new(PoolConfig::sync_only());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
-				storage: BufferTier::memory(),
+				storage: SingleBufferTier::memory(),
 			}),
 			persistent: None,
-			event_bus,
 			actor_system,
 			clock: Clock::Real,
 		})
@@ -159,19 +151,11 @@ impl StandardSingleStore {
 	pub fn testing_memory_with_persistent_sqlite() -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
-		Self::testing_memory_with_persistent_sqlite_with_eventbus(EventBus::new(&actor_system))
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
-		let pools = Pools::new(PoolConfig::default());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
-				storage: BufferTier::memory(),
+				storage: SingleBufferTier::memory(),
 			}),
 			persistent: Some(PersistentConfig::sqlite_in_memory()),
-			event_bus,
 			actor_system,
 			clock: Clock::Real,
 		})

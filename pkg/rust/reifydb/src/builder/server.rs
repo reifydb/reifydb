@@ -15,7 +15,7 @@ use reifydb_routine::routine::registry::RoutinesConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_runtime::context::clock::Clock;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
-use reifydb_store_multi::buffer::storage::BufferStorage;
+use reifydb_store_multi::buffer::tier::MultiBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
@@ -45,7 +45,7 @@ use reifydb_type::value::Value;
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
-) -> Result<(BufferStorage, PoolConfig)> {
+) -> Result<(MultiBufferTier, PoolConfig)> {
 	let multi_buffer = factory.open_multi_buffer();
 	let persisted = read_configs(
 		Some(&multi_buffer),

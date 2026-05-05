@@ -10,7 +10,7 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
-	buffer::storage::BufferStorage,
+	buffer::tier::MultiBufferTier,
 	config::{BufferConfig, MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
 };
@@ -32,7 +32,7 @@ fn test_snapshot(path: &Path) {
 		let event_bus = EventBus::new(&actor_system);
 		let store = StandardMultiStore::new(MultiStoreConfig {
 			buffer: Some(BufferConfig {
-				storage: BufferStorage::memory(),
+				storage: MultiBufferTier::memory(),
 			}),
 			persistent: Some(PersistentConfig::sqlite_in_memory()),
 			retention: Default::default(),

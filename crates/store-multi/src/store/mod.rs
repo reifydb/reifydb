@@ -15,8 +15,8 @@ use reifydb_runtime::{
 use tracing::instrument;
 
 use crate::{
-	BufferConfig, buffer::storage::BufferStorage, config::MultiStoreConfig, flush::actor::FlushMessage,
-	persistent::PersistentStorage,
+	BufferConfig, buffer::tier::MultiBufferTier, config::MultiStoreConfig, flush::actor::FlushMessage,
+	persistent::MultiPersistentTier,
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
@@ -39,8 +39,8 @@ use crate::Result;
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
 
 pub struct StandardMultiStoreInner {
-	pub(crate) buffer: Option<BufferStorage>,
-	pub(crate) persistent: Option<PersistentStorage>,
+	pub(crate) buffer: Option<MultiBufferTier>,
+	pub(crate) persistent: Option<MultiPersistentTier>,
 
 	pub(crate) drop_actor: Option<ActorRef<DropMessage>>,
 
@@ -96,7 +96,7 @@ impl StandardMultiStore {
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush_actor): (Option<PersistentStorage>, Option<ActorRef<FlushMessage>>) = {
+		let (persistent, flush_actor): (Option<MultiPersistentTier>, Option<ActorRef<FlushMessage>>) = {
 			let _ = config.persistent;
 			(None, None)
 		};
@@ -111,11 +111,11 @@ impl StandardMultiStore {
 		})))
 	}
 
-	pub fn buffer(&self) -> Option<&BufferStorage> {
+	pub fn buffer(&self) -> Option<&MultiBufferTier> {
 		self.buffer.as_ref()
 	}
 
-	pub fn persistent(&self) -> Option<&PersistentStorage> {
+	pub fn persistent(&self) -> Option<&MultiPersistentTier> {
 		self.persistent.as_ref()
 	}
 
@@ -161,7 +161,7 @@ impl StandardMultiStore {
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(MultiStoreConfig {
 			buffer: Some(BufferConfig {
-				storage: BufferStorage::memory(),
+				storage: MultiBufferTier::memory(),
 			}),
 			persistent: None,
 			retention: Default::default(),
@@ -186,7 +186,7 @@ impl StandardMultiStore {
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(MultiStoreConfig {
 			buffer: Some(BufferConfig {
-				storage: BufferStorage::memory(),
+				storage: MultiBufferTier::memory(),
 			}),
 			persistent: Some(PersistentConfig::sqlite_in_memory()),
 			retention: Default::default(),

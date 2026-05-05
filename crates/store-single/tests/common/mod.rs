@@ -17,7 +17,6 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
-	event::EventBus,
 	interface::store::{
 		SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 		SingleVersionRangeRev, SingleVersionRow,
@@ -33,8 +32,8 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_single::{
-	buffer::tier::BufferTier,
-	config::{BufferConfig, SingleStoreConfig},
+	buffer::tier::SingleBufferTier,
+	config::{BufferConfig, PersistentConfig, SingleStoreConfig},
 	store::StandardSingleStore,
 	tier::TierStorage,
 };
@@ -59,19 +58,35 @@ pub struct Runner {
 impl Runner {
 	/// Buffer-only constructor (memory or sqlite buffer, no persistent).
 	#[allow(dead_code)]
-	pub fn new(storage: BufferTier) -> Self {
+	pub fn new(storage: SingleBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
 		let store = StandardSingleStore::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
 				storage,
 			}),
 			persistent: None,
-			event_bus,
 			actor_system,
 			clock: Clock::Real,
 		})
+		.unwrap();
+		Self {
+			store,
+			auto_flush: false,
+		}
+	}
+
+	/// Persistent-only constructor (no buffer). Mirrors `new` for the unbuffered case.
+	#[allow(dead_code)]
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn sqlite_unbuffered(persistent: PersistentConfig) -> Self {
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let store = StandardSingleStore::new(SingleStoreConfig::sqlite_unbuffered(
+			persistent,
+			actor_system,
+			Clock::Real,
+		))
 		.unwrap();
 		Self {
 			store,

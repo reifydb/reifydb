@@ -24,7 +24,7 @@ use tracing::{debug, trace, warn};
 
 use super::{GcStats, QueryWatermark};
 use crate::{
-	buffer::storage::BufferStorage,
+	buffer::tier::MultiBufferTier,
 	store::StandardMultiStore,
 	tier::{HistoricalCursor, TierStorage},
 };
@@ -94,7 +94,7 @@ impl<W: QueryWatermark> Actor<W> {
 	#[inline]
 	fn sweep_all_shapes(
 		&self,
-		buffer: &BufferStorage,
+		buffer: &MultiBufferTier,
 		cutoff: CommitVersion,
 		batch_size: usize,
 		cursors: &mut HashMap<EntryKind, HistoricalCursor>,
@@ -131,7 +131,7 @@ impl<W: QueryWatermark> Actor<W> {
 	}
 
 	#[inline]
-	fn finish_sweep(&self, buffer: &BufferStorage, cutoff: CommitVersion, stats: &GcStats) {
+	fn finish_sweep(&self, buffer: &MultiBufferTier, cutoff: CommitVersion, stats: &GcStats) {
 		if stats.versions_dropped > 0 {
 			buffer.maintenance();
 			debug!(
@@ -153,7 +153,7 @@ impl<W: QueryWatermark> Actor<W> {
 
 	fn sweep_shape(
 		&self,
-		buffer: &BufferStorage,
+		buffer: &MultiBufferTier,
 		entry_kind: EntryKind,
 		cutoff: CommitVersion,
 		batch_size: usize,

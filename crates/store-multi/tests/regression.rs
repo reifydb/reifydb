@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_multi::{
-	buffer::storage::BufferStorage,
+	buffer::tier::MultiBufferTier,
 	tier::{RangeBatch, RangeCursor, TierStorage},
 };
 use reifydb_type::util::cowvec::CowVec;
@@ -28,7 +28,7 @@ fn shape() -> EntryKind {
 	EntryKind::Source(ShapeId::Table(TableId(2024)))
 }
 
-fn drain_forward(s: &BufferStorage, kind: EntryKind, version: CommitVersion, batch_size: usize) -> Vec<Vec<u8>> {
+fn drain_forward(s: &MultiBufferTier, kind: EntryKind, version: CommitVersion, batch_size: usize) -> Vec<Vec<u8>> {
 	let mut cursor = RangeCursor::new();
 	let mut out = Vec::new();
 	loop {
@@ -48,7 +48,7 @@ fn drain_forward(s: &BufferStorage, kind: EntryKind, version: CommitVersion, bat
 
 #[test]
 fn paginated_range_does_not_truncate_when_filtered_key_is_inside_limit_window() {
-	for storage in [BufferStorage::memory(), BufferStorage::sqlite_in_memory()] {
+	for storage in [MultiBufferTier::memory()] {
 		let kind = shape();
 
 		for key in ["a", "b", "d", "e", "f", "g", "h", "i"] {
@@ -70,7 +70,7 @@ fn paginated_range_does_not_truncate_when_filtered_key_is_inside_limit_window() 
 
 #[test]
 fn paginated_range_includes_trailing_tombstone_after_filter_skip() {
-	for storage in [BufferStorage::memory(), BufferStorage::sqlite_in_memory()] {
+	for storage in [MultiBufferTier::memory()] {
 		let kind = shape();
 
 		for key in ["a", "b", "c", "d", "e", "f", "g", "h"] {

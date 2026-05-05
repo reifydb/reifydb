@@ -12,11 +12,10 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format::raw::Raw},
 };
 use reifydb_store_multi::{
-	buffer::storage::BufferStorage,
+	buffer::tier::MultiBufferTier,
 	tier::{RangeCursor, TierStorage},
 };
 use reifydb_testing::{
-	tempdir::temp_dir,
 	testscript,
 	testscript::{
 		command::{ArgumentConsumer, Command},
@@ -27,31 +26,22 @@ use reifydb_type::util::cowvec::CowVec;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/store-multi/tests/scripts/buffer/drop" as buffer_drop_memory => test_memory }
-test_each_path! { in "crates/store-multi/tests/scripts/buffer/drop" as buffer_drop_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let storage = BufferStorage::memory();
+	let storage = MultiBufferTier::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
-}
-
-fn test_sqlite(path: &Path) {
-	temp_dir(|_db_path| {
-		let storage = BufferStorage::sqlite_in_memory();
-		run_path(&mut Runner::new(storage), path)
-	})
-	.expect("test failed")
 }
 
 /// Runs physical drop tests for buffer storage.
 pub struct Runner {
-	storage: BufferStorage,
+	storage: MultiBufferTier,
 	table: EntryKind,
 	/// Current version counter - increments with each write
 	version: u64,
 }
 
 impl Runner {
-	fn new(storage: BufferStorage) -> Self {
+	fn new(storage: MultiBufferTier) -> Self {
 		Self {
 			storage,
 			table: EntryKind::Multi,

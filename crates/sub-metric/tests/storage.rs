@@ -42,7 +42,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_multi::{
 	MultiStore,
-	buffer::storage::BufferStorage,
+	buffer::tier::MultiBufferTier,
 	config::{BufferConfig, MultiStoreConfig},
 	store::StandardMultiStore,
 };
@@ -51,30 +51,18 @@ use reifydb_sub_metric::{
 	actor::MetricCollectorActor,
 	listener::{CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener},
 };
-use reifydb_testing::{
-	tempdir::temp_dir,
-	testscript::{
-		command::Command,
-		runner::{self, Runner as TestRunner},
-	},
+use reifydb_testing::testscript::{
+	command::Command,
+	runner::{self, Runner as TestRunner},
 };
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/sub-metric/tests/scripts/storage" as metric_memory => test_memory }
-test_each_path! { in "crates/sub-metric/tests/scripts/storage" as metric_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let data_storage = BufferStorage::memory();
+	let data_storage = MultiBufferTier::memory();
 	runner::run_path(&mut Runner::new(data_storage), path).expect("test failed")
-}
-
-fn test_sqlite(path: &Path) {
-	temp_dir(|_db_path| {
-		let data_storage = BufferStorage::sqlite_in_memory();
-		runner::run_path(&mut Runner::new(data_storage), path)
-	})
-	.expect("test failed")
 }
 
 #[derive(Clone)]
@@ -124,12 +112,12 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(data_storage: BufferStorage) -> Self {
+	fn new(data_storage: MultiBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 
-		let metrics_storage = SingleStore::testing_memory_with_eventbus(event_bus.clone());
+		let metrics_storage = SingleStore::testing_memory();
 
 		let multi_store = MultiStore::Standard(
 			StandardMultiStore::new(MultiStoreConfig {

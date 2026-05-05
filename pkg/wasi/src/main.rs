@@ -49,7 +49,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
-	buffer::storage::BufferStorage,
+	buffer::tier::MultiBufferTier,
 	config::{BufferConfig, MultiStoreConfig},
 };
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
@@ -89,7 +89,7 @@ impl Bridge {
 
 		let multi_store = MultiStore::standard(MultiStoreConfig {
 			buffer: Some(BufferConfig {
-				storage: BufferStorage::memory(),
+				storage: MultiBufferTier::memory(),
 			}),
 			persistent: None,
 			retention: Default::default(),
@@ -98,7 +98,7 @@ impl Bridge {
 			actor_system: actor_system.clone(),
 			clock: Clock::Real,
 		});
-		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
+		let single_store = SingleStore::testing_memory();
 		// Create transactions
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();

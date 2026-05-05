@@ -22,13 +22,13 @@ use sqlite::storage::SqlitePersistentStorage;
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
-pub enum PersistentStorage {
+pub enum MultiPersistentTier {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(SqlitePersistentStorage) = 0,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl PersistentStorage {
+impl MultiPersistentTier {
 	pub fn sqlite(config: SqliteConfig) -> Self {
 		Self::Sqlite(SqlitePersistentStorage::new(config))
 	}
@@ -39,7 +39,7 @@ impl PersistentStorage {
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl TierStorage for PersistentStorage {
+impl TierStorage for MultiPersistentTier {
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
 		match self {
 			Self::Sqlite(s) => s.get(table, key, version),
@@ -118,7 +118,7 @@ impl TierStorage for PersistentStorage {
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-impl TierStorage for PersistentStorage {
+impl TierStorage for MultiPersistentTier {
 	fn get(&self, _table: EntryKind, _key: &[u8], _version: CommitVersion) -> Result<Option<CowVec<u8>>> {
 		match *self {}
 	}
@@ -178,4 +178,4 @@ impl TierStorage for PersistentStorage {
 	}
 }
 
-impl TierBackend for PersistentStorage {}
+impl TierBackend for MultiPersistentTier {}

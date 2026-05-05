@@ -31,8 +31,8 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
-	buffer::storage::BufferStorage,
-	config::{BufferConfig, MultiStoreConfig},
+	buffer::tier::MultiBufferTier,
+	config::{BufferConfig, MultiStoreConfig, PersistentConfig},
 	store::{
 		StandardMultiStore,
 		router::classify_key,
@@ -65,7 +65,7 @@ impl Runner {
 	/// constructor is only consumed by `store_multi.rs`, so other binaries
 	/// see it as unused.
 	#[allow(dead_code)]
-	pub fn new(storage: BufferStorage) -> Self {
+	pub fn new(storage: MultiBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let store = StandardMultiStore::new(MultiStoreConfig {
@@ -79,6 +79,23 @@ impl Runner {
 			actor_system,
 			clock: Clock::Real,
 		})
+		.unwrap();
+		Self::from_store(store)
+	}
+
+	/// Persistent-only constructor (no buffer). Mirrors `new` for the unbuffered case.
+	#[allow(dead_code)]
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn sqlite_unbuffered(persistent: PersistentConfig) -> Self {
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let event_bus = EventBus::new(&actor_system);
+		let store = StandardMultiStore::new(MultiStoreConfig::sqlite_unbuffered(
+			persistent,
+			actor_system,
+			Clock::Real,
+			event_bus,
+		))
 		.unwrap();
 		Self::from_store(store)
 	}
