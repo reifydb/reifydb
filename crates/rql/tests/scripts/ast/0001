@@ -1,11 +1,15 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-ast 'from users map {id, name}'
+query 'CALL rql::ast("from users map {id, name}")'
 ---
-> └── From @ line 1, column 1 — "from"
->     └── Identifier @ line 1, column 6 — "users"
-> └── Map @ line 1, column 12 — "map"
->     ├── Identifier @ line 1, column 17 — "id"
->     └── Identifier @ line 1, column 21 — "name"
+> +-------+---------+--------------+-------------------------------------------+
+> |  idx  |  depth  |     kind     |                  detail                   |
+> +-------+---------+--------------+-------------------------------------------+
+> |   0   |    0    |     From     |     From @ line 1, column 1 - "from"      |
+> |   1   |    1    |  Identifier  |  Identifier @ line 1, column 6 - "users"  |
+> |   2   |    0    |     Map      |      Map @ line 1, column 12 - "map"      |
+> |   3   |    1    |  Identifier  |   Identifier @ line 1, column 17 - "id"   |
+> |   4   |    1    |  Identifier  |  Identifier @ line 1, column 21 - "name"  |
+> +-------+---------+--------------+-------------------------------------------+
 >

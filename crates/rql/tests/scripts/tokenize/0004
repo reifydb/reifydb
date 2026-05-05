@@ -1,19 +1,21 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-tokenize 'create primary key pk_users on test::users {id}'
+query 'CALL rql::tokenize("create primary key pk_users on test::users {id}")'
 ---
-> Line 1:
->   [  0] Keyword(Create)
->   [  1] Keyword(Primary)
->   [  2] Keyword(Key)
->   [  3] Identifier("pk_users")
->   [  4] Keyword(On)
->   [  5] Identifier("test")
->   [  6] Operator(DoubleColon)
->   [  7] Identifier("users")
->   [  8] Operator(OpenCurly)
->   [  9] Identifier("id")
->   [ 10] Operator(CloseCurly)
->
+> +-------+--------+----------+--------------+---------------+
+> |  idx  |  line  |  column  |     kind     |     value     |
+> +-------+--------+----------+--------------+---------------+
+> |   0   |   1    |    1     |   Keyword    |    Create     |
+> |   1   |   1    |    8     |   Keyword    |    Primary    |
+> |   2   |   1    |    16    |   Keyword    |      Key      |
+> |   3   |   1    |    20    |  Identifier  |   pk_users    |
+> |   4   |   1    |    29    |   Keyword    |      On       |
+> |   5   |   1    |    32    |  Identifier  |     test      |
+> |   6   |   1    |    36    |   Operator   |  DoubleColon  |
+> |   7   |   1    |    38    |  Identifier  |     users     |
+> |   8   |   1    |    44    |   Operator   |   OpenCurly   |
+> |   9   |   1    |    45    |  Identifier  |      id       |
+> |  10   |   1    |    47    |   Operator   |  CloseCurly   |
+> +-------+--------+----------+--------------+---------------+
 >

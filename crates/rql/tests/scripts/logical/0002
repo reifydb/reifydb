@@ -1,0 +1,12 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+query 'CALL rql::logical("from users map {id, name}")'
+---
+> +-------+---------+----------+-------------+------------------+
+> |  idx  |  depth  |  parent  |    kind     |      detail      |
+> +-------+---------+----------+-------------+------------------+
+> |   0   |    0    |   none   |  TableScan  |  default::users  |
+> |   1   |    0    |   none   |     Map     |     id, name     |
+> +-------+---------+----------+-------------+------------------+
+>

@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
+pub mod ast;
+pub mod explain;
+pub mod logical;
+pub mod tokenize;
+
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, r#type::Type},
+};
+
+use crate::routine::error::RoutineError;
+
+pub(super) fn extract_query(params: &Params, procedure: &'static str) -> Result<String, RoutineError> {
+	match params {
+		Params::Positional(args) if args.len() == 1 => match &args[0] {
+			Value::Utf8(s) => Ok(s.as_str().to_string()),
+			other => Err(RoutineError::ProcedureInvalidArgumentType {
+				procedure: Fragment::internal(procedure),
+				argument_index: 0,
+				expected: vec![Type::Utf8],
+				actual: other.get_type(),
+			}),
+		},
+		Params::Positional(args) => Err(RoutineError::ProcedureArityMismatch {
+			procedure: Fragment::internal(procedure),
+			expected: 1,
+			actual: args.len(),
+		}),
+		_ => Err(RoutineError::ProcedureArityMismatch {
+			procedure: Fragment::internal(procedure),
+			expected: 1,
+			actual: 0,
+		}),
+	}
+}

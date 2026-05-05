@@ -1,21 +1,23 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-tokenize 'window { count(*) } with { interval: "5s" }'
+query 'CALL rql::tokenize("window { count(*) } with { interval: \'5s\' }")'
 ---
-> Line 1:
->   [  0] Keyword(Window)
->   [  1] Operator(OpenCurly)
->   [  2] Identifier("count")
->   [  3] Operator(OpenParen)
->   [  4] Operator(Asterisk)
->   [  5] Operator(CloseParen)
->   [  6] Operator(CloseCurly)
->   [  7] Keyword(With)
->   [  8] Operator(OpenCurly)
->   [  9] Identifier("interval")
->   [ 10] Operator(Colon)
->   [ 11] Literal(Text)
->   [ 12] Operator(CloseCurly)
->
+> +-------+--------+----------+--------------+--------------+
+> |  idx  |  line  |  column  |     kind     |    value     |
+> +-------+--------+----------+--------------+--------------+
+> |   0   |   1    |    1     |   Keyword    |    Window    |
+> |   1   |   1    |    8     |   Operator   |  OpenCurly   |
+> |   2   |   1    |    10    |  Identifier  |    count     |
+> |   3   |   1    |    15    |   Operator   |  OpenParen   |
+> |   4   |   1    |    16    |   Operator   |   Asterisk   |
+> |   5   |   1    |    17    |   Operator   |  CloseParen  |
+> |   6   |   1    |    19    |   Operator   |  CloseCurly  |
+> |   7   |   1    |    21    |   Keyword    |     With     |
+> |   8   |   1    |    26    |   Operator   |  OpenCurly   |
+> |   9   |   1    |    28    |  Identifier  |   interval   |
+> |  10   |   1    |    36    |   Operator   |    Colon     |
+> |  11   |   1    |    39    |   Literal    |     Text     |
+> |  12   |   1    |    43    |   Operator   |  CloseCurly  |
+> +-------+--------+----------+--------------+--------------+
 >

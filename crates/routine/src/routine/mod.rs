@@ -67,6 +67,10 @@ pub trait Routine<C: Context>: Send + Sync {
 		true
 	}
 
+	fn attaches_row_metadata(&self) -> bool {
+		true
+	}
+
 	fn execute(&self, ctx: &mut C, args: &Columns) -> Result<Columns, RoutineError>;
 
 	fn call(&self, ctx: &mut C, args: &Columns) -> Result<Columns, RoutineError> {

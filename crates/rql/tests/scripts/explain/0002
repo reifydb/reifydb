@@ -1,0 +1,13 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+query 'CALL rql::explain("from users left join { from orders } as orders using (id, orders.user_id)")'
+---
+> +-------+---------+----------+-------------+-------------------------------+
+> |  idx  |  depth  |  parent  |    kind     |            detail             |
+> +-------+---------+----------+-------------+-------------------------------+
+> |   0   |    0    |   none   |  JoinLeft   |  on=[(id == orders.user_id)]  |
+> |   1   |    1    |    0     |  TableScan  |        default::users         |
+> |   2   |    1    |    0     |  TableScan  |        default::orders        |
+> +-------+---------+----------+-------------+-------------------------------+
+>

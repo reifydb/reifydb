@@ -1,9 +1,0 @@
-# Copyright (c) reifydb.com 2025
-# This file is licensed under the Apache-2.0, see license.md file
-
-logical 'from users left join { from orders } as orders using (id, orders.user_id)'
----
-> └── TableScan default::users
-> └──Join(Left) [(id == orders.user_id)]
->     └── TableScan default::orders
->

@@ -1,25 +1,27 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-tokenize 'window { sum(amount) } with { count: 100, slide: 20 }'
+query 'CALL rql::tokenize("window { sum(amount) } with { count: 100, slide: 20 }")'
 ---
-> Line 1:
->   [  0] Keyword(Window)
->   [  1] Operator(OpenCurly)
->   [  2] Identifier("sum")
->   [  3] Operator(OpenParen)
->   [  4] Identifier("amount")
->   [  5] Operator(CloseParen)
->   [  6] Operator(CloseCurly)
->   [  7] Keyword(With)
->   [  8] Operator(OpenCurly)
->   [  9] Identifier("count")
->   [ 10] Operator(Colon)
->   [ 11] Literal(Number)
->   [ 12] Separator(Comma)
->   [ 13] Identifier("slide")
->   [ 14] Operator(Colon)
->   [ 15] Literal(Number)
->   [ 16] Operator(CloseCurly)
->
+> +-------+--------+----------+--------------+--------------+
+> |  idx  |  line  |  column  |     kind     |    value     |
+> +-------+--------+----------+--------------+--------------+
+> |   0   |   1    |    1     |   Keyword    |    Window    |
+> |   1   |   1    |    8     |   Operator   |  OpenCurly   |
+> |   2   |   1    |    10    |  Identifier  |     sum      |
+> |   3   |   1    |    13    |   Operator   |  OpenParen   |
+> |   4   |   1    |    14    |  Identifier  |    amount    |
+> |   5   |   1    |    20    |   Operator   |  CloseParen  |
+> |   6   |   1    |    22    |   Operator   |  CloseCurly  |
+> |   7   |   1    |    24    |   Keyword    |     With     |
+> |   8   |   1    |    29    |   Operator   |  OpenCurly   |
+> |   9   |   1    |    31    |  Identifier  |    count     |
+> |  10   |   1    |    36    |   Operator   |    Colon     |
+> |  11   |   1    |    38    |   Literal    |    Number    |
+> |  12   |   1    |    41    |  Separator   |    Comma     |
+> |  13   |   1    |    43    |  Identifier  |    slide     |
+> |  14   |   1    |    48    |   Operator   |    Colon     |
+> |  15   |   1    |    50    |   Literal    |    Number    |
+> |  16   |   1    |    53    |   Operator   |  CloseCurly  |
+> +-------+--------+----------+--------------+--------------+
 >

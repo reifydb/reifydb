@@ -1,0 +1,14 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Partial fold: the literal subtree collapses but the column ref remains.
+# The outer column header is preserved.
+query 'CALL rql::explain("from users map { 1 + 2 + age }")'
+---
+> +-------+---------+----------+-------------+--------------------------------------+
+> |  idx  |  depth  |  parent  |    kind     |                detail                |
+> +-------+---------+----------+-------------+--------------------------------------+
+> |   0   |    0    |   none   |     Map     |  (Constant(3) + age) as 1 + 2 + age  |
+> |   1   |    1    |    0     |  TableScan  |            default::users            |
+> +-------+---------+----------+-------------+--------------------------------------+
+>

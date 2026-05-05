@@ -14,6 +14,7 @@ pub mod subscription;
 pub mod testing;
 
 pub mod clock;
+pub mod rql;
 pub mod set;
 
 use std::sync::Arc;
@@ -26,6 +27,10 @@ pub fn default_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfi
 		.register_builtin_procedure(Arc::new(clock::set::ClockSetProcedure::new()))
 		.register_builtin_procedure(Arc::new(clock::advance::ClockAdvanceProcedure::new()))
 		.register_builtin_procedure(Arc::new(identity::inject::IdentityInject::new()))
-		.register_builtin_procedure(Arc::new(subscription::inspect::InspectSubscription::new()));
+		.register_builtin_procedure(Arc::new(subscription::inspect::InspectSubscription::new()))
+		.register_builtin_procedure(Arc::new(rql::tokenize::RqlTokenize::new()))
+		.register_builtin_procedure(Arc::new(rql::ast::RqlAst::new()))
+		.register_builtin_procedure(Arc::new(rql::logical::RqlLogical::new()))
+		.register_builtin_procedure(Arc::new(rql::explain::RqlExplain::new()));
 	testing::register_testing_native_procedures(builder)
 }

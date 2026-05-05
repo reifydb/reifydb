@@ -1,22 +1,24 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-tokenize 'create index idx_active on test::users {email} filter active == true'
+query 'CALL rql::tokenize("create index idx_active on test::users {email} filter active == true")'
 ---
-> Line 1:
->   [  0] Keyword(Create)
->   [  1] Keyword(Index)
->   [  2] Identifier("idx_active")
->   [  3] Keyword(On)
->   [  4] Identifier("test")
->   [  5] Operator(DoubleColon)
->   [  6] Identifier("users")
->   [  7] Operator(OpenCurly)
->   [  8] Identifier("email")
->   [  9] Operator(CloseCurly)
->   [ 10] Keyword(Filter)
->   [ 11] Identifier("active")
->   [ 12] Operator(DoubleEqual)
->   [ 13] Literal(True)
->
+> +-------+--------+----------+--------------+---------------+
+> |  idx  |  line  |  column  |     kind     |     value     |
+> +-------+--------+----------+--------------+---------------+
+> |   0   |   1    |    1     |   Keyword    |    Create     |
+> |   1   |   1    |    8     |   Keyword    |     Index     |
+> |   2   |   1    |    14    |  Identifier  |  idx_active   |
+> |   3   |   1    |    25    |   Keyword    |      On       |
+> |   4   |   1    |    28    |  Identifier  |     test      |
+> |   5   |   1    |    32    |   Operator   |  DoubleColon  |
+> |   6   |   1    |    34    |  Identifier  |     users     |
+> |   7   |   1    |    40    |   Operator   |   OpenCurly   |
+> |   8   |   1    |    41    |  Identifier  |     email     |
+> |   9   |   1    |    46    |   Operator   |  CloseCurly   |
+> |  10   |   1    |    48    |   Keyword    |    Filter     |
+> |  11   |   1    |    55    |  Identifier  |    active     |
+> |  12   |   1    |    62    |   Operator   |  DoubleEqual  |
+> |  13   |   1    |    65    |   Literal    |     True      |
+> +-------+--------+----------+--------------+---------------+
 >

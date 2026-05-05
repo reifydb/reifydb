@@ -1,0 +1,11 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+query 'CALL rql::logical("create index idx_filtered on test::users {email} filter active == true filter age > 18")'
+---
+> +-------+---------+----------+---------------+------------------------------------------------------------+
+> |  idx  |  depth  |  parent  |     kind      |                           detail                           |
+> +-------+---------+----------+---------------+------------------------------------------------------------+
+> |   0   |    0    |   none   |  CreateIndex  |  type=Index name=idx_filtered table=users columns=[email]  |
+> +-------+---------+----------+---------------+------------------------------------------------------------+
+>
