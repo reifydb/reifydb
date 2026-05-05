@@ -57,6 +57,15 @@ impl TierStorage for BufferTier {
 	}
 
 	#[inline]
+	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
+		match self {
+			Self::Memory(s) => s.get_with_tombstone(key),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => s.get_with_tombstone(key),
+		}
+	}
+
+	#[inline]
 	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.set(entries),

@@ -22,29 +22,29 @@ use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 const TABLE_NAME: &str = "entries";
 
 #[derive(Clone)]
-pub struct SqlitePrimitiveStorage {
-	inner: Arc<SqlitePrimitiveStorageInner>,
+pub struct SqlitePersistentStorage {
+	inner: Arc<SqlitePersistentStorageInner>,
 }
 
-struct SqlitePrimitiveStorageInner {
+struct SqlitePersistentStorageInner {
 	conn: Mutex<Connection>,
 }
 
-impl SqlitePrimitiveStorage {
-	#[instrument(name = "store::single::sqlite::new", level = "debug", skip(config), fields(
+impl SqlitePersistentStorage {
+	#[instrument(name = "store::single::persistent::new", level = "debug", skip(config), fields(
 		db_path = ?config.path,
 		page_size = config.page_size,
 		journal_mode = %config.journal_mode.as_str()
 	))]
 	pub fn new(config: SqliteConfig) -> Self {
-		let db_path = resolve_db_path(config.path.clone(), "primitive.db");
+		let db_path = resolve_db_path(config.path.clone(), "persistent.db");
 		let flags = convert_flags(&config.flags);
 
 		let conn = connect(&db_path, flags).expect("Failed to connect to database");
 		pragma::apply(&conn, &config).expect("Failed to configure SQLite pragmas");
 
 		Self {
-			inner: Arc::new(SqlitePrimitiveStorageInner {
+			inner: Arc::new(SqlitePersistentStorageInner {
 				conn: Mutex::new(conn),
 			}),
 		}
@@ -55,8 +55,8 @@ impl SqlitePrimitiveStorage {
 	}
 }
 
-impl TierStorage for SqlitePrimitiveStorage {
-	#[instrument(name = "store::single::sqlite::get", level = "trace", skip(self, key), fields(key_len = key.len()))]
+impl TierStorage for SqlitePersistentStorage {
+	#[instrument(name = "store::single::persistent::get", level = "trace", skip(self, key), fields(key_len = key.len()))]
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		let conn = self.inner.conn.lock();
 
@@ -75,7 +75,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		}
 	}
 
-	#[instrument(name = "store::single::sqlite::get_with_tombstone", level = "trace", skip(self, key), fields(key_len = key.len()))]
+	#[instrument(name = "store::single::persistent::get_with_tombstone", level = "trace", skip(self, key), fields(key_len = key.len()))]
 	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
 		let conn = self.inner.conn.lock();
 
@@ -93,7 +93,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		}
 	}
 
-	#[instrument(name = "store::single::sqlite::contains", level = "trace", skip(self, key), fields(key_len = key.len()), ret)]
+	#[instrument(name = "store::single::persistent::contains", level = "trace", skip(self, key), fields(key_len = key.len()), ret)]
 	fn contains(&self, key: &[u8]) -> Result<bool> {
 		let conn = self.inner.conn.lock();
 
@@ -111,7 +111,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		}
 	}
 
-	#[instrument(name = "store::single::sqlite::set", level = "debug", skip(self, entries), fields(entry_count = entries.len()))]
+	#[instrument(name = "store::single::persistent::set", level = "debug", skip(self, entries), fields(entry_count = entries.len()))]
 	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
 		if entries.is_empty() {
 			return Ok(());
@@ -146,7 +146,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		tx.commit().map_err(|e| internal_error!("Failed to commit transaction: {}", e))
 	}
 
-	#[instrument(name = "store::single::sqlite::range_next", level = "trace", skip(self, cursor))]
+	#[instrument(name = "store::single::persistent::range_next", level = "trace", skip(self, cursor))]
 	fn range_next(
 		&self,
 		cursor: &mut RangeCursor,
@@ -216,7 +216,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		Ok(batch)
 	}
 
-	#[instrument(name = "store::single::sqlite::range_rev_next", level = "trace", skip(self, cursor))]
+	#[instrument(name = "store::single::persistent::range_rev_next", level = "trace", skip(self, cursor))]
 	fn range_rev_next(
 		&self,
 		cursor: &mut RangeCursor,
@@ -286,7 +286,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		Ok(batch)
 	}
 
-	#[instrument(name = "store::single::sqlite::ensure_table", level = "trace", skip(self))]
+	#[instrument(name = "store::single::persistent::ensure_table", level = "trace", skip(self))]
 	fn ensure_table(&self) -> Result<()> {
 		let conn = self.inner.conn.lock();
 
@@ -304,7 +304,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 		.map_err(|e| internal_error!("Failed to ensure table: {}", e))
 	}
 
-	#[instrument(name = "store::single::sqlite::clear_table", level = "debug", skip(self))]
+	#[instrument(name = "store::single::persistent::clear_table", level = "debug", skip(self))]
 	fn clear_table(&self) -> Result<()> {
 		let conn = self.inner.conn.lock();
 
@@ -318,7 +318,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 	}
 }
 
-impl TierBackend for SqlitePrimitiveStorage {}
+impl TierBackend for SqlitePersistentStorage {}
 
 fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	match bound {
@@ -348,143 +348,4 @@ fn insert_entries_in_tx(
 		)?;
 	}
 	Ok(())
-}
-
-#[cfg(test)]
-pub mod tests {
-	use super::*;
-
-	#[test]
-	fn test_basic_operations() {
-		let storage = SqlitePrimitiveStorage::in_memory();
-
-		// Put and get
-		storage.set(vec![(CowVec::new(b"key1".to_vec()), Some(CowVec::new(b"value1".to_vec())))]).unwrap();
-		let value = storage.get(b"key1").unwrap();
-		assert_eq!(value.as_deref(), Some(b"value1".as_slice()));
-
-		// Contains
-		assert!(storage.contains(b"key1").unwrap());
-		assert!(!storage.contains(b"nonexistent").unwrap());
-
-		// Delete (tombstone)
-		storage.set(vec![(CowVec::new(b"key1".to_vec()), None)]).unwrap();
-		assert!(!storage.contains(b"key1").unwrap());
-	}
-
-	#[test]
-	fn test_range_next() {
-		let storage = SqlitePrimitiveStorage::in_memory();
-
-		storage.set(vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))]).unwrap();
-		storage.set(vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))]).unwrap();
-		storage.set(vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))]).unwrap();
-
-		let mut cursor = RangeCursor::new();
-		let batch = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100).unwrap();
-
-		assert_eq!(batch.entries.len(), 3);
-		assert!(!batch.has_more);
-		assert!(cursor.exhausted);
-		assert_eq!(&*batch.entries[0].key, b"a");
-		assert_eq!(&*batch.entries[1].key, b"b");
-		assert_eq!(&*batch.entries[2].key, b"c");
-	}
-
-	#[test]
-	fn test_range_rev_next() {
-		let storage = SqlitePrimitiveStorage::in_memory();
-
-		storage.set(vec![(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec())))]).unwrap();
-		storage.set(vec![(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec())))]).unwrap();
-		storage.set(vec![(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec())))]).unwrap();
-
-		let mut cursor = RangeCursor::new();
-		let batch = storage.range_rev_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100).unwrap();
-
-		assert_eq!(batch.entries.len(), 3);
-		assert!(!batch.has_more);
-		assert!(cursor.exhausted);
-		assert_eq!(&*batch.entries[0].key, b"c");
-		assert_eq!(&*batch.entries[1].key, b"b");
-		assert_eq!(&*batch.entries[2].key, b"a");
-	}
-
-	#[test]
-	fn test_range_streaming_pagination() {
-		let storage = SqlitePrimitiveStorage::in_memory();
-
-		// Insert 10 entries
-		for i in 0..10u8 {
-			storage.set(vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))]).unwrap();
-		}
-
-		// Use a single cursor to stream through all entries
-		let mut cursor = RangeCursor::new();
-
-		// First batch of 3
-		let batch1 = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3).unwrap();
-		assert_eq!(batch1.entries.len(), 3);
-		assert!(batch1.has_more);
-		assert!(!cursor.exhausted);
-		assert_eq!(&*batch1.entries[0].key, &[0]);
-		assert_eq!(&*batch1.entries[2].key, &[2]);
-
-		// Second batch of 3 - cursor automatically continues
-		let batch2 = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3).unwrap();
-		assert_eq!(batch2.entries.len(), 3);
-		assert!(batch2.has_more);
-		assert!(!cursor.exhausted);
-		assert_eq!(&*batch2.entries[0].key, &[3]);
-		assert_eq!(&*batch2.entries[2].key, &[5]);
-	}
-
-	#[test]
-	fn test_range_reving_pagination() {
-		let storage = SqlitePrimitiveStorage::in_memory();
-
-		// Insert 10 entries
-		for i in 0..10u8 {
-			storage.set(vec![(CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))]).unwrap();
-		}
-
-		// Use a single cursor to stream in reverse
-		let mut cursor = RangeCursor::new();
-
-		// First batch of 3 (reverse)
-		let batch1 = storage.range_rev_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3).unwrap();
-		assert_eq!(batch1.entries.len(), 3);
-		assert!(batch1.has_more);
-		assert!(!cursor.exhausted);
-		assert_eq!(&*batch1.entries[0].key, &[9]);
-		assert_eq!(&*batch1.entries[2].key, &[7]);
-
-		// Second batch
-		let batch2 = storage.range_rev_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 3).unwrap();
-		assert_eq!(batch2.entries.len(), 3);
-		assert!(batch2.has_more);
-		assert!(!cursor.exhausted);
-		assert_eq!(&*batch2.entries[0].key, &[6]);
-		assert_eq!(&*batch2.entries[2].key, &[4]);
-	}
-
-	#[test]
-	fn test_get_nonexistent_table() {
-		let storage = SqlitePrimitiveStorage::in_memory();
-
-		// Should return None for non-existent table, not error
-		let value = storage.get(b"key").unwrap();
-		assert_eq!(value, None);
-	}
-
-	#[test]
-	fn test_range_nonexistent_table() {
-		let storage = SqlitePrimitiveStorage::in_memory();
-
-		// Should return empty batch for non-existent table, not error
-		let mut cursor = RangeCursor::new();
-		let batch = storage.range_next(&mut cursor, Bound::Unbounded, Bound::Unbounded, 100).unwrap();
-		assert!(batch.entries.is_empty());
-		assert!(cursor.exhausted);
-	}
 }

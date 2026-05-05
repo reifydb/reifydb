@@ -25,6 +25,8 @@ use reifydb_type::Result;
 
 pub mod buffer;
 pub mod config;
+pub mod flush;
+pub mod persistent;
 pub mod store;
 pub mod tier;
 
@@ -81,6 +83,30 @@ impl SingleStore {
 		match self {
 			SingleStore::Standard(store) => store.buffer(),
 		}
+	}
+
+	pub fn persistent(&self) -> Option<&persistent::PersistentTier> {
+		match self {
+			SingleStore::Standard(store) => store.persistent(),
+		}
+	}
+
+	pub fn flush_pending_blocking(&self) {
+		match self {
+			SingleStore::Standard(store) => store.flush_pending_blocking(),
+		}
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_persistent_sqlite() -> Self {
+		SingleStore::Standard(StandardSingleStore::testing_memory_with_persistent_sqlite())
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
+		SingleStore::Standard(StandardSingleStore::testing_memory_with_persistent_sqlite_with_eventbus(
+			event_bus,
+		))
 	}
 }
 

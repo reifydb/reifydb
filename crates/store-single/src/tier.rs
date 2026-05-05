@@ -64,6 +64,8 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		Ok(self.get(key)?.is_some())
 	}
 
+	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>>;
+
 	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()>;
 
 	fn range_next(

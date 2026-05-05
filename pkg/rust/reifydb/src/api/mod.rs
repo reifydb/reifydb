@@ -17,7 +17,7 @@ use reifydb_store_multi::{
 use reifydb_store_single::{
 	SingleStore,
 	buffer::tier::BufferTier,
-	config::{BufferConfig as SingleBufferConfig, SingleStoreConfig},
+	config::{BufferConfig as SingleBufferConfig, PersistentConfig as SinglePersistentConfig, SingleStoreConfig},
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 
@@ -88,12 +88,14 @@ fn create_memory_store_with(
 		clock: Clock::Real,
 	});
 
-	let single_storage = BufferTier::memory();
 	let single_store = SingleStore::standard(SingleStoreConfig {
 		buffer: Some(SingleBufferConfig {
-			storage: single_storage,
+			storage: BufferTier::memory(),
 		}),
+		persistent: None,
 		event_bus: eventbus.clone(),
+		actor_system: actor_system.clone(),
+		clock: Clock::Real,
 	});
 
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
@@ -128,12 +130,14 @@ fn create_sqlite_store_with(
 		path: single_path,
 		..config.clone()
 	};
-	let single_storage = BufferTier::sqlite(single_config);
 	let single_store = SingleStore::standard(SingleStoreConfig {
 		buffer: Some(SingleBufferConfig {
-			storage: single_storage,
+			storage: BufferTier::memory(),
 		}),
+		persistent: Some(SinglePersistentConfig::sqlite(single_config)),
 		event_bus: eventbus.clone(),
+		actor_system: actor_system.clone(),
+		clock: Clock::Real,
 	});
 
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());

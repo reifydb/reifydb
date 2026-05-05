@@ -13,6 +13,9 @@ use common::Runner;
 test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_memory => test_memory }
 test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_sqlite => test_sqlite }
 
+test_each_path! { in "crates/store-multi/tests/scripts/historical" as store_multi_historical_memory => test_memory }
+test_each_path! { in "crates/store-multi/tests/scripts/historical" as store_multi_historical_sqlite => test_sqlite }
+
 fn test_memory(path: &Path) {
 	let storage = BufferStorage::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")

@@ -2,9 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	collections::BTreeMap,
+	collections::{BTreeMap, HashMap},
 	ops::{Bound, Deref},
-	sync::Arc,
+	sync::{Arc, Mutex},
+	time::Duration,
 };
 
 use reifydb_core::{
@@ -17,9 +18,10 @@ use reifydb_core::{
 	interface::store::SingleVersionRow,
 };
 use reifydb_runtime::{
-	actor::system::ActorSystem,
+	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
+	sync::waiter::WaiterHandle,
 };
 use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
@@ -29,30 +31,97 @@ use crate::{
 	SingleVersionRange, SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
 	buffer::tier::BufferTier,
 	config::SingleStoreConfig,
+	flush::actor::FlushMessage,
+	persistent::PersistentTier,
 	tier::{RangeCursor, TierStorage},
 };
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::{config::PersistentConfig, flush::actor::FlushActor};
+
+pub type DirtyMap = HashMap<CowVec<u8>, Option<CowVec<u8>>>;
 
 #[derive(Clone)]
 pub struct StandardSingleStore(Arc<StandardSingleStoreInner>);
 
 pub struct StandardSingleStoreInner {
 	pub(crate) buffer: Option<BufferTier>,
+	pub(crate) persistent: Option<PersistentTier>,
+	#[allow(dead_code)]
+	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
+	pub(crate) dirty: Arc<Mutex<DirtyMap>>,
+	_actor_system: ActorSystem,
+	pub(crate) event_bus: EventBus,
 }
 
 impl StandardSingleStore {
 	#[instrument(name = "store::single::new", level = "debug", skip(config), fields(
-		has_hot = config.buffer.is_some(),
+		has_buffer = config.buffer.is_some(),
+		has_persistent = config.persistent.is_some(),
 	))]
 	pub fn new(config: SingleStoreConfig) -> Result<Self> {
 		let buffer = config.buffer.map(|c| c.storage);
+		let actor_system = config.actor_system.clone();
+		let dirty: Arc<Mutex<DirtyMap>> = Arc::new(Mutex::new(HashMap::new()));
+
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		let (persistent, flush_actor) = {
+			let persistent_cfg = config.persistent.clone();
+			let persistent = persistent_cfg.as_ref().map(|c| c.storage.clone());
+			let flush_actor = match (persistent.as_ref(), persistent_cfg.as_ref()) {
+				(Some(p), Some(cfg)) => Some(FlushActor::spawn(
+					&actor_system,
+					Arc::clone(&dirty),
+					p.clone(),
+					cfg.flush_interval,
+				)),
+				_ => None,
+			};
+			(persistent, flush_actor)
+		};
+
+		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
+		let (persistent, flush_actor): (Option<PersistentTier>, Option<ActorRef<FlushMessage>>) = {
+			let _ = config.persistent;
+			(None, None)
+		};
 
 		Ok(Self(Arc::new(StandardSingleStoreInner {
 			buffer,
+			persistent,
+			flush_actor,
+			dirty,
+			_actor_system: actor_system,
+			event_bus: config.event_bus,
 		})))
 	}
 
 	pub fn buffer(&self) -> Option<&BufferTier> {
 		self.buffer.as_ref()
+	}
+
+	pub fn persistent(&self) -> Option<&PersistentTier> {
+		self.persistent.as_ref()
+	}
+
+	pub fn flush_pending_blocking(&self) {
+		let Some(actor_ref) = self.flush_actor.as_ref() else {
+			return;
+		};
+
+		self.event_bus.wait_for_completion();
+
+		let waiter = Arc::new(WaiterHandle::new());
+		let waiter_for_msg = Arc::clone(&waiter);
+		if actor_ref
+			.send_blocking(FlushMessage::FlushPending {
+				waiter: waiter_for_msg,
+			})
+			.is_err()
+		{
+			return;
+		}
+
+		waiter.wait_timeout(Duration::from_secs(60));
 	}
 }
 
@@ -72,11 +141,39 @@ impl StandardSingleStore {
 	}
 
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
+		let pools = Pools::new(PoolConfig::sync_only());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
 				storage: BufferTier::memory(),
 			}),
+			persistent: None,
 			event_bus,
+			actor_system,
+			clock: Clock::Real,
+		})
+		.unwrap()
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_persistent_sqlite() -> Self {
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
+		Self::testing_memory_with_persistent_sqlite_with_eventbus(EventBus::new(&actor_system))
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
+		Self::new(SingleStoreConfig {
+			buffer: Some(BufferConfig {
+				storage: BufferTier::memory(),
+			}),
+			persistent: Some(PersistentConfig::sqlite_in_memory()),
+			event_bus,
+			actor_system,
+			clock: Clock::Real,
 		})
 		.unwrap()
 	}
@@ -85,8 +182,21 @@ impl StandardSingleStore {
 impl SingleVersionGet for StandardSingleStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
-		if let Some(buffer) = &self.buffer
-			&& let Some(value) = buffer.get(key.as_ref())?
+		if let Some(buffer) = &self.buffer {
+			match buffer.get_with_tombstone(key.as_ref())? {
+				Some(Some(value)) => {
+					return Ok(Some(SingleVersionRow {
+						key: key.clone(),
+						row: EncodedRow(value),
+					}));
+				}
+				Some(None) => return Ok(None),
+				None => {}
+			}
+		}
+
+		if let Some(persistent) = &self.persistent
+			&& let Some(value) = persistent.get(key.as_ref())?
 		{
 			return Ok(Some(SingleVersionRow {
 				key: key.clone(),
@@ -101,8 +211,16 @@ impl SingleVersionGet for StandardSingleStore {
 impl SingleVersionContains for StandardSingleStore {
 	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())), ret)]
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		if let Some(buffer) = &self.buffer
-			&& buffer.contains(key.as_ref())?
+		if let Some(buffer) = &self.buffer {
+			match buffer.get_with_tombstone(key.as_ref())? {
+				Some(Some(_)) => return Ok(true),
+				Some(None) => return Ok(false),
+				None => {}
+			}
+		}
+
+		if let Some(persistent) = &self.persistent
+			&& persistent.contains(key.as_ref())?
 		{
 			return Ok(true);
 		}
@@ -114,11 +232,7 @@ impl SingleVersionContains for StandardSingleStore {
 impl SingleVersionCommit for StandardSingleStore {
 	#[instrument(name = "store::single::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
 	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
-		let Some(storage) = &self.buffer else {
-			return Ok(());
-		};
-
-		let entries: Vec<_> = deltas
+		let entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)> = deltas
 			.iter()
 			.map(|delta| match delta {
 				Delta::Set {
@@ -138,7 +252,17 @@ impl SingleVersionCommit for StandardSingleStore {
 			})
 			.collect();
 
-		storage.set(entries)?;
+		if let Some(buffer) = &self.buffer {
+			buffer.set(entries.clone())?;
+			if self.persistent.is_some() {
+				let mut dirty = self.dirty.lock().unwrap();
+				for (key, value) in entries {
+					dirty.insert(key, value);
+				}
+			}
+		} else if let Some(persistent) = &self.persistent {
+			persistent.set(entries)?;
+		}
 
 		Ok(())
 	}
@@ -160,6 +284,27 @@ impl SingleVersionRange for StandardSingleStore {
 			loop {
 				let batch =
 					buffer.range_next(&mut cursor, bound_as_ref(&start), bound_as_ref(&end), 4096)?;
+
+				for entry in batch.entries {
+					all_entries.entry(entry.key).or_insert(entry.value);
+				}
+
+				if cursor.exhausted {
+					break;
+				}
+			}
+		}
+
+		if let Some(persistent) = &self.persistent {
+			let mut cursor = RangeCursor::new();
+
+			loop {
+				let batch = persistent.range_next(
+					&mut cursor,
+					bound_as_ref(&start),
+					bound_as_ref(&end),
+					4096,
+				)?;
 
 				for entry in batch.entries {
 					all_entries.entry(entry.key).or_insert(entry.value);
@@ -203,6 +348,27 @@ impl SingleVersionRangeRev for StandardSingleStore {
 
 			loop {
 				let batch = buffer.range_rev_next(
+					&mut cursor,
+					bound_as_ref(&start),
+					bound_as_ref(&end),
+					4096,
+				)?;
+
+				for entry in batch.entries {
+					all_entries.entry(entry.key).or_insert(entry.value);
+				}
+
+				if cursor.exhausted {
+					break;
+				}
+			}
+		}
+
+		if let Some(persistent) = &self.persistent {
+			let mut cursor = RangeCursor::new();
+
+			loop {
+				let batch = persistent.range_rev_next(
 					&mut cursor,
 					bound_as_ref(&start),
 					bound_as_ref(&end),
