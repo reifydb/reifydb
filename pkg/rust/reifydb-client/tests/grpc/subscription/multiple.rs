@@ -116,17 +116,15 @@ fn test_changes_routed_to_correct_subscription() {
 		// Insert only into table1
 		client.command(&format!("INSERT test::{} [{{ id: 100 }}]", table1), None).await.unwrap();
 
-		// Sub1 should receive the change
-		let frames1 = recv_with_timeout(&mut sub1, 5000).await;
-		assert!(frames1.is_some(), "Sub1 should receive change");
+		let change1 = recv_with_timeout(&mut sub1, 5000).await;
+		assert!(change1.is_some(), "Sub1 should receive change");
 
-		let frame = &frames1.unwrap()[0];
+		let frame = &change1.unwrap().frames[0];
 		let id_col = find_column(frame, "id").unwrap();
 		assert_eq!(id_col.data.get_value(0), Value::Int4(100));
 
-		// Sub2 should NOT receive any change (short timeout)
-		let frames2 = recv_with_timeout(&mut sub2, 500).await;
-		assert!(frames2.is_none(), "Sub2 should NOT receive change for table1 insert");
+		let change2 = recv_with_timeout(&mut sub2, 500).await;
+		assert!(change2.is_none(), "Sub2 should NOT receive change for table1 insert");
 
 		drop(sub1);
 		drop(sub2);

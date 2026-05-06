@@ -32,11 +32,11 @@ fn test_filtered_subscription() {
 		// Insert matching data
 		client.command(&format!("INSERT test::{} [{{ id: 15, value: 150 }}]", table), None).await.unwrap();
 
-		let frames = recv_with_timeout(&mut sub, 5000).await;
-		assert!(frames.is_some(), "Should receive matching insert");
+		let change = recv_with_timeout(&mut sub, 5000).await;
+		assert!(change.is_some(), "Should receive matching insert");
 
-		let frames = frames.unwrap();
-		let id_col = find_column(&frames[0], "id").unwrap();
+		let change = change.unwrap();
+		let id_col = find_column(&change.frames[0], "id").unwrap();
 		assert_eq!(id_col.data.get_value(0), Value::Int4(15));
 
 		drop(sub);

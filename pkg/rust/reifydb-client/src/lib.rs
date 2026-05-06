@@ -13,6 +13,8 @@ pub enum WireFormat {
 	Rbcf,
 }
 
+#[cfg(any(feature = "ws", feature = "grpc"))]
+mod changes;
 #[cfg(all(feature = "dst", reifydb_single_threaded))]
 pub mod dst;
 #[cfg(feature = "grpc")]
@@ -36,17 +38,17 @@ use std::sync::Arc;
 pub use dst::DstClient;
 #[cfg(feature = "grpc")]
 pub use grpc::{
-	BatchFramesEnvelope, BatchGrpcSubscription, BatchMemberHandle, BatchStreamEvent, GrpcClient, GrpcSubscription,
-	RawChangePayload,
+	BatchFramesEnvelope, BatchGrpcSubscription, BatchMemberHandle, BatchStreamEvent, GrpcChange, GrpcClient,
+	GrpcSubscription, RawChangePayload,
 };
 #[cfg(feature = "http")]
 pub use http::HttpClient;
 // Re-export derive macro
 pub use reifydb_client_derive::FromFrame;
-// Re-export commonly used types from reifydb-type
 pub use reifydb_type as r#type;
 pub use reifydb_type::{
 	params::Params,
+	value,
 	value::{
 		Value,
 		frame::{
@@ -404,25 +406,51 @@ pub struct LogoutResponsePayload {
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
-/// Server-initiated push message (no request id).
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum ServerPush {
-	Change(ChangePayload),
-	BatchChange(BatchChangePayload),
+	Change(WireChangePayload),
+	BatchChange(WireBatchChangePayload),
 	BatchMemberClosed(BatchMemberClosedPayload),
 	BatchClosed(BatchClosedPayload),
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
-/// Payload for subscription change notifications.
-///
-/// For JSON pushes, `body` holds the JSON frames body and `frames` is `None`.
-/// For RBCF pushes, the client decodes the binary envelope and populates
-/// `frames` directly; `body` is empty and `content_type` is `application/vnd.reifydb.rbcf`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WireChangePayload {
+	pub subscription_id: String,
+	pub content_type: String,
+	pub body: JsonValue,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WireBatchChangePayload {
+	pub batch_id: String,
+	pub entries: Vec<WireBatchChangeEntry>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WireBatchChangeEntry {
+	pub subscription_id: String,
+	pub content_type: String,
+	pub body: JsonValue,
+}
+
+#[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeKind {
+	Insert,
+	Update,
+	Remove,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChangePayload {
 	pub subscription_id: String,
+	pub kind: ChangeKind,
 	pub content_type: String,
 	pub body: JsonValue,
 	#[serde(skip, default)]
@@ -440,6 +468,7 @@ pub struct BatchChangePayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchChangeEntry {
 	pub subscription_id: String,
+	pub kind: ChangeKind,
 	pub content_type: String,
 	pub body: JsonValue,
 	#[serde(skip, default)]

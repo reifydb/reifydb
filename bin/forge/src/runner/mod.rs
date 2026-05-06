@@ -83,8 +83,8 @@ pub fn start(url: &str) {
 
 		loop {
 			match subscription.recv().await {
-				Some(frames) => {
-					process_frames(&frames, &client);
+				Some(change) => {
+					process_frames(&change.frames, &client);
 				}
 				None => {
 					error!(

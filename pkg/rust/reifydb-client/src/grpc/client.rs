@@ -52,7 +52,10 @@ use super::generated::{
 	command_response, operation_response, params::Params as ProtoParamsOneof, query_response,
 	reify_db_client::ReifyDbClient, subscription_event,
 };
-use crate::{AdminResult, CommandResult, LoginResult, QueryResult, ResponseMeta, WireFormat};
+use crate::{
+	AdminResult, ChangeKind, CommandResult, LoginResult, QueryResult, ResponseMeta, WireFormat,
+	changes::{read_op_kind, strip_op_column},
+};
 
 fn extract_meta(metadata: &MetadataMap) -> Option<ResponseMeta> {
 	let fingerprint = metadata.get("x-fingerprint").and_then(|v| v.to_str().ok())?;
@@ -76,6 +79,21 @@ impl RawChangePayload {
 			Self::Proto(fp) => proto_frames_to_frames(fp.frames),
 			Self::Empty => Vec::new(),
 		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct GrpcChange {
+	pub kind: ChangeKind,
+	pub frames: Vec<Frame>,
+}
+
+fn classify_frames(frames: Vec<Frame>) -> GrpcChange {
+	let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
+	let frames = frames.into_iter().map(strip_op_column).collect();
+	GrpcChange {
+		kind,
+		frames,
 	}
 }
 
@@ -430,11 +448,11 @@ pub struct BatchGrpcSubscription {
 }
 
 /// One envelope delivered by a batch subscription: a map from member
-/// `subscription_id` → frames that arrived within that poller tick.
+/// `subscription_id` → typed change that arrived within that poller tick.
 #[derive(Debug, Clone)]
 pub struct BatchFramesEnvelope {
 	pub batch_id: String,
-	pub entries: HashMap<String, Vec<Frame>>,
+	pub entries: HashMap<String, GrpcChange>,
 	pub entry_errors: HashMap<String, String>,
 }
 
@@ -468,7 +486,7 @@ impl BatchGrpcSubscription {
 			match msg.event {
 				Some(batch_subscription_event::Event::Change(change)) => {
 					let batch_id = change.batch_id;
-					let mut entries: HashMap<String, Vec<Frame>> = HashMap::new();
+					let mut entries: HashMap<String, GrpcChange> = HashMap::new();
 					let mut entry_errors: HashMap<String, String> = HashMap::new();
 					for entry in change.entries {
 						let sub_id = entry.subscription_id;
@@ -476,25 +494,33 @@ impl BatchGrpcSubscription {
 							Some(change_event::Payload::Rbcf(bytes)) => {
 								match decode_frames(&bytes) {
 									Ok(frames) => {
-										entries.insert(sub_id, frames);
+										entries.insert(
+											sub_id,
+											classify_frames(frames),
+										);
 									}
 									Err(e) => {
 										entry_errors.insert(
 											sub_id.clone(),
 											e.to_string(),
 										);
-										entries.insert(sub_id, Vec::new());
+										entries.insert(
+											sub_id,
+											classify_frames(Vec::new()),
+										);
 									}
 								}
 							}
 							Some(change_event::Payload::Frames(fp)) => {
 								entries.insert(
 									sub_id,
-									proto_frames_to_frames(fp.frames),
+									classify_frames(proto_frames_to_frames(
+										fp.frames,
+									)),
 								);
 							}
 							None => {
-								entries.insert(sub_id, Vec::new());
+								entries.insert(sub_id, classify_frames(Vec::new()));
 							}
 						}
 					}
@@ -525,8 +551,8 @@ impl GrpcSubscription {
 		&self.subscription_id
 	}
 
-	pub async fn recv(&mut self) -> Option<Vec<Frame>> {
-		self.recv_raw().await.map(|p| p.into_frames())
+	pub async fn recv(&mut self) -> Option<GrpcChange> {
+		self.recv_raw().await.map(|p| classify_frames(p.into_frames()))
 	}
 
 	pub async fn recv_raw(&mut self) -> Option<RawChangePayload> {
