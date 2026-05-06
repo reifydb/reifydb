@@ -248,9 +248,14 @@ pub unsafe extern "C" fn host_builder_grow(handle: *mut ColumnBufferHandle, addi
 	match inner.slots.get_mut(&h.id) {
 		Some(BuilderSlot::Active(active)) if active.generation == h.generation => {
 			let elem = elem_size_for(active.type_code);
-			active.data.reserve(additional.saturating_mul(elem));
+			let extra_bytes = additional.saturating_mul(elem);
+			let target_cap = active.data.capacity().saturating_add(extra_bytes);
+			let needed_reserve = target_cap.saturating_sub(active.data.len());
+			active.data.reserve(needed_reserve);
 			if let Some(offsets) = active.offsets.as_mut() {
-				offsets.reserve(additional);
+				let target_off_cap = offsets.capacity().saturating_add(additional);
+				let needed_off_reserve = target_off_cap.saturating_sub(offsets.len());
+				offsets.reserve(needed_off_reserve);
 			}
 			if let Some(bitvec) = active.bitvec.as_mut() {
 				let needed_bytes = (additional + active.data.len() / elem.max(1)).div_ceil(8);
