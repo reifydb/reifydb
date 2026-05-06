@@ -343,7 +343,7 @@ pub mod tests {
 			FFIOperator, FFIOperatorMetadata,
 			builder::{ColumnsBuilder, CommittedColumn},
 			change::{BorrowedChange, BorrowedColumns},
-			column::OperatorColumn,
+			column::operator::OperatorColumn,
 			context::OperatorContext,
 		},
 		testing::builders::{TestChangeBuilder, TestRowBuilder},

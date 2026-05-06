@@ -1,0 +1,135 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
+use postcard::to_allocvec;
+use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_type::value::decimal::Decimal;
+
+use crate::{
+	error::FFIError,
+	operator::{column::emitter::RowEmitter, view_row::RowView},
+};
+
+pub trait Cell: Sized {
+	const COLUMN_TYPE: ColumnTypeCode;
+	const AVG_BYTES: usize = 0;
+
+	fn encode(&self, emitter: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError>;
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self>;
+}
+
+macro_rules! impl_cell_scalar {
+	($ty:ty, $code:expr, $push:ident, $read:ident) => {
+		impl Cell for $ty {
+			const COLUMN_TYPE: ColumnTypeCode = $code;
+			#[inline]
+			fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+				e.$push(col, *self);
+				Ok(())
+			}
+			#[inline]
+			fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+				view.$read(name)
+			}
+		}
+	};
+}
+
+impl_cell_scalar!(u8, ColumnTypeCode::Uint1, push_u8, u8);
+impl_cell_scalar!(u16, ColumnTypeCode::Uint2, push_u16, u16);
+impl_cell_scalar!(u32, ColumnTypeCode::Uint4, push_u32, u32);
+impl_cell_scalar!(u64, ColumnTypeCode::Uint8, push_u64, u64);
+impl_cell_scalar!(i8, ColumnTypeCode::Int1, push_i8, i8);
+impl_cell_scalar!(i16, ColumnTypeCode::Int2, push_i16, i16);
+impl_cell_scalar!(i32, ColumnTypeCode::Int4, push_i32, i32);
+impl_cell_scalar!(i64, ColumnTypeCode::Int8, push_i64, i64);
+impl_cell_scalar!(f32, ColumnTypeCode::Float4, push_f32, f32);
+impl_cell_scalar!(f64, ColumnTypeCode::Float8, push_f64, f64);
+impl_cell_scalar!(bool, ColumnTypeCode::Bool, push_bool, bool);
+
+impl Cell for u128 {
+	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Uint16;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		e.push_u128(col, *self);
+		Ok(())
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		view.u128(name)
+	}
+}
+
+impl Cell for i128 {
+	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Int16;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		e.push_i128(col, *self);
+		Ok(())
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		view.i128(name)
+	}
+}
+
+impl Cell for String {
+	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Utf8;
+	const AVG_BYTES: usize = 24;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		e.push_utf8(col, self.as_str())
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		view.utf8(name).map(|s| s.to_string())
+	}
+}
+
+impl Cell for Vec<u8> {
+	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Blob;
+	const AVG_BYTES: usize = 32;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		e.push_blob(col, self.as_slice())
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		view.blob(name).map(|b| b.to_vec())
+	}
+}
+
+impl Cell for Decimal {
+	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Decimal;
+	const AVG_BYTES: usize = 16;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		let bytes = to_allocvec(self)
+			.map_err(|err| FFIError::Serialization(format!("decimal serialize: {}", err)))?;
+		e.push_decimal_bytes(col, &bytes)
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		view.decimal(name)
+	}
+}
+
+impl<T: Cell> Cell for Option<T> {
+	const COLUMN_TYPE: ColumnTypeCode = T::COLUMN_TYPE;
+	const AVG_BYTES: usize = T::AVG_BYTES;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		match self {
+			Some(v) => v.encode(e, col),
+			None => e.push_none(col),
+		}
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		Some(if view.is_defined(name) {
+			T::decode(view, name)
+		} else {
+			None
+		})
+	}
+}

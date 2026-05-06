@@ -95,7 +95,7 @@ mod tests {
 			source::{SourceBatch, SourceEmitter, SourceMode},
 		},
 		error::Result,
-		operator::column::OperatorColumn,
+		operator::column::operator::OperatorColumn,
 	};
 
 	use super::*;

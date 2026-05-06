@@ -22,7 +22,7 @@ use reifydb_sdk::{
 		FFIOperator, FFIOperatorMetadata,
 		builder::{ColumnsBuilder, CommittedColumn},
 		change::{BorrowedChange, BorrowedColumns},
-		column::OperatorColumn,
+		column::operator::OperatorColumn,
 		context::OperatorContext,
 	},
 	testing::harness::TestHarnessBuilder,

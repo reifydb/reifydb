@@ -19,7 +19,7 @@ pub mod view_column;
 pub mod view_row;
 
 use change::BorrowedChange;
-use column::OperatorColumn;
+use column::operator::OperatorColumn;
 use context::OperatorContext;
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_type::value::datetime::DateTime;

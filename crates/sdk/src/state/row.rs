@@ -124,7 +124,7 @@ pub mod tests {
 	use crate::{
 		error::Result,
 		operator::{
-			FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::OperatorColumn,
+			FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 			context::OperatorContext,
 		},
 		state::{FFIRawStatefulOperator, row::RowNumberProvider},

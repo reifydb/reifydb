@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
 	error::Result,
 	operator::{
-		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::OperatorColumn,
+		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 		context::OperatorContext,
 	},
 	state::cache::StateCache,
