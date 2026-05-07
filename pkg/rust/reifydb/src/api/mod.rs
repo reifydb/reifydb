@@ -12,7 +12,7 @@ use reifydb_sqlite::{DbPath, SqliteConfig};
 use reifydb_store_multi::{
 	MultiStore,
 	buffer::tier::MultiBufferTier,
-	config::{BufferConfig as MultiBufferConfig, MultiStoreConfig},
+	config::{BufferConfig as MultiBufferConfig, MultiStoreConfig, PersistentConfig as MultiPersistentConfig},
 };
 use reifydb_store_single::{
 	SingleStore,
@@ -94,11 +94,21 @@ fn create_sqlite_store_with(
 ) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(actor_system);
 
+	let multi_path = match &config.path {
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("multi.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("multi.db")),
+	};
+	let multi_config = SqliteConfig {
+		path: multi_path,
+		..config.clone()
+	};
+
 	let multi_store = MultiStore::standard(MultiStoreConfig {
 		buffer: Some(MultiBufferConfig {
 			storage: multi_buffer,
 		}),
-		persistent: None,
+		persistent: Some(MultiPersistentConfig::sqlite(multi_config)),
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
