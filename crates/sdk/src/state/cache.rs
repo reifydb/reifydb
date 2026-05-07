@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, hash::Hash, mem};
+use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
 use reifydb_core::{encoded::key::IntoEncodedKey, util::lru::LruCache};
 use serde::{Serialize, de::DeserializeOwned};
@@ -9,8 +9,8 @@ use serde::{Serialize, de::DeserializeOwned};
 use crate::{error::Result, operator::context::OperatorContext};
 
 pub struct StateCache<K, V> {
-	cache: LruCache<K, V>,
-	dirty: HashMap<K, Option<V>>,
+	cache: LruCache<K, Arc<V>>,
+	dirty: HashMap<K, Option<Arc<V>>>,
 }
 
 impl<K, V> StateCache<K, V>
@@ -26,25 +26,54 @@ where
 		}
 	}
 
-	pub fn get(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<Option<V>> {
+	pub fn get_arc(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<Option<Arc<V>>> {
 		if let Some(cached) = self.cache.get(key) {
-			return Ok(Some(cached.clone()));
+			return Ok(Some(cached));
 		}
 
 		let encoded_key = key.into_encoded_key();
 		match ctx.state().get::<V>(&encoded_key)? {
 			Some(value) => {
-				self.cache.put(key.clone(), value.clone());
-				Ok(Some(value))
+				let arc = Arc::new(value);
+				self.cache.put(key.clone(), arc.clone());
+				Ok(Some(arc))
 			}
 			None => Ok(None),
 		}
 	}
 
+	pub fn get(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<Option<V>> {
+		Ok(self.get_arc(ctx, key)?.map(|arc| (*arc).clone()))
+	}
+
 	pub fn set(&mut self, _ctx: &mut OperatorContext, key: &K, value: &V) -> Result<()> {
-		self.cache.put(key.clone(), value.clone());
-		self.dirty.insert(key.clone(), Some(value.clone()));
+		let arc = Arc::new(value.clone());
+		self.cache.put(key.clone(), arc.clone());
+		self.dirty.insert(key.clone(), Some(arc));
 		Ok(())
+	}
+
+	pub fn put(&mut self, _ctx: &mut OperatorContext, key: &K, value: V) -> Result<()> {
+		let arc = Arc::new(value);
+		self.cache.put(key.clone(), arc.clone());
+		self.dirty.insert(key.clone(), Some(arc));
+		Ok(())
+	}
+
+	pub fn put_arc(&mut self, _ctx: &mut OperatorContext, key: &K, value: Arc<V>) -> Result<()> {
+		self.cache.put(key.clone(), value.clone());
+		self.dirty.insert(key.clone(), Some(value));
+		Ok(())
+	}
+
+	pub fn modify<F>(&mut self, ctx: &mut OperatorContext, key: &K, f: F) -> Result<()>
+	where
+		F: FnOnce(&mut V) -> Result<()>,
+		V: Default,
+	{
+		let mut arc = self.get_arc(ctx, key)?.unwrap_or_else(|| Arc::new(V::default()));
+		f(Arc::make_mut(&mut arc))?;
+		self.put_arc(ctx, key, arc)
 	}
 
 	pub fn remove(&mut self, _ctx: &mut OperatorContext, key: &K) -> Result<()> {
@@ -58,7 +87,7 @@ where
 		for (key, slot) in dirty {
 			let encoded_key = (&key).into_encoded_key();
 			match slot {
-				Some(value) => ctx.state().set(&encoded_key, &value)?,
+				Some(value) => ctx.state().set(&encoded_key, value.as_ref())?,
 				None => ctx.state().remove(&encoded_key)?,
 			}
 		}

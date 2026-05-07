@@ -494,6 +494,24 @@ impl IntoEncodedKey for (&str, &str) {
 	}
 }
 
+impl IntoEncodedKey for (std::sync::Arc<str>, std::sync::Arc<str>) {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(&self.0);
+		serializer.extend_str(&self.1);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &(std::sync::Arc<str>, std::sync::Arc<str>) {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(&self.0);
+		serializer.extend_str(&self.1);
+		serializer.to_encoded_key()
+	}
+}
+
 impl IntoEncodedKey for (String, String, String) {
 	fn into_encoded_key(self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();

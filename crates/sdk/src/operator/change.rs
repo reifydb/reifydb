@@ -236,6 +236,194 @@ impl<'a> BorrowedColumn<'a> {
 			&data[start..end]
 		})
 	}
+
+	#[inline]
+	pub fn is_defined_at(&self, index: usize) -> bool {
+		let bv = self.defined_bitvec();
+		if bv.is_empty() {
+			return true;
+		}
+		match bv.get(index / 8) {
+			Some(b) => (b >> (index % 8)) & 1 == 1,
+			None => false,
+		}
+	}
+
+	#[inline]
+	pub fn utf8_at(&self, index: usize) -> Option<&'a str> {
+		if self.type_code() != ColumnTypeCode::Utf8 || !self.is_defined_at(index) {
+			return None;
+		}
+		let offsets = self.offsets();
+		if index + 1 >= offsets.len() {
+			return None;
+		}
+		let start = offsets[index] as usize;
+		let end = offsets[index + 1] as usize;
+		let data = self.data_bytes();
+		if end > data.len() || start > end {
+			return None;
+		}
+		str::from_utf8(&data[start..end]).ok()
+	}
+
+	#[inline]
+	pub fn blob_at(&self, index: usize) -> Option<&'a [u8]> {
+		if self.type_code() != ColumnTypeCode::Blob || !self.is_defined_at(index) {
+			return None;
+		}
+		let offsets = self.offsets();
+		if index + 1 >= offsets.len() {
+			return None;
+		}
+		let start = offsets[index] as usize;
+		let end = offsets[index + 1] as usize;
+		let data = self.data_bytes();
+		if end > data.len() || start > end {
+			return None;
+		}
+		Some(&data[start..end])
+	}
+
+	#[inline]
+	pub fn bool_at(&self, index: usize) -> Option<bool> {
+		if self.type_code() != ColumnTypeCode::Bool || !self.is_defined_at(index) {
+			return None;
+		}
+		let bytes = self.data_bytes();
+		let byte = bytes.get(index / 8).copied()?;
+		Some((byte >> (index % 8)) & 1 == 1)
+	}
+
+	#[inline]
+	pub fn u64_at(&self, index: usize) -> Option<u64> {
+		if !self.is_defined_at(index) {
+			return None;
+		}
+		match self.type_code() {
+			ColumnTypeCode::Uint8 => unsafe { self.as_slice::<u64>()?.get(index).copied() },
+			ColumnTypeCode::Uint4 => unsafe { self.as_slice::<u32>()?.get(index).copied().map(u64::from) },
+			ColumnTypeCode::Uint2 => unsafe { self.as_slice::<u16>()?.get(index).copied().map(u64::from) },
+			ColumnTypeCode::Uint1 => unsafe { self.as_slice::<u8>()?.get(index).copied().map(u64::from) },
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn u32_at(&self, index: usize) -> Option<u32> {
+		if !self.is_defined_at(index) {
+			return None;
+		}
+		match self.type_code() {
+			ColumnTypeCode::Uint4 => unsafe { self.as_slice::<u32>()?.get(index).copied() },
+			ColumnTypeCode::Uint2 => unsafe { self.as_slice::<u16>()?.get(index).copied().map(u32::from) },
+			ColumnTypeCode::Uint1 => unsafe { self.as_slice::<u8>()?.get(index).copied().map(u32::from) },
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn u16_at(&self, index: usize) -> Option<u16> {
+		if !self.is_defined_at(index) {
+			return None;
+		}
+		match self.type_code() {
+			ColumnTypeCode::Uint2 => unsafe { self.as_slice::<u16>()?.get(index).copied() },
+			ColumnTypeCode::Uint1 => unsafe { self.as_slice::<u8>()?.get(index).copied().map(u16::from) },
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn u8_at(&self, index: usize) -> Option<u8> {
+		if self.type_code() != ColumnTypeCode::Uint1 || !self.is_defined_at(index) {
+			return None;
+		}
+		unsafe { self.as_slice::<u8>()?.get(index).copied() }
+	}
+
+	#[inline]
+	pub fn i64_at(&self, index: usize) -> Option<i64> {
+		if !self.is_defined_at(index) {
+			return None;
+		}
+		match self.type_code() {
+			ColumnTypeCode::Int8 => unsafe { self.as_slice::<i64>()?.get(index).copied() },
+			ColumnTypeCode::Int4 => unsafe { self.as_slice::<i32>()?.get(index).copied().map(i64::from) },
+			ColumnTypeCode::Int2 => unsafe { self.as_slice::<i16>()?.get(index).copied().map(i64::from) },
+			ColumnTypeCode::Int1 => unsafe { self.as_slice::<i8>()?.get(index).copied().map(i64::from) },
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn i32_at(&self, index: usize) -> Option<i32> {
+		if !self.is_defined_at(index) {
+			return None;
+		}
+		match self.type_code() {
+			ColumnTypeCode::Int4 => unsafe { self.as_slice::<i32>()?.get(index).copied() },
+			ColumnTypeCode::Int2 => unsafe { self.as_slice::<i16>()?.get(index).copied().map(i32::from) },
+			ColumnTypeCode::Int1 => unsafe { self.as_slice::<i8>()?.get(index).copied().map(i32::from) },
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn i16_at(&self, index: usize) -> Option<i16> {
+		if !self.is_defined_at(index) {
+			return None;
+		}
+		match self.type_code() {
+			ColumnTypeCode::Int2 => unsafe { self.as_slice::<i16>()?.get(index).copied() },
+			ColumnTypeCode::Int1 => unsafe { self.as_slice::<i8>()?.get(index).copied().map(i16::from) },
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn i8_at(&self, index: usize) -> Option<i8> {
+		if self.type_code() != ColumnTypeCode::Int1 || !self.is_defined_at(index) {
+			return None;
+		}
+		unsafe { self.as_slice::<i8>()?.get(index).copied() }
+	}
+
+	#[inline]
+	pub fn u128_at(&self, index: usize) -> Option<u128> {
+		if self.type_code() != ColumnTypeCode::Uint16 || !self.is_defined_at(index) {
+			return None;
+		}
+		unsafe { self.as_slice::<u128>()?.get(index).copied() }
+	}
+
+	#[inline]
+	pub fn i128_at(&self, index: usize) -> Option<i128> {
+		if self.type_code() != ColumnTypeCode::Int16 || !self.is_defined_at(index) {
+			return None;
+		}
+		unsafe { self.as_slice::<i128>()?.get(index).copied() }
+	}
+
+	#[inline]
+	pub fn f64_at(&self, index: usize) -> Option<f64> {
+		if !self.is_defined_at(index) {
+			return None;
+		}
+		match self.type_code() {
+			ColumnTypeCode::Float8 => unsafe { self.as_slice::<f64>()?.get(index).copied() },
+			ColumnTypeCode::Float4 => unsafe { self.as_slice::<f32>()?.get(index).copied().map(f64::from) },
+			_ => None,
+		}
+	}
+
+	#[inline]
+	pub fn f32_at(&self, index: usize) -> Option<f32> {
+		if self.type_code() != ColumnTypeCode::Float4 || !self.is_defined_at(index) {
+			return None;
+		}
+		unsafe { self.as_slice::<f32>()?.get(index).copied() }
+	}
 }
 
 fn read_buffer<'a>(buf: &BufferFFI) -> &'a [u8] {
