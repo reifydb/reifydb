@@ -5,10 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::resolved::ResolvedShape,
-	value::{
-		batch::lazy::LazyBatch,
-		column::{columns::Columns, headers::ColumnHeaders},
-	},
+	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{params::Params, value::identity::IdentityId};
@@ -22,10 +19,6 @@ pub trait QueryNode: Send + Sync {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()>;
 
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>>;
-
-	fn next_lazy<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<LazyBatch>> {
-		Ok(None)
-	}
 
 	fn headers(&self) -> Option<ColumnHeaders>;
 }
@@ -47,10 +40,6 @@ impl QueryNode for Box<dyn QueryNode> {
 
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		(**self).next(rx, ctx)
-	}
-
-	fn next_lazy<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<LazyBatch>> {
-		(**self).next_lazy(rx, ctx)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

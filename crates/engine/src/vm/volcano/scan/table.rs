@@ -11,10 +11,7 @@ use reifydb_core::{
 		EncodableKey,
 		row::{RowKey, RowKeyRange},
 	},
-	value::{
-		batch::lazy::{LazyBatch, LazyColumnMeta},
-		column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
-	},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error, fragment::Fragment, util::cowvec::CowVec, value::r#type::Type};
@@ -188,67 +185,5 @@ impl QueryNode for TableScanNode {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
-	}
-
-	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::next_lazy")]
-	fn next_lazy<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<LazyBatch>> {
-		debug_assert!(self.context.is_some(), "TableScanNode::next_lazy() called before initialize()");
-		let stored_ctx = self.context.as_ref().unwrap();
-
-		if self.exhausted {
-			return Ok(None);
-		}
-
-		let batch_size = stored_ctx.batch_size;
-
-		let range = RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref());
-
-		let mut stream = rx.range(range, batch_size as usize)?;
-
-		let mut encoded_rows = Vec::with_capacity(batch_size as usize);
-		let mut row_numbers = Vec::with_capacity(batch_size as usize);
-
-		for _ in 0..batch_size {
-			match stream.next() {
-				Some(Ok(multi)) => {
-					if let Some(key) = RowKey::decode(&multi.key) {
-						encoded_rows.push(multi.row);
-						row_numbers.push(key.row);
-						self.last_key = Some(multi.key);
-					}
-				}
-				Some(Err(e)) => return Err(e),
-				None => {
-					self.exhausted = true;
-					break;
-				}
-			}
-		}
-
-		drop(stream);
-
-		if encoded_rows.is_empty() {
-			self.exhausted = true;
-			return Ok(None);
-		}
-
-		let column_metas: Vec<LazyColumnMeta> = self
-			.table
-			.columns()
-			.iter()
-			.enumerate()
-			.map(|(idx, col)| {
-				let output_type = col.constraint.get_type();
-				LazyColumnMeta {
-					name: Fragment::internal(&col.name),
-					storage_type: self.storage_types[idx].clone(),
-					output_type,
-					dictionary: self.dictionaries[idx].clone(),
-				}
-			})
-			.collect();
-
-		let shape = self.get_or_load_shape(rx, &encoded_rows[0])?;
-		Ok(Some(LazyBatch::new(encoded_rows, row_numbers, &shape, column_metas)))
 	}
 }
