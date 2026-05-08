@@ -1,57 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::fmt;
-
+use reifydb_core::interface::catalog::{id::SubscriptionId, subscription::HydrationConfig};
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_core::error::diagnostic::internal::internal;
-use reifydb_core::interface::catalog::id::SubscriptionId;
-use reifydb_engine::engine::StandardEngine;
+use reifydb_type::value::frame::{column::FrameColumn, frame::Frame};
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_type::error::Error;
-#[cfg(not(reifydb_single_threaded))]
-use reifydb_type::value::frame::column::FrameColumn;
 use reifydb_type::{
-	Result as TypeResult,
 	params::Params,
-	value::{Value, frame::frame::Frame, identity::IdentityId},
+	value::{Value, identity::IdentityId},
 };
 #[cfg(not(reifydb_single_threaded))]
-use tracing::debug;
-#[allow(unused_imports)]
-use tracing::error;
-
-pub enum CreateSubscriptionError {
-	Execute(ExecuteError),
-	ExtractionFailed,
-}
-
-impl fmt::Display for CreateSubscriptionError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			CreateSubscriptionError::Execute(e) => write!(f, "{}", e),
-			CreateSubscriptionError::ExtractionFailed => write!(f, "Failed to extract subscription ID"),
-		}
-	}
-}
-
-impl fmt::Debug for CreateSubscriptionError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			CreateSubscriptionError::Execute(e) => f.debug_tuple("Execute").field(e).finish(),
-			CreateSubscriptionError::ExtractionFailed => write!(f, "ExtractionFailed"),
-		}
-	}
-}
-
-impl From<ExecuteError> for CreateSubscriptionError {
-	fn from(err: ExecuteError) -> Self {
-		CreateSubscriptionError::Execute(err)
-	}
-}
+use tracing::{debug, error};
 
 pub enum CreateSubscriptionResult {
-	Local(SubscriptionId),
+	Local {
+		id: SubscriptionId,
+		hydration: HydrationConfig,
+	},
 	Remote {
 		address: String,
 		rql: String,
@@ -61,15 +26,13 @@ pub enum CreateSubscriptionResult {
 
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_core::actors::server::Operation;
-#[cfg(not(reifydb_single_threaded))]
-use tokio::task::spawn_blocking;
 
-use crate::execute::ExecuteError;
 #[cfg(not(reifydb_single_threaded))]
 use crate::{
 	dispatch::dispatch_subscribe,
 	interceptor::{RequestContext, RequestMetadata},
 	state::AppState,
+	subscription::errors::CreateSubscriptionError,
 };
 
 #[cfg(not(reifydb_single_threaded))]
@@ -79,9 +42,9 @@ pub async fn create_subscription(
 	rql: &str,
 	metadata: RequestMetadata,
 ) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
-	let subscription_rql = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
-	debug!("Subscription rql: {}", subscription_rql);
+	debug!("Subscription rql: {}", rql);
 
+	let subscription_rql = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
 	let ctx = RequestContext {
 		identity,
 		operation: Operation::Subscribe,
@@ -123,7 +86,8 @@ fn extract_remote_result(frame: &Frame) -> Result<Option<CreateSubscriptionResul
 
 #[cfg(not(reifydb_single_threaded))]
 fn extract_local_result(frame: &Frame) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
-	frame.columns
+	let id = frame
+		.columns
 		.iter()
 		.find(|c| c.name == "subscription_id")
 		.and_then(|col| {
@@ -140,8 +104,18 @@ fn extract_local_result(frame: &Frame) -> Result<CreateSubscriptionResult, Creat
 				None
 			}
 		})
-		.map(CreateSubscriptionResult::Local)
-		.ok_or(CreateSubscriptionError::ExtractionFailed)
+		.ok_or(CreateSubscriptionError::ExtractionFailed)?;
+
+	let enabled = first_bool_value(frame, "hydration_enabled").unwrap_or(true);
+	let max_rows = first_uint8_value(frame, "hydration_max_rows");
+
+	Ok(CreateSubscriptionResult::Local {
+		id,
+		hydration: HydrationConfig {
+			enabled,
+			max_rows,
+		},
+	})
 }
 
 #[cfg(not(reifydb_single_threaded))]
@@ -156,35 +130,28 @@ fn first_utf8_value(col: &FrameColumn) -> Option<String> {
 	}
 }
 
-pub fn extract_subscription_id(frames: &[Frame]) -> Option<SubscriptionId> {
-	let frame = frames.first()?;
-	frame.columns
-		.iter()
-		.find(|c| c.name == "subscription_id")
-		.and_then(|col| {
-			if !col.data.is_empty() {
-				Some(col.data.get_value(0))
-			} else {
-				None
-			}
-		})
-		.and_then(|value| match value {
-			Value::Uint8(id) => Some(SubscriptionId(id)),
-			_ => None,
-		})
-}
-
-pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
-	let rql = format!("drop subscription if exists subscription_{};", subscription_id.0);
-	engine.admin_as(IdentityId::system(), &rql, Params::None).check()?;
-	Ok(())
+#[cfg(not(reifydb_single_threaded))]
+#[inline]
+fn first_bool_value(frame: &Frame, name: &str) -> Option<bool> {
+	let col = frame.columns.iter().find(|c| c.name == name)?;
+	if col.data.is_empty() {
+		return None;
+	}
+	match col.data.get_value(0) {
+		Value::Boolean(b) => Some(b),
+		_ => None,
+	}
 }
 
 #[cfg(not(reifydb_single_threaded))]
-pub async fn cleanup_subscription(state: &AppState, subscription_id: SubscriptionId) -> TypeResult<()> {
-	let engine = state.engine_clone();
-
-	spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id))
-		.await
-		.map_err(|e| Error(Box::new(internal(format!("Blocking task error: {:?}", e)))))?
+#[inline]
+fn first_uint8_value(frame: &Frame, name: &str) -> Option<u64> {
+	let col = frame.columns.iter().find(|c| c.name == name)?;
+	if col.data.is_empty() {
+		return None;
+	}
+	match col.data.get_value(0) {
+		Value::Uint8(n) => Some(n),
+		_ => None,
+	}
 }

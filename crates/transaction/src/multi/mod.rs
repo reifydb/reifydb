@@ -19,6 +19,7 @@ use crate::multi::transaction::{
 };
 
 pub mod conflict;
+pub mod lease;
 pub mod marker;
 #[allow(clippy::module_inception)]
 pub mod multi;

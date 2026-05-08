@@ -27,6 +27,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(PhysicalPlan::CreateSubscription(CreateSubscriptionNode {
 			columns: create.columns,
 			as_clause,
+			hydration: create.hydration,
 		}))
 	}
 }

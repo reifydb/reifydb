@@ -28,7 +28,7 @@ use reifydb_catalog::catalog::{
 use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::{
-		catalog::{property::ColumnPropertyKind, series::SeriesKey},
+		catalog::{property::ColumnPropertyKind, series::SeriesKey, subscription::HydrationConfig},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedShape},
 	},
 	row::Ttl,
@@ -657,6 +657,7 @@ pub struct CreateIndexNode<'bump> {
 pub struct CreateSubscriptionNode<'bump> {
 	pub columns: Vec<SubscriptionColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub hydration: HydrationConfig,
 }
 
 #[derive(Debug)]

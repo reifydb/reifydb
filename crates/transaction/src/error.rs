@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::common::CommitVersion;
 use reifydb_type::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -34,6 +35,12 @@ pub enum TransactionError {
 	#[error("Transaction was poisoned by a prior error")]
 	Poisoned {
 		cause: Box<Diagnostic>,
+	},
+
+	#[error("Snapshot version {} evicted by GC; cutoff is {}", version.0, cutoff.0)]
+	SnapshotVersionEvicted {
+		version: CommitVersion,
+		cutoff: CommitVersion,
 	},
 }
 
@@ -144,6 +151,25 @@ impl IntoDiagnostic for TransactionError {
 				help: Some("A previous statement failed, invalidating this transaction. Start a new transaction.".to_string()),
 				notes: vec![],
 				cause: Some(cause),
+				operator_chain: None,
+			},
+
+			TransactionError::SnapshotVersionEvicted { version, cutoff } => Diagnostic {
+				code: "TXN_012".to_string(),
+				rql: None,
+				message: format!(
+					"Snapshot version {} evicted by historical GC; current cutoff is {}",
+					version.0, cutoff.0
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some(
+					"Acquire the hydration lease against a more recent version, or subscribe with WITH { hydration: { enabled: false } }."
+						.to_string(),
+				),
+				notes: vec![],
+				cause: None,
 				operator_chain: None,
 			},
 		}

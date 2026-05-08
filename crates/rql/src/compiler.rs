@@ -1037,6 +1037,7 @@ impl InstructionCompiler {
 					as_clause: node
 						.as_clause
 						.map(|a| Box::new(materialize_query_plan(BumpBox::into_inner(a)))),
+					hydration: node.hydration,
 				}));
 				self.emit(Instruction::Emit);
 			}

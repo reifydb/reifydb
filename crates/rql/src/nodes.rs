@@ -17,6 +17,7 @@ use reifydb_core::{
 			procedure::{ProcedureParam, RqlTrigger},
 			property::ColumnPropertyKind,
 			series::SeriesKey,
+			subscription::HydrationConfig,
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence,
@@ -268,6 +269,7 @@ pub struct SubscriptionColumnToCreate {
 pub struct CreateSubscriptionNode {
 	pub columns: Vec<SubscriptionColumnToCreate>,
 	pub as_clause: Option<Box<QueryPlan>>,
+	pub hydration: HydrationConfig,
 }
 
 #[derive(Debug, Clone)]

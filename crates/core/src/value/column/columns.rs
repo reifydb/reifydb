@@ -580,6 +580,21 @@ impl Columns {
 		Ok(())
 	}
 
+	pub fn concat(batches: Vec<Columns>) -> Result<Option<Columns>> {
+		let mut iter = batches.into_iter();
+		let mut merged = match iter.next() {
+			Some(first) => first,
+			None => return Ok(None),
+		};
+		for cols in iter {
+			merged.append_all(cols)?;
+		}
+		if merged.row_count() == 0 {
+			return Ok(None);
+		}
+		Ok(Some(merged))
+	}
+
 	pub fn remove_row(&mut self, row_number: RowNumber) -> bool {
 		let pos = self.row_numbers.iter().position(|&r| r == row_number);
 		let Some(idx) = pos else {

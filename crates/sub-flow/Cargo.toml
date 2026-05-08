@@ -70,3 +70,7 @@ reifydb-sdk = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-abi = { workspace = true }
+reifydb-sub-subscription = { workspace = true }
+reifydb-rql = { workspace = true }
+reifydb = { workspace = true }
+rand = { workspace = true }

@@ -26,6 +26,8 @@ pub struct StateConfig {
 	pub max_connections: usize,
 
 	pub admin_enabled: bool,
+
+	pub subscribe_max_hydration_rows: u64,
 }
 
 impl Default for StateConfig {
@@ -35,6 +37,7 @@ impl Default for StateConfig {
 			request_timeout: Duration::from_secs(60),
 			max_connections: 10_000,
 			admin_enabled: false,
+			subscribe_max_hydration_rows: 10_000,
 		}
 	}
 }
@@ -61,6 +64,11 @@ impl StateConfig {
 
 	pub fn admin_enabled(mut self, enabled: bool) -> Self {
 		self.admin_enabled = enabled;
+		self
+	}
+
+	pub fn subscribe_max_hydration_rows(mut self, n: u64) -> Self {
+		self.subscribe_max_hydration_rows = n;
 		self
 	}
 }
@@ -150,6 +158,11 @@ impl AppState {
 	}
 
 	#[inline]
+	pub fn subscribe_max_hydration_rows(&self) -> u64 {
+		self.config.subscribe_max_hydration_rows
+	}
+
+	#[inline]
 	pub fn request_interceptors(&self) -> &RequestInterceptorChain {
 		&self.request_interceptors
 	}
@@ -188,6 +201,7 @@ pub mod tests {
 		assert_eq!(config.query_timeout, Duration::from_secs(30));
 		assert_eq!(config.request_timeout, Duration::from_secs(60));
 		assert_eq!(config.max_connections, 10_000);
+		assert_eq!(config.subscribe_max_hydration_rows, 10_000);
 	}
 
 	#[test]
@@ -195,10 +209,12 @@ pub mod tests {
 		let config = StateConfig::new()
 			.query_timeout(Duration::from_secs(60))
 			.request_timeout(Duration::from_secs(120))
-			.max_connections(5_000);
+			.max_connections(5_000)
+			.subscribe_max_hydration_rows(50_000);
 
 		assert_eq!(config.query_timeout, Duration::from_secs(60));
 		assert_eq!(config.request_timeout, Duration::from_secs(120));
 		assert_eq!(config.max_connections, 5_000);
+		assert_eq!(config.subscribe_max_hydration_rows, 50_000);
 	}
 }

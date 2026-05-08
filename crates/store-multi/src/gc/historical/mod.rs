@@ -6,7 +6,7 @@ pub mod actor;
 use reifydb_core::common::CommitVersion;
 
 pub trait QueryWatermark: Send + Sync + 'static {
-	fn query_done_until(&self) -> CommitVersion;
+	fn effective_gc_cutoff(&self) -> CommitVersion;
 }
 
 #[derive(Debug, Default)]

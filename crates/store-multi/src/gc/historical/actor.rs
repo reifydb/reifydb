@@ -72,7 +72,7 @@ impl<W: QueryWatermark> Actor<W> {
 
 		state.sweeping = true;
 
-		let cutoff = self.watermark.query_done_until();
+		let cutoff = self.watermark.effective_gc_cutoff();
 		if cutoff.0 == 0 {
 			trace!("Historical GC sweep skipped: watermark is zero");
 			state.sweeping = false;

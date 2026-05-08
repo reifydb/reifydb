@@ -206,8 +206,9 @@ impl FlowWorkerActor {
 		timestamp: DateTime,
 		state_version: CommitVersion,
 	) -> Result<(Pending, Vec<RowShape>)> {
-		let query = self.engine.multi().begin_query_at_version(state_version)?;
-		let state_query = self.engine.multi().begin_query_at_version(state_version)?;
+		let lease = self.engine.multi().acquire_version_lease(state_version)?;
+		let query = self.engine.multi().begin_query_at_version(&lease)?;
+		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
 		let interceptors = self.engine.create_interceptors();
 
 		let mut txn = FlowTransaction::deferred_from_parts(
@@ -257,8 +258,10 @@ impl FlowWorkerActor {
 
 			let primitive_version = instruction.to_version;
 
-			let query = self.engine.multi().begin_query_at_version(primitive_version)?;
-			let state_query = self.engine.multi().begin_query_at_version(batch.state_version)?;
+			let state_lease = self.engine.multi().acquire_version_lease(batch.state_version)?;
+			let mut query = self.engine.multi().begin_query_at_version(&state_lease)?;
+			query.read_as_of_version_inclusive(primitive_version);
+			let state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
 
 			let mut txn = FlowTransaction::deferred_from_parts(
 				primitive_version,

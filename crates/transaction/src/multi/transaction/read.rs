@@ -17,11 +17,13 @@ use reifydb_core::{
 use reifydb_type::Result;
 
 use super::{MultiTransaction, manager::TransactionManagerQuery, version::StandardVersionProvider};
-use crate::multi::types::TransactionValue;
+use crate::multi::{lease::VersionLeaseGuard, types::TransactionValue};
 
 pub struct MultiReadTransaction {
 	pub(crate) engine: MultiTransaction,
 	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider>,
+	#[allow(dead_code)]
+	pub(crate) lease: Option<VersionLeaseGuard>,
 }
 
 impl MultiReadTransaction {
@@ -30,6 +32,17 @@ impl MultiReadTransaction {
 		Ok(Self {
 			engine,
 			tm,
+			lease: None,
+		})
+	}
+
+	pub fn new_with_lease(engine: MultiTransaction, lease: VersionLeaseGuard) -> Result<Self> {
+		let version = lease.version();
+		let tm = engine.tm.query(Some(version))?;
+		Ok(Self {
+			engine,
+			tm,
+			lease: Some(lease),
 		})
 	}
 }

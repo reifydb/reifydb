@@ -766,6 +766,21 @@ pub struct AstTtl<'bump> {
 	pub mode: Option<Token<'bump>>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstHydrationConfig {
+	pub enabled: bool,
+	pub max_rows: Option<u64>,
+}
+
+impl Default for AstHydrationConfig {
+	fn default() -> Self {
+		Self {
+			enabled: true,
+			max_rows: None,
+		}
+	}
+}
+
 #[derive(Debug)]
 pub struct AstCreateSeries<'bump> {
 	pub token: Token<'bump>,
@@ -782,6 +797,7 @@ pub struct AstCreateSubscription<'bump> {
 	pub token: Token<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
+	pub hydration: AstHydrationConfig,
 }
 
 #[derive(Debug)]

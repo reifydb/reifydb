@@ -173,10 +173,18 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 					post,
 				} => {
 					let row_count = post.row_count();
+					let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
 					for row_idx in 0..row_count {
-						state.rows.insert(post.row_numbers[row_idx]);
+						if state.rows.insert(post.row_numbers[row_idx]) {
+							new_indices.push(row_idx);
+						}
 					}
-					self.stage(post, DiffType::Insert);
+					if new_indices.len() == row_count {
+						self.stage(post, DiffType::Insert);
+					} else if !new_indices.is_empty() {
+						let sub_post = post.extract_by_indices(&new_indices);
+						self.stage(&sub_post, DiffType::Insert);
+					}
 				}
 				Diff::Update {
 					pre,
