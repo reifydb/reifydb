@@ -3948,6 +3948,7 @@ dependencies = [
  "reifydb-metric",
  "reifydb-sub-metric",
  "reifydb-type",
+ "reifydb-wire-format",
  "tokio",
 ]
 

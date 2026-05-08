@@ -9,3 +9,4 @@ mod interceptor;
 mod metric;
 mod system_config;
 mod virtual_table;
+mod wire_format;

@@ -39,7 +39,11 @@ impl QueryNode for Box<dyn QueryNode> {
 	}
 
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		(**self).next(rx, ctx)
+		let result = (**self).next(rx, ctx)?;
+		if let Some(ref columns) = result {
+			columns.assert_invariants("QueryNode::next output");
+		}
+		Ok(result)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

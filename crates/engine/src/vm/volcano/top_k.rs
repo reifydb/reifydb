@@ -180,6 +180,14 @@ impl QueryNode for TopKNode {
 			let reordered_row_numbers: Vec<_> = indices.iter().map(|&i| columns.row_numbers[i]).collect();
 			columns.row_numbers = CowVec::new(reordered_row_numbers);
 		}
+		if !columns.created_at.is_empty() {
+			let reordered_created_at: Vec<_> = indices.iter().map(|&i| columns.created_at[i]).collect();
+			columns.created_at = CowVec::new(reordered_created_at);
+		}
+		if !columns.updated_at.is_empty() {
+			let reordered_updated_at: Vec<_> = indices.iter().map(|&i| columns.updated_at[i]).collect();
+			columns.updated_at = CowVec::new(reordered_updated_at);
+		}
 
 		let cols = columns.columns.make_mut();
 		for col in cols.iter_mut() {
@@ -229,6 +237,14 @@ impl TopKNode {
 		if !columns.row_numbers.is_empty() {
 			let reordered_row_numbers: Vec<_> = indices.iter().map(|&i| columns.row_numbers[i]).collect();
 			columns.row_numbers = CowVec::new(reordered_row_numbers);
+		}
+		if !columns.created_at.is_empty() {
+			let reordered_created_at: Vec<_> = indices.iter().map(|&i| columns.created_at[i]).collect();
+			columns.created_at = CowVec::new(reordered_created_at);
+		}
+		if !columns.updated_at.is_empty() {
+			let reordered_updated_at: Vec<_> = indices.iter().map(|&i| columns.updated_at[i]).collect();
+			columns.updated_at = CowVec::new(reordered_updated_at);
 		}
 
 		let cols = columns.columns.make_mut();

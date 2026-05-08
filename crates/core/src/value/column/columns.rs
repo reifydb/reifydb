@@ -331,6 +331,34 @@ impl Columns {
 	pub fn get_row(&self, index: usize) -> Vec<Value> {
 		self.columns.iter().map(|col| col.get_value(index)).collect()
 	}
+
+	#[track_caller]
+	pub fn assert_invariants(&self, ctx: &str) {
+		let n = self.columns.first().map_or(0, |c| c.len());
+		for (i, col) in self.columns.iter().enumerate() {
+			assert_eq!(
+				col.len(),
+				n,
+				"{ctx}: Columns column[{i}] has length {} but columns[0] has length {n}",
+				col.len(),
+			);
+		}
+		assert!(
+			self.row_numbers.is_empty() || self.row_numbers.len() == n,
+			"{ctx}: Columns.row_numbers.len() = {} but columns[0].len() = {n}",
+			self.row_numbers.len(),
+		);
+		assert!(
+			self.created_at.is_empty() || self.created_at.len() == n,
+			"{ctx}: Columns.created_at.len() = {} but columns[0].len() = {n}",
+			self.created_at.len(),
+		);
+		assert!(
+			self.updated_at.is_empty() || self.updated_at.len() == n,
+			"{ctx}: Columns.updated_at.len() = {} but columns[0].len() = {n}",
+			self.updated_at.len(),
+		);
+	}
 }
 
 impl Columns {
