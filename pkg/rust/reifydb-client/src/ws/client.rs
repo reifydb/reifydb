@@ -29,6 +29,7 @@ use crate::{
 	changes::{read_op_kind, strip_op_column},
 	params_to_wire,
 	session::{parse_admin_response, parse_call_response, parse_command_response, parse_query_response},
+	subscription::{BatchItem, SubscriptionConfig, build_subscription_rql},
 	utils::generate_request_id,
 };
 
@@ -514,12 +515,12 @@ impl WsClient {
 	}
 
 	/// Subscribe to real-time changes for a query.
-	pub async fn subscribe(&self, rql: &str) -> Result<String, Error> {
+	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<String, Error> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
 			payload: RequestPayload::Subscribe(SubscribeRequest {
-				rql: rql.to_string(),
+				rql: build_subscription_rql(rql, &config),
 				format: self.wire_format(),
 			}),
 		};
@@ -552,12 +553,12 @@ impl WsClient {
 
 	/// Open a batch subscription over multiple RQL queries. Returns a handle that
 	/// receives coalesced per-tick envelopes.
-	pub async fn batch_subscribe(&self, queries: &[&str]) -> Result<WsBatchSubscription, Error> {
+	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<WsBatchSubscription, Error> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
 			payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
-				queries: queries.iter().map(|q| q.to_string()).collect(),
+				queries: items.iter().map(|i| build_subscription_rql(i.rql, &i.config)).collect(),
 				format: self.wire_format(),
 			}),
 		};

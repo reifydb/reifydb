@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{GrpcClient, Value, WireFormat};
+use reifydb_client::{GrpcClient, SubscriptionConfig, Value, WireFormat};
 use tokio::runtime::Runtime;
 
 use super::{create_test_table, find_column, recv_with_timeout, unique_table_name};
@@ -26,7 +26,10 @@ fn test_subscription_int_types() {
 			.await
 			.unwrap();
 
-		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		client.command(
 			&format!(
@@ -74,7 +77,10 @@ fn test_subscription_uint_types() {
 		.await
 		.unwrap();
 
-		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		client.command(
 			&format!(
@@ -116,7 +122,10 @@ fn test_subscription_float_types() {
 		let table = unique_table_name("sub_float_types");
 		create_test_table(&client, &table, &[("f4", "float4"), ("f8", "float8")]).await.unwrap();
 
-		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		client.command(&format!("INSERT test::{} [{{ f4: 3.14, f8: 2.718281828459045 }}]", table), None)
 			.await
@@ -159,7 +168,10 @@ fn test_subscription_string_types() {
 		let table = unique_table_name("sub_string");
 		create_test_table(&client, &table, &[("s", "utf8"), ("s2", "utf8")]).await.unwrap();
 
-		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		client.command(&format!("INSERT test::{} [{{ s: 'hello world', s2: 'test data' }}]", table), None)
 			.await
@@ -193,7 +205,10 @@ fn test_subscription_temporal() {
 		let table = unique_table_name("sub_temporal");
 		create_test_table(&client, &table, &[("d", "date"), ("t", "time"), ("dt", "datetime")]).await.unwrap();
 
-		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Use quoted strings for temporal values (will be cast to temporal types)
 		client.command(
@@ -238,7 +253,10 @@ fn test_subscription_uuid() {
 		let table = unique_table_name("sub_uuid");
 		create_test_table(&client, &table, &[("u4", "uuid4"), ("u7", "uuid7")]).await.unwrap();
 
-		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		client.command(
 			&format!(

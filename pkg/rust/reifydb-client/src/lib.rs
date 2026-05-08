@@ -23,6 +23,8 @@ pub mod grpc;
 pub mod http;
 #[cfg(any(feature = "http", feature = "ws"))]
 mod session;
+#[cfg(any(feature = "ws", feature = "grpc", all(feature = "dst", reifydb_single_threaded)))]
+pub mod subscription;
 #[cfg(feature = "ws")]
 mod utils;
 #[cfg(feature = "ws")]
@@ -69,6 +71,8 @@ pub use reifydb_type::{
 use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "http", feature = "ws"))]
 use serde_json::Value as JsonValue;
+#[cfg(any(feature = "ws", feature = "grpc", all(feature = "dst", reifydb_single_threaded)))]
+pub use subscription::{BatchItem, HydrationConfig, SubscriptionConfig, build_subscription_rql};
 #[cfg(feature = "ws")]
 pub use ws::{BatchPushEvent, WsBatchSubscription, WsClient};
 

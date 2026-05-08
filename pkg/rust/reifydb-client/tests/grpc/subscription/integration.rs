@@ -11,7 +11,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use reifydb_client::{ChangeKind, GrpcClient, Value, WireFormat};
+use reifydb_client::{ChangeKind, GrpcClient, SubscriptionConfig, Value, WireFormat};
 use tokio::{runtime::Runtime, time::sleep};
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
 fn test_basic_subscribe_to_query() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_basic", "id: int4, name: utf8, value: int4").await?;
-		let sub = ctx.subscribe(&table).await?;
+		let sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
@@ -39,7 +39,7 @@ fn test_basic_subscribe_to_query() {
 fn test_basic_drop_subscription_success() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_unsub", "id: int4, name: utf8").await?;
-		let sub = ctx.subscribe(&table).await?;
+		let sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
@@ -53,7 +53,7 @@ fn test_basic_drop_subscription_success() {
 fn test_basic_receive_insert_notifications() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_insert", "id: int4, name: utf8, value: int4").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		// Insert data after subscription is established
 		ctx.insert(&table, "{ id: 1, name: 'test', value: 100 }").await?;
@@ -80,7 +80,7 @@ fn test_basic_receive_insert_notifications() {
 fn test_op_insert_callback() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_op_insert", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 
@@ -101,7 +101,7 @@ fn test_op_insert_callback() {
 fn test_op_update_callback() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_op_update", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
@@ -125,7 +125,7 @@ fn test_op_update_callback() {
 fn test_op_remove_callback() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_op_remove", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
@@ -146,7 +146,7 @@ fn test_op_remove_callback() {
 fn test_op_multiple_types_in_sequence() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_op_multi", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
 		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert");
@@ -169,7 +169,7 @@ fn test_op_multiple_types_in_sequence() {
 fn test_op_batch_consecutive_rows() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_op_batch", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		// Insert 10 rows at once
 		let rows: Vec<String> = (1..=10).map(|i| format!("{{ id: {}, name: 'user{}' }}", i, i)).collect();
@@ -205,8 +205,14 @@ fn test_concurrent_multiple_subscriptions() {
 		create_test_table(&client, &table1, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 		create_test_table(&client, &table2, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
-		let mut sub1 = client.subscribe(&format!("from test::{}", table1)).await.unwrap();
-		let mut sub2 = client.subscribe(&format!("from test::{}", table2)).await.unwrap();
+		let mut sub1 = client
+			.subscribe(&format!("from test::{}", table1), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		let mut sub2 = client
+			.subscribe(&format!("from test::{}", table2), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Insert into table 1
 		client.command(&format!("INSERT test::{} [{{ id: 1, name: 'alice' }}]", table1), None).await.unwrap();
@@ -245,7 +251,10 @@ fn test_concurrent_5_plus_subscriptions() {
 		for i in 0..NUM_TABLES {
 			let table = unique_table_name(&format!("sub_conc_{}", i));
 			create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
-			let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			tables.push(table);
 			subs.push(sub);
 		}
@@ -289,7 +298,10 @@ fn test_reconnection_resubscribe_after_disconnect() {
 		let table = unique_table_name("sub_reconn");
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
-		let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
 		// Drop and reconnect
@@ -302,7 +314,10 @@ fn test_reconnection_resubscribe_after_disconnect() {
 		client2.authenticate("mysecrettoken");
 
 		// Resubscribe
-		let mut sub2 = client2.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub2 = client2
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Insert new data
 		client2.command(&format!("INSERT test::{} [{{ id: 1, name: 'after_reconnect' }}]", table), None)
@@ -343,7 +358,10 @@ fn test_reconnection_multiple_subscriptions() {
 		// Subscribe to all tables
 		let mut subs = Vec::new();
 		for table in &tables {
-			let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			subs.push(sub);
 		}
 
@@ -358,7 +376,10 @@ fn test_reconnection_multiple_subscriptions() {
 		// Resubscribe to all tables
 		let mut subs2 = Vec::new();
 		for table in &tables {
-			let sub = client2.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let sub = client2
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			subs2.push(sub);
 		}
 
@@ -396,7 +417,7 @@ fn test_error_invalid_query() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
-		let result = client.subscribe("INVALID RQL SYNTAX HERE").await;
+		let result = client.subscribe("INVALID RQL SYNTAX HERE", SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Should reject subscription with invalid query");
 	});
 
@@ -420,7 +441,8 @@ fn test_error_nonexistent_table() {
 			SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()
 		);
 
-		let result = client.subscribe(&format!("from {}", non_existent_table)).await;
+		let result =
+			client.subscribe(&format!("from {}", non_existent_table), SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Should reject subscription to non-existent table");
 	});
 
@@ -442,7 +464,10 @@ fn test_lifecycle_cleanup_on_disconnect() {
 		let table = unique_table_name("sub_cleanup");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let _sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let _sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Drop without explicit cleanup - should not panic
 		drop(_sub);
@@ -455,7 +480,7 @@ fn test_lifecycle_cleanup_on_disconnect() {
 fn test_lifecycle_no_callbacks_after_drop() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_no_cb", "id: int4, value: int4").await?;
-		let sub = ctx.subscribe(&table).await?;
+		let sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		// Drop subscription immediately
 		drop(sub);
@@ -467,7 +492,7 @@ fn test_lifecycle_no_callbacks_after_drop() {
 		sleep(Duration::from_millis(100)).await;
 
 		// Create new subscription to verify data was inserted
-		let mut sub2 = ctx.subscribe(&table).await?;
+		let mut sub2 = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		// Should NOT receive the previous insert (it happened before this subscription)
 		let change = recv_with_timeout(&mut sub2, 500).await;
@@ -484,7 +509,13 @@ fn test_edge_empty_result_sets() {
 		let table = ctx.create_table("sub_empty", "id: int4, value: int4").await?;
 
 		// Subscribe with filter that won't match
-		let mut sub = ctx.client.subscribe(&format!("from test::{} filter {{ id > 1000 }}", table)).await?;
+		let mut sub = ctx
+			.client
+			.subscribe(
+				&format!("from test::{} filter {{ id > 1000 }}", table),
+				SubscriptionConfig::default(),
+			)
+			.await?;
 
 		// Insert data that doesn't match filter
 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
@@ -517,7 +548,7 @@ fn test_edge_empty_result_sets() {
 fn test_edge_large_batch_of_changes() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_large", "id: int4, value: int4").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		// Insert 100 rows
 		let rows: Vec<String> = (0..100).map(|i| format!("{{ id: {}, value: {} }}", i, i * 10)).collect();
@@ -551,7 +582,10 @@ fn test_edge_rapid_successive_changes() {
 		let table = unique_table_name("sub_rapid");
 		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
-		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Fire 10 insert commands rapidly
 		for i in 0..10 {
@@ -608,7 +642,10 @@ fn test_stress_many_subscriptions_single_client() {
 		for i in 0..NUM_SUBS {
 			let table = unique_table_name(&format!("stress_{}", i));
 			create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
-			let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			sub_ids.push(sub.subscription_id().to_string());
 			subs.push(sub);
 			tables.push(table);
@@ -688,7 +725,9 @@ fn test_stress_many_concurrent_clients() {
 						.await?;
 				client.authenticate("mysecrettoken");
 
-				let mut sub = client.subscribe(&format!("from test::{}", table)).await?;
+				let mut sub = client
+					.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+					.await?;
 
 				let change = recv_with_timeout(&mut sub, 10000).await;
 				if change.is_some() {
@@ -746,7 +785,10 @@ fn test_stress_rapid_subscribe_unsubscribe() {
 
 		const NUM_CYCLES: usize = 100;
 		for i in 0..NUM_CYCLES {
-			let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			drop(sub);
 
 			if (i + 1) % 25 == 0 {
@@ -754,7 +796,10 @@ fn test_stress_rapid_subscribe_unsubscribe() {
 			}
 		}
 
-		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 		assert!(!sub.subscription_id().is_empty(), "Should get valid subscription after rapid cycles");
 
 		client.command(&format!("INSERT test::{} [{{ id: 999 }}]", table), None).await.unwrap();
@@ -791,7 +836,10 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 				.await
 				.unwrap();
 			client.authenticate("mysecrettoken");
-			let sub = client.subscribe(&format!("from test::{}", shared_table)).await.unwrap();
+			let sub = client
+				.subscribe(&format!("from test::{}", shared_table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 
 			// Drop everything abruptly
 			drop(sub);
@@ -808,7 +856,10 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		new_client.authenticate("mysecrettoken");
 
-		let mut sub = new_client.subscribe(&format!("from test::{}", shared_table)).await.unwrap();
+		let mut sub = new_client
+			.subscribe(&format!("from test::{}", shared_table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 		assert!(
 			!sub.subscription_id().is_empty(),
 			"New client should be able to subscribe after abrupt disconnects"
@@ -869,7 +920,13 @@ fn test_stress_concurrent_connect_disconnect() {
 						.await?;
 						client.authenticate("mysecrettoken");
 
-						match client.subscribe(&format!("from test::{}", table)).await {
+						match client
+							.subscribe(
+								&format!("from test::{}", table),
+								SubscriptionConfig::default(),
+							)
+							.await
+						{
 							Ok(sub) => {
 								sleep(Duration::from_millis(10)).await;
 								drop(sub);
@@ -920,7 +977,10 @@ fn test_stress_concurrent_connect_disconnect() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		final_client.authenticate("mysecrettoken");
 
-		let mut sub = final_client.subscribe(&format!("from test::{}", tables[0])).await.unwrap();
+		let mut sub = final_client
+			.subscribe(&format!("from test::{}", tables[0]), SubscriptionConfig::default())
+			.await
+			.unwrap();
 		assert!(!sub.subscription_id().is_empty(), "Server should still accept new subscriptions");
 
 		final_client.command(&format!("INSERT test::{} [{{ id: 1 }}]", tables[0]), None).await.unwrap();
@@ -952,7 +1012,10 @@ fn test_stress_subscribe_receive_unsubscribe_cycles() {
 
 		const NUM_CYCLES: usize = 200;
 		for i in 0..NUM_CYCLES {
-			let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let mut sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			client.command(&format!("INSERT test::{} [{{ id: {} }}]", table, i), None).await.unwrap();
 
 			let change = recv_with_timeout(&mut sub, 500).await;

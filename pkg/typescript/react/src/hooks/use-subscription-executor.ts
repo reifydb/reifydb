@@ -3,6 +3,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { ShapeNode } from '@reifydb/core';
+import type { SubscriptionConfig } from '@reifydb/client';
 import { useConnection } from './use-connection';
 import type { ConnectionConfig } from '../connection/connection';
 
@@ -46,6 +47,7 @@ export function useSubscriptionExecutor<T = any>(
     const rql_ref = useRef<string | undefined>(undefined);
     const params_ref = useRef<any>(undefined);
     const shape_ref = useRef<ShapeNode | undefined>(undefined);
+    const config_ref = useRef<SubscriptionConfig | undefined>(undefined);
 
     // Keep client_ref in sync with client
     useEffect(() => {
@@ -90,7 +92,8 @@ export function useSubscriptionExecutor<T = any>(
     const subscribe = useCallback(async (
         rql: string,
         params?: any,
-        shape?: ShapeNode
+        shape?: ShapeNode,
+        config?: SubscriptionConfig
     ) => {
         const current_client = client_ref.current;
         if (!current_client) {
@@ -107,6 +110,7 @@ export function useSubscriptionExecutor<T = any>(
         rql_ref.current = rql;
         params_ref.current = params;
         shape_ref.current = shape;
+        config_ref.current = config;
 
         setState(prev => ({
             ...prev,
@@ -119,7 +123,7 @@ export function useSubscriptionExecutor<T = any>(
                 on_insert: handle_insert,
                 on_update: handle_update,
                 on_remove: handle_remove
-            });
+            }, config);
 
             subscriptionIdRef.current = sub_id;
             setState(prev => ({
@@ -148,6 +152,7 @@ export function useSubscriptionExecutor<T = any>(
             rql_ref.current = undefined;
             params_ref.current = undefined;
             shape_ref.current = undefined;
+            config_ref.current = undefined;
 
             setState(prev => ({
                 ...prev,

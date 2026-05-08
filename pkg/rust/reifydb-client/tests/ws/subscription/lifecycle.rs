@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{WireFormat, WsClient};
+use reifydb_client::{SubscriptionConfig, WireFormat, WsClient};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -25,7 +25,10 @@ fn test_no_changes_after_unsubscribe() {
 		let table = unique_table_name("sub_after_unsub");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub_id = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Unsubscribe
 		client.unsubscribe(&sub_id).await.unwrap();
@@ -57,7 +60,10 @@ fn test_close_cleans_up_subscriptions() {
 		let table = unique_table_name("sub_close");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let _sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let _sub_id = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Close without explicit unsubscribe - should not panic
 		client.close().await.unwrap();
@@ -82,12 +88,18 @@ fn test_rapid_subscribe_unsubscribe() {
 
 		// Rapid subscribe/unsubscribe cycles
 		for _ in 0..10 {
-			let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let sub_id = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			client.unsubscribe(&sub_id).await.unwrap();
 		}
 
 		// Should still work after rapid cycles
-		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub_id = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 		assert!(!sub_id.is_empty());
 
 		client.command(&format!("INSERT test::{} [{{ id: 999 }}]", table), None).await.unwrap();

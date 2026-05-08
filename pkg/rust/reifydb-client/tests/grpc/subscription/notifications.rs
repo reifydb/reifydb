@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_client::{ChangeKind, Type, Value};
+use reifydb_client::{ChangeKind, SubscriptionConfig, Type, Value};
 
 use super::{SubscriptionTestHarness, TestContext, find_column};
 
@@ -9,7 +9,7 @@ use super::{SubscriptionTestHarness, TestContext, find_column};
 fn test_recv_insert_notification() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("insert", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 1, name: 'test' }").await?;
 
@@ -32,7 +32,7 @@ fn test_recv_insert_notification() {
 fn test_recv_update_notification() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("update", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
 
@@ -56,7 +56,7 @@ fn test_recv_update_notification() {
 fn test_recv_delete_notification() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("delete", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
 
@@ -76,7 +76,7 @@ fn test_recv_delete_notification() {
 fn test_recv_multiple_rows() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("multi_rows", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }, { id: 3, name: 'charlie' }")
 			.await?;
@@ -94,7 +94,7 @@ fn test_recv_multiple_rows() {
 fn test_recv_preserves_data_types() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("types", "id: int4, value: int8, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 42, value: 9999999999, name: 'test' }").await?;
 

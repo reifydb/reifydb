@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
+use reifydb_client::{
+	HydrationConfig as ClientHydrationConfig, RawChangePayload, SubscriptionConfig as ClientSubscriptionConfig,
+	WireFormat as ClientWireFormat,
+};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	common::CommitVersion,
@@ -212,7 +215,8 @@ impl ReifyDbService {
 	async fn subscribe_remote(
 		&self,
 		address: String,
-		rql: &str,
+		body: &str,
+		config: ClientSubscriptionConfig,
 		token: Option<String>,
 		format: WireFormat,
 	) -> Result<Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
@@ -220,7 +224,7 @@ impl ReifyDbService {
 			WireFormat::Rbcf => ClientWireFormat::Rbcf,
 			WireFormat::Proto => ClientWireFormat::Proto,
 		};
-		let remote_sub = connect_remote(&address, rql, token.as_deref(), client_format)
+		let remote_sub = connect_remote(&address, body, config, token.as_deref(), client_format)
 			.await
 			.map_err(|e| Status::unavailable(e.to_string()))?;
 
@@ -380,9 +384,18 @@ impl ReifyDb for ReifyDbService {
 			} => self.subscribe_local(id, format, identity, hydration, &inner.rql).await,
 			CreateSubscriptionResult::Remote {
 				address,
-				rql,
+				body,
 				token: ns_token,
-			} => self.subscribe_remote(address, &rql, ns_token, format).await,
+				hydration,
+			} => {
+				let config = ClientSubscriptionConfig {
+					hydration: ClientHydrationConfig {
+						enabled: hydration.enabled,
+						max_rows: hydration.max_rows,
+					},
+				};
+				self.subscribe_remote(address, &body, config, ns_token, format).await
+			}
 		}
 	}
 
@@ -446,16 +459,24 @@ impl ReifyDb for ReifyDbService {
 				}
 				Ok(CreateSubscriptionResult::Remote {
 					address,
-					rql: upstream_rql,
+					body,
 					token: ns_token,
+					hydration,
 				}) => {
 					let client_format = match format {
 						WireFormat::Rbcf => ClientWireFormat::Rbcf,
 						WireFormat::Proto => ClientWireFormat::Proto,
 					};
+					let config = ClientSubscriptionConfig {
+						hydration: ClientHydrationConfig {
+							enabled: hydration.enabled,
+							max_rows: hydration.max_rows,
+						},
+					};
 					match connect_remote(
 						&address,
-						&upstream_rql,
+						&body,
+						config,
 						ns_token.as_deref(),
 						client_format,
 					)

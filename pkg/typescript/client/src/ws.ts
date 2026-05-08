@@ -27,6 +27,7 @@ import type {
     ResponseMeta,
     SubscribeRequest,
     SubscribedResponse,
+    SubscriptionConfig,
     UnsubscribeRequest,
     UnsubscribedResponse,
     ChangeMessage,
@@ -43,6 +44,7 @@ import type {
     BatchSubscription
 } from "./types";
 import {
+    build_subscription_rql,
     ReifyError
 } from "./types";
 import {encode_params} from "./encoder";
@@ -159,6 +161,7 @@ interface SubscriptionState<T = any> {
     params?: any;
     shape?: ShapeNode;
     callbacks: SubscriptionCallbacks<T>;
+    config?: SubscriptionConfig;
 }
 
 interface BatchState {
@@ -377,17 +380,19 @@ export class WsClient {
         rql: string,
         params: any,
         shape: ShapeNode | undefined,
-        callbacks: SubscriptionCallbacks<T>
+        callbacks: SubscriptionCallbacks<T>,
+        config?: SubscriptionConfig
     ): Promise<string> {
         const id = `sub-${this.next_id++}`;
 
         // Subscriptions always use columnar shape (frames or rbcf) — the change-tracking
         // protocol reads `_op` from the columnar layout, so rows-shape JSON cannot carry it.
         const sub_format = this.options.format === "rbcf" ? "rbcf" : "frames";
+        const wire_rql = build_subscription_rql(rql, config);
         const request: SubscribeRequest = {
             id,
             type: "Subscribe",
-            payload: {rql, format: sub_format} as any
+            payload: {rql: wire_rql, format: sub_format} as any
         };
 
         return new Promise((resolve, reject) => {
@@ -405,7 +410,8 @@ export class WsClient {
                             rql,
                             params,
                             shape,
-                            callbacks
+                            callbacks,
+                            config
                         });
 
                         resolve(subscription_id);
@@ -461,7 +467,7 @@ export class WsClient {
             id,
             type: "BatchSubscribe",
             payload: {
-                queries: members.map(m => m.rql),
+                queries: members.map(m => build_subscription_rql(m.rql, m.config)),
                 format: sub_format as any
             }
         };
@@ -492,7 +498,8 @@ export class WsClient {
                             rql: member.rql,
                             params: member.params,
                             shape: member.shape,
-                            callbacks: member.callbacks
+                            callbacks: member.callbacks,
+                            config: member.config
                         });
                         this.sub_to_batch.set(info.subscription_id, batch_id);
                     }
@@ -953,7 +960,7 @@ export class WsClient {
             try {
                 // Re-subscribe with same parameters
                 // Cast to avoid overload resolution issues in internal call
-                await (this.subscribe as any)(state.rql, state.params, state.shape, state.callbacks);
+                await (this.subscribe as any)(state.rql, state.params, state.shape, state.callbacks, state.config);
             } catch (err) {
                 console.error(`Failed to resubscribe to ${state.rql}:`, err);
             }

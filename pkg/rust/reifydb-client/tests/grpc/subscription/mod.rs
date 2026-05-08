@@ -3,7 +3,7 @@
 
 use std::{error::Error, future::Future, sync::Arc, time::Duration};
 
-use reifydb_client::{Frame, FrameColumn, GrpcChange, GrpcClient, GrpcSubscription, WireFormat};
+use reifydb_client::{Frame, FrameColumn, GrpcChange, GrpcClient, GrpcSubscription, SubscriptionConfig, WireFormat};
 use tokio::{runtime::Runtime, time::timeout};
 
 use crate::common::{cleanup_server, create_server_instance, start_server_and_get_grpc_port};
@@ -129,8 +129,12 @@ impl TestContext {
 	}
 
 	/// Subscribe to a table, returns a GrpcSubscription
-	pub async fn subscribe(&self, table: &str) -> Result<GrpcSubscription, Box<dyn Error>> {
-		let sub = self.client.subscribe(&format!("from test::{}", table)).await?;
+	pub async fn subscribe(
+		&self,
+		table: &str,
+		config: SubscriptionConfig,
+	) -> Result<GrpcSubscription, Box<dyn Error>> {
+		let sub = self.client.subscribe(&format!("from test::{}", table), config).await?;
 		Ok(sub)
 	}
 

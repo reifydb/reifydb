@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{GrpcClient, WireFormat};
+use reifydb_client::{GrpcClient, SubscriptionConfig, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -26,7 +26,10 @@ fn test_no_changes_after_drop_subscription() {
 		let table = unique_table_name("sub_after_unsub");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Drop subscription
 		drop(sub);
@@ -35,7 +38,10 @@ fn test_no_changes_after_drop_subscription() {
 		client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 
 		// Re-subscribe and verify only new data arrives
-		let mut sub2 = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub2 = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		client.command(&format!("INSERT test::{} [{{ id: 2 }}]", table), None).await.unwrap();
 
@@ -63,7 +69,10 @@ fn test_drop_cleans_up_subscriptions() {
 		let table = unique_table_name("sub_close");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let _sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let _sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Drop without explicit cleanup - should not panic
 		drop(_sub);
@@ -89,12 +98,18 @@ fn test_rapid_subscribe_drop() {
 
 		// Rapid subscribe/drop cycles
 		for _ in 0..10 {
-			let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			drop(sub);
 		}
 
 		// Should still work after rapid cycles
-		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 		assert!(!sub.subscription_id().is_empty());
 
 		client.command(&format!("INSERT test::{} [{{ id: 999 }}]", table), None).await.unwrap();

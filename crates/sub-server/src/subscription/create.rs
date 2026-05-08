@@ -19,8 +19,9 @@ pub enum CreateSubscriptionResult {
 	},
 	Remote {
 		address: String,
-		rql: String,
+		body: String,
 		token: Option<String>,
+		hydration: HydrationConfig,
 	},
 }
 
@@ -44,11 +45,10 @@ pub async fn create_subscription(
 ) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
 	debug!("Subscription rql: {}", rql);
 
-	let subscription_rql = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
 	let ctx = RequestContext {
 		identity,
 		operation: Operation::Subscribe,
-		rql: subscription_rql,
+		rql: rql.to_string(),
 		params: Params::None,
 		metadata,
 	};
@@ -70,17 +70,23 @@ fn extract_remote_result(frame: &Frame) -> Result<Option<CreateSubscriptionResul
 		Some(s) => s,
 		None => return Err(CreateSubscriptionError::ExtractionFailed),
 	};
-	let rql = frame
+	let body = frame
 		.columns
 		.iter()
-		.find(|c| c.name == "remote_rql")
+		.find(|c| c.name == "remote_body")
 		.and_then(first_utf8_value)
 		.ok_or(CreateSubscriptionError::ExtractionFailed)?;
 	let token = frame.columns.iter().find(|c| c.name == "remote_token").and_then(first_utf8_value);
+	let enabled = first_bool_value(frame, "remote_hydration_enabled").unwrap_or(true);
+	let max_rows = first_uint8_value(frame, "remote_hydration_max_rows");
 	Ok(Some(CreateSubscriptionResult::Remote {
 		address,
-		rql,
+		body,
 		token,
+		hydration: HydrationConfig {
+			enabled,
+			max_rows,
+		},
 	}))
 }
 

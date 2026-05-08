@@ -26,18 +26,16 @@ pub(crate) fn create_subscription(
 			Some(t) => Value::Utf8(t.clone()),
 			None => Value::none(),
 		};
-		let with_clause = match plan.hydration.max_rows {
-			Some(max_rows) => format!(
-				"WITH {{ hydration: {{ enabled: {}, max_rows: {} }} }} ",
-				plan.hydration.enabled, max_rows
-			),
-			None => format!("WITH {{ hydration: {{ enabled: {} }} }} ", plan.hydration.enabled),
+		let max_rows_value = match plan.hydration.max_rows {
+			Some(n) => Value::Uint8(n),
+			None => Value::none(),
 		};
-		let remote_ddl = format!("CREATE SUBSCRIPTION {}AS {{ {} }}", with_clause, remote.remote_rql);
 		return Ok(Columns::single_row([
 			("remote_address", Value::Utf8(remote.address.clone())),
-			("remote_rql", Value::Utf8(remote_ddl)),
+			("remote_body", Value::Utf8(remote.remote_rql.clone())),
 			("remote_token", token_value),
+			("remote_hydration_enabled", Value::Boolean(plan.hydration.enabled)),
+			("remote_hydration_max_rows", max_rows_value),
 		]));
 	}
 

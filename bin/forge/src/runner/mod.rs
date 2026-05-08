@@ -6,7 +6,7 @@ pub mod git;
 
 use std::process;
 
-use reifydb_client::{Frame, GrpcClient, GrpcSubscription, WireFormat};
+use reifydb_client::{Frame, GrpcClient, GrpcSubscription, SubscriptionConfig, WireFormat};
 use tokio::{runtime::Runtime, spawn};
 use tracing::{error, info};
 use tracing_subscriber::fmt as tracing_fmt;
@@ -57,14 +57,16 @@ pub fn start(url: &str) {
 
 		info!("Connected to orchestrator, subscribing to pending job_runs...");
 
-		let mut subscription: GrpcSubscription =
-			match client.subscribe("FROM forge::job_runs | FILTER status == \"pending\"").await {
-				Ok(s) => s,
-				Err(e) => {
-					error!("Failed to subscribe: {}", e);
-					process::exit(1);
-				}
-			};
+		let mut subscription: GrpcSubscription = match client
+			.subscribe("FROM forge::job_runs | FILTER status == \"pending\"", SubscriptionConfig::default())
+			.await
+		{
+			Ok(s) => s,
+			Err(e) => {
+				error!("Failed to subscribe: {}", e);
+				process::exit(1);
+			}
+		};
 
 		info!("Subscribed (id={}), waiting for work...", subscription.subscription_id());
 

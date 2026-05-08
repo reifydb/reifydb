@@ -126,6 +126,32 @@ export interface SubscriptionCallbacks<T = any> {
     on_remove?: (rows: T[]) => void;
 }
 
+export interface HydrationConfig {
+    enabled: boolean;
+    max_rows?: number;
+}
+
+export interface SubscriptionConfig {
+    hydration?: HydrationConfig;
+}
+
+export function default_hydration_config(): HydrationConfig {
+    return { enabled: true };
+}
+
+export function default_subscription_config(): SubscriptionConfig {
+    return { hydration: default_hydration_config() };
+}
+
+export function build_subscription_rql(body: string, config?: SubscriptionConfig): string {
+    const h = config?.hydration ?? default_hydration_config();
+    const enabled = h.enabled;
+    const with_clause = h.max_rows !== undefined
+        ? ` WITH { hydration: { enabled: ${enabled}, max_rows: ${h.max_rows} } }`
+        : ` WITH { hydration: { enabled: ${enabled} } }`;
+    return `CREATE SUBSCRIPTION${with_clause} AS { ${body} }`;
+}
+
 export interface BatchSubscribeRequest {
     id: string;
     type: "BatchSubscribe";
@@ -197,6 +223,7 @@ export interface BatchSubscriptionMember<T = any> {
     params?: any;
     shape?: ShapeNode;
     callbacks: SubscriptionCallbacks<T>;
+    config?: SubscriptionConfig;
 }
 
 export interface BatchSubscriptionCallbacks {

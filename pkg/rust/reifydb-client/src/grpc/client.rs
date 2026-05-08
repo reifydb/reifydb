@@ -55,6 +55,7 @@ use super::generated::{
 use crate::{
 	AdminResult, ChangeKind, CommandResult, LoginResult, QueryResult, ResponseMeta, WireFormat,
 	changes::{read_op_kind, strip_op_column},
+	subscription::{BatchItem, SubscriptionConfig, build_subscription_rql},
 };
 
 fn extract_meta(metadata: &MetadataMap) -> Option<ResponseMeta> {
@@ -300,9 +301,9 @@ impl GrpcClient {
 		})
 	}
 
-	pub async fn subscribe(&self, rql: &str) -> Result<GrpcSubscription, Error> {
+	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<GrpcSubscription, Error> {
 		let request = ProtoSubscribeRequest {
-			rql: rql.to_string(),
+			rql: build_subscription_rql(rql, &config),
 			format: self.wire_format(),
 		};
 
@@ -353,9 +354,9 @@ impl GrpcClient {
 
 	/// Open a batch subscription over N queries. The server coalesces per-tick deltas
 	/// into a single envelope keyed by member subscription id.
-	pub async fn batch_subscribe(&self, queries: &[&str]) -> Result<BatchGrpcSubscription, Error> {
+	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<BatchGrpcSubscription, Error> {
 		let request = ProtoBatchSubscribeRequest {
-			rql: queries.iter().map(|q| q.to_string()).collect(),
+			rql: items.iter().map(|i| build_subscription_rql(i.rql, &i.config)).collect(),
 			format: self.wire_format(),
 		};
 

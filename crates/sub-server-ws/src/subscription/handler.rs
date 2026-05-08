@@ -3,7 +3,10 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
+use reifydb_client::{
+	HydrationConfig as ClientHydrationConfig, RawChangePayload, SubscriptionConfig as ClientSubscriptionConfig,
+	WireFormat as ClientWireFormat,
+};
 use reifydb_core::interface::catalog::{id::SubscriptionId, subscription::HydrationConfig};
 use reifydb_engine::subscription::HydrateError;
 use reifydb_remote_proxy::{RemoteSubscription, connect_remote, proxy_remote, proxy_remote_to_sink};
@@ -116,24 +119,32 @@ pub(crate) async fn handle_subscribe(
 		}
 		Ok(Remote {
 			address,
-			rql,
+			body,
 			token: ns_token,
+			hydration,
 		}) => {
 			let client_fmt = match format {
 				WireFormat::Rbcf => ClientWireFormat::Rbcf,
 				WireFormat::Json | WireFormat::Frames => ClientWireFormat::Rbcf,
 			};
-			let remote_sub = match connect_remote(&address, &rql, ns_token.as_deref(), client_fmt).await {
-				Ok(s) => s,
-				Err(e) => {
-					return Some(Response::internal_error(
-						request_id,
-						"REMOTE_SUBSCRIBE_FAILED",
-						e.to_string(),
-					)
-					.to_json());
-				}
+			let config = ClientSubscriptionConfig {
+				hydration: ClientHydrationConfig {
+					enabled: hydration.enabled,
+					max_rows: hydration.max_rows,
+				},
 			};
+			let remote_sub =
+				match connect_remote(&address, &body, config, ns_token.as_deref(), client_fmt).await {
+					Ok(s) => s,
+					Err(e) => {
+						return Some(Response::internal_error(
+							request_id,
+							"REMOTE_SUBSCRIBE_FAILED",
+							e.to_string(),
+						)
+						.to_json());
+					}
+				};
 
 			let remote_id = remote_sub.subscription_id().to_string();
 			let subscription_id = match remote_id.parse::<u64>() {
@@ -306,16 +317,24 @@ pub(crate) async fn handle_batch_subscribe(
 			}
 			Ok(CreateSubscriptionResult::Remote {
 				address,
-				rql,
+				body,
 				token: ns_token,
+				hydration,
 			}) => {
 				let client_format = match format {
 					WireFormat::Rbcf => ClientWireFormat::Rbcf,
 					WireFormat::Json | WireFormat::Frames => ClientWireFormat::Rbcf,
 				};
+				let config = ClientSubscriptionConfig {
+					hydration: ClientHydrationConfig {
+						enabled: hydration.enabled,
+						max_rows: hydration.max_rows,
+					},
+				};
 				let remote_sub = match connect_remote(
 					&address,
-					&rql,
+					&body,
+					config,
 					ns_token.as_deref(),
 					client_format,
 				)
