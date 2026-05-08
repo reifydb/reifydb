@@ -8,6 +8,7 @@ use std::{
 	},
 	iter,
 	ops::{Deref, RangeBounds},
+	sync::Arc,
 };
 
 use reifydb_type::{
@@ -494,7 +495,7 @@ impl IntoEncodedKey for (&str, &str) {
 	}
 }
 
-impl IntoEncodedKey for (std::sync::Arc<str>, std::sync::Arc<str>) {
+impl IntoEncodedKey for (Arc<str>, Arc<str>) {
 	fn into_encoded_key(self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_str(&self.0);
@@ -503,7 +504,7 @@ impl IntoEncodedKey for (std::sync::Arc<str>, std::sync::Arc<str>) {
 	}
 }
 
-impl IntoEncodedKey for &(std::sync::Arc<str>, std::sync::Arc<str>) {
+impl IntoEncodedKey for &(Arc<str>, Arc<str>) {
 	fn into_encoded_key(self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_str(&self.0);

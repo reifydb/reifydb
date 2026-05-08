@@ -29,3 +29,8 @@ rusqlite = { workspace = true, features = ["bundled"], optional = true }
 [dev-dependencies]
 test_each_file = { workspace = true }
 reifydb-testing = { workspace = true }
+
+[[bench]]
+name = "buffer_memory_scan"
+harness = false
+path = "benches/buffer_memory_scan.rs"

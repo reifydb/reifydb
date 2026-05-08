@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	cmp::Reverse,
+	cmp::{Ordering, Reverse},
 	collections::{HashMap, HashSet},
 	ops::Bound,
 	sync::Arc,
@@ -262,55 +262,57 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => Bound::Unbounded,
 		};
 
-		let current_keys: Vec<_> = current.range::<CowVec<u8>, _>((iter_start, iter_end)).collect();
+		let mut cur_iter = current.range::<CowVec<u8>, _>((iter_start, iter_end)).peekable();
+		let mut hist_iter = historical.range::<CowVec<u8>, _>((iter_start, iter_end)).peekable();
 
-		for (key, (cur_version, cur_value)) in current_keys {
-			if entries.len() > batch_size {
-				break;
-			}
+		while entries.len() <= batch_size {
+			let (take_cur, take_hist) = match (cur_iter.peek(), hist_iter.peek()) {
+				(None, None) => break,
+				(Some(_), None) => (true, false),
+				(None, Some(_)) => (false, true),
+				(Some((kc, _)), Some((kh, _))) => match kc.cmp(kh) {
+					Ordering::Less => (true, false),
+					Ordering::Greater => (false, true),
+					Ordering::Equal => (true, true),
+				},
+			};
 
-			if *cur_version <= version {
-				entries.push(RawEntry {
-					key: key.clone(),
-					version: *cur_version,
-					value: cur_value.clone(),
-				});
-			} else if let Some(versions) = historical.get(key) {
-				for (Reverse(v), value) in versions.range(Reverse(version)..) {
-					if *v <= version {
-						entries.push(RawEntry {
-							key: key.clone(),
-							version: *v,
-							value: value.clone(),
-						});
-						break;
-					}
-				}
-			}
-		}
-
-		for (key, versions) in historical.range::<CowVec<u8>, _>((iter_start, iter_end)) {
-			if entries.len() > batch_size {
-				break;
-			}
-
-			if current.contains_key(key) {
-				continue;
-			}
-
-			for (Reverse(v), value) in versions.range(Reverse(version)..) {
-				if *v <= version {
+			if take_cur && take_hist {
+				let (key, (cur_version, cur_value)) = cur_iter.next().unwrap();
+				let (_, versions) = hist_iter.next().unwrap();
+				if *cur_version <= version {
+					entries.push(RawEntry {
+						key: key.clone(),
+						version: *cur_version,
+						value: cur_value.clone(),
+					});
+				} else if let Some((Reverse(v), value)) = versions.range(Reverse(version)..).next() {
 					entries.push(RawEntry {
 						key: key.clone(),
 						version: *v,
 						value: value.clone(),
 					});
-					break;
+				}
+			} else if take_cur {
+				let (key, (cur_version, cur_value)) = cur_iter.next().unwrap();
+				if *cur_version <= version {
+					entries.push(RawEntry {
+						key: key.clone(),
+						version: *cur_version,
+						value: cur_value.clone(),
+					});
+				}
+			} else {
+				let (key, versions) = hist_iter.next().unwrap();
+				if let Some((Reverse(v), value)) = versions.range(Reverse(version)..).next() {
+					entries.push(RawEntry {
+						key: key.clone(),
+						version: *v,
+						value: value.clone(),
+					});
 				}
 			}
 		}
-
-		entries.sort_by(|a, b| a.key.cmp(&b.key));
 
 		let has_more = entries.len() > batch_size;
 		if has_more {
@@ -390,55 +392,57 @@ impl TierStorage for MemoryPrimitiveStorage {
 			},
 		};
 
-		let current_keys: Vec<_> = current.range::<CowVec<u8>, _>((iter_start, iter_end)).rev().collect();
+		let mut cur_iter = current.range::<CowVec<u8>, _>((iter_start, iter_end)).rev().peekable();
+		let mut hist_iter = historical.range::<CowVec<u8>, _>((iter_start, iter_end)).rev().peekable();
 
-		for (key, (cur_version, cur_value)) in current_keys {
-			if entries.len() > batch_size {
-				break;
-			}
+		while entries.len() <= batch_size {
+			let (take_cur, take_hist) = match (cur_iter.peek(), hist_iter.peek()) {
+				(None, None) => break,
+				(Some(_), None) => (true, false),
+				(None, Some(_)) => (false, true),
+				(Some((kc, _)), Some((kh, _))) => match kc.cmp(kh) {
+					Ordering::Greater => (true, false),
+					Ordering::Less => (false, true),
+					Ordering::Equal => (true, true),
+				},
+			};
 
-			if *cur_version <= version {
-				entries.push(RawEntry {
-					key: key.clone(),
-					version: *cur_version,
-					value: cur_value.clone(),
-				});
-			} else if let Some(versions) = historical.get(key) {
-				for (Reverse(v), value) in versions.range(Reverse(version)..) {
-					if *v <= version {
-						entries.push(RawEntry {
-							key: key.clone(),
-							version: *v,
-							value: value.clone(),
-						});
-						break;
-					}
-				}
-			}
-		}
-
-		for (key, versions) in historical.range::<CowVec<u8>, _>((iter_start, iter_end)).rev() {
-			if entries.len() > batch_size {
-				break;
-			}
-
-			if current.contains_key(key) {
-				continue;
-			}
-
-			for (Reverse(v), value) in versions.range(Reverse(version)..) {
-				if *v <= version {
+			if take_cur && take_hist {
+				let (key, (cur_version, cur_value)) = cur_iter.next().unwrap();
+				let (_, versions) = hist_iter.next().unwrap();
+				if *cur_version <= version {
+					entries.push(RawEntry {
+						key: key.clone(),
+						version: *cur_version,
+						value: cur_value.clone(),
+					});
+				} else if let Some((Reverse(v), value)) = versions.range(Reverse(version)..).next() {
 					entries.push(RawEntry {
 						key: key.clone(),
 						version: *v,
 						value: value.clone(),
 					});
-					break;
+				}
+			} else if take_cur {
+				let (key, (cur_version, cur_value)) = cur_iter.next().unwrap();
+				if *cur_version <= version {
+					entries.push(RawEntry {
+						key: key.clone(),
+						version: *cur_version,
+						value: cur_value.clone(),
+					});
+				}
+			} else {
+				let (key, versions) = hist_iter.next().unwrap();
+				if let Some((Reverse(v), value)) = versions.range(Reverse(version)..).next() {
+					entries.push(RawEntry {
+						key: key.clone(),
+						version: *v,
+						value: value.clone(),
+					});
 				}
 			}
 		}
-
-		entries.sort_by(|a, b| b.key.cmp(&a.key));
 
 		let has_more = entries.len() > batch_size;
 		if has_more {
