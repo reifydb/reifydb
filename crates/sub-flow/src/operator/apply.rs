@@ -36,6 +36,10 @@ impl Operator for ApplyOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		self.inner.capabilities()
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		self.inner.apply(txn, change)
 	}

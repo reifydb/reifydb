@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	interface::{
 		catalog::flow::{Flow, FlowNodeId},
@@ -30,6 +31,10 @@ impl PrimitiveFlowOperator {
 impl Operator for PrimitiveFlowOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
+	}
+
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
 	}
 
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {

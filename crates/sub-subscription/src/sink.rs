@@ -8,7 +8,7 @@ use std::{
 };
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_abi::flow::diff::DiffType;
+use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
 use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::{
@@ -143,6 +143,10 @@ impl SingleStateful for EphemeralSinkSubscriptionOperator {
 impl Operator for EphemeralSinkSubscriptionOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
+	}
+
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

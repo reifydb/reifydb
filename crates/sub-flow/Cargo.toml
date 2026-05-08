@@ -74,3 +74,4 @@ reifydb-sub-subscription = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb = { workspace = true }
 rand = { workspace = true }
+tracing-subscriber = { workspace = true }

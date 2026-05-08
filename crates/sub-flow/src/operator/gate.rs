@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, LazyLock};
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
@@ -133,6 +134,10 @@ impl RawStatefulOperator for GateOperator {}
 impl Operator for GateOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
+	}
+
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

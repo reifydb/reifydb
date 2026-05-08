@@ -5,6 +5,7 @@ use std::sync::{Arc, LazyLock};
 
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
+use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
 use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::{
@@ -500,6 +501,10 @@ impl Operator for DistinctOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let node_id = self.node;
 		let shape = self.shape.clone();
@@ -618,6 +623,10 @@ mod ttl_tests {
 	impl Operator for NoOpParent {
 		fn id(&self) -> FlowNodeId {
 			FlowNodeId(0)
+		}
+
+		fn capabilities(&self) -> u32 {
+			CAPABILITY_ALL_STANDARD
 		}
 
 		fn apply(&self, _: &mut FlowTransaction, change: Change) -> Result<Change> {

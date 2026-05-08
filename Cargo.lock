@@ -3020,6 +3020,7 @@ dependencies = [
  "serde_bytes",
  "smallvec",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -4,6 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use postcard::to_stdvec;
+use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
 use reifydb_core::{
 	common::{CommitVersion, JoinType},
 	encoded::{key::EncodedKey, shape::RowShape},
@@ -447,6 +448,10 @@ impl SingleStateful for JoinOperator {
 impl Operator for JoinOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
+	}
+
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
