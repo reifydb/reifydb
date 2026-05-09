@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use crate::common::{normalize, random_rows, run_path_incremental, run_path_snapshot};
+use crate::common::{Row, normalize, random_rows, run_path_incremental, run_path_snapshot};
+
+// `take N` keeps the N rows with the smallest RowNumber and discards the rest. RowNumbers are
+// assigned in insertion order, so on a steady stream this is "the first N rows to arrive".
+// Once N rows are active, additional rows are filtered (held as candidates only to fill in
+// when an active row is removed). Each row appears at most once in the output, and bulk-hydrate
+// (snapshot) and incremental (CDC) ingest paths must agree on which N rows are kept.
 
 #[test]
 fn smoke_empty_log_take() {
@@ -9,6 +15,58 @@ fn smoke_empty_log_take() {
 	let b = normalize(run_path_incremental("from app::t | take 5", &[]));
 	assert_eq!(a, b);
 	assert!(a.is_empty(), "empty input should produce empty sink output, got {:?}", a);
+}
+
+// 6 rows feed `take 5`. The contract is "first 5 by insertion order"; the 6th row is filtered.
+// Each output row appears exactly once.
+#[test]
+fn take_emits_first_n_rows_by_insertion_order() {
+	let rql = "from app::t | take 5";
+	let rows = vec![
+		Row {
+			id: 279,
+			qty: 858,
+			ts_ms: 659581,
+		},
+		Row {
+			id: 45,
+			qty: 766,
+			ts_ms: 698929,
+		},
+		Row {
+			id: 611,
+			qty: 95,
+			ts_ms: 790287,
+		},
+		Row {
+			id: 127,
+			qty: 640,
+			ts_ms: 153587,
+		},
+		Row {
+			id: 812,
+			qty: 208,
+			ts_ms: 918440,
+		},
+		Row {
+			id: 20,
+			qty: 691,
+			ts_ms: 55354,
+		},
+	];
+	let expected =
+		vec![(45, 766, 698929), (127, 640, 153587), (279, 858, 659581), (611, 95, 790287), (812, 208, 918440)];
+
+	assert_eq!(
+		normalize(run_path_snapshot(rql, &rows)),
+		expected,
+		"snapshot path must keep exactly the first 5 rows by insertion order, no duplicates"
+	);
+	assert_eq!(
+		normalize(run_path_incremental(rql, &rows)),
+		expected,
+		"incremental path must keep exactly the first 5 rows by insertion order, no duplicates"
+	);
 }
 
 #[test]

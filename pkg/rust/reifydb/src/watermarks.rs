@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::marker::PhantomData;
+use std::{
+	marker::PhantomData,
+	thread,
+	time::{Duration, Instant},
+};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -66,6 +70,7 @@ impl<'a> Watermarks<'a> {
 			cdc: CdcSnapshot {
 				producer: cdc.producer(),
 				max: cdc.max(),
+				consumer: cdc.consumer(),
 			},
 			flow: self.flow().map(|f| f.all()),
 			#[cfg(feature = "sub_replication")]
@@ -113,6 +118,26 @@ impl CdcWatermarks<'_> {
 	pub fn max(&self) -> CommitVersion {
 		self.db.engine().cdc_store().max_version().ok().flatten().unwrap_or(CommitVersion(0))
 	}
+
+	pub fn consumer(&self) -> CommitVersion {
+		self.db.engine().cdc_consumer_watermark()
+	}
+
+	pub fn wait_for_consumer(&self, version: CommitVersion, timeout: Duration) -> bool {
+		if self.consumer() >= version {
+			return true;
+		}
+		let deadline = Instant::now() + timeout;
+		loop {
+			if self.consumer() >= version {
+				return true;
+			}
+			if Instant::now() >= deadline {
+				return self.consumer() >= version;
+			}
+			thread::sleep(Duration::from_millis(2));
+		}
+	}
 }
 
 pub struct FlowWatermarks<'a> {
@@ -158,4 +183,5 @@ pub struct TxSnapshot {
 pub struct CdcSnapshot {
 	pub producer: CommitVersion,
 	pub max: CommitVersion,
+	pub consumer: CommitVersion,
 }

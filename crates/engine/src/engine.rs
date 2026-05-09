@@ -20,7 +20,11 @@ use reifydb_catalog::{
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
 };
-use reifydb_cdc::{consume::host::CdcHost, produce::watermark::CdcProducerWatermark, storage::CdcStore};
+use reifydb_cdc::{
+	consume::{host::CdcHost, watermark::CdcConsumerWatermark},
+	produce::watermark::CdcProducerWatermark,
+	storage::CdcStore,
+};
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::{catalog::namespace_not_found, engine::read_only_rejection},
@@ -588,6 +592,11 @@ impl StandardEngine {
 			.resolve::<CdcProducerWatermark>()
 			.expect("CdcProducerWatermark must be registered")
 			.get()
+	}
+
+	#[inline]
+	pub fn cdc_consumer_watermark(&self) -> CommitVersion {
+		self.executor.ioc.try_resolve::<CdcConsumerWatermark>().map(|w| w.get()).unwrap_or(CommitVersion(0))
 	}
 
 	pub fn set_read_only(&self) {

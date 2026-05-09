@@ -15,6 +15,7 @@ use reifydb_cdc::{
 	consume::{
 		consumer::CdcConsumer,
 		poll::{PollConsumer, PollConsumerConfig},
+		watermark::CdcConsumerWatermark,
 	},
 	storage::CdcStore,
 };
@@ -454,6 +455,7 @@ impl SubscriptionSubsystem {
 		store: Arc<SubscriptionStore>,
 		runtime_context: RuntimeContext,
 		custom_operators: Arc<HashMap<String, OperatorFactory>>,
+		consumer_watermark: CdcConsumerWatermark,
 	) -> Self {
 		let catalog = engine.catalog();
 		let executor = engine.executor();
@@ -489,7 +491,8 @@ impl SubscriptionSubsystem {
 			"sub-subscription-poll",
 			Duration::from_millis(10),
 			None,
-		);
+		)
+		.with_consumer_watermark(consumer_watermark);
 
 		let consumer = PollConsumer::new(config, engine, cdc_consumer, cdc_store, actor_system);
 
@@ -630,8 +633,17 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 		let store = Arc::new(SubscriptionStore::new(1024));
 		let custom_operators = Arc::new(HashMap::new());
 
-		let subsystem =
-			SubscriptionSubsystem::new(engine, cdc_store, store.clone(), runtime_context, custom_operators);
+		let consumer_watermark = CdcConsumerWatermark::new();
+		ioc.register_service::<CdcConsumerWatermark>(consumer_watermark.clone());
+
+		let subsystem = SubscriptionSubsystem::new(
+			engine,
+			cdc_store,
+			store.clone(),
+			runtime_context,
+			custom_operators,
+			consumer_watermark,
+		);
 
 		let service = subsystem.service_handle();
 		ioc.register_service::<SubscriptionServiceRef>(service);

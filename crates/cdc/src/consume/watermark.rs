@@ -1,9 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::{
+	Arc,
+	atomic::{AtomicU64, Ordering},
+};
+
 use reifydb_core::{common::CommitVersion, key::cdc_consumer::CdcConsumerKeyRange};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::Result;
+
+#[derive(Debug, Clone, Default)]
+pub struct CdcConsumerWatermark(Arc<AtomicU64>);
+
+impl CdcConsumerWatermark {
+	pub fn new() -> Self {
+		Self(Arc::new(AtomicU64::new(0)))
+	}
+
+	pub fn get(&self) -> CommitVersion {
+		CommitVersion(self.0.load(Ordering::Acquire))
+	}
+
+	pub fn store(&self, v: CommitVersion) {
+		self.0.store(v.0, Ordering::Release);
+	}
+}
 
 pub fn compute_watermark(txn: &mut Transaction<'_>) -> Result<CommitVersion> {
 	let mut min_version: Option<CommitVersion> = None;

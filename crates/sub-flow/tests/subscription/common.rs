@@ -19,7 +19,7 @@
 
 #![allow(dead_code)]
 
-use std::{thread, time::Duration};
+use std::time::Duration;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb::{Params, embedded as db_embedded};
@@ -92,30 +92,18 @@ pub fn drain_sub(db: &reifydb::Database, sub_id: SubscriptionId) -> Vec<Columns>
 	store.drain(&sub_id, usize::MAX)
 }
 
-pub fn poll_until_stable(db: &reifydb::Database, sub_id: SubscriptionId) -> Vec<Columns> {
-	let subsystem = db.subsystem::<SubscriptionSubsystem>().expect("subscription subsystem present");
-	let store = subsystem.store();
-	let deadline = std::time::Instant::now() + Duration::from_secs(5);
-	let quiescent_threshold = 3;
-	let mut last_seen: Vec<Columns> = Vec::new();
-	let mut consecutive_empty = 0;
-	thread::sleep(Duration::from_millis(50));
-	loop {
-		let drained = store.drain(&sub_id, usize::MAX);
-		if drained.is_empty() {
-			consecutive_empty += 1;
-			if consecutive_empty >= quiescent_threshold {
-				return last_seen;
-			}
-		} else {
-			consecutive_empty = 0;
-			last_seen.extend(drained);
-		}
-		if std::time::Instant::now() >= deadline {
-			return last_seen;
-		}
-		thread::sleep(Duration::from_millis(50));
+pub fn drain_after_consumer_caught_up(db: &reifydb::Database, sub_id: SubscriptionId) -> Vec<Columns> {
+	let target = db.watermarks().tx().current().expect("current version");
+	let timeout = Duration::from_secs(10);
+	if !db.watermarks().cdc().wait_for_consumer(target, timeout) {
+		panic!(
+			"CDC consumer did not reach {:?} within {:?} (current consumer = {:?})",
+			target,
+			timeout,
+			db.watermarks().cdc().consumer()
+		);
 	}
+	drain_sub(db, sub_id)
 }
 
 // Use when the subscription preserves the source schema (id, qty, ts_ms).
@@ -186,13 +174,10 @@ pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<Columns> {
 	let services = engine.services();
 	let sub_service = services.ioc.resolve::<SubscriptionServiceRef>().expect("resolve service");
 
-	thread::sleep(Duration::from_millis(50));
-
 	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 100_000).expect("hydrate");
 
 	let mut all = outcome.batches;
-	thread::sleep(Duration::from_millis(150));
-	all.extend(drain_sub(&db, sub_id));
+	all.extend(drain_after_consumer_caught_up(&db, sub_id));
 	all
 }
 
@@ -204,11 +189,9 @@ pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<Columns> {
 	let frames = db.admin_as_root(&create_stmt, Params::None).expect("create subscription");
 	let sub_id = extract_sub_id(&frames);
 
-	thread::sleep(Duration::from_millis(50));
-
 	insert_one_at_a_time(&db, rows);
 
-	poll_until_stable(&db, sub_id)
+	drain_after_consumer_caught_up(&db, sub_id)
 }
 
 pub fn random_rows(seed: u64, count: usize, max_id: i32) -> Vec<Row> {
