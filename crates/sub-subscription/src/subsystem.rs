@@ -20,6 +20,7 @@ use reifydb_cdc::{
 	storage::CdcStore,
 };
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
 	error::diagnostic::catalog::subscription_not_found,
 	interface::{
@@ -76,6 +77,8 @@ struct SubscriptionState {
 	flow_engine: Arc<RwLock<FlowEngine>>,
 	flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
 
+	hydration_versions: Arc<DashMap<FlowId, CommitVersion>>,
+
 	subscription_flows: RwLock<HashMap<SubscriptionId, FlowId>>,
 
 	delivery: Arc<DeliveryBuffer>,
@@ -116,6 +119,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 
 		if let Some(flow_id) = self.state.subscription_flows.write().unwrap().remove(id) {
 			self.state.flow_states.remove(&flow_id);
+			self.state.hydration_versions.remove(&flow_id);
 
 			self.state.flow_engine.write().unwrap().remove_flow(flow_id);
 		}
@@ -152,6 +156,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 			.ok_or(HydrateError::SubscriptionNotFound)?;
 
 		let version = lease.version();
+		self.state.hydration_versions.insert(flow_id, version);
 		let hydrate_start = engine.clock().instant();
 
 		let mut outer = engine.begin_query_at_version(&lease, identity)?;
@@ -472,19 +477,28 @@ impl SubscriptionSubsystem {
 		)));
 
 		let flow_states = Arc::new(DashMap::new());
+		let hydration_versions = Arc::new(DashMap::new());
 		let delivery = Arc::new(DeliveryBuffer::new(store.clone()));
 
 		let state = Arc::new(SubscriptionState {
 			store,
 			flow_engine: flow_engine.clone(),
 			flow_states: flow_states.clone(),
+			hydration_versions: hydration_versions.clone(),
 			subscription_flows: RwLock::new(HashMap::new()),
 			delivery: delivery.clone(),
 			multi: multi.clone(),
 			catalog: catalog.clone(),
 		});
 
-		let cdc_consumer = SubscriptionCdcConsumer::new(flow_engine, multi, catalog, flow_states, delivery);
+		let cdc_consumer = SubscriptionCdcConsumer::new(
+			flow_engine,
+			multi,
+			catalog,
+			flow_states,
+			hydration_versions,
+			delivery,
+		);
 
 		let config = PollConsumerConfig::new(
 			CdcConsumerId::new("__SUBSCRIPTION_CONSUMER"),

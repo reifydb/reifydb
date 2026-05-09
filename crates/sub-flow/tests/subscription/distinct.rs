@@ -4,9 +4,10 @@
 use crate::common::{Row, normalize, random_rows, run_path_incremental, run_path_snapshot};
 
 // `distinct {key}` emits exactly one row per distinct key value. When several rows share a
-// key, the operator preserves the FIRST row to arrive for that key; later duplicates are
-// absorbed into the running count and never overwrite the emitted row. Bulk-hydrate
-// (snapshot) and incremental (CDC) ingest paths must agree on this contract.
+// key, the operator preserves the FIRST row to arrive for that key (smallest RowNumber);
+// later duplicates are absorbed into the running count and never overwrite the emitted row.
+// Bulk-hydrate (snapshot) and incremental (CDC) ingest paths must converge on the same final
+// sink state.
 #[test]
 fn distinct_emits_first_row_per_key() {
 	let rql = "from app::t | distinct {id}";

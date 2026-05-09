@@ -19,14 +19,14 @@
 
 #![allow(dead_code)]
 
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb::{Params, embedded as db_embedded};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_engine::subscription::SubscriptionServiceRef;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
-use reifydb_type::value::{Value, identity::IdentityId};
+use reifydb_type::value::{Value, identity::IdentityId, row_number::RowNumber};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
@@ -107,8 +107,10 @@ pub fn drain_after_consumer_caught_up(db: &reifydb::Database, sub_id: Subscripti
 }
 
 // Use when the subscription preserves the source schema (id, qty, ts_ms).
+// Reduces the diff sequence (Insert/Update/Remove batches) to the final sink state by
+// replaying each row's `_op` (Insert=1, Update=2, Remove=3) against a RowNumber-keyed map.
 pub fn normalize(batches: Vec<Columns>) -> Vec<(i32, i32, i64)> {
-	let mut out: Vec<(i32, i32, i64)> = Vec::new();
+	let mut state: BTreeMap<RowNumber, (i32, i32, i64)> = BTreeMap::new();
 	for cols in batches {
 		let id_col = cols.iter().find(|c| c.name().text() == "id");
 		let qty_col = cols.iter().find(|c| c.name().text() == "qty");
@@ -117,6 +119,7 @@ pub fn normalize(batches: Vec<Columns>) -> Vec<(i32, i32, i64)> {
 			let names: Vec<&str> = cols.iter().map(|c| c.name().text()).collect();
 			panic!("expected columns id, qty, ts_ms but found {:?}", names);
 		};
+		let op_col = cols.iter().find(|c| c.name().text() == "_op");
 		for i in 0..cols.row_count() {
 			let id = match id_col.data().get_value(i) {
 				Value::Int4(v) => v,
@@ -130,9 +133,29 @@ pub fn normalize(batches: Vec<Columns>) -> Vec<(i32, i32, i64)> {
 				Value::Int8(v) => v,
 				other => panic!("expected Int8 ts_ms, got {:?}", other),
 			};
-			out.push((id, qty, ts));
+			let rn = if cols.row_numbers.is_empty() {
+				RowNumber(0)
+			} else {
+				cols.row_numbers[i]
+			};
+			let op = op_col
+				.map(|c| match c.data().get_value(i) {
+					Value::Uint1(v) => v,
+					_ => 1,
+				})
+				.unwrap_or(1);
+			match op {
+				1 | 2 => {
+					state.insert(rn, (id, qty, ts));
+				}
+				3 => {
+					state.remove(&rn);
+				}
+				_ => {}
+			}
 		}
 	}
+	let mut out: Vec<(i32, i32, i64)> = state.into_values().collect();
 	out.sort();
 	out
 }

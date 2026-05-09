@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	marker::PhantomData,
-	thread,
-	time::{Duration, Instant},
-};
+use std::{marker::PhantomData, thread, time::Duration};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -127,12 +123,13 @@ impl CdcWatermarks<'_> {
 		if self.consumer() >= version {
 			return true;
 		}
-		let deadline = Instant::now() + timeout;
+		let clock = self.db.shared_runtime().clock().clone();
+		let deadline = clock.instant() + timeout;
 		loop {
 			if self.consumer() >= version {
 				return true;
 			}
-			if Instant::now() >= deadline {
+			if clock.instant() >= deadline {
 				return self.consumer() >= version;
 			}
 			thread::sleep(Duration::from_millis(2));

@@ -306,13 +306,30 @@ impl DistinctOperator {
 		let hashes = self.compute_hashes(columns)?;
 		let now_nanos = self.runtime_context.clock.now_nanos();
 
-		let mut new_distinct_indices: Vec<usize> = Vec::new();
+		let row_count = columns.row_count();
+		let mut order: Vec<usize> = (0..row_count).collect();
+		if !columns.row_numbers.is_empty() {
+			order.sort_by_key(|&i| columns.row_numbers[i]);
+		}
 
-		for (row_idx, &hash) in hashes.iter().enumerate() {
+		let mut new_distinct_indices: Vec<usize> = Vec::new();
+		let mut swap_out_rows: Vec<Columns> = Vec::new();
+		let mut swap_in_indices: Vec<usize> = Vec::new();
+
+		for &row_idx in &order {
+			let hash = hashes[row_idx];
+			let row_number = columns.row_numbers[row_idx];
 			match state.entries.get_mut(&hash) {
 				Some(entry) => {
 					entry.count += 1;
 					entry.last_seen_nanos = now_nanos;
+					if row_number < entry.first_row.number {
+						let old_row = entry.first_row.to_columns(&state.layout);
+						swap_out_rows.push(old_row);
+						entry.first_row =
+							SerializedRow::from_columns_at_index(columns, row_idx);
+						swap_in_indices.push(row_idx);
+					}
 				}
 				None => {
 					state.entries.insert(
@@ -330,8 +347,17 @@ impl DistinctOperator {
 			}
 		}
 
+		for old_cols in swap_out_rows {
+			result.push(Diff::remove(old_cols));
+		}
+
 		if !new_distinct_indices.is_empty() {
 			let output = columns.extract_by_indices(&new_distinct_indices);
+			result.push(Diff::insert(output));
+		}
+
+		if !swap_in_indices.is_empty() {
+			let output = columns.extract_by_indices(&swap_in_indices);
 			result.push(Diff::insert(output));
 		}
 

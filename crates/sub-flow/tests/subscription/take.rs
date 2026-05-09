@@ -3,11 +3,10 @@
 
 use crate::common::{Row, normalize, random_rows, run_path_incremental, run_path_snapshot};
 
-// `take N` keeps the N rows with the smallest RowNumber and discards the rest. RowNumbers are
-// assigned in insertion order, so on a steady stream this is "the first N rows to arrive".
-// Once N rows are active, additional rows are filtered (held as candidates only to fill in
-// when an active row is removed). Each row appears at most once in the output, and bulk-hydrate
-// (snapshot) and incremental (CDC) ingest paths must agree on which N rows are kept.
+// `take N` keeps the N rows with the largest RowNumber and discards the rest. reifydb iterates
+// storage descending by default, so this is "the newest N rows" - consistent with what RQL
+// `take N` returns from a regular query. Both bulk-hydrate (snapshot) and incremental (CDC)
+// ingest paths must converge on the same final sink state: each row appears at most once.
 
 #[test]
 fn smoke_empty_log_take() {
@@ -17,10 +16,10 @@ fn smoke_empty_log_take() {
 	assert!(a.is_empty(), "empty input should produce empty sink output, got {:?}", a);
 }
 
-// 6 rows feed `take 5`. The contract is "first 5 by insertion order"; the 6th row is filtered.
-// Each output row appears exactly once.
+// 6 rows feed `take 5`. The contract is "newest 5 by RowNumber"; the oldest row is filtered.
+// Each output row appears exactly once in the final sink state.
 #[test]
-fn take_emits_first_n_rows_by_insertion_order() {
+fn take_emits_newest_n_rows() {
 	let rql = "from app::t | take 5";
 	let rows = vec![
 		Row {
@@ -55,17 +54,17 @@ fn take_emits_first_n_rows_by_insertion_order() {
 		},
 	];
 	let expected =
-		vec![(45, 766, 698929), (127, 640, 153587), (279, 858, 659581), (611, 95, 790287), (812, 208, 918440)];
+		vec![(20, 691, 55354), (45, 766, 698929), (127, 640, 153587), (611, 95, 790287), (812, 208, 918440)];
 
 	assert_eq!(
 		normalize(run_path_snapshot(rql, &rows)),
 		expected,
-		"snapshot path must keep exactly the first 5 rows by insertion order, no duplicates"
+		"snapshot path must keep the 5 newest rows by RowNumber"
 	);
 	assert_eq!(
 		normalize(run_path_incremental(rql, &rows)),
 		expected,
-		"incremental path must keep exactly the first 5 rows by insertion order, no duplicates"
+		"incremental path must keep the 5 newest rows by RowNumber"
 	);
 }
 
