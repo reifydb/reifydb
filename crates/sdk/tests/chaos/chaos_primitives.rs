@@ -68,7 +68,7 @@ fn duplicate_burst_at_one_passthrough_matches() {
 		.run();
 	outcome.assert_matches();
 	// Sanity: at p=1.0, many Updates should be duplicate no-ops.
-	let updates: usize = outcome.events.iter().filter(|e| e.is_update()).count();
+	let updates: usize = outcome.events().filter(|e| e.is_update()).count();
 	assert!(updates > 50, "expected duplicate-burst to inflate Update count; got {updates}");
 }
 
@@ -93,7 +93,7 @@ fn rewrite_at_one_passthrough_matches() {
 		.run();
 	outcome.assert_matches();
 	// Sanity: at rewrite p=1.0, no Updates should appear in the output stream.
-	let updates: usize = outcome.events.iter().filter(|e| e.is_update()).count();
+	let updates: usize = outcome.events().filter(|e| e.is_update()).count();
 	assert_eq!(updates, 0, "rewrite at p=1.0 must eliminate all Updates");
 }
 
@@ -117,6 +117,6 @@ fn both_chaos_primitives_at_one_passthrough_matches() {
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-	let updates: usize = outcome.events.iter().filter(|e| e.is_update()).count();
+	let updates: usize = outcome.events().filter(|e| e.is_update()).count();
 	assert_eq!(updates, 0, "rewrite precedence: no Updates should reach the operator");
 }

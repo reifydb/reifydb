@@ -91,7 +91,7 @@ impl RowContent {
 #[derive(Default, Clone)]
 pub struct ColumnRegistry {
 	samplers: HashMap<String, ColumnSampler>,
-	constraint: Option<RowConstraint>,
+	pub(super) constraint: Option<RowConstraint>,
 }
 
 impl ColumnRegistry {

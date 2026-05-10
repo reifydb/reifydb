@@ -67,7 +67,7 @@ fn hashof_keys_drive_passthrough_with_collisions() {
 		.run();
 	outcome.assert_matches();
 	// Sanity: with k in [1, 5] and 150 ops, collisions must have happened.
-	let updates: usize = outcome.events.iter().filter(|e| e.is_update()).count();
+	let updates: usize = outcome.events().filter(|e| e.is_update()).count();
 	assert!(updates > 10, "expected many Updates from HashOf collisions; got {updates}");
 }
 

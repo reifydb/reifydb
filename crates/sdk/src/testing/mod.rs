@@ -11,3 +11,4 @@ pub mod helpers;
 pub mod registry;
 pub mod state;
 pub mod stateful;
+pub mod windowed;

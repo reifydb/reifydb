@@ -205,6 +205,10 @@ impl Generator {
 					}
 				}
 
+				if let Some(constraint) = &self.registry.constraint {
+					constraint(&mut new_content);
+				}
+
 				sampled_row = encode_row(&self.schema, &new_content, target_rn);
 			}
 			KeyStrategy::Sequential | KeyStrategy::Custom(_) => {

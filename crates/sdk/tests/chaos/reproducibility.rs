@@ -53,7 +53,7 @@ fn same_seed_produces_identical_materialized_tables() {
 	b.assert_matches();
 	assert_eq!(a.operator_table, b.operator_table, "same seed must produce identical operator tables");
 	assert_eq!(a.oracle_table, b.oracle_table, "same seed must produce identical oracle tables");
-	assert_eq!(a.events.len(), b.events.len(), "same seed must produce identical event-log lengths");
+	assert_eq!(a.ops_count(), b.ops_count(), "same seed must produce identical event-log lengths");
 }
 
 #[test]
@@ -66,8 +66,8 @@ fn different_seeds_diverge_in_event_log() {
 	// seeds. We don't compare the full Vec<ChaosEvent> because ChaosEvent
 	// doesn't impl PartialEq directly (it carries Row); compare the
 	// per-event RowNumber sequence instead, which is cheap and stable.
-	let rns_a: Vec<_> = a.events.iter().map(|e| e.row_number()).collect();
-	let rns_b: Vec<_> = b.events.iter().map(|e| e.row_number()).collect();
+	let rns_a: Vec<_> = a.events().map(|e| e.row_number()).collect();
+	let rns_b: Vec<_> = b.events().map(|e| e.row_number()).collect();
 	assert_ne!(rns_a, rns_b, "different seeds must produce different event sequences");
 }
 

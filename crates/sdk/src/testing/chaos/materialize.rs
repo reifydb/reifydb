@@ -8,7 +8,7 @@ use reifydb_core::{
 use reifydb_type::value::{Value, r#type::Type};
 
 use super::{
-	event::ChaosEvent,
+	event::{ChaosBatch, ChaosEvent},
 	oracle::{MaterializedRow, MaterializedTable, OutputKey},
 };
 
@@ -33,29 +33,31 @@ pub fn materialize_history(history: &[Change], output_key_columns: &[String]) ->
 	table
 }
 
-pub fn materialize_events(events: &[ChaosEvent], output_key_columns: &[String]) -> MaterializedTable {
+pub fn materialize_batches(batches: &[ChaosBatch], output_key_columns: &[String]) -> MaterializedTable {
 	let mut table = MaterializedTable::empty();
-	for ev in events {
-		match ev {
-			ChaosEvent::Insert {
-				row,
-				..
-			}
-			| ChaosEvent::Update {
-				post: row,
-				..
-			} => {
-				let r = row_to_materialized(row);
-				let key = project_key(&r, output_key_columns);
-				table.insert(key, r);
-			}
-			ChaosEvent::Remove {
-				row,
-				..
-			} => {
-				let r = row_to_materialized(row);
-				let key = project_key(&r, output_key_columns);
-				table.remove(&key);
+	for batch in batches {
+		for ev in &batch.events {
+			match ev {
+				ChaosEvent::Insert {
+					row,
+					..
+				}
+				| ChaosEvent::Update {
+					post: row,
+					..
+				} => {
+					let r = row_to_materialized(row);
+					let key = project_key(&r, output_key_columns);
+					table.insert(key, r);
+				}
+				ChaosEvent::Remove {
+					row,
+					..
+				} => {
+					let r = row_to_materialized(row);
+					let key = project_key(&r, output_key_columns);
+					table.remove(&key);
+				}
 			}
 		}
 	}
@@ -265,8 +267,8 @@ mod tests {
 	}
 
 	#[test]
-	fn materialize_events_inserts_updates_removes() {
-		// Smoke test the events-side fold against a constructed log.
+	fn materialize_batches_inserts_updates_removes() {
+		// Smoke test the batch-side fold against a constructed log.
 		let s = shape();
 		let row1 = build_row(1, 7, 1.0);
 		let row2 = build_row(1, 7, 2.5);
@@ -281,21 +283,20 @@ mod tests {
 				post: row2.clone(),
 			},
 		];
-		let table = materialize_events(&events, &["k".to_string()]);
+		let batches = vec![ChaosBatch::new(events.clone())];
+		let table = materialize_batches(&batches, &["k".to_string()]);
 		assert_eq!(table.len(), 1);
 		let row = table.get(&OutputKey::new(vec![Value::uint8(7u64)])).unwrap();
 		assert_eq!(row.get("v"), Some(&Value::float8(2.5_f64)));
 
 		// Now remove it.
-		let events_with_remove = {
-			let mut e = events;
-			e.push(ChaosEvent::Remove {
-				row_number: RowNumber(1),
-				row: row2,
-			});
-			e
-		};
-		let table = materialize_events(&events_with_remove, &["k".to_string()]);
+		let mut events_with_remove = events;
+		events_with_remove.push(ChaosEvent::Remove {
+			row_number: RowNumber(1),
+			row: row2,
+		});
+		let batches = vec![ChaosBatch::new(events_with_remove)];
+		let table = materialize_batches(&batches, &["k".to_string()]);
 		assert!(table.is_empty());
 
 		// Suppress unused-shape warning in this test.

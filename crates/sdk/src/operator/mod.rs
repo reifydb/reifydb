@@ -17,6 +17,7 @@ pub mod context;
 pub mod diff;
 pub mod view_column;
 pub mod view_row;
+pub mod windowed;
 
 use change::BorrowedChange;
 use column::operator::OperatorColumn;

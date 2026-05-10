@@ -39,7 +39,7 @@ pub mod schema;
 pub mod strategy;
 
 use config::{ChaosConfig, SupportedOps};
-use event::ChaosEvent;
+use event::ChaosBatch;
 use oracle::MaterializedTable;
 use report::Tolerances;
 use runner::{OracleFn, RunnableChaos};
@@ -231,11 +231,14 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	/// Required. The oracle takes the logical event log and produces the
-	/// expected materialized output table.
+	/// Required. The oracle receives the per-batch event log (one
+	/// `ChaosBatch` per `Change` the operator's `apply()` saw) and
+	/// produces the expected materialized output table. Oracles for
+	/// windowed operators that snapshot at end-of-batch iterate
+	/// `batches` and snapshot at the end of each batch's inner loop.
 	pub fn with_oracle<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&[ChaosEvent]) -> MaterializedTable + Send + Sync + 'static,
+		F: Fn(&[ChaosBatch]) -> MaterializedTable + Send + Sync + 'static,
 	{
 		self.oracle = Some(Arc::new(f));
 		self

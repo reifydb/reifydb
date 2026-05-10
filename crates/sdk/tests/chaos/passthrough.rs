@@ -61,7 +61,7 @@ fn passthrough_matches_under_insert_only() {
 		.run();
 	outcome.assert_matches();
 	// Sanity: every event under insert_only must be Insert.
-	assert!(outcome.events.iter().all(|e| e.is_insert()), "non-insert under insert_only");
+	assert!(outcome.events().all(|e| e.is_insert()), "non-insert under insert_only");
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn passthrough_matches_under_no_remove() {
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-	assert!(!outcome.events.iter().any(|e| e.is_remove()), "Remove emitted under no_remove");
+	assert!(!outcome.events().any(|e| e.is_remove()), "Remove emitted under no_remove");
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn passthrough_matches_under_no_update() {
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-	assert!(!outcome.events.iter().any(|e| e.is_update()), "Update emitted under no_update");
+	assert!(!outcome.events().any(|e| e.is_update()), "Update emitted under no_update");
 }
 
 #[test]
@@ -146,7 +146,7 @@ fn passthrough_matches_at_zero_ops() {
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-	assert_eq!(outcome.events.len(), 0);
+	assert_eq!(outcome.ops_count(), 0);
 	assert!(outcome.operator_table.is_empty());
 	assert!(outcome.oracle_table.is_empty());
 }

@@ -6,14 +6,18 @@ use std::mem::take;
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_core::interface::change::Change;
 
-use super::{config::BatchSizeDist, event::ChaosEvent, generator::Generator};
+use super::{
+	config::BatchSizeDist,
+	event::{ChaosBatch, ChaosEvent},
+	generator::Generator,
+};
 use crate::testing::builders::TestChangeBuilder;
 
 pub struct Batcher {
 	dist: BatchSizeDist,
 	rng: StdRng,
 
-	logical_log: Vec<ChaosEvent>,
+	logical_log: Vec<ChaosBatch>,
 }
 
 impl Batcher {
@@ -25,18 +29,18 @@ impl Batcher {
 		}
 	}
 
-	pub fn logical_log(&self) -> &[ChaosEvent] {
+	pub fn logical_log(&self) -> &[ChaosBatch] {
 		&self.logical_log
 	}
 
-	pub fn take_logical_log(&mut self) -> Vec<ChaosEvent> {
+	pub fn take_logical_log(&mut self) -> Vec<ChaosBatch> {
 		take(&mut self.logical_log)
 	}
 
 	pub fn next_change(&mut self, generator: &mut Generator) -> Option<Change> {
 		let target = self.sample_batch_size();
 		let mut builder = TestChangeBuilder::new();
-		let mut count = 0;
+		let mut batch_events: Vec<ChaosEvent> = Vec::new();
 		for _ in 0..target {
 			let Some(ev) = generator.next_event() else {
 				break;
@@ -62,12 +66,12 @@ impl Batcher {
 					builder = builder.remove(row.clone());
 				}
 			}
-			self.logical_log.push(ev);
-			count += 1;
+			batch_events.push(ev);
 		}
-		if count == 0 {
+		if batch_events.is_empty() {
 			return None;
 		}
+		self.logical_log.push(ChaosBatch::new(batch_events));
 		Some(builder.build())
 	}
 
@@ -244,14 +248,17 @@ mod tests {
 	#[test]
 	fn logical_log_matches_emitted_events() {
 		// The logical_log accumulates exactly the events the batcher
-		// pulled from the generator, in order. With duplicate-burst
-		// off and rewrite off, this equals what the operator sees diff-
-		// for-diff.
+		// pulled from the generator, batched the same way the operator
+		// sees them. With duplicate-burst off and rewrite off, the
+		// flattened log equals what the operator sees diff-for-diff.
 		let mut g = Generator::new(schema_basic(), registry(), cfg(20, BatchSizeDist::Constant(3)), 7);
 		let mut b = Batcher::new(BatchSizeDist::Constant(3), 7);
 		while b.next_change(&mut g).is_some() {}
 		let log = b.logical_log();
-		assert_eq!(log.len(), 20);
+		// 20 ops in batches of 3 -> 7 batches: [3,3,3,3,3,3,2].
+		assert_eq!(log.len(), 7);
+		let total_events: usize = log.iter().map(|b| b.len()).sum();
+		assert_eq!(total_events, 20);
 	}
 
 	#[test]

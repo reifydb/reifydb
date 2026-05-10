@@ -10,7 +10,7 @@ use std::{
 use super::{
 	batcher::Batcher,
 	config::ChaosConfig,
-	event::ChaosEvent,
+	event::{ChaosBatch, ChaosEvent},
 	generator::Generator,
 	materialize::materialize_history,
 	oracle::MaterializedTable,
@@ -20,12 +20,12 @@ use super::{
 };
 use crate::{operator::FFIOperator, testing::harness::OperatorTestHarness};
 
-pub type OracleFn = Arc<dyn Fn(&[ChaosEvent]) -> MaterializedTable + Send + Sync>;
+pub type OracleFn = Arc<dyn Fn(&[ChaosBatch]) -> MaterializedTable + Send + Sync>;
 
 #[derive(Debug)]
 pub struct ChaosOutcome {
 	pub seed: u64,
-	pub events: Vec<ChaosEvent>,
+	pub batches: Vec<ChaosBatch>,
 	pub operator_table: MaterializedTable,
 	pub oracle_table: MaterializedTable,
 	pub comparison: ComparisonResult,
@@ -36,6 +36,14 @@ impl ChaosOutcome {
 		self.comparison.is_match()
 	}
 
+	pub fn ops_count(&self) -> usize {
+		self.batches.iter().map(|b| b.len()).sum()
+	}
+
+	pub fn events(&self) -> impl Iterator<Item = &ChaosEvent> {
+		self.batches.iter().flat_map(|b| b.iter())
+	}
+
 	pub fn assert_matches(&self) {
 		if self.is_match() {
 			return;
@@ -43,7 +51,8 @@ impl ChaosOutcome {
 		let header = vec![
 			format!("chaos divergence:"),
 			format!("  seed: {}", self.seed),
-			format!("  ops:  {}", self.events.len()),
+			format!("  batches: {}", self.batches.len()),
+			format!("  ops: {}", self.ops_count()),
 		];
 		let report = self.comparison.format_failure(&header, 5);
 		panic!("\n{report}");
@@ -74,16 +83,16 @@ impl<T: FFIOperator> RunnableChaos<T> {
 			self.harness.apply(change).expect("operator apply failed during chaos run");
 		}
 
-		let events = batcher.take_logical_log();
+		let batches = batcher.take_logical_log();
 		let operator_history: Vec<_> =
 			(0..self.harness.history_len()).map(|i| self.harness[i].clone()).collect();
 		let operator_table = materialize_history(&operator_history, &self.schema.output_key_columns);
-		let oracle_table = (self.oracle)(&events);
+		let oracle_table = (self.oracle)(&batches);
 		let comparison = compare(&operator_table, &oracle_table, &self.tolerances);
 
 		ChaosOutcome {
 			seed: self.seed,
-			events,
+			batches,
 			operator_table,
 			oracle_table,
 			comparison,
@@ -111,7 +120,7 @@ mod tests {
 	fn outcome_match_does_not_panic() {
 		let outcome = ChaosOutcome {
 			seed: 42,
-			events: vec![],
+			batches: vec![],
 			operator_table: MaterializedTable::empty(),
 			oracle_table: MaterializedTable::empty(),
 			comparison: ComparisonResult::default(),
@@ -131,7 +140,7 @@ mod tests {
 		let oracle = MaterializedTable::empty();
 		let outcome = ChaosOutcome {
 			seed: 12345,
-			events: vec![],
+			batches: vec![],
 			operator_table: op.clone(),
 			oracle_table: oracle.clone(),
 			comparison: compare(&op, &oracle, &Tolerances::new()),

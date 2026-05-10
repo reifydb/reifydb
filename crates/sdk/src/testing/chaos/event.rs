@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::slice::Iter;
+
 use reifydb_core::row::Row;
 use reifydb_type::value::row_number::RowNumber;
 
@@ -49,5 +51,39 @@ impl ChaosEvent {
 
 	pub fn is_remove(&self) -> bool {
 		matches!(self, ChaosEvent::Remove { .. })
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct ChaosBatch {
+	pub events: Vec<ChaosEvent>,
+}
+
+impl ChaosBatch {
+	pub fn new(events: Vec<ChaosEvent>) -> Self {
+		Self {
+			events,
+		}
+	}
+
+	pub fn iter(&self) -> Iter<'_, ChaosEvent> {
+		self.events.iter()
+	}
+
+	pub fn len(&self) -> usize {
+		self.events.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.events.is_empty()
+	}
+}
+
+impl<'a> IntoIterator for &'a ChaosBatch {
+	type Item = &'a ChaosEvent;
+	type IntoIter = std::slice::Iter<'a, ChaosEvent>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.events.iter()
 	}
 }

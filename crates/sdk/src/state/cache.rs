@@ -31,6 +31,10 @@ where
 			return Ok(Some(cached));
 		}
 
+		if let Some(slot) = self.dirty.get(key) {
+			return Ok(slot.clone());
+		}
+
 		let encoded_key = key.into_encoded_key();
 		match ctx.state().get::<V>(&encoded_key)? {
 			Some(value) => {
