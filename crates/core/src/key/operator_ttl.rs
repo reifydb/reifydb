@@ -98,7 +98,7 @@ pub mod tests {
 	#[test]
 	fn test_operator_ttl_key_decode_invalid_version() {
 		let mut bytes = Vec::new();
-		bytes.push(0x00); 
+		bytes.push(0x00);
 		bytes.push(OperatorTtlKey::KIND as u8);
 		bytes.extend(&42u64.to_be_bytes());
 		let key = EncodedKey::new(bytes);
@@ -108,7 +108,7 @@ pub mod tests {
 	#[test]
 	fn test_operator_ttl_key_decode_wrong_kind() {
 		let mut bytes = Vec::new();
-		bytes.push(0xFF); 
+		bytes.push(0xFF);
 		bytes.extend(&42u64.to_be_bytes());
 		let key = EncodedKey::new(bytes);
 		assert!(OperatorTtlKey::decode(&key).is_none());

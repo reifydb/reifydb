@@ -19,11 +19,7 @@ impl EncodableKey for ColumnSequenceKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(18);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_shape_id(self.shape)
-			.extend_u64(self.column);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape).extend_u64(self.column);
 		serializer.to_encoded_key()
 	}
 
@@ -71,9 +67,8 @@ pub mod tests {
 		};
 		let encoded = key.encode();
 
-		assert_eq!(encoded[0], 0xF1); 
+		assert_eq!(encoded[0], 0xF1);
 
-		
 		let decoded = ColumnSequenceKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.shape, ShapeId::table(0x1234));
 		assert_eq!(decoded.column, ColumnId(0x5678));
@@ -81,9 +76,9 @@ pub mod tests {
 
 	#[test]
 	fn test_decode_invalid_version() {
-		let mut encoded = vec![0xFF]; 
-		encoded.push(0x0E); 
-		encoded.extend(&[0; 16]); 
+		let mut encoded = vec![0xFF];
+		encoded.push(0x0E);
+		encoded.extend(&[0; 16]);
 
 		let decoded = ColumnSequenceKey::decode(&EncodedKey::new(encoded));
 		assert!(decoded.is_none());
@@ -91,9 +86,9 @@ pub mod tests {
 
 	#[test]
 	fn test_decode_invalid_kind() {
-		let mut encoded = vec![0x01]; 
-		encoded.push(0xFF); 
-		encoded.extend(&[0; 16]); 
+		let mut encoded = vec![0x01];
+		encoded.push(0xFF);
+		encoded.extend(&[0; 16]);
 
 		let decoded = ColumnSequenceKey::decode(&EncodedKey::new(encoded));
 		assert!(decoded.is_none());
@@ -101,7 +96,7 @@ pub mod tests {
 
 	#[test]
 	fn test_decode_invalid_length() {
-		let encoded = vec![0x01, 0x0E]; 
+		let encoded = vec![0x01, 0x0E];
 		let decoded = ColumnSequenceKey::decode(&EncodedKey::new(encoded));
 		assert!(decoded.is_none());
 	}

@@ -74,10 +74,7 @@ pub mod tests {
 			column: ColumnId(0xABCD),
 		};
 		let encoded = key.encode();
-		let expected = vec![
-			0xF9, 
-			0x3F, 0x54, 0x32,
-		];
+		let expected = vec![0xF9, 0x3F, 0x54, 0x32];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = ColumnsKey::decode(&encoded).unwrap();

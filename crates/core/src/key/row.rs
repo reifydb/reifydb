@@ -23,11 +23,7 @@ impl EncodableKey for RowKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(18);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_shape_id(self.shape)
-			.extend_u64(self.row.0);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape).extend_u64(self.row.0);
 		serializer.to_encoded_key()
 	}
 
@@ -163,14 +159,8 @@ pub mod tests {
 		};
 		let encoded = key.encode();
 
-		let expected: Vec<u8> = vec![
-			0xFC, 
-			0x01, 
-			0x3F, 0x54, 0x32, 
-			0x00, 
-			0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21,
-			0x0F, 
-		];
+		let expected: Vec<u8> =
+			vec![0xFC, 0x01, 0x3F, 0x54, 0x32, 0x00, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F];
 
 		assert_eq!(encoded.as_slice(), expected);
 

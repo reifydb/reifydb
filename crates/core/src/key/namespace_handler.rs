@@ -48,11 +48,7 @@ impl EncodableKey for NamespaceHandlerKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(17);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.namespace)
-			.extend_u64(self.handler);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.namespace).extend_u64(self.handler);
 		serializer.to_encoded_key()
 	}
 
@@ -86,10 +82,8 @@ pub mod tests {
 			handler: HandlerId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
-		let expected: Vec<u8> = vec![
-			0xD0, 
-			0x3F, 0x54, 0x32, 0x00, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
-		];
+		let expected: Vec<u8> =
+			vec![0xD0, 0x3F, 0x54, 0x32, 0x00, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let decoded = NamespaceHandlerKey::decode(&encoded).unwrap();

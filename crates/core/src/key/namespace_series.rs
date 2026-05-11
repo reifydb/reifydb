@@ -48,11 +48,7 @@ impl EncodableKey for NamespaceSeriesKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(17);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.namespace)
-			.extend_u64(self.series);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.namespace).extend_u64(self.series);
 		serializer.to_encoded_key()
 	}
 

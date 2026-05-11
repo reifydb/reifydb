@@ -107,11 +107,7 @@ impl EncodableKey for DictionaryEntryKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(25);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.dictionary)
-			.extend_bytes(self.hash);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary).extend_bytes(self.hash);
 		serializer.to_encoded_key()
 	}
 
@@ -175,11 +171,7 @@ impl EncodableKey for DictionaryEntryIndexKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(17);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.dictionary)
-			.extend_u64(self.id);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary).extend_u64(self.id);
 		serializer.to_encoded_key()
 	}
 
@@ -283,11 +275,7 @@ impl EncodableKeyRange for DictionaryEntryIndexKeyRange {
 	fn end(&self) -> Option<EncodedKey> {
 		if let Some(id) = self.end_id {
 			let mut serializer = KeySerializer::with_capacity(17);
-			serializer
-				
-				.extend_u8(Self::KIND as u8)
-				.extend_u64(self.dictionary)
-				.extend_u64(id - 1);
+			serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary).extend_u64(id - 1);
 			Some(serializer.to_encoded_key())
 		} else {
 			let mut serializer = KeySerializer::with_capacity(9);

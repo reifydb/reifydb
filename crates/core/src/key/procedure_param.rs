@@ -19,11 +19,7 @@ impl EncodableKey for ProcedureParamKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.procedure)
-			.extend_u16(self.param_index);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.procedure).extend_u16(self.param_index);
 		serializer.to_encoded_key()
 	}
 

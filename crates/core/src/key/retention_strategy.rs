@@ -176,15 +176,7 @@ pub mod tests {
 		};
 
 		let encoded = key.encode();
-		assert_eq!(encoded[0], 0xE8); 
-
-		
-		
-		
-
-		
-		
-		
+		assert_eq!(encoded[0], 0xE8);
 
 		assert_eq!(encoded.len(), 3);
 		assert_eq!(encoded[1], 0xFE);
@@ -201,15 +193,7 @@ pub mod tests {
 		};
 
 		let encoded = key.encode();
-		assert_eq!(encoded[0], 0xE7); 
-
-		
-		
-		
-		
-		
-		
-		
+		assert_eq!(encoded[0], 0xE7);
 
 		assert_eq!(encoded.len(), 3);
 		assert_eq!(encoded[1], 0x4F);

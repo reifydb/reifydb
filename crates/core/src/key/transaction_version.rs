@@ -45,9 +45,7 @@ pub mod tests {
 	fn test_encode_decode() {
 		let key = TransactionVersionKey {};
 		let encoded = key.encode();
-		let expected = vec![
-			0xF4, 
-		];
+		let expected = vec![0xF4];
 		assert_eq!(encoded.as_slice(), expected);
 
 		TransactionVersionKey::decode(&encoded).unwrap();

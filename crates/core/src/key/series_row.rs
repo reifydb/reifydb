@@ -213,8 +213,7 @@ mod tests {
 		};
 		let e1 = key1.encode();
 		let e2 = key2.encode();
-		
-		
+
 		assert!(e1 > e2, "key descending ordering not preserved");
 	}
 
@@ -234,7 +233,7 @@ mod tests {
 		};
 		let e1 = key1.encode();
 		let e2 = key2.encode();
-		
+
 		assert!(e1 > e2, "sequence descending ordering not preserved");
 	}
 }

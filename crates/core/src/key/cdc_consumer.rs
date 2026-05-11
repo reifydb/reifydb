@@ -117,7 +117,6 @@ pub mod tests {
 
 	#[test]
 	fn test_cdc_consumer_keys_within_range() {
-		
 		let key1 = CdcConsumerKey {
 			consumer: CdcConsumerId::new("consumer-a"),
 		}
@@ -133,10 +132,8 @@ pub mod tests {
 		}
 		.encode();
 
-		
 		let range = CdcConsumerKeyRange::full_scan();
 
-		
 		assert!(range.contains(&key1), "consumer-a key should be in range");
 		assert!(range.contains(&key2), "consumer-b key should be in range");
 		assert!(range.contains(&key3), "consumer-z key should be in range");
@@ -147,7 +144,6 @@ pub mod tests {
 		let flow_id = FlowId(42);
 		let encoded = flow_id.to_consumer_key();
 
-		
 		let decoded = CdcConsumerKey::decode(&encoded).expect("Failed to decode key");
 		assert_eq!(decoded.consumer, CdcConsumerId::new("flow:42"));
 	}

@@ -93,8 +93,7 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_object_id_system() {
-		
-		let fake_key = vec![0xFE, 0x01, 0, 0, 0, 0]; 
+		let fake_key = vec![0xFE, 0x01, 0, 0, 0, 0];
 		let id = parse_id(&fake_key);
 		assert_eq!(id, MetricId::System);
 	}
@@ -102,7 +101,7 @@ pub mod tests {
 	#[test]
 	fn test_parse_object_id_dictionary() {
 		let dictionary_id = DictionaryId(789);
-		let hash = [0u8; 16]; 
+		let hash = [0u8; 16];
 		let key = DictionaryEntryKey::new(dictionary_id, hash);
 		let encoded = key.encode();
 

@@ -74,10 +74,7 @@ pub mod tests {
 			table: TableId(0xABCD),
 		};
 		let encoded = key.encode();
-		let expected = vec![
-			0xFD, 
-			0x3F, 0x54, 0x32,
-		];
+		let expected = vec![0xFD, 0x3F, 0x54, 0x32];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = TableKey::decode(&encoded).unwrap();

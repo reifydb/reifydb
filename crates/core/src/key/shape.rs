@@ -77,7 +77,6 @@ impl EncodableKey for RowShapeFieldKey {
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
 		serializer
-			
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(self.shape_fingerprint.as_u64())
 			.extend_u16(self.field_index);
@@ -123,11 +122,7 @@ impl RowShapeFieldKey {
 
 	fn shape_end(fingerprint: RowShapeFingerprint) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(fingerprint.as_u64())
-			.extend_u8(0xFF);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(fingerprint.as_u64()).extend_u8(0xFF);
 		serializer.to_encoded_key()
 	}
 }

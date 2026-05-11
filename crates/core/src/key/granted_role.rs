@@ -54,11 +54,7 @@ impl EncodableKey for GrantedRoleKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(25);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_identity_id(&self.identity)
-			.extend_u64(self.role);
+		serializer.extend_u8(Self::KIND as u8).extend_identity_id(&self.identity).extend_u64(self.role);
 		serializer.to_encoded_key()
 	}
 

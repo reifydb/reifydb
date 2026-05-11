@@ -52,11 +52,7 @@ impl EncodableKey for PolicyOpKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(17);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.policy)
-			.extend_u64(self.op_index);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.policy).extend_u64(self.op_index);
 		serializer.to_encoded_key()
 	}
 

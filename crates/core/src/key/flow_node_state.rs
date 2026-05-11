@@ -145,8 +145,7 @@ pub mod tests {
 		};
 		let encoded = key.encode();
 
-		
-		assert_eq!(encoded[0], 0xEC); 
+		assert_eq!(encoded[0], 0xEC);
 
 		let decoded = FlowNodeStateKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.node.0, 0xDEADBEEF);
@@ -194,8 +193,8 @@ pub mod tests {
 	#[test]
 	fn test_decode_invalid_version() {
 		let mut encoded = Vec::new();
-		encoded.push(0xFF); 
-		encoded.push(0xEC); 
+		encoded.push(0xFF);
+		encoded.push(0xEC);
 		encoded.extend(&999u64.to_be_bytes());
 		let key = EncodedKey::new(encoded);
 		assert!(FlowNodeStateKey::decode(&key).is_none());
@@ -204,8 +203,8 @@ pub mod tests {
 	#[test]
 	fn test_decode_invalid_kind() {
 		let mut encoded = Vec::new();
-		encoded.push(0xFE); 
-		encoded.push(0xFF); 
+		encoded.push(0xFE);
+		encoded.push(0xFF);
 		encoded.extend(&999u64.to_be_bytes());
 		let key = EncodedKey::new(encoded);
 		assert!(FlowNodeStateKey::decode(&key).is_none());
@@ -214,9 +213,9 @@ pub mod tests {
 	#[test]
 	fn test_decode_too_short() {
 		let mut encoded = Vec::new();
-		encoded.push(0xFE); 
-		encoded.push(0xEC); 
-		encoded.extend(&999u32.to_be_bytes()); 
+		encoded.push(0xFE);
+		encoded.push(0xEC);
+		encoded.extend(&999u32.to_be_bytes());
 		let key = EncodedKey::new(encoded);
 		assert!(FlowNodeStateKey::decode(&key).is_none());
 	}
@@ -226,16 +225,14 @@ pub mod tests {
 		let node = FlowNodeId(42);
 		let range = FlowNodeStateKeyRange::new(node);
 
-		
 		let start = range.start().unwrap();
 		let decoded_start = FlowNodeStateKey::decode(&start).unwrap();
 		assert_eq!(decoded_start.node, node);
 		assert_eq!(decoded_start.key, Vec::<u8>::new());
 
-		
 		let end = range.end().unwrap();
 		let decoded_end = FlowNodeStateKey::decode(&end).unwrap();
-		assert_eq!(decoded_end.node.0, 41); 
+		assert_eq!(decoded_end.node.0, 41);
 		assert_eq!(decoded_end.key, Vec::<u8>::new());
 	}
 
@@ -244,10 +241,8 @@ pub mod tests {
 		let node = FlowNodeId(100);
 		let range = FlowNodeStateKeyRange::new(node);
 
-		
 		let encoded_range = EncodedKeyRange::start_end(range.start(), range.end());
 
-		
 		let (start_decoded, end_decoded) = FlowNodeStateKeyRange::decode(&encoded_range);
 
 		assert!(start_decoded.is_some());
@@ -262,9 +257,6 @@ pub mod tests {
 		let node = FlowNodeId(555);
 		let range = FlowNodeStateKey::node_range(node);
 
-		
-		
-		
 		let (start_range, end_range) = FlowNodeStateKeyRange::decode(&range);
 
 		assert!(start_range.is_some());

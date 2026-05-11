@@ -46,19 +46,13 @@ impl VariantHandlerKey {
 
 	fn variant_start(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(18);
-		serializer
-			
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(namespace)
-			.extend_u64(sumtype)
-			.extend_u8(variant_tag);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace).extend_u64(sumtype).extend_u8(variant_tag);
 		serializer.to_encoded_key()
 	}
 
 	fn variant_end(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(18);
 		serializer
-			
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(namespace)
 			.extend_u64(sumtype)
@@ -73,7 +67,6 @@ impl EncodableKey for VariantHandlerKey {
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(26);
 		serializer
-			
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(self.namespace)
 			.extend_u64(self.sumtype)
@@ -122,13 +115,7 @@ pub mod tests {
 			handler: HandlerId(0x6789),
 		};
 		let encoded = key.encode();
-		let expected: Vec<u8> = vec![
-			0xCF, 
-			0x3F, 0x54, 0x32, 
-			0x6D, 0xCB, 
-			0xFA, 
-			0x3F, 0x98, 0x76, 
-		];
+		let expected: Vec<u8> = vec![0xCF, 0x3F, 0x54, 0x32, 0x6D, 0xCB, 0xFA, 0x3F, 0x98, 0x76];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let decoded = VariantHandlerKey::decode(&encoded).unwrap();
@@ -191,7 +178,6 @@ pub mod tests {
 			Bound::Unbounded => panic!("expected bounded end"),
 		};
 
-		
 		let key = VariantHandlerKey {
 			namespace: ns,
 			sumtype: st,
@@ -202,7 +188,6 @@ pub mod tests {
 		assert!(encoded.as_slice() >= start.as_slice());
 		assert!(encoded.as_slice() <= end.as_slice());
 
-		
 		let other = VariantHandlerKey {
 			namespace: ns,
 			sumtype: st,

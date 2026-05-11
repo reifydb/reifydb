@@ -131,9 +131,14 @@ impl EncodableKey for RingBufferMetadataKey {
 
 		let ringbuffer = de.read_u64().ok()?;
 
+		let mut partition_values = Vec::new();
+		while !de.is_empty() {
+			partition_values.push(de.read_value().ok()?);
+		}
+
 		Some(Self {
 			ringbuffer: RingBufferId(ringbuffer),
-			partition_values: vec![],
+			partition_values,
 		})
 	}
 }

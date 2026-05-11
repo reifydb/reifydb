@@ -84,10 +84,7 @@ pub mod tests {
 			version: SystemVersion::Storage,
 		};
 		let encoded = key.encode();
-		let expected = vec![
-			0xF5, 
-			0xFE,
-		];
+		let expected = vec![0xF5, 0xFE];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = SystemVersionKey::decode(&encoded).unwrap();
