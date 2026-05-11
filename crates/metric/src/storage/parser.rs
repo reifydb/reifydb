@@ -46,13 +46,11 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 fn extract_shape_id(key: &[u8]) -> Option<ShapeId> {
 	let mut de = KeyDeserializer::from_bytes(key);
 	let _ = de.read_u8().ok()?;
-	let _ = de.read_u8().ok()?;
 	de.read_shape_id().ok()
 }
 
 fn extract_flow_node_id(key: &[u8]) -> Option<FlowNodeId> {
 	let mut de = KeyDeserializer::from_bytes(key);
-	let _ = de.read_u8().ok()?;
 	let _ = de.read_u8().ok()?;
 	let node_id = de.read_u64().ok()?;
 	Some(FlowNodeId(node_id))
@@ -60,7 +58,6 @@ fn extract_flow_node_id(key: &[u8]) -> Option<FlowNodeId> {
 
 fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 	let mut de = KeyDeserializer::from_bytes(key);
-	let _ = de.read_u8().ok()?;
 	let _ = de.read_u8().ok()?;
 	de.read_u64().ok()
 }
@@ -96,8 +93,8 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_object_id_system() {
-		// For system key kinds, should return Id::System
-		let fake_key = vec![0xFE, 0x01, 0, 0, 0, 0]; // Namespace kind
+		
+		let fake_key = vec![0xFE, 0x01, 0, 0, 0, 0]; 
 		let id = parse_id(&fake_key);
 		assert_eq!(id, MetricId::System);
 	}
@@ -105,7 +102,7 @@ pub mod tests {
 	#[test]
 	fn test_parse_object_id_dictionary() {
 		let dictionary_id = DictionaryId(789);
-		let hash = [0u8; 16]; // Mock hash
+		let hash = [0u8; 16]; 
 		let key = DictionaryEntryKey::new(dictionary_id, hash);
 		let encoded = key.encode();
 

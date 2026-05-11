@@ -13,8 +13,6 @@ use crate::{
 	value::index::{encoded::EncodedIndexKey, range::EncodedIndexKeyRange},
 };
 
-const VERSION: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexEntryKey {
 	pub shape: ShapeId,
@@ -46,11 +44,6 @@ impl IndexEntryKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
-
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
@@ -70,9 +63,9 @@ impl EncodableKeyRange for IndexEntryKeyRange {
 	const KIND: KeyKind = KeyKind::IndexEntry;
 
 	fn start(&self) -> Option<EncodedKey> {
-		let mut serializer = KeySerializer::with_capacity(20);
+		let mut serializer = KeySerializer::with_capacity(19);
 		serializer
-			.extend_u8(VERSION)
+			
 			.extend_u8(Self::KIND as u8)
 			.extend_shape_id(self.shape)
 			.extend_index_id(self.index);
@@ -80,9 +73,9 @@ impl EncodableKeyRange for IndexEntryKeyRange {
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
-		let mut serializer = KeySerializer::with_capacity(20);
+		let mut serializer = KeySerializer::with_capacity(19);
 		serializer
-			.extend_u8(VERSION)
+			
 			.extend_u8(Self::KIND as u8)
 			.extend_shape_id(self.shape)
 			.extend_index_id(self.index.prev());
@@ -113,7 +106,7 @@ impl EncodableKey for IndexEntryKey {
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(20 + self.key.len());
 		serializer
-			.extend_u8(VERSION)
+			
 			.extend_u8(Self::KIND as u8)
 			.extend_shape_id(self.shape)
 			.extend_index_id(self.index)
@@ -123,11 +116,6 @@ impl EncodableKey for IndexEntryKey {
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -163,12 +151,12 @@ impl IndexEntryKey {
 
 	pub fn shape_range(shape: impl Into<ShapeId>) -> EncodedKeyRange {
 		let shape = shape.into();
-		let mut start_serializer = KeySerializer::with_capacity(11);
-		start_serializer.extend_u8(VERSION).extend_u8(KeyKind::IndexEntry as u8).extend_shape_id(shape);
+		let mut start_serializer = KeySerializer::with_capacity(10);
+		start_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_shape_id(shape);
 
 		let next_primitive = shape.next();
-		let mut end_serializer = KeySerializer::with_capacity(11);
-		end_serializer.extend_u8(VERSION).extend_u8(KeyKind::IndexEntry as u8).extend_shape_id(next_primitive);
+		let mut end_serializer = KeySerializer::with_capacity(10);
+		end_serializer.extend_u8(KeyKind::IndexEntry as u8).extend_shape_id(next_primitive);
 
 		EncodedKeyRange {
 			start: Bound::Included(start_serializer.to_encoded_key()),
@@ -180,7 +168,7 @@ impl IndexEntryKey {
 		let shape = shape.into();
 		let mut serializer = KeySerializer::with_capacity(20 + key_prefix.len());
 		serializer
-			.extend_u8(VERSION)
+			
 			.extend_u8(KeyKind::IndexEntry as u8)
 			.extend_shape_id(shape)
 			.extend_index_id(index)
@@ -203,9 +191,9 @@ impl IndexEntryKey {
 	) -> EncodedKeyRange {
 		let shape = shape.into();
 
-		let mut prefix_serializer = KeySerializer::with_capacity(20);
+		let mut prefix_serializer = KeySerializer::with_capacity(19);
 		prefix_serializer
-			.extend_u8(VERSION)
+			
 			.extend_u8(KeyKind::IndexEntry as u8)
 			.extend_shape_id(shape)
 			.extend_index_id(index);
@@ -237,9 +225,9 @@ impl IndexEntryKey {
 				Bound::Excluded(EncodedKey::new(bytes))
 			}
 			Bound::Unbounded => {
-				let mut serializer = KeySerializer::with_capacity(20);
+				let mut serializer = KeySerializer::with_capacity(19);
 				serializer
-					.extend_u8(VERSION)
+					
 					.extend_u8(KeyKind::IndexEntry as u8)
 					.extend_shape_id(shape)
 					.extend_index_id(index.prev());
@@ -263,7 +251,7 @@ pub mod tests {
 
 	#[test]
 	fn test_encode_decode() {
-		// Create a simple index key
+		
 		let layout = IndexShape::new(&[Type::Uint8, Type::Uint8], &[SortDirection::Asc, SortDirection::Asc])
 			.unwrap();
 
@@ -295,7 +283,7 @@ pub mod tests {
 		let mut key2 = layout.allocate_key();
 		layout.set_u64(&mut key2, 0, 200u64);
 
-		// Same shape and index, different keys
+		
 		let entry1 = IndexEntryKey {
 			shape: ShapeId::table(1),
 			index: IndexId::primary(1),
@@ -311,7 +299,7 @@ pub mod tests {
 		let encoded1 = entry1.encode();
 		let encoded2 = entry2.encode();
 
-		// entry1 should come before entry2 because 100 < 200
+		
 		assert!(encoded1.as_slice() < encoded2.as_slice());
 	}
 
@@ -319,7 +307,7 @@ pub mod tests {
 	fn test_index_range() {
 		let range = IndexEntryKey::index_range(ShapeId::table(10), IndexId::primary(5));
 
-		// Create entries that should be included
+		
 		let layout = IndexShape::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key = layout.allocate_key();
@@ -333,7 +321,7 @@ pub mod tests {
 
 		let encoded = entry.encode();
 
-		// Check that the entry falls within the range
+		
 		if let (Bound::Included(start), Bound::Excluded(end)) = (&range.start, &range.end) {
 			assert!(encoded.as_slice() >= start.as_slice());
 			assert!(encoded.as_slice() < end.as_slice());
@@ -341,10 +329,10 @@ pub mod tests {
 			panic!("Expected Included/Excluded bounds");
 		}
 
-		// Entry with different index should not be in range
-		// Note: Due to keycode encoding, IndexId(6) will have a smaller
-		// encoded value than IndexId(5) since keycode inverts bits
-		// (larger numbers become smaller byte sequences)
+		
+		
+		
+		
 		let entry2 = IndexEntryKey {
 			shape: ShapeId::table(10),
 			index: IndexId::primary(6),
@@ -352,10 +340,10 @@ pub mod tests {
 		};
 
 		let encoded2 = entry2.encode();
-		// The entry with IndexId(6) should not be within the range for
-		// IndexId(5)
+		
+		
 		if let (Bound::Included(start), Bound::Excluded(end)) = (&range.start, &range.end) {
-			// encoded2 should either be < start or >= end
+			
 			assert!(encoded2.as_slice() < start.as_slice() || encoded2.as_slice() >= end.as_slice());
 		}
 	}
@@ -367,13 +355,13 @@ pub mod tests {
 
 		let mut key = layout.allocate_key();
 		layout.set_u64(&mut key, 0, 100u64);
-		layout.set_row_number(&mut key, 1, 0u64); // Set to 0 to get the minimal key with this prefix
+		layout.set_row_number(&mut key, 1, 0u64); 
 
-		// Use the full encoded key up to the first field as the prefix
-		let prefix = &key.as_slice()[..layout.fields[1].offset]; // Include bitvec and first field
+		
+		let prefix = &key.as_slice()[..layout.fields[1].offset]; 
 		let range = IndexEntryKey::key_prefix_range(ShapeId::table(1), IndexId::primary(1), prefix);
 
-		// Now create a full key with the same prefix
+		
 		layout.set_row_number(&mut key, 1, 999u64);
 		let entry = IndexEntryKey {
 			shape: ShapeId::table(1),
@@ -383,15 +371,15 @@ pub mod tests {
 
 		let encoded = entry.encode();
 
-		// Should be within range
+		
 		if let (Bound::Included(start), Bound::Excluded(end)) = (&range.start, &range.end) {
 			assert!(encoded.as_slice() >= start.as_slice());
 			assert!(encoded.as_slice() < end.as_slice());
 		}
 
-		// Create a key with different prefix
+		
 		let mut key2 = layout.allocate_key();
-		layout.set_u64(&mut key2, 0, 200u64); // Different first field
+		layout.set_u64(&mut key2, 0, 200u64); 
 		layout.set_row_number(&mut key2, 1, 1u64);
 
 		let entry2 = IndexEntryKey {
@@ -402,7 +390,7 @@ pub mod tests {
 
 		let encoded2 = entry2.encode();
 
-		// Should not be in range
+		
 		if let Bound::Excluded(end) = &range.end {
 			assert!(encoded2.as_slice() >= end.as_slice());
 		}

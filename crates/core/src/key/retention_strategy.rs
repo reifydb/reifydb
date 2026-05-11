@@ -16,8 +16,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-const VERSION: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShapeRetentionStrategyKey {
 	pub shape: ShapeId,
@@ -36,8 +34,8 @@ impl EncodableKey for ShapeRetentionStrategyKey {
 	const KIND: KeyKind = KeyKind::ShapeRetentionStrategy;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8);
 
 		match &self.shape {
 			ShapeId::Table(id) => {
@@ -65,11 +63,6 @@ impl EncodableKey for ShapeRetentionStrategyKey {
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -113,18 +106,13 @@ impl EncodableKey for OperatorRetentionStrategyKey {
 	const KIND: KeyKind = KeyKind::OperatorRetentionStrategy;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.operator);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.operator);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -145,14 +133,14 @@ impl ShapeRetentionStrategyKeyRange {
 	}
 
 	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(ShapeRetentionStrategyKey::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(ShapeRetentionStrategyKey::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(ShapeRetentionStrategyKey::KIND as u8 - 1);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(ShapeRetentionStrategyKey::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -165,14 +153,14 @@ impl OperatorRetentionStrategyKeyRange {
 	}
 
 	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(OperatorRetentionStrategyKey::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(OperatorRetentionStrategyKey::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(OperatorRetentionStrategyKey::KIND as u8 - 1);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(OperatorRetentionStrategyKey::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -188,23 +176,19 @@ pub mod tests {
 		};
 
 		let encoded = key.encode();
-		assert_eq!(encoded[0], 0xFE); // version (1 encoded as !1)
-		assert_eq!(encoded[1], 0xE8); // kind (0x17 encoded as !0x17)
-		assert_eq!(encoded[2], 0xFE); // ShapeId::Table discriminator (0x01 encoded as !0x01 in some contexts, but wait...)
+		assert_eq!(encoded[0], 0xE8); 
 
-		// Actually, let's look at what's really happening.
-		// ShapeRetentionStrategyKey::encode:
-		// serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
-		// ShapeId::Table(id) => { serializer.extend_u8(0x01).extend_u64(id.0); }
+		
+		
+		
 
-		// Index 0: !1 = 0xFE
-		// Index 1: !0x17 = 0xE8
-		// Index 2: !0x01 = 0xFE (serializer.extend_u8(0x01))
-		// Index 3: !0x2A = 0xD5 (serializer.extend_u64(42) as varint)
+		
+		
+		
 
-		assert_eq!(encoded.len(), 4);
-		assert_eq!(encoded[2], 0xFE);
-		assert_eq!(encoded[3], 0xD5);
+		assert_eq!(encoded.len(), 3);
+		assert_eq!(encoded[1], 0xFE);
+		assert_eq!(encoded[2], 0xD5);
 
 		let decoded = ShapeRetentionStrategyKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
@@ -217,20 +201,19 @@ pub mod tests {
 		};
 
 		let encoded = key.encode();
-		assert_eq!(encoded[0], 0xFE); // version (1 encoded as !1)
-		assert_eq!(encoded[1], 0xE7); // kind (0x18 encoded as !0x18)
+		assert_eq!(encoded[0], 0xE7); 
 
-		// FlowNodeId is u64. 12345 = 0x3039.
-		// varint for 0x3039 (12345 < 1<<14):
-		// 0x80 | (0x3039 >> 8) = 0x80 | 0x30 = 0xB0
-		// 0x39
-		// Bit-flipped:
-		// !0xB0 = 0x4F
-		// !0x39 = 0xC6
+		
+		
+		
+		
+		
+		
+		
 
-		assert_eq!(encoded.len(), 4);
-		assert_eq!(encoded[2], 0x4F);
-		assert_eq!(encoded[3], 0xC6);
+		assert_eq!(encoded.len(), 3);
+		assert_eq!(encoded[1], 0x4F);
+		assert_eq!(encoded[2], 0xC6);
 
 		let decoded = OperatorRetentionStrategyKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);

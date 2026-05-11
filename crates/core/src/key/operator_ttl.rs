@@ -10,8 +10,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-const VERSION: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorTtlKey {
 	pub node: FlowNodeId,
@@ -30,18 +28,13 @@ impl EncodableKey for OperatorTtlKey {
 	const KIND: KeyKind = KeyKind::OperatorTtl;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.node.0);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.node.0);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -64,14 +57,14 @@ impl OperatorTtlKeyRange {
 	}
 
 	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(OperatorTtlKey::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(OperatorTtlKey::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(OperatorTtlKey::KIND as u8 - 1);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(OperatorTtlKey::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -105,7 +98,7 @@ pub mod tests {
 	#[test]
 	fn test_operator_ttl_key_decode_invalid_version() {
 		let mut bytes = Vec::new();
-		bytes.push(0x00); // wrong version
+		bytes.push(0x00); 
 		bytes.push(OperatorTtlKey::KIND as u8);
 		bytes.extend(&42u64.to_be_bytes());
 		let key = EncodedKey::new(bytes);
@@ -115,8 +108,7 @@ pub mod tests {
 	#[test]
 	fn test_operator_ttl_key_decode_wrong_kind() {
 		let mut bytes = Vec::new();
-		bytes.push(VERSION);
-		bytes.push(0xFF); // wrong kind
+		bytes.push(0xFF); 
 		bytes.extend(&42u64.to_be_bytes());
 		let key = EncodedKey::new(bytes);
 		assert!(OperatorTtlKey::decode(&key).is_none());

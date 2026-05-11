@@ -10,8 +10,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-const VERSION: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariantHandlerKey {
 	pub namespace: NamespaceId,
@@ -47,9 +45,9 @@ impl VariantHandlerKey {
 	}
 
 	fn variant_start(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(19);
+		let mut serializer = KeySerializer::with_capacity(18);
 		serializer
-			.extend_u8(VERSION)
+			
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(namespace)
 			.extend_u64(sumtype)
@@ -58,9 +56,9 @@ impl VariantHandlerKey {
 	}
 
 	fn variant_end(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(19);
+		let mut serializer = KeySerializer::with_capacity(18);
 		serializer
-			.extend_u8(VERSION)
+			
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(namespace)
 			.extend_u64(sumtype)
@@ -73,9 +71,9 @@ impl EncodableKey for VariantHandlerKey {
 	const KIND: KeyKind = KeyKind::VariantHandler;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(27);
+		let mut serializer = KeySerializer::with_capacity(26);
 		serializer
-			.extend_u8(VERSION)
+			
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(self.namespace)
 			.extend_u64(self.sumtype)
@@ -86,11 +84,6 @@ impl EncodableKey for VariantHandlerKey {
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -130,12 +123,11 @@ pub mod tests {
 		};
 		let encoded = key.encode();
 		let expected: Vec<u8> = vec![
-			0xFE, // version (1 encoded as !1)
-			0xCF, // kind (VariantHandler = 0x30, encoded as !0x30)
-			0x3F, 0x54, 0x32, // namespace 0xABCD as varint then !
-			0x6D, 0xCB, // sumtype 0x1234 as varint then !
-			0xFA, // variant_tag 5 (5 encoded as !5 = 0xFA)
-			0x3F, 0x98, 0x76, // handler 0x6789 as varint then !
+			0xCF, 
+			0x3F, 0x54, 0x32, 
+			0x6D, 0xCB, 
+			0xFA, 
+			0x3F, 0x98, 0x76, 
 		];
 		assert_eq!(encoded.as_slice(), expected);
 
@@ -199,7 +191,7 @@ pub mod tests {
 			Bound::Unbounded => panic!("expected bounded end"),
 		};
 
-		// A key for this exact variant should fall within the range
+		
 		let key = VariantHandlerKey {
 			namespace: ns,
 			sumtype: st,
@@ -210,7 +202,7 @@ pub mod tests {
 		assert!(encoded.as_slice() >= start.as_slice());
 		assert!(encoded.as_slice() <= end.as_slice());
 
-		// A key for a higher variant_tag encodes to smaller bytes and is outside the range
+		
 		let other = VariantHandlerKey {
 			namespace: ns,
 			sumtype: st,

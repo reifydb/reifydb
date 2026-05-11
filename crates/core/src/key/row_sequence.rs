@@ -13,24 +13,17 @@ pub struct RowSequenceKey {
 	pub shape: ShapeId,
 }
 
-const VERSION: u8 = 1;
-
 impl EncodableKey for RowSequenceKey {
 	const KIND: KeyKind = KeyKind::RowSequence;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -58,14 +51,14 @@ impl RowSequenceKey {
 	}
 
 	fn sequence_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(Self::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn sequence_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(Self::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -82,10 +75,9 @@ pub mod tests {
 		};
 		let encoded = key.encode();
 		let expected = vec![
-			0xFE, // version (1 encoded as !1)
-			0xF7, // kind (8 encoded as !8)
-			0x01, // ShapeId type discriminator (Table)
-			0x3F, 0x54, 0x32, // ShapeId 0xABCD encoded as varint then bit-flipped
+			0xF7, 
+			0x01, 
+			0x3F, 0x54, 0x32, 
 		];
 		assert_eq!(encoded.as_slice(), expected);
 

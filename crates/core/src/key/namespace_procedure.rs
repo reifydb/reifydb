@@ -14,15 +14,13 @@ pub struct NamespaceProcedureKey {
 	pub procedure: ProcedureId,
 }
 
-const VERSION: u8 = 1;
-
 impl EncodableKey for NamespaceProcedureKey {
 	const KIND: KeyKind = KeyKind::NamespaceProcedure;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18);
+		let mut serializer = KeySerializer::with_capacity(17);
 		serializer
-			.extend_u8(VERSION)
+			
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(self.namespace)
 			.extend_u64(self.procedure);
@@ -31,11 +29,6 @@ impl EncodableKey for NamespaceProcedureKey {
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -66,14 +59,14 @@ impl NamespaceProcedureKey {
 	}
 
 	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(namespace_id);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace_id);
 		serializer.to_encoded_key()
 	}
 
 	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(*namespace_id - 1);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace_id - 1);
 		serializer.to_encoded_key()
 	}
 }

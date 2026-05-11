@@ -10,8 +10,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-const VERSION: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamespaceDictionaryKey {
 	pub namespace: NamespaceId,
@@ -35,14 +33,14 @@ impl NamespaceDictionaryKey {
 	}
 
 	fn link_start(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(namespace);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace);
 		serializer.to_encoded_key()
 	}
 
 	fn link_end(namespace: NamespaceId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(*namespace - 1);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(*namespace - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -51,9 +49,9 @@ impl EncodableKey for NamespaceDictionaryKey {
 	const KIND: KeyKind = KeyKind::NamespaceDictionary;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18);
+		let mut serializer = KeySerializer::with_capacity(17);
 		serializer
-			.extend_u8(VERSION)
+			
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(self.namespace)
 			.extend_u64(self.dictionary);
@@ -62,11 +60,6 @@ impl EncodableKey for NamespaceDictionaryKey {
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
