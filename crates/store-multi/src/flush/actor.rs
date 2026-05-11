@@ -14,7 +14,6 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_runtime::{actor::timers::TimerHandle, sync::waiter::WaiterHandle};
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_type::value::datetime::DateTime;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::{debug, error, warn};

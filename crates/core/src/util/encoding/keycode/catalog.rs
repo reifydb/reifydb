@@ -3,7 +3,7 @@
 
 use reifydb_type::{Result, value::dictionary::DictionaryId};
 
-use super::serialize;
+use super::{ByteSink, decode_u64_varint, encode_u64_varint};
 use crate::{
 	interface::catalog::{
 		id::{IndexId, PrimaryKeyId, RingBufferId, SeriesId, TableId, ViewId},
@@ -13,35 +13,33 @@ use crate::{
 	return_internal_error,
 };
 
-pub fn serialize_shape_id(shape: &ShapeId) -> Vec<u8> {
-	let mut result = Vec::with_capacity(9);
+pub fn serialize_shape_id<B: ByteSink>(shape: &ShapeId, out: &mut B) {
 	match shape {
 		ShapeId::Table(TableId(id)) => {
-			result.push(0x01);
-			result.extend(&serialize(id));
+			out.push(0x01);
+			encode_u64_varint(*id, out);
 		}
 		ShapeId::View(ViewId(id)) => {
-			result.push(0x02);
-			result.extend(&serialize(id));
+			out.push(0x02);
+			encode_u64_varint(*id, out);
 		}
 		ShapeId::TableVirtual(VTableId(id)) => {
-			result.push(0x03);
-			result.extend(&serialize(id));
+			out.push(0x03);
+			encode_u64_varint(*id, out);
 		}
 		ShapeId::RingBuffer(RingBufferId(id)) => {
-			result.push(0x04);
-			result.extend(&serialize(id));
+			out.push(0x04);
+			encode_u64_varint(*id, out);
 		}
 		ShapeId::Dictionary(DictionaryId(id)) => {
-			result.push(0x06);
-			result.extend(&serialize(id));
+			out.push(0x06);
+			encode_u64_varint(*id, out);
 		}
 		ShapeId::Series(SeriesId(id)) => {
-			result.push(0x07);
-			result.extend(&serialize(id));
+			out.push(0x07);
+			encode_u64_varint(*id, out);
 		}
 	}
-	result
 }
 
 pub fn deserialize_shape_id(input: &mut &[u8]) -> Result<ShapeId> {
@@ -51,7 +49,7 @@ pub fn deserialize_shape_id(input: &mut &[u8]) -> Result<ShapeId> {
 
 	let type_byte = input[0];
 	*input = &input[1..];
-	let id = super::decode_u64_varint(input)?;
+	let id = decode_u64_varint(input)?;
 
 	match type_byte {
 		0x01 => Ok(ShapeId::Table(TableId(id))),
@@ -64,15 +62,13 @@ pub fn deserialize_shape_id(input: &mut &[u8]) -> Result<ShapeId> {
 	}
 }
 
-pub fn serialize_index_id(index: &IndexId) -> Vec<u8> {
-	let mut result = Vec::with_capacity(9);
+pub fn serialize_index_id<B: ByteSink>(index: &IndexId, out: &mut B) {
 	match index {
 		IndexId::Primary(PrimaryKeyId(id)) => {
-			result.push(0x01);
-			result.extend(&serialize(id));
+			out.push(0x01);
+			encode_u64_varint(*id, out);
 		}
 	}
-	result
 }
 
 pub fn deserialize_index_id(input: &mut &[u8]) -> Result<IndexId> {
@@ -82,7 +78,7 @@ pub fn deserialize_index_id(input: &mut &[u8]) -> Result<IndexId> {
 
 	let type_byte = input[0];
 	*input = &input[1..];
-	let id = super::decode_u64_varint(input)?;
+	let id = decode_u64_varint(input)?;
 
 	match type_byte {
 		0x01 => Ok(IndexId::Primary(PrimaryKeyId(id))),
@@ -93,8 +89,22 @@ pub fn deserialize_index_id(input: &mut &[u8]) -> Result<IndexId> {
 
 #[cfg(test)]
 pub mod tests {
-	use super::*;
+	use super::{
+		serialize_index_id as serialize_index_id_inner, serialize_shape_id as serialize_shape_id_inner, *,
+	};
 	use crate::util::encoding::keycode::serialize;
+
+	fn serialize_shape_id(shape: &ShapeId) -> Vec<u8> {
+		let mut out = Vec::new();
+		serialize_shape_id_inner(shape, &mut out);
+		out
+	}
+
+	fn serialize_index_id(index: &IndexId) -> Vec<u8> {
+		let mut out = Vec::new();
+		serialize_index_id_inner(index, &mut out);
+		out
+	}
 
 	#[test]
 	fn test_shape_id_ordering() {

@@ -107,12 +107,29 @@ pub fn encode_i64(value: i64) -> [u8; 8] {
 }
 
 pub fn encode_i64_varint<B: ByteSink>(value: i64, output: &mut B) {
-	let mut buf = Vec::with_capacity(9);
-	varint::encode_i64_varint(value, &mut buf);
-	for b in buf.iter_mut() {
-		*b = !*b;
+	if value >= 0 {
+		if value < 64 {
+			output.push(!(0x80 | value as u8));
+		} else if value < 8192 + 64 {
+			let v = (value - 64) as u16;
+			output.push(!(0xc0 | (v >> 8) as u8));
+			output.push(!(v as u8));
+		} else {
+			output.push(!0xfe);
+			let inv = !(value as u64);
+			output.extend_from_slice(&inv.to_be_bytes());
+		}
+	} else if value >= -64 {
+		output.push(!(0x40 | (value + 64) as u8));
+	} else if value >= -8192 - 64 {
+		let v = (value + 64 + 8192) as u16;
+		output.push(!(0x20 | (v >> 8) as u8));
+		output.push(!(v as u8));
+	} else {
+		output.push(!0x01);
+		let inv = !(value as u64);
+		output.extend_from_slice(&inv.to_be_bytes());
 	}
-	output.extend_from_slice(&buf);
 }
 
 pub fn encode_i128(value: i128) -> [u8; 16] {
@@ -140,12 +157,55 @@ pub fn encode_u64(value: u64) -> [u8; 8] {
 }
 
 pub fn encode_u64_varint<B: ByteSink>(value: u64, output: &mut B) {
-	let mut buf = Vec::with_capacity(9);
-	varint::encode_u64_varint(value, &mut buf);
-	for b in buf.iter_mut() {
-		*b = !*b;
+	if value < (1 << 7) {
+		output.push(!(value as u8));
+	} else if value < (1 << 14) {
+		output.push(!(0x80 | (value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 21) {
+		output.push(!(0xc0 | (value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 28) {
+		output.push(!(0xe0 | (value >> 24) as u8));
+		output.push(!((value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 35) {
+		output.push(!(0xf0 | (value >> 32) as u8));
+		output.push(!((value >> 24) as u8));
+		output.push(!((value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 42) {
+		output.push(!(0xf8 | (value >> 40) as u8));
+		output.push(!((value >> 32) as u8));
+		output.push(!((value >> 24) as u8));
+		output.push(!((value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 49) {
+		output.push(!(0xfc | (value >> 48) as u8));
+		output.push(!((value >> 40) as u8));
+		output.push(!((value >> 32) as u8));
+		output.push(!((value >> 24) as u8));
+		output.push(!((value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 56) {
+		output.push(!(0xfe | (value >> 56) as u8));
+		output.push(!((value >> 48) as u8));
+		output.push(!((value >> 40) as u8));
+		output.push(!((value >> 32) as u8));
+		output.push(!((value >> 24) as u8));
+		output.push(!((value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else {
+		output.push(!0xff);
+		let inv = !value;
+		output.extend_from_slice(&inv.to_be_bytes());
 	}
-	output.extend_from_slice(&buf);
 }
 
 pub fn decode_i64_varint(input: &mut &[u8]) -> Result<i64> {

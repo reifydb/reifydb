@@ -136,7 +136,7 @@ mod read_configs_tests {
 		key::config::ConfigStorageKey,
 	};
 	use reifydb_store_multi::{buffer::tier::MultiBufferTier, tier::TierStorage};
-	use reifydb_type::{util::cowvec::CowVec, value::Value};
+	use reifydb_type::value::Value;
 
 	use super::read_configs;
 	use crate::store::config::shape::config::{SHAPE, VALUE};

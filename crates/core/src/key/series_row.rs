@@ -52,8 +52,8 @@ impl EncodableKey for SeriesRowKey {
 		};
 
 		let mut temp_de = KeyDeserializer::from_bytes(de.remaining_bytes());
-		let tag_present = if let Ok(_) = temp_de.read_u64() {
-			if let Ok(_) = temp_de.read_u64() {
+		let tag_present = if temp_de.read_u64().is_ok() {
+			if temp_de.read_u64().is_ok() {
 				!temp_de.is_empty()
 			} else {
 				true

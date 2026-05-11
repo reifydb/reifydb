@@ -21,8 +21,9 @@ use reifydb_type::value::{
 use serde::Serialize;
 
 use super::{
-	catalog, encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32, encode_i128,
-	encode_u8, encode_u16, encode_u128, serialize,
+	catalog, encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32,
+	encode_i64_varint, encode_i128, encode_u8, encode_u16, encode_u32_varint, encode_u64_varint, encode_u128,
+	serialize,
 };
 use crate::{
 	encoded::key::EncodedKey,
@@ -77,7 +78,7 @@ impl KeySerializer {
 	}
 
 	pub fn extend_i64<T: Into<i64>>(&mut self, value: T) -> &mut Self {
-		super::encode_i64_varint(value.into(), &mut self.buffer);
+		encode_i64_varint(value.into(), &mut self.buffer);
 		self
 	}
 
@@ -97,12 +98,12 @@ impl KeySerializer {
 	}
 
 	pub fn extend_u32<T: Into<u32>>(&mut self, value: T) -> &mut Self {
-		super::encode_u32_varint(value.into(), &mut self.buffer);
+		encode_u32_varint(value.into(), &mut self.buffer);
 		self
 	}
 
 	pub fn extend_u64<T: Into<u64>>(&mut self, value: T) -> &mut Self {
-		super::encode_u64_varint(value.into(), &mut self.buffer);
+		encode_u64_varint(value.into(), &mut self.buffer);
 		self
 	}
 
@@ -130,13 +131,13 @@ impl KeySerializer {
 
 	pub fn extend_shape_id(&mut self, object: impl Into<ShapeId>) -> &mut Self {
 		let primitive = object.into();
-		self.buffer.extend_from_slice(&catalog::serialize_shape_id(&primitive));
+		catalog::serialize_shape_id(&primitive, &mut self.buffer);
 		self
 	}
 
 	pub fn extend_index_id(&mut self, index: impl Into<IndexId>) -> &mut Self {
 		let index = index.into();
-		self.buffer.extend_from_slice(&catalog::serialize_index_id(&index));
+		catalog::serialize_index_id(&index, &mut self.buffer);
 		self
 	}
 

@@ -53,6 +53,8 @@ pub fn get_at_version<S: TierStorage>(
 pub mod tests {
 	use std::collections::HashMap;
 
+	use reifydb_core::encoded::key::EncodedKey;
+
 	use super::*;
 	use crate::buffer::{memory::storage::MemoryPrimitiveStorage, tier::MultiBufferTier};
 

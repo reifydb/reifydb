@@ -8,8 +8,9 @@ use std::{
 		Bound,
 		Bound::{Excluded, Included, Unbounded},
 	},
+	fmt,
 	hash::{Hash, Hasher},
-	iter,
+	iter, mem,
 	ops::{Deref, RangeBounds},
 	sync::Arc,
 };
@@ -47,7 +48,7 @@ pub enum EncodedKey {
 	Heap(Vec<u8>),
 }
 
-const _: () = assert!(std::mem::size_of::<EncodedKey>() == 64);
+const _: () = assert!(mem::size_of::<EncodedKey>() == 64);
 
 impl EncodedKey {
 	const INLINE_CAP: usize = 62;
@@ -215,8 +216,8 @@ impl<'de> Deserialize<'de> for EncodedKey {
 	}
 }
 
-impl std::fmt::Debug for EncodedKey {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for EncodedKey {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "EncodedKey({:02x?})", self.as_slice())
 	}
 }

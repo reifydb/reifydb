@@ -10,6 +10,8 @@ use serde::de::{
 	Visitor,
 };
 
+use super::{decode_i64_varint, decode_u64_varint};
+
 pub(crate) struct Deserializer<'de> {
 	pub(crate) input: &'de [u8],
 }
@@ -104,7 +106,7 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
 	}
 
 	fn deserialize_i64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-		let i = super::decode_i64_varint(&mut self.input)?;
+		let i = decode_i64_varint(&mut self.input)?;
 		visitor.visit_i64(i)
 	}
 
@@ -131,12 +133,12 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
 	}
 
 	fn deserialize_u32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-		let u = super::decode_u64_varint(&mut self.input)?;
+		let u = decode_u64_varint(&mut self.input)?;
 		visitor.visit_u32(u as u32)
 	}
 
 	fn deserialize_u64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-		let u = super::decode_u64_varint(&mut self.input)?;
+		let u = decode_u64_varint(&mut self.input)?;
 		visitor.visit_u64(u)
 	}
 

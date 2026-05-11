@@ -4,7 +4,9 @@
 use std::{
 	borrow::Borrow,
 	cmp::Ordering,
+	fmt,
 	hash::{Hash, Hasher},
+	mem,
 	ops::Deref,
 };
 
@@ -28,7 +30,7 @@ pub enum EncodedIndexKey {
 	Heap(Vec<u8>),
 }
 
-const _: () = assert!(std::mem::size_of::<EncodedIndexKey>() == 64);
+const _: () = assert!(mem::size_of::<EncodedIndexKey>() == 64);
 
 impl EncodedIndexKey {
 	const INLINE_CAP: usize = 62;
@@ -149,8 +151,8 @@ impl<'de> Deserialize<'de> for EncodedIndexKey {
 	}
 }
 
-impl std::fmt::Debug for EncodedIndexKey {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for EncodedIndexKey {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "EncodedIndexKey({:02x?})", self.as_slice())
 	}
 }

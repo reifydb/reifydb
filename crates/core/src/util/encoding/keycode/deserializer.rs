@@ -26,7 +26,7 @@ use reifydb_type::{
 };
 use uuid::Uuid;
 
-use super::{catalog, deserialize};
+use super::{catalog, decode_i64_varint, decode_u64_varint, deserialize};
 use crate::interface::catalog::{id::IndexId, shape::ShapeId};
 
 pub struct KeyDeserializer<'a> {
@@ -106,7 +106,7 @@ impl<'a> KeyDeserializer<'a> {
 
 	pub fn read_i64(&mut self) -> Result<i64> {
 		let mut slice = &self.buffer[self.position..];
-		let i = super::decode_i64_varint(&mut slice)?;
+		let i = decode_i64_varint(&mut slice)?;
 		self.position = self.buffer.len() - slice.len();
 		Ok(i)
 	}
@@ -128,14 +128,14 @@ impl<'a> KeyDeserializer<'a> {
 
 	pub fn read_u32(&mut self) -> Result<u32> {
 		let mut slice = &self.buffer[self.position..];
-		let u = super::decode_u64_varint(&mut slice)?;
+		let u = decode_u64_varint(&mut slice)?;
 		self.position = self.buffer.len() - slice.len();
 		Ok(u as u32)
 	}
 
 	pub fn read_u64(&mut self) -> Result<u64> {
 		let mut slice = &self.buffer[self.position..];
-		let u = super::decode_u64_varint(&mut slice)?;
+		let u = decode_u64_varint(&mut slice)?;
 		self.position = self.buffer.len() - slice.len();
 		Ok(u)
 	}

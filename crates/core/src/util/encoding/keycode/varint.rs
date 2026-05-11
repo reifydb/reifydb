@@ -98,17 +98,15 @@ pub fn encode_i64_varint(v: i64, output: &mut Vec<u8>) {
 			output.push(0xfe);
 			output.extend_from_slice(&v.to_be_bytes());
 		}
+	} else if v >= -64 {
+		output.push(0x40 | (v + 64) as u8);
+	} else if v >= -8192 - 64 {
+		let v = (v + 64 + 8192) as u16;
+		output.push(0x20 | (v >> 8) as u8);
+		output.push(v as u8);
 	} else {
-		if v >= -64 {
-			output.push(0x40 | (v + 64) as u8);
-		} else if v >= -8192 - 64 {
-			let v = (v + 64 + 8192) as u16;
-			output.push(0x20 | (v >> 8) as u8);
-			output.push(v as u8);
-		} else {
-			output.push(0x01);
-			output.extend_from_slice(&v.to_be_bytes());
-		}
+		output.push(0x01);
+		output.extend_from_slice(&v.to_be_bytes());
 	}
 }
 
@@ -137,26 +135,24 @@ pub fn decode_i64_varint(input: &mut &[u8]) -> Option<i64> {
 			*input = &input[9..];
 			Some(i64::from_be_bytes(bytes))
 		}
-	} else {
-		if first >= 0x40 {
-			*input = &input[1..];
-			Some((first & 0x3f) as i64 - 64)
-		} else if first >= 0x20 {
-			if input.len() < 2 {
-				return None;
-			}
-			let v = ((first & 0x1f) as u16) << 8 | input[1] as u16;
-			*input = &input[2..];
-			Some(v as i64 - 64 - 8192)
-		} else {
-			if input.len() < 9 {
-				return None;
-			}
-			let mut bytes = [0u8; 8];
-			bytes.copy_from_slice(&input[1..9]);
-			*input = &input[9..];
-			Some(i64::from_be_bytes(bytes))
+	} else if first >= 0x40 {
+		*input = &input[1..];
+		Some((first & 0x3f) as i64 - 64)
+	} else if first >= 0x20 {
+		if input.len() < 2 {
+			return None;
 		}
+		let v = ((first & 0x1f) as u16) << 8 | input[1] as u16;
+		*input = &input[2..];
+		Some(v as i64 - 64 - 8192)
+	} else {
+		if input.len() < 9 {
+			return None;
+		}
+		let mut bytes = [0u8; 8];
+		bytes.copy_from_slice(&input[1..9]);
+		*input = &input[9..];
+		Some(i64::from_be_bytes(bytes))
 	}
 }
 
