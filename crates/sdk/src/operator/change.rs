@@ -149,6 +149,20 @@ impl<'a> BorrowedColumns<'a> {
 	pub fn column(&self, name: &str) -> Option<BorrowedColumn<'a>> {
 		self.columns().find(|c| c.name() == name)
 	}
+
+	pub fn column_at_index(&self, idx: usize) -> Option<BorrowedColumn<'a>> {
+		if idx >= self.ffi.column_count {
+			return None;
+		}
+		let col_ffi: &'a ColumnFFI = unsafe { &*self.ffi.columns.add(idx) };
+		Some(BorrowedColumn {
+			ffi: col_ffi,
+		})
+	}
+
+	pub fn index_of(&self, name: &str) -> Option<usize> {
+		self.columns().position(|c| c.name() == name)
+	}
 }
 
 #[derive(Clone, Copy)]
