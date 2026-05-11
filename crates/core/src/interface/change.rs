@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_abi::flow::diff::DiffType;
-use reifydb_type::value::datetime::DateTime;
+use reifydb_type::{Result, value::datetime::DateTime};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
@@ -16,7 +16,7 @@ use crate::{
 
 pub type Diffs = SmallVec<[Diff; 4]>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ChangeOrigin {
 	Shape(ShapeId),
 	Flow(FlowNodeId),
@@ -118,6 +118,21 @@ impl Diff {
 			} => DiffType::Remove,
 		}
 	}
+
+	pub fn row_count(&self) -> usize {
+		match self {
+			Diff::Insert {
+				post,
+			} => post.row_count(),
+			Diff::Update {
+				post,
+				..
+			} => post.row_count(),
+			Diff::Remove {
+				pre,
+			} => pre.row_count(),
+		}
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,5 +173,108 @@ impl Change {
 			version,
 			changed_at,
 		}
+	}
+
+	pub fn row_count(&self) -> usize {
+		self.diffs.iter().map(Diff::row_count).sum()
+	}
+
+	pub fn merge(changes: Vec<Change>) -> Result<Change> {
+		let mut iter = changes.into_iter();
+		let mut merged = iter.next().expect("Change::merge requires at least one Change");
+		for ch in iter {
+			if ch.changed_at > merged.changed_at {
+				merged.changed_at = ch.changed_at;
+			}
+			merged.diffs.extend(ch.diffs);
+		}
+		merged.coalesce()?;
+		Ok(merged)
+	}
+
+	pub fn coalesce(&mut self) -> Result<()> {
+		if self.diffs.len() <= 1 {
+			return Ok(());
+		}
+		let original = std::mem::take(&mut self.diffs);
+		let mut merged: Diffs = SmallVec::with_capacity(original.len());
+		for diff in original {
+			if diff.row_count() == 0 {
+				continue;
+			}
+			let same_kind = match (merged.last(), &diff) {
+				(
+					Some(Diff::Insert {
+						..
+					}),
+					Diff::Insert {
+						..
+					},
+				) => true,
+				(
+					Some(Diff::Update {
+						..
+					}),
+					Diff::Update {
+						..
+					},
+				) => true,
+				(
+					Some(Diff::Remove {
+						..
+					}),
+					Diff::Remove {
+						..
+					},
+				) => true,
+				_ => false,
+			};
+			if same_kind {
+				let last = merged.last_mut().expect("non-empty by same_kind branch");
+				merge_into(last, diff)?;
+			} else {
+				merged.push(diff);
+			}
+		}
+		self.diffs = merged;
+		Ok(())
+	}
+}
+
+fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
+	fn unwrap_or_clone(arc: Arc<Columns>) -> Columns {
+		Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone())
+	}
+	match (target, source) {
+		(
+			Diff::Insert {
+				post: t,
+			},
+			Diff::Insert {
+				post: s,
+			},
+		) => Arc::make_mut(t).append_all(unwrap_or_clone(s)),
+		(
+			Diff::Update {
+				pre: tp,
+				post: tpost,
+			},
+			Diff::Update {
+				pre: sp,
+				post: spost,
+			},
+		) => {
+			Arc::make_mut(tp).append_all(unwrap_or_clone(sp))?;
+			Arc::make_mut(tpost).append_all(unwrap_or_clone(spost))
+		}
+		(
+			Diff::Remove {
+				pre: t,
+			},
+			Diff::Remove {
+				pre: s,
+			},
+		) => Arc::make_mut(t).append_all(unwrap_or_clone(s)),
+		_ => unreachable!("merge_into requires matching diff kinds"),
 	}
 }

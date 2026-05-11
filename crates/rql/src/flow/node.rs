@@ -103,6 +103,76 @@ pub enum FlowNodeType {
 }
 
 impl FlowNodeType {
+	pub fn label(&self) -> String {
+		match self {
+			FlowNodeType::SourceInlineData {
+				..
+			} => "SourceInlineData".into(),
+			FlowNodeType::SourceTable {
+				..
+			} => "SourceTable".into(),
+			FlowNodeType::SourceView {
+				..
+			} => "SourceView".into(),
+			FlowNodeType::SourceFlow {
+				..
+			} => "SourceFlow".into(),
+			FlowNodeType::SourceRingBuffer {
+				..
+			} => "SourceRingBuffer".into(),
+			FlowNodeType::SourceSeries {
+				..
+			} => "SourceSeries".into(),
+			FlowNodeType::Filter {
+				..
+			} => "Filter".into(),
+			FlowNodeType::Gate {
+				..
+			} => "Gate".into(),
+			FlowNodeType::Map {
+				..
+			} => "Map".into(),
+			FlowNodeType::Extend {
+				..
+			} => "Extend".into(),
+			FlowNodeType::Join {
+				..
+			} => "Join".into(),
+			FlowNodeType::Aggregate {
+				..
+			} => "Aggregate".into(),
+			FlowNodeType::Append => "Append".into(),
+			FlowNodeType::Sort {
+				..
+			} => "Sort".into(),
+			FlowNodeType::Take {
+				..
+			} => "Take".into(),
+			FlowNodeType::Distinct {
+				..
+			} => "Distinct".into(),
+			FlowNodeType::Apply {
+				operator,
+				..
+			} => format!("Apply({})", operator),
+			FlowNodeType::SinkTableView {
+				..
+			} => "SinkTableView".into(),
+			FlowNodeType::SinkRingBufferView {
+				..
+			} => "SinkRingBufferView".into(),
+			FlowNodeType::SinkSeriesView {
+				..
+			} => "SinkSeriesView".into(),
+			FlowNodeType::SinkSubscription {
+				..
+			} => "SinkSubscription".into(),
+			FlowNodeType::Window {
+				..
+			} => "Window".into(),
+		}
+	}
+
 	pub fn discriminator(&self) -> u8 {
 		match self {
 			FlowNodeType::SourceInlineData {

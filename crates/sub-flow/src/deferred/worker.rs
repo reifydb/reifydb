@@ -273,10 +273,8 @@ impl FlowWorkerActor {
 				self.engine.clock().clone(),
 			);
 
-			for change in &instruction.changes {
-				if let Err(e) = flow_engine.process(&mut txn, change.clone(), flow_id) {
-					error!(flow_id = flow_id.0, error = %e, "failed to process flow");
-				}
+			if let Err(e) = flow_engine.process_batch(&mut txn, instruction.changes.clone(), flow_id) {
+				error!(flow_id = flow_id.0, error = %e, "failed to process flow");
 			}
 
 			txn.flush_operator_states()?;

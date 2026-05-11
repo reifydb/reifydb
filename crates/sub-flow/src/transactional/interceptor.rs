@@ -204,9 +204,7 @@ fn run_flow_in_level(
 	relevant: Vec<Change>,
 	flow_txn: &mut FlowTransaction,
 ) -> Result<FlowResult> {
-	for change in relevant {
-		flow_engine.process(flow_txn, change, flow_id)?;
-	}
+	flow_engine.process_batch(flow_txn, relevant, flow_id)?;
 
 	flow_txn.flush_operator_states()?;
 
