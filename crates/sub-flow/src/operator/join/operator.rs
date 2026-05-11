@@ -13,7 +13,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	internal,
-	util::encoding::keycode::serializer::KeySerializer,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{
@@ -309,23 +309,14 @@ impl JoinOperator {
 		EncodedKey::new(serializer.finish())
 	}
 
-	fn decode_row_number_from_keycode(bytes: &[u8]) -> u64 {
-		let arr: [u8; 8] =
-			[!bytes[0], !bytes[1], !bytes[2], !bytes[3], !bytes[4], !bytes[5], !bytes[6], !bytes[7]];
-		u64::from_be_bytes(arr)
-	}
-
 	fn parse_composite_key(key_bytes: &[u8]) -> Option<(RowNumber, Option<RowNumber>)> {
-		if key_bytes.len() < 9 || key_bytes[0] != !b'L' {
+		if key_bytes.is_empty() || key_bytes[0] != !b'L' {
 			return None;
 		}
 
-		let left_num = Self::decode_row_number_from_keycode(&key_bytes[1..9]);
-		let right_num = if key_bytes.len() >= 17 {
-			Some(RowNumber(Self::decode_row_number_from_keycode(&key_bytes[9..17])))
-		} else {
-			None
-		};
+		let mut de = KeyDeserializer::from_bytes(&key_bytes[1..]);
+		let left_num = de.read_u64().ok()?;
+		let right_num = de.read_u64().ok().map(RowNumber);
 
 		Some((RowNumber(left_num), right_num))
 	}

@@ -11,7 +11,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	internal,
-	util::encoding::keycode::serializer::KeySerializer,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	value::column::columns::Columns,
 };
 use reifydb_type::{Result, error::Error, value::row_number::RowNumber};
@@ -59,22 +59,14 @@ impl AppendOperator {
 	}
 
 	fn parse_composite_key(key_bytes: &[u8]) -> Option<(usize, RowNumber)> {
-		if key_bytes.len() < 9 {
+		if key_bytes.is_empty() {
 			return None;
 		}
 
-		let parent_index = !key_bytes[0];
+		let mut de = KeyDeserializer::from_bytes(key_bytes);
+		let parent_index = de.read_u8().ok()?;
+		let source_row = de.read_u64().ok()?;
 
-		let source_row = u64::from_be_bytes([
-			!key_bytes[1],
-			!key_bytes[2],
-			!key_bytes[3],
-			!key_bytes[4],
-			!key_bytes[5],
-			!key_bytes[6],
-			!key_bytes[7],
-			!key_bytes[8],
-		]);
 		Some((parent_index as usize, RowNumber(source_row)))
 	}
 }

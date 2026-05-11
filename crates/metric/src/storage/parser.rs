@@ -44,10 +44,6 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 }
 
 fn extract_shape_id(key: &[u8]) -> Option<ShapeId> {
-	if key.len() < 11 {
-		return None;
-	}
-
 	let mut de = KeyDeserializer::from_bytes(key);
 	let _ = de.read_u8().ok()?;
 	let _ = de.read_u8().ok()?;
@@ -55,10 +51,6 @@ fn extract_shape_id(key: &[u8]) -> Option<ShapeId> {
 }
 
 fn extract_flow_node_id(key: &[u8]) -> Option<FlowNodeId> {
-	if key.len() < 10 {
-		return None;
-	}
-
 	let mut de = KeyDeserializer::from_bytes(key);
 	let _ = de.read_u8().ok()?;
 	let _ = de.read_u8().ok()?;
@@ -67,10 +59,6 @@ fn extract_flow_node_id(key: &[u8]) -> Option<FlowNodeId> {
 }
 
 fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
-	if key.len() < 10 {
-		return None;
-	}
-
 	let mut de = KeyDeserializer::from_bytes(key);
 	let _ = de.read_u8().ok()?;
 	let _ = de.read_u8().ok()?;

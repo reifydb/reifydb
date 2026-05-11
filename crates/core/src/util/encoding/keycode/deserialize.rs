@@ -104,12 +104,8 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
 	}
 
 	fn deserialize_i64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-		let mut bytes = self.take_bytes(8)?.to_vec();
-		for b in &mut bytes {
-			*b = !*b;
-		}
-		bytes[0] ^= 1 << 7;
-		visitor.visit_i64(i64::from_be_bytes(bytes.as_slice().try_into()?))
+		let i = super::decode_i64_varint(&mut self.input)?;
+		visitor.visit_i64(i)
 	}
 
 	fn deserialize_i128<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
@@ -135,19 +131,13 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
 	}
 
 	fn deserialize_u32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-		let mut bytes = self.take_bytes(4)?.to_vec();
-		for b in &mut bytes {
-			*b = !*b;
-		}
-		visitor.visit_u32(u32::from_be_bytes(bytes.as_slice().try_into()?))
+		let u = super::decode_u64_varint(&mut self.input)?;
+		visitor.visit_u32(u as u32)
 	}
 
 	fn deserialize_u64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-		let mut bytes = self.take_bytes(8)?.to_vec();
-		for b in &mut bytes {
-			*b = !*b;
-		}
-		visitor.visit_u64(u64::from_be_bytes(bytes.as_slice().try_into()?))
+		let u = super::decode_u64_varint(&mut self.input)?;
+		visitor.visit_u64(u)
 	}
 
 	fn deserialize_u128<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {

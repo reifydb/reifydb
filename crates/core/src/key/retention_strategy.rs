@@ -190,7 +190,21 @@ pub mod tests {
 		let encoded = key.encode();
 		assert_eq!(encoded[0], 0xFE); // version (1 encoded as !1)
 		assert_eq!(encoded[1], 0xE8); // kind (0x17 encoded as !0x17)
-		assert_eq!(&encoded[3..11], &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xD5]);
+		assert_eq!(encoded[2], 0xFE); // ShapeId::Table discriminator (0x01 encoded as !0x01 in some contexts, but wait...)
+
+		// Actually, let's look at what's really happening.
+		// ShapeRetentionStrategyKey::encode:
+		// serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		// ShapeId::Table(id) => { serializer.extend_u8(0x01).extend_u64(id.0); }
+
+		// Index 0: !1 = 0xFE
+		// Index 1: !0x17 = 0xE8
+		// Index 2: !0x01 = 0xFE (serializer.extend_u8(0x01))
+		// Index 3: !0x2A = 0xD5 (serializer.extend_u64(42) as varint)
+
+		assert_eq!(encoded.len(), 4);
+		assert_eq!(encoded[2], 0xFE);
+		assert_eq!(encoded[3], 0xD5);
 
 		let decoded = ShapeRetentionStrategyKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
@@ -205,7 +219,18 @@ pub mod tests {
 		let encoded = key.encode();
 		assert_eq!(encoded[0], 0xFE); // version (1 encoded as !1)
 		assert_eq!(encoded[1], 0xE7); // kind (0x18 encoded as !0x18)
-		assert_eq!(&encoded[2..10], &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xCF, 0xC6]);
+
+		// FlowNodeId is u64. 12345 = 0x3039.
+		// varint for 0x3039 (12345 < 1<<14):
+		// 0x80 | (0x3039 >> 8) = 0x80 | 0x30 = 0xB0
+		// 0x39
+		// Bit-flipped:
+		// !0xB0 = 0x4F
+		// !0x39 = 0xC6
+
+		assert_eq!(encoded.len(), 4);
+		assert_eq!(encoded[2], 0x4F);
+		assert_eq!(encoded[3], 0xC6);
 
 		let decoded = OperatorRetentionStrategyKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);

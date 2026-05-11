@@ -81,7 +81,7 @@ pub mod tests {
 			namespace: NamespaceId(0xABCD),
 		};
 		let encoded = key.encode();
-		let expected = vec![0xFE, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32];
+		let expected = vec![0xFE, 0xFE, 0x3F, 0x54, 0x32];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = NamespaceKey::decode(&encoded).unwrap();

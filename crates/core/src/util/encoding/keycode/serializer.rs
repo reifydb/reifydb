@@ -21,8 +21,8 @@ use reifydb_type::value::{
 use serde::Serialize;
 
 use super::{
-	catalog, encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32, encode_i64,
-	encode_i128, encode_u8, encode_u16, encode_u32, encode_u64, encode_u128, serialize,
+	catalog, encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32, encode_i128,
+	encode_u8, encode_u16, encode_u128, serialize,
 };
 use crate::{
 	encoded::key::EncodedKey,
@@ -77,7 +77,7 @@ impl KeySerializer {
 	}
 
 	pub fn extend_i64<T: Into<i64>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_i64(value.into()));
+		super::encode_i64_varint(value.into(), &mut self.buffer);
 		self
 	}
 
@@ -97,12 +97,12 @@ impl KeySerializer {
 	}
 
 	pub fn extend_u32<T: Into<u32>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_u32(value.into()));
+		super::encode_u32_varint(value.into(), &mut self.buffer);
 		self
 	}
 
 	pub fn extend_u64<T: Into<u64>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_u64(value.into()));
+		super::encode_u64_varint(value.into(), &mut self.buffer);
 		self
 	}
 
@@ -612,27 +612,27 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i64(0i64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7fffffffffffffff");
+		assert_eq!(hex::encode(&result), "7f");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i64(1i64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "7ffffffffffffffe");
+		assert_eq!(hex::encode(&result), "7e");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i64(-1i64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "8000000000000000");
+		assert_eq!(hex::encode(&result), "80");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i64(i64::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "0000000000000000");
+		assert_eq!(hex::encode(&result), "018000000000000000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_i64(i64::MIN);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ffffffffffffffff");
+		assert_eq!(hex::encode(&result), "fe7fffffffffffffff");
 	}
 
 	#[test]
@@ -709,17 +709,17 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u32(0u32);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ffffffff");
+		assert_eq!(hex::encode(&result), "ff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u32(1u32);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "fffffffe");
+		assert_eq!(hex::encode(&result), "fe");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u32(u32::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "00000000");
+		assert_eq!(hex::encode(&result), "0f00000000");
 	}
 
 	#[test]
@@ -727,22 +727,22 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u64(0u64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ffffffffffffffff");
+		assert_eq!(hex::encode(&result), "ff");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u64(1u64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "fffffffffffffffe");
+		assert_eq!(hex::encode(&result), "fe");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u64(65535u64);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "ffffffffffff0000");
+		assert_eq!(hex::encode(&result), "3f0000");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u64(u64::MAX);
 		let result = serializer.finish();
-		assert_eq!(hex::encode(&result), "0000000000000000");
+		assert_eq!(hex::encode(&result), "000000000000000000");
 	}
 
 	#[test]
@@ -803,8 +803,8 @@ pub mod tests {
 		serializer.extend_bool(true).extend_i32(42i32).extend_str("test").extend_u64(1000u64);
 		let result = serializer.finish();
 
-		// Should have bool (1 byte) + i32 (4 bytes) + "test" with terminator (6 bytes) + u64 (8 bytes)
-		assert!(result.len() >= 19);
+		// Should have bool (1 byte) + i32 (4 bytes) + "test" with terminator (6 bytes) + u64 (varies)
+		assert!(result.len() >= 13);
 
 		let mut de = KeyDeserializer::from_bytes(&result);
 		assert_eq!(de.read_bool().unwrap(), true);
@@ -911,7 +911,7 @@ pub mod tests {
 		let datetime = DateTime::from_ymd_hms(2024, 1, 1, 12, 0, 0).unwrap();
 		serializer.extend_datetime(&datetime);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 8); // i64 encoding
+		assert_eq!(result.len(), 9); // i64 varint encoding
 	}
 
 	#[test]
@@ -920,7 +920,7 @@ pub mod tests {
 		let time = Time::from_hms(12, 30, 45).unwrap();
 		serializer.extend_time(&time);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 8); // u64 encoding
+		assert_eq!(result.len(), 7); // u64 varint encoding
 	}
 
 	#[test]
@@ -929,7 +929,7 @@ pub mod tests {
 		let duration = Duration::from_nanoseconds(1000000).unwrap();
 		serializer.extend_duration(&duration);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 16); // i32 + i32 + i64 encoding
+		assert_eq!(result.len(), 17); // i32 + i32 + i64 varint encoding
 	}
 
 	#[test]
@@ -938,7 +938,7 @@ pub mod tests {
 		let row_number = RowNumber(42);
 		serializer.extend_row_number(&row_number);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 8); // u64 encoding
+		assert_eq!(result.len(), 1); // u64 varint encoding
 	}
 
 	#[test]
@@ -1521,8 +1521,8 @@ pub mod tests {
 		serializer.extend_index_id(IndexId::Primary(PrimaryKeyId(123456789)));
 		let result = serializer.finish();
 
-		// IndexId Primary uses 1 byte prefix + 8 bytes u64 with bitwise NOT
-		assert_eq!(result.len(), 9);
+		// IndexId Primary uses 1 byte prefix + u64 varint
+		assert_eq!(result.len(), 5);
 		assert_eq!(result[0], 0x01); // Primary variant prefix
 
 		// Verify it's using bitwise NOT (smaller values produce larger encoded values)
@@ -1541,8 +1541,8 @@ pub mod tests {
 		serializer.extend_shape_id(ShapeId::Table(TableId(987654321)));
 		let result = serializer.finish();
 
-		// ShapeId Table uses 1 byte prefix + 8 bytes u64 with bitwise NOT
-		assert_eq!(result.len(), 9);
+		// ShapeId Table uses 1 byte prefix + u64 varint
+		assert_eq!(result.len(), 6);
 		assert_eq!(result[0], 0x01); // Table variant prefix
 
 		// Verify ordering

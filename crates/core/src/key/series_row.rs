@@ -58,8 +58,18 @@ impl EncodableKey for SeriesRowKey {
 			_ => return None,
 		};
 
-		let remaining = de.remaining();
-		let variant_tag = if remaining > 16 {
+		let mut temp_de = KeyDeserializer::from_bytes(de.remaining_bytes());
+		let tag_present = if let Ok(_) = temp_de.read_u64() {
+			if let Ok(_) = temp_de.read_u64() {
+				!temp_de.is_empty()
+			} else {
+				true
+			}
+		} else {
+			true
+		};
+
+		let variant_tag = if tag_present {
 			Some(de.read_u8().ok()?)
 		} else {
 			None

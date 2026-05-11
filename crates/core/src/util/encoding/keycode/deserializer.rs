@@ -54,6 +54,10 @@ impl<'a> KeyDeserializer<'a> {
 		self.position
 	}
 
+	pub fn remaining_bytes(&self) -> &'a [u8] {
+		&self.buffer[self.position..]
+	}
+
 	fn read_exact(&mut self, count: usize) -> Result<&'a [u8]> {
 		if self.remaining() < count {
 			return Err(Error::from(TypeError::SerdeKeycode {
@@ -101,8 +105,10 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_i64(&mut self) -> Result<i64> {
-		let bytes = self.read_exact(8)?;
-		deserialize::<i64>(bytes)
+		let mut slice = &self.buffer[self.position..];
+		let i = super::decode_i64_varint(&mut slice)?;
+		self.position = self.buffer.len() - slice.len();
+		Ok(i)
 	}
 
 	pub fn read_i128(&mut self) -> Result<i128> {
@@ -121,13 +127,17 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_u32(&mut self) -> Result<u32> {
-		let bytes = self.read_exact(4)?;
-		deserialize::<u32>(bytes)
+		let mut slice = &self.buffer[self.position..];
+		let u = super::decode_u64_varint(&mut slice)?;
+		self.position = self.buffer.len() - slice.len();
+		Ok(u as u32)
 	}
 
 	pub fn read_u64(&mut self) -> Result<u64> {
-		let bytes = self.read_exact(8)?;
-		deserialize::<u64>(bytes)
+		let mut slice = &self.buffer[self.position..];
+		let u = super::decode_u64_varint(&mut slice)?;
+		self.position = self.buffer.len() - slice.len();
+		Ok(u)
 	}
 
 	pub fn read_u128(&mut self) -> Result<u128> {
@@ -191,13 +201,17 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_shape_id(&mut self) -> Result<ShapeId> {
-		let bytes = self.read_exact(9)?;
-		catalog::deserialize_shape_id(bytes)
+		let mut slice = &self.buffer[self.position..];
+		let shape_id = catalog::deserialize_shape_id(&mut slice)?;
+		self.position = self.buffer.len() - slice.len();
+		Ok(shape_id)
 	}
 
 	pub fn read_index_id(&mut self) -> Result<IndexId> {
-		let bytes = self.read_exact(9)?;
-		catalog::deserialize_index_id(bytes)
+		let mut slice = &self.buffer[self.position..];
+		let index_id = catalog::deserialize_index_id(&mut slice)?;
+		self.position = self.buffer.len() - slice.len();
+		Ok(index_id)
 	}
 
 	pub fn read_date(&mut self) -> Result<Date> {
@@ -736,18 +750,18 @@ pub mod tests {
 
 		let mut de = KeyDeserializer::from_bytes(&bytes);
 		assert_eq!(de.position(), 0);
-		assert_eq!(de.remaining(), 7);
+		assert_eq!(de.remaining(), 4);
 
 		de.read_u8().unwrap();
 		assert_eq!(de.position(), 1);
-		assert_eq!(de.remaining(), 6);
+		assert_eq!(de.remaining(), 3);
 
 		de.read_u16().unwrap();
 		assert_eq!(de.position(), 3);
-		assert_eq!(de.remaining(), 4);
+		assert_eq!(de.remaining(), 1);
 
 		de.read_u32().unwrap();
-		assert_eq!(de.position(), 7);
+		assert_eq!(de.position(), 4);
 		assert_eq!(de.remaining(), 0);
 		assert!(de.is_empty());
 	}

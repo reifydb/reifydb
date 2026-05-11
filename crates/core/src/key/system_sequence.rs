@@ -82,9 +82,9 @@ pub mod tests {
 		};
 		let encoded = key.encode();
 		let expected = vec![
-			0xFE, // version
-			0xFA, // kind
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32,
+			0xFE, // version (1 encoded as !1)
+			0xFA, // kind (5 encoded as !5)
+			0x3F, 0x54, 0x32, // 0xABCD encoded as varint then bit-flipped
 		];
 		assert_eq!(encoded.as_slice(), expected);
 

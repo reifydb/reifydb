@@ -82,14 +82,14 @@ pub mod tests {
 		};
 		let encoded = key.encode();
 		let expected = vec![
-			0xFE, // version
-			0xF7, // kind
+			0xFE, // version (1 encoded as !1)
+			0xF7, // kind (8 encoded as !8)
 			0x01, // ShapeId type discriminator (Table)
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // shape id bytes
+			0x3F, 0x54, 0x32, // ShapeId 0xABCD encoded as varint then bit-flipped
 		];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = RowSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(key.shape, 0xABCD);
+		assert_eq!(key.shape, ShapeId::table(0xABCD));
 	}
 }

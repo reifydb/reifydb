@@ -3,7 +3,7 @@
 
 use reifydb_type::{Result, value::dictionary::DictionaryId};
 
-use super::{deserialize, serialize};
+use super::serialize;
 use crate::{
 	interface::catalog::{
 		id::{IndexId, PrimaryKeyId, RingBufferId, SeriesId, TableId, ViewId},
@@ -44,13 +44,14 @@ pub fn serialize_shape_id(shape: &ShapeId) -> Vec<u8> {
 	result
 }
 
-pub fn deserialize_shape_id(bytes: &[u8]) -> Result<ShapeId> {
-	if bytes.len() != 9 {
-		return_internal_error!("Invalid ShapeId encoding: expected 9 bytes, got {}", bytes.len());
+pub fn deserialize_shape_id(input: &mut &[u8]) -> Result<ShapeId> {
+	if input.is_empty() {
+		return_internal_error!("Invalid ShapeId encoding: empty input");
 	}
 
-	let type_byte = bytes[0];
-	let id: u64 = deserialize(&bytes[1..9])?;
+	let type_byte = input[0];
+	*input = &input[1..];
+	let id = super::decode_u64_varint(input)?;
 
 	match type_byte {
 		0x01 => Ok(ShapeId::Table(TableId(id))),
@@ -74,13 +75,14 @@ pub fn serialize_index_id(index: &IndexId) -> Vec<u8> {
 	result
 }
 
-pub fn deserialize_index_id(bytes: &[u8]) -> Result<IndexId> {
-	if bytes.len() != 9 {
-		return_internal_error!("Invalid IndexId encoding: expected 9 bytes, got {}", bytes.len());
+pub fn deserialize_index_id(input: &mut &[u8]) -> Result<IndexId> {
+	if input.is_empty() {
+		return_internal_error!("Invalid IndexId encoding: empty input");
 	}
 
-	let type_byte = bytes[0];
-	let id: u64 = deserialize(&bytes[1..9])?;
+	let type_byte = input[0];
+	*input = &input[1..];
+	let id = super::decode_u64_varint(input)?;
 
 	match type_byte {
 		0x01 => Ok(IndexId::Primary(PrimaryKeyId(id))),
@@ -181,8 +183,10 @@ pub mod tests {
 		// Test basic serialization/deserialization
 		let virtual_primitive = ShapeId::vtable(42);
 		let bytes = serialize_shape_id(&virtual_primitive);
-		let deserialized = deserialize_shape_id(&bytes).unwrap();
+		let mut slice = &bytes[..];
+		let deserialized = deserialize_shape_id(&mut slice).unwrap();
 		assert_eq!(virtual_primitive, deserialized);
+		assert!(slice.is_empty());
 
 		// Test that type byte is 0x03
 		assert_eq!(bytes[0], 0x03);
@@ -191,8 +195,10 @@ pub mod tests {
 		let virtual_id = VTableId(123);
 		let primitive_from_id = ShapeId::from(virtual_id);
 		let bytes_from_id = serialize_shape_id(&primitive_from_id);
-		let deserialized_id = deserialize_shape_id(&bytes_from_id).unwrap();
+		let mut slice = &bytes_from_id[..];
+		let deserialized_id = deserialize_shape_id(&mut slice).unwrap();
 		assert_eq!(primitive_from_id, deserialized_id);
+		assert!(slice.is_empty());
 
 		// Test ordering
 		let virtual1 = ShapeId::vtable(1);
@@ -209,8 +215,10 @@ pub mod tests {
 		// Test basic serialization/deserialization
 		let index = IndexId::primary(42);
 		let bytes = serialize_index_id(&index);
-		let deserialized = deserialize_index_id(&bytes).unwrap();
+		let mut slice = &bytes[..];
+		let deserialized = deserialize_index_id(&mut slice).unwrap();
 		assert_eq!(index.as_u64(), deserialized.as_u64());
+		assert!(slice.is_empty());
 
 		// Test that type byte is 0x01 for Primary
 		assert_eq!(bytes[0], 0x01);
@@ -219,8 +227,10 @@ pub mod tests {
 		let primary_id = PrimaryKeyId(123);
 		let index_from_id = IndexId::Primary(primary_id);
 		let bytes_from_id = serialize_index_id(&index_from_id);
-		let deserialized_id = deserialize_index_id(&bytes_from_id).unwrap();
+		let mut slice = &bytes_from_id[..];
+		let deserialized_id = deserialize_index_id(&mut slice).unwrap();
 		assert_eq!(index_from_id.as_u64(), deserialized_id.as_u64());
+		assert!(slice.is_empty());
 	}
 
 	#[test]
@@ -257,7 +267,7 @@ pub mod tests {
 		assert!(bytes11 < bytes10, "index(11) should be < index(10) in bytes");
 
 		// Verify the structure: [type_byte, ...id_bytes]
-		assert_eq!(bytes10.len(), 9, "IndexId should be 9 bytes");
+		assert_eq!(bytes10.len(), 2, "IndexId(10) should be 2 bytes");
 		assert_eq!(bytes10[0], 0x01, "Primary variant should have type byte 0x01");
 
 		// Test that incrementing the ID works for range end bounds
@@ -279,16 +289,16 @@ pub mod tests {
 		let index_bytes = serialize_index_id(&index);
 
 		// Verify sizes
-		assert_eq!(primitive_bytes.len(), 9, "ShapeId should be 9 bytes");
-		assert_eq!(index_bytes.len(), 9, "IndexId should be 9 bytes");
+		assert_eq!(primitive_bytes.len(), 2, "ShapeId(42) should be 2 bytes");
+		assert_eq!(index_bytes.len(), 2, "IndexId(7) should be 2 bytes");
 
 		// Verify discriminators
 		assert_eq!(primitive_bytes[0], 0x01, "Table shape should have type byte 0x01");
 		assert_eq!(index_bytes[0], 0x01, "Primary index should have type byte 0x01");
 
-		// Total key prefix would be: version(1) + kind(1) + shape(9) +
-		// index(9) = 20 bytes
+		// Total key prefix would be: version(1) + kind(1) + shape(2) +
+		// index(2) = 6 bytes
 		let total_prefix_size = 1 + 1 + primitive_bytes.len() + index_bytes.len();
-		assert_eq!(total_prefix_size, 20, "Total IndexEntryKey prefix should be 20 bytes");
+		assert_eq!(total_prefix_size, 6, "Total IndexEntryKey prefix should be 6 bytes");
 	}
 }

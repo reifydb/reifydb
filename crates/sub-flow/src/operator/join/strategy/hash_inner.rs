@@ -105,13 +105,6 @@ impl InnerHashJoin {
 
 		let mut result = Vec::new();
 
-		if matches!(ctx.side, JoinSide::Left) {
-			for &idx in indices {
-				let row_number = pre.row_numbers[idx];
-				ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
-			}
-		}
-
 		let emit_ctx = JoinEmitContext {
 			opposite_store: match ctx.side {
 				JoinSide::Left => &ctx.state.right,
@@ -131,6 +124,11 @@ impl InnerHashJoin {
 
 		for &idx in indices {
 			let row_number = pre.row_numbers[idx];
+
+			if matches!(ctx.side, JoinSide::Left) {
+				ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
+			}
+
 			match ctx.side {
 				JoinSide::Left => {
 					remove_from_state_entry(txn, &mut ctx.state.left, key_hash, row_number)?;
