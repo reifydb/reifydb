@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 
 use crate::{Result, tier::TierStorage};
 
 #[derive(Debug, Clone)]
 pub struct DropEntry {
-	pub key: CowVec<u8>,
+	pub key: EncodedKey,
 
 	pub version: CommitVersion,
 
@@ -40,7 +39,7 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 	versioned_entries.sort_by(|a, b| b.0.cmp(&a.0));
 
 	let mut entries_to_drop = Vec::new();
-	let key_cow = CowVec::new(key.to_vec());
+	let drop_key = EncodedKey::new(key.to_vec());
 
 	for (idx, (entry_version, value_bytes)) in versioned_entries.into_iter().enumerate() {
 		let should_drop = idx > 0;
@@ -51,7 +50,7 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 			}
 
 			entries_to_drop.push(DropEntry {
-				key: key_cow.clone(),
+				key: drop_key.clone(),
 				version: entry_version,
 				value_bytes,
 			});
@@ -65,13 +64,15 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 pub mod tests {
 	use std::collections::HashMap;
 
+	use reifydb_type::util::cowvec::CowVec;
+
 	use super::*;
 	use crate::buffer::tier::MultiBufferTier;
 
 	/// Create versioned test entries for a key
 	fn setup_versioned_entries(storage: &MultiBufferTier, table: EntryKind, key: &[u8], versions: &[u64]) {
 		for v in versions {
-			let entries = vec![(CowVec::new(key.to_vec()), Some(CowVec::new(vec![*v as u8])))];
+			let entries = vec![(EncodedKey::new(key.to_vec()), Some(CowVec::new(vec![*v as u8])))];
 			storage.set(CommitVersion(*v), HashMap::from([(table, entries)])).unwrap();
 		}
 	}

@@ -6,8 +6,6 @@ use std::{
 	slice::from_raw_parts,
 };
 
-use reifydb_type::util::cowvec::CowVec;
-
 #[unsafe(no_mangle)]
 extern "C" fn test_alloc(size: usize) -> *mut u8 {
 	if size == 0 {
@@ -83,7 +81,7 @@ extern "C" fn test_state_get(
 		let test_ctx = get_test_context(ctx);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		match test_ctx.get_state(&key) {
 			Some(value_bytes) => {
@@ -122,7 +120,7 @@ extern "C" fn test_state_set(
 		let test_ctx = get_test_context(ctx);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		let value_bytes = from_raw_parts(value_ptr, value_len);
 
@@ -142,7 +140,7 @@ extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut ContextFFI, key_ptr
 		let test_ctx = get_test_context(ctx);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		test_ctx.remove_state(&key);
 
@@ -200,10 +198,10 @@ extern "C" fn test_state_prefix(
 				if prefix_bytes.is_empty() {
 					true
 				} else {
-					key.0.starts_with(&prefix_bytes)
+					key.starts_with(&prefix_bytes)
 				}
 			})
-			.map(|(key, value)| (key.0.to_vec(), value.0.to_vec()))
+			.map(|(key, value)| (key.to_vec(), value.0.to_vec()))
 			.collect();
 
 		items.sort_by(|a, b| a.0.cmp(&b.0));
@@ -314,7 +312,7 @@ extern "C" fn test_state_range(
 		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
 			.iter()
 			.filter(|(key, _)| {
-				let key_bytes = key.0.as_slice();
+				let key_bytes = key.as_slice();
 
 				let start_ok = match (&start_key, start_bound_type) {
 					(None, _) => true,
@@ -332,7 +330,7 @@ extern "C" fn test_state_range(
 
 				start_ok && end_ok
 			})
-			.map(|(key, value)| (key.0.to_vec(), value.0.to_vec()))
+			.map(|(key, value)| (key.to_vec(), value.0.to_vec()))
 			.collect();
 
 		items.sort_by(|a, b| a.0.cmp(&b.0));

@@ -3,14 +3,14 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-pub type TierBatch = HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>;
+pub type TierBatch = HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>;
 
 #[derive(Debug, Clone)]
 pub struct RawEntry {
-	pub key: CowVec<u8>,
+	pub key: EncodedKey,
 	pub version: CommitVersion,
 	pub value: Option<CowVec<u8>>,
 }
@@ -37,14 +37,14 @@ impl RangeBatch {
 
 #[derive(Debug, Clone)]
 pub struct RangeCursor {
-	pub last_key: Option<CowVec<u8>>,
+	pub last_key: Option<EncodedKey>,
 
 	pub exhausted: bool,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct HistoricalCursor {
-	pub last_key: Option<CowVec<u8>>,
+	pub last_key: Option<EncodedKey>,
 	pub last_version: Option<CommitVersion>,
 	pub exhausted: bool,
 }
@@ -111,7 +111,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 
 	fn clear_table(&self, table: EntryKind) -> Result<()>;
 
-	fn drop(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()>;
+	fn drop(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()>;
 
 	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>>;
 
@@ -121,7 +121,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		cutoff: CommitVersion,
 		cursor: &mut HistoricalCursor,
 		batch_size: usize,
-	) -> Result<Vec<(CowVec<u8>, CommitVersion)>>;
+	) -> Result<Vec<(EncodedKey, CommitVersion)>>;
 }
 
 pub trait TierBackend: TierStorage {}

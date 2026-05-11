@@ -3,11 +3,12 @@
 
 use std::ops::Bound;
 
+use reifydb_core::encoded::key::EncodedKey;
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 #[derive(Debug, Clone)]
 pub struct RawEntry {
-	pub key: CowVec<u8>,
+	pub key: EncodedKey,
 	pub value: Option<CowVec<u8>>,
 }
 
@@ -33,7 +34,7 @@ impl RangeBatch {
 
 #[derive(Debug, Clone)]
 pub struct RangeCursor {
-	pub last_key: Option<CowVec<u8>>,
+	pub last_key: Option<EncodedKey>,
 
 	pub exhausted: bool,
 }
@@ -66,7 +67,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 
 	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>>;
 
-	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()>;
+	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()>;
 
 	fn range_next(
 		&self,

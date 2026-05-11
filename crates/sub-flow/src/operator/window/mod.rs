@@ -334,7 +334,7 @@ impl WindowOperator {
 		serializer.extend_bytes(b"win:");
 		serializer.extend_u128(group_hash);
 		serializer.extend_u64(window_id);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn create_row_index_key(&self, group_hash: Hash128, row_number: RowNumber) -> EncodedKey {
@@ -342,7 +342,7 @@ impl WindowOperator {
 		serializer.extend_bytes(b"idx:");
 		serializer.extend_u128(group_hash);
 		serializer.extend_u64(row_number.0);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	pub fn store_row_index(
@@ -809,7 +809,7 @@ impl WindowOperator {
 		let mut serializer = KeySerializer::with_capacity(32);
 		serializer.extend_bytes(b"cnt:");
 		serializer.extend_u128(group_hash);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn create_group_registry_key(&self) -> EncodedKey {

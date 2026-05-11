@@ -3,7 +3,7 @@
 
 use std::{ops::Bound, sync::Arc};
 
-use reifydb_core::internal_error;
+use reifydb_core::{encoded::key::EncodedKey, internal_error};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sqlite::{
 	SqliteConfig,
@@ -112,7 +112,7 @@ impl TierStorage for SqlitePersistentStorage {
 	}
 
 	#[instrument(name = "store::single::persistent::set", level = "debug", skip(self, entries), fields(entry_count = entries.len()))]
-	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
+	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
 		if entries.is_empty() {
 			return Ok(());
 		}
@@ -186,7 +186,7 @@ impl TierStorage for SqlitePersistentStorage {
 				let key: Vec<u8> = row.get(0)?;
 				let value: Option<Vec<u8>> = row.get(1)?;
 				Ok(RawEntry {
-					key: CowVec::new(key),
+					key: EncodedKey::new(key),
 					value: value.map(CowVec::new),
 				})
 			})
@@ -256,7 +256,7 @@ impl TierStorage for SqlitePersistentStorage {
 				let key: Vec<u8> = row.get(0)?;
 				let value: Option<Vec<u8>> = row.get(1)?;
 				Ok(RawEntry {
-					key: CowVec::new(key),
+					key: EncodedKey::new(key),
 					value: value.map(CowVec::new),
 				})
 			})
@@ -339,7 +339,7 @@ fn bound_to_owned(bound: Bound<&[u8]>) -> Bound<Vec<u8>> {
 fn insert_entries_in_tx(
 	tx: &SqliteTransaction,
 	table_name: &str,
-	entries: &[(CowVec<u8>, Option<CowVec<u8>>)],
+	entries: &[(EncodedKey, Option<CowVec<u8>>)],
 ) -> SqliteResult<()> {
 	for (key, value) in entries {
 		tx.execute(

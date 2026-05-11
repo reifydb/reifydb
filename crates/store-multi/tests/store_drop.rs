@@ -30,7 +30,7 @@ use reifydb_testing::{
 	testscript,
 	testscript::{command::Command, runner::run_path},
 };
-use reifydb_type::cow_vec;
+use reifydb_type::{cow_vec, util::cowvec::CowVec};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_memory => test_memory }
@@ -76,7 +76,8 @@ impl testscript::runner::Runner for Runner {
 			// get KEY [version=VERSION]
 			"get" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
@@ -87,7 +88,8 @@ impl testscript::runner::Runner for Runner {
 			// contains KEY [version=VERSION]
 			"contains" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 				let contains = self.store.contains(&key, version)?;
@@ -145,11 +147,12 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
-				let prefix =
-					EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
+				let prefix = EncodedKey::new(decode_binary(
+					&args.next_pos().ok_or("prefix not given")?.value,
+				));
 				args.reject_rest()?;
 
-				let range = EncodedKeyRange::prefix(&prefix.0);
+				let range = EncodedKeyRange::prefix(prefix.as_slice());
 				if !reverse {
 					let items: Vec<_> = self
 						.store
@@ -169,8 +172,8 @@ impl testscript::runner::Runner for Runner {
 			"set" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
 				} else {
@@ -193,7 +196,8 @@ impl testscript::runner::Runner for Runner {
 			// remove KEY [version=VERSION]
 			"remove" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
 				} else {
@@ -216,8 +220,8 @@ impl testscript::runner::Runner for Runner {
 			"unset" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
 				} else {
@@ -240,7 +244,8 @@ impl testscript::runner::Runner for Runner {
 			// drop KEY [version=VERSION]
 			"drop" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
 				} else {
@@ -266,7 +271,8 @@ impl testscript::runner::Runner for Runner {
 			// count_versions KEY - counts how many versions of a key exist
 			"count_versions" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
 				// Count version boundaries: where value changes and is Some

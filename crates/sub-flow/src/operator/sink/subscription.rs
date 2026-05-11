@@ -66,7 +66,7 @@ impl SinkSubscriptionOperator {
 		let counter_key = {
 			let mut serializer = KeySerializer::new();
 			serializer.extend_u64(subscription.def().id.0);
-			EncodedKey::new(serializer.finish())
+			serializer.finish()
 		};
 
 		Self {

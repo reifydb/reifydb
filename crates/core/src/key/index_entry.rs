@@ -3,8 +3,6 @@
 
 use std::collections::Bound;
 
-use reifydb_type::util::cowvec::CowVec;
-
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
@@ -119,7 +117,7 @@ impl EncodableKey for IndexEntryKey {
 		let remaining = de.remaining();
 		if remaining > 0 {
 			let remaining_bytes = de.read_raw(remaining).ok()?;
-			let index_key = EncodedIndexKey(CowVec::new(remaining_bytes.to_vec()));
+			let index_key = EncodedIndexKey::new(remaining_bytes.to_vec());
 			Some(Self {
 				shape,
 				index,

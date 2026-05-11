@@ -37,7 +37,7 @@ use crate::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{config::PersistentConfig, flush::actor::FlushActor};
 
-pub type DirtyMap = HashMap<CowVec<u8>, Option<CowVec<u8>>>;
+pub type DirtyMap = HashMap<EncodedKey, Option<CowVec<u8>>>;
 
 #[derive(Clone)]
 pub struct StandardSingleStore(Arc<StandardSingleStoreInner>);
@@ -216,13 +216,13 @@ impl SingleVersionContains for StandardSingleStore {
 impl SingleVersionCommit for StandardSingleStore {
 	#[instrument(name = "store::single::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
 	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
-		let entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)> = deltas
+		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> = deltas
 			.iter()
 			.map(|delta| match delta {
 				Delta::Set {
 					key,
 					row,
-				} => (CowVec::new(key.as_ref().to_vec()), Some(CowVec::new(row.as_ref().to_vec()))),
+				} => (key.clone(), Some(CowVec::new(row.as_ref().to_vec()))),
 				Delta::Unset {
 					key,
 					..
@@ -232,7 +232,7 @@ impl SingleVersionCommit for StandardSingleStore {
 				}
 				| Delta::Drop {
 					key,
-				} => (CowVec::new(key.as_ref().to_vec()), None),
+				} => (key.clone(), None),
 			})
 			.collect();
 
@@ -258,7 +258,7 @@ impl SingleVersionRemove for StandardSingleStore {}
 impl SingleVersionRange for StandardSingleStore {
 	#[instrument(name = "store::single::range_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
 	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
-		let mut all_entries: BTreeMap<CowVec<u8>, Option<CowVec<u8>>> = BTreeMap::new();
+		let mut all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
 
@@ -304,7 +304,7 @@ impl SingleVersionRange for StandardSingleStore {
 			.into_iter()
 			.filter_map(|(key_bytes, value)| {
 				value.map(|val| SingleVersionRow {
-					key: EncodedKey(key_bytes),
+					key: EncodedKey::new(key_bytes.to_vec()),
 					row: EncodedRow(val),
 				})
 			})
@@ -323,7 +323,7 @@ impl SingleVersionRange for StandardSingleStore {
 impl SingleVersionRangeRev for StandardSingleStore {
 	#[instrument(name = "store::single::range_rev_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
 	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
-		let mut all_entries: BTreeMap<CowVec<u8>, Option<CowVec<u8>>> = BTreeMap::new();
+		let mut all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
 
@@ -374,7 +374,7 @@ impl SingleVersionRangeRev for StandardSingleStore {
 			.rev()
 			.filter_map(|(key_bytes, value)| {
 				value.map(|val| SingleVersionRow {
-					key: EncodedKey(key_bytes),
+					key: EncodedKey::new(key_bytes.to_vec()),
 					row: EncodedRow(val),
 				})
 			})

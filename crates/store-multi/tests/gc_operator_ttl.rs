@@ -5,7 +5,10 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write, path::Path
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
+	encoded::{
+		key::EncodedKey,
+		row::{EncodedRow, SHAPE_HEADER_SIZE},
+	},
 	interface::{catalog::flow::FlowNodeId, store::EntryKind},
 	key::flow_node_state::FlowNodeStateKey,
 	row::{Ttl, TtlAnchor, TtlCleanupMode},
@@ -68,9 +71,8 @@ impl Runner {
 		EntryKind::Operator(self.node)
 	}
 
-	fn state_key(&self, key_id: u64) -> CowVec<u8> {
-		let encoded = FlowNodeStateKey::encoded(self.node, key_id.to_be_bytes().to_vec());
-		CowVec::new(encoded.as_slice().to_vec())
+	fn state_key(&self, key_id: u64) -> EncodedKey {
+		FlowNodeStateKey::encoded(self.node, key_id.to_be_bytes().to_vec())
 	}
 }
 

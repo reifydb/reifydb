@@ -114,7 +114,7 @@ impl CdcHost for TestCdcHost {
 }
 
 pub fn make_key(s: &str) -> EncodedKey {
-	EncodedKey(CowVec::new(s.as_bytes().to_vec()))
+	EncodedKey::new(s.as_bytes().to_vec())
 }
 
 pub fn make_row(s: &str) -> EncodedRow {

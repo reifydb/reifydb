@@ -12,6 +12,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},
 		store::EntryKind,
@@ -27,8 +28,8 @@ fn shape() -> EntryKind {
 	EntryKind::Source(ShapeId::Table(TableId(42)))
 }
 
-fn key(s: &str) -> CowVec<u8> {
-	CowVec::new(s.as_bytes().to_vec())
+fn key(s: &str) -> EncodedKey {
+	EncodedKey::new(s.as_bytes().to_vec())
 }
 
 fn val(s: &str) -> CowVec<u8> {
@@ -37,7 +38,7 @@ fn val(s: &str) -> CowVec<u8> {
 
 /// Write `n` versions of the same key to the same shape. Each successive write
 /// supersedes the prior current and demotes it to historical.
-fn write_n_versions(storage: &MultiBufferTier, k: &CowVec<u8>, n: u64) {
+fn write_n_versions(storage: &MultiBufferTier, k: &EncodedKey, n: u64) {
 	let kind = shape();
 	for v in 1..=n {
 		storage.set(CommitVersion(v), HashMap::from([(kind, vec![(k.clone(), Some(val(&format!("v{v}"))))])]))
@@ -56,7 +57,7 @@ fn sweep(storage: &MultiBufferTier, kind: EntryKind, cutoff: CommitVersion, batc
 			break;
 		}
 		total += entries.len() as u64;
-		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>> = HashMap::new();
+		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 		batches.insert(kind, entries);
 		storage.drop(batches).unwrap();
 		if cursor.is_exhausted() {

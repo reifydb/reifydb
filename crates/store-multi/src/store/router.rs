@@ -48,14 +48,13 @@ pub mod tests {
 			flow_node_state::FlowNodeStateKey,
 		},
 	};
-	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
 
 	// Basic smoke test - actual key encoding tests belong elsewhere
 	#[test]
 	fn test_classify_key_unknown() {
-		let key = EncodedKey(CowVec::new(vec![0u8; 10]));
+		let key = EncodedKey::new(vec![0u8; 10]);
 		assert!(matches!(classify_key(&key), EntryKind::Multi));
 	}
 
@@ -85,7 +84,7 @@ pub mod tests {
 
 	#[test]
 	fn test_is_single_version_semantics_key_unknown() {
-		let key = EncodedKey(CowVec::new(vec![0u8; 10]));
+		let key = EncodedKey::new(vec![0u8; 10]);
 		assert!(!is_single_version_semantics_key(&key));
 	}
 }

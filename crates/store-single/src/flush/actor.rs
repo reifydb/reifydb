@@ -9,6 +9,8 @@ use std::{
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_core::encoded::key::EncodedKey;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
@@ -16,9 +18,7 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_runtime::{actor::timers::TimerHandle, sync::waiter::WaiterHandle};
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_type::util::cowvec::CowVec;
-use reifydb_type::value::datetime::DateTime;
+use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::{debug, error};
 
@@ -83,7 +83,7 @@ impl FlushActor {
 			return;
 		}
 
-		let entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)> = drained.into_iter().collect();
+		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> = drained.into_iter().collect();
 		let count = entries.len();
 		if let Err(e) = self.persistent.set(entries) {
 			error!(error = %e, "single persistent flush: set failed");

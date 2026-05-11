@@ -108,7 +108,7 @@ impl MultiVersionCommit for StandardMultiStore {
 }
 
 struct ClassifiedDeltas {
-	pending_set_keys: HashSet<CowVec<u8>>,
+	pending_set_keys: HashSet<EncodedKey>,
 	writes: Vec<MultiWrite>,
 	deletes: Vec<MultiDelete>,
 	batches: TierBatch,
@@ -117,7 +117,7 @@ struct ClassifiedDeltas {
 
 #[inline]
 fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
-	let mut pending_set_keys: HashSet<CowVec<u8>> = HashSet::new();
+	let mut pending_set_keys: HashSet<EncodedKey> = HashSet::new();
 	let mut writes: Vec<MultiWrite> = Vec::new();
 	let mut deletes: Vec<MultiDelete> = Vec::new();
 	let mut batches: TierBatch = HashMap::new();
@@ -134,13 +134,13 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 				row,
 			} => {
 				if is_single_version {
-					pending_set_keys.insert(key.0.clone());
+					pending_set_keys.insert(key.clone());
 				}
 				writes.push(MultiWrite {
 					key: key.clone(),
 					value_bytes: row.len() as u64,
 				});
-				batches.entry(table).or_default().push((key.0.clone(), Some(row.0.clone())));
+				batches.entry(table).or_default().push((key.clone(), Some(row.0.clone())));
 			}
 			Delta::Unset {
 				key,
@@ -150,7 +150,7 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 					key: key.clone(),
 					value_bytes: row.len() as u64,
 				});
-				batches.entry(table).or_default().push((key.0.clone(), None));
+				batches.entry(table).or_default().push((key.clone(), None));
 			}
 			Delta::Remove {
 				key,
@@ -159,7 +159,7 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 					key: key.clone(),
 					value_bytes: 0,
 				});
-				batches.entry(table).or_default().push((key.0.clone(), None));
+				batches.entry(table).or_default().push((key.clone(), None));
 			}
 			Delta::Drop {
 				key,
@@ -181,7 +181,7 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 #[inline]
 fn build_drop_batch(
 	explicit_drops: Vec<(EntryKind, EncodedKey)>,
-	pending_set_keys: &HashSet<CowVec<u8>>,
+	pending_set_keys: &HashSet<EncodedKey>,
 	version: CommitVersion,
 ) -> Vec<DropRequest> {
 	let mut drop_batch = Vec::with_capacity(explicit_drops.len() + pending_set_keys.len());
@@ -193,16 +193,17 @@ fn build_drop_batch(
 		};
 		drop_batch.push(DropRequest {
 			table,
-			key: key.0.clone(),
+			key,
 			commit_version: version,
 			pending_version,
 		});
 	}
 	for key in pending_set_keys.iter() {
-		let table = classify_key(&EncodedKey(key.clone()));
+		let encoded = EncodedKey::new(key.to_vec());
+		let table = classify_key(&encoded);
 		drop_batch.push(DropRequest {
 			table,
-			key: key.clone(),
+			key: encoded,
 			commit_version: version,
 			pending_version: Some(version),
 		});
@@ -307,7 +308,7 @@ fn merge_tier_batch(
 		let original_key = entry.key.as_slice().to_vec();
 		let entry_version = entry.version;
 
-		let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
+		let original_key_encoded = EncodedKey::new(original_key.clone());
 		if !range.contains(&original_key_encoded) {
 			continue;
 		}
@@ -334,7 +335,7 @@ pub fn collected_to_batch(
 		.into_iter()
 		.filter_map(|(key_bytes, (v, value))| {
 			value.map(|val| MultiVersionRow {
-				key: EncodedKey(CowVec::new(key_bytes)),
+				key: EncodedKey::new(key_bytes),
 				row: EncodedRow(val),
 				version: v,
 			})
@@ -461,7 +462,7 @@ impl StandardMultiStore {
 			.into_iter()
 			.filter_map(|(key_bytes, (v, value))| {
 				value.map(|val| MultiVersionRow {
-					key: EncodedKey(CowVec::new(key_bytes)),
+					key: EncodedKey::new(key_bytes),
 					row: EncodedRow(val),
 					version: v,
 				})
@@ -568,7 +569,7 @@ impl StandardMultiStore {
 			.rev()
 			.filter_map(|(key_bytes, (v, value))| {
 				value.map(|val| MultiVersionRow {
-					key: EncodedKey(CowVec::new(key_bytes)),
+					key: EncodedKey::new(key_bytes),
 					row: EncodedRow(val),
 					version: v,
 				})
@@ -615,8 +616,8 @@ fn apply_reverse_horizon(
 	}
 }
 
-fn forward_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
-	let mut horizon: Option<CowVec<u8>> = None;
+fn forward_horizon(cursor: &MultiVersionRangeCursor) -> Option<EncodedKey> {
+	let mut horizon: Option<EncodedKey> = None;
 	for tier in [&cursor.buffer, &cursor.persistent] {
 		if tier.exhausted {
 			continue;
@@ -640,8 +641,8 @@ fn forward_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
 	horizon
 }
 
-fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
-	let mut horizon: Option<CowVec<u8>> = None;
+fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<EncodedKey> {
+	let mut horizon: Option<EncodedKey> = None;
 	for tier in [&cursor.buffer, &cursor.persistent] {
 		if tier.exhausted {
 			continue;
@@ -664,7 +665,7 @@ fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<CowVec<u8>> {
 	horizon
 }
 
-fn rewind_over_advanced_forward(cursor: &mut MultiVersionRangeCursor, horizon: &CowVec<u8>) {
+fn rewind_over_advanced_forward(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
 	for tier in [&mut cursor.buffer, &mut cursor.persistent] {
 		if tier.exhausted {
 			continue;
@@ -677,7 +678,7 @@ fn rewind_over_advanced_forward(cursor: &mut MultiVersionRangeCursor, horizon: &
 	}
 }
 
-fn rewind_over_advanced_reverse(cursor: &mut MultiVersionRangeCursor, horizon: &CowVec<u8>) {
+fn rewind_over_advanced_reverse(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
 	for tier in [&mut cursor.buffer, &mut cursor.persistent] {
 		if tier.exhausted {
 			continue;

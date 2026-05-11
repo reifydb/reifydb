@@ -15,7 +15,7 @@ use reifydb_core::{
 	interface::store::MultiVersionBatch,
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
-use reifydb_type::{error::Error, util::cowvec::CowVec};
+use reifydb_type::error::Error;
 
 use super::store_iterator::{self, StoreIteratorHandle};
 use crate::ffi::context::get_transaction_mut;
@@ -41,7 +41,7 @@ pub(super) extern "C" fn host_store_get(
 		let flow_txn = get_transaction_mut(ctx_handle);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		match flow_txn.get(&key) {
 			Ok(Some(value)) => {
@@ -81,7 +81,7 @@ pub(super) extern "C" fn host_store_contains_key(
 		let flow_txn = get_transaction_mut(ctx_handle);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		match flow_txn.contains_key(&key) {
 			Ok(exists) => {
@@ -117,7 +117,7 @@ pub(super) extern "C" fn host_store_prefix(
 		} else {
 			from_raw_parts(prefix_ptr, prefix_len).to_vec()
 		};
-		let prefix = EncodedKey(CowVec::new(prefix_bytes));
+		let prefix = EncodedKey::new(prefix_bytes);
 
 		let result = flow_txn.prefix(&prefix);
 		match result {
@@ -176,14 +176,14 @@ pub(super) extern "C" fn host_store_range(
 					return FFI_ERROR_NULL_PTR;
 				}
 				let start_bytes = from_raw_parts(start_ptr, start_len).to_vec();
-				Bound::Included(EncodedKey(CowVec::new(start_bytes)))
+				Bound::Included(EncodedKey::new(start_bytes))
 			}
 			BOUND_EXCLUDED => {
 				if start_ptr.is_null() {
 					return FFI_ERROR_NULL_PTR;
 				}
 				let start_bytes = from_raw_parts(start_ptr, start_len).to_vec();
-				Bound::Excluded(EncodedKey(CowVec::new(start_bytes)))
+				Bound::Excluded(EncodedKey::new(start_bytes))
 			}
 			_ => return FFI_ERROR_INTERNAL,
 		};
@@ -195,14 +195,14 @@ pub(super) extern "C" fn host_store_range(
 					return FFI_ERROR_NULL_PTR;
 				}
 				let end_bytes = from_raw_parts(end_ptr, end_len).to_vec();
-				Bound::Included(EncodedKey(CowVec::new(end_bytes)))
+				Bound::Included(EncodedKey::new(end_bytes))
 			}
 			BOUND_EXCLUDED => {
 				if end_ptr.is_null() {
 					return FFI_ERROR_NULL_PTR;
 				}
 				let end_bytes = from_raw_parts(end_ptr, end_len).to_vec();
-				Bound::Excluded(EncodedKey(CowVec::new(end_bytes)))
+				Bound::Excluded(EncodedKey::new(end_bytes))
 			}
 			_ => return FFI_ERROR_INTERNAL,
 		};

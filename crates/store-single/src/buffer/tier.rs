@@ -3,6 +3,7 @@
 
 use std::ops::Bound;
 
+use reifydb_core::encoded::key::EncodedKey;
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryPrimitiveStorage;
@@ -43,7 +44,7 @@ impl TierStorage for SingleBufferTier {
 	}
 
 	#[inline]
-	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
+	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.set(entries),
 		}
@@ -100,7 +101,7 @@ pub mod tests {
 	fn test_memory_backend() {
 		let storage = SingleBufferTier::memory();
 
-		storage.set(vec![(CowVec::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))]).unwrap();
+		storage.set(vec![(EncodedKey::new(b"key".to_vec()), Some(CowVec::new(b"value".to_vec())))]).unwrap();
 		assert_eq!(storage.get(b"key").unwrap().as_deref(), Some(b"value".as_slice()));
 	}
 
@@ -109,9 +110,9 @@ pub mod tests {
 		let storage = SingleBufferTier::memory();
 
 		storage.set(vec![
-			(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-			(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-			(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+			(EncodedKey::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
+			(EncodedKey::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
+			(EncodedKey::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
 		])
 		.unwrap();
 

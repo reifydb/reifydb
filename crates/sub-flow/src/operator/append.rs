@@ -55,7 +55,7 @@ impl AppendOperator {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(parent_index);
 		serializer.extend_u64(source_row.0);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn parse_composite_key(key_bytes: &[u8]) -> Option<(usize, RowNumber)> {

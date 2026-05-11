@@ -30,19 +30,19 @@ use crate::{
 };
 
 pub struct KeySerializer {
-	buffer: Vec<u8>,
+	buffer: EncodedKey,
 }
 
 impl KeySerializer {
 	pub fn new() -> Self {
 		Self {
-			buffer: Vec::new(),
+			buffer: EncodedKey::with_capacity(0),
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			buffer: Vec::with_capacity(capacity),
+			buffer: EncodedKey::with_capacity(capacity),
 		}
 	}
 
@@ -120,12 +120,12 @@ impl KeySerializer {
 		self.extend_bytes(s.as_ref().as_bytes())
 	}
 
-	pub fn finish(self) -> Vec<u8> {
+	pub fn finish(self) -> EncodedKey {
 		self.buffer
 	}
 
 	pub fn to_encoded_key(self) -> EncodedKey {
-		EncodedKey::new(self.buffer)
+		self.buffer
 	}
 
 	pub fn extend_shape_id(&mut self, object: impl Into<ShapeId>) -> &mut Self {

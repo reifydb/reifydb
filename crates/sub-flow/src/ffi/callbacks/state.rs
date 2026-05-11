@@ -45,7 +45,7 @@ pub(super) extern "C" fn host_state_get(
 		let flow_txn = get_transaction_mut(ctx_handle);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		let result = flow_txn.state_get(FlowNodeId(operator_id), &key);
 
@@ -89,7 +89,7 @@ pub(super) extern "C" fn host_state_set(
 		let flow_txn = get_transaction_mut(ctx_handle);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		let value_bytes = from_raw_parts(value_ptr, value_len);
 		let value = EncodedRow(CowVec::new(value_bytes.to_vec()));
@@ -117,7 +117,7 @@ pub(super) extern "C" fn host_state_remove(
 		let flow_txn = get_transaction_mut(ctx_handle);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		match flow_txn.state_remove(FlowNodeId(operator_id), &key) {
 			Ok(_) => FFI_OK,
@@ -234,14 +234,14 @@ pub(super) extern "C" fn host_state_range(
 					return FFI_ERROR_NULL_PTR;
 				}
 				let bytes = from_raw_parts(start_ptr, start_len).to_vec();
-				Bound::Included(EncodedKey(CowVec::new(bytes)))
+				Bound::Included(EncodedKey::new(bytes))
 			}
 			BOUND_EXCLUDED => {
 				if start_ptr.is_null() {
 					return FFI_ERROR_NULL_PTR;
 				}
 				let bytes = from_raw_parts(start_ptr, start_len).to_vec();
-				Bound::Excluded(EncodedKey(CowVec::new(bytes)))
+				Bound::Excluded(EncodedKey::new(bytes))
 			}
 			_ => return FFI_ERROR_INTERNAL,
 		};
@@ -253,14 +253,14 @@ pub(super) extern "C" fn host_state_range(
 					return FFI_ERROR_NULL_PTR;
 				}
 				let bytes = from_raw_parts(end_ptr, end_len).to_vec();
-				Bound::Included(EncodedKey(CowVec::new(bytes)))
+				Bound::Included(EncodedKey::new(bytes))
 			}
 			BOUND_EXCLUDED => {
 				if end_ptr.is_null() {
 					return FFI_ERROR_NULL_PTR;
 				}
 				let bytes = from_raw_parts(end_ptr, end_len).to_vec();
-				Bound::Excluded(EncodedKey(CowVec::new(bytes)))
+				Bound::Excluded(EncodedKey::new(bytes))
 			}
 			_ => return FFI_ERROR_INTERNAL,
 		};

@@ -31,7 +31,7 @@ impl Counter {
 	pub fn with_prefix(node: FlowNodeId, prefix: u8, direction: CounterDirection) -> Self {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(prefix);
-		let key = EncodedKey::new(serializer.finish());
+		let key = serializer.finish();
 		Self {
 			node,
 			key,
@@ -239,7 +239,7 @@ mod tests {
 		let custom_key = {
 			let mut serializer = KeySerializer::new();
 			serializer.extend_bytes(b"subscription-id-123");
-			EncodedKey::new(serializer.finish())
+			serializer.finish()
 		};
 
 		let counter = Counter::with_key(FlowNodeId(1), custom_key, CounterDirection::Ascending);

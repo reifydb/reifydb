@@ -7,7 +7,7 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteConfig;
 use reifydb_type::{Result, util::cowvec::CowVec};
@@ -92,7 +92,7 @@ impl TierStorage for MultiPersistentTier {
 		}
 	}
 
-	fn drop(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
+	fn drop(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		match self {
 			Self::Sqlite(s) => s.drop(batches),
 		}
@@ -110,7 +110,7 @@ impl TierStorage for MultiPersistentTier {
 		cutoff: CommitVersion,
 		cursor: &mut HistoricalCursor,
 		batch_size: usize,
-	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
+	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
 		match self {
 			Self::Sqlite(s) => s.scan_historical_below(table, cutoff, cursor, batch_size),
 		}
@@ -159,7 +159,7 @@ impl TierStorage for MultiPersistentTier {
 		match *self {}
 	}
 
-	fn drop(&self, _batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
+	fn drop(&self, _batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		match *self {}
 	}
 
@@ -173,7 +173,7 @@ impl TierStorage for MultiPersistentTier {
 		_cutoff: CommitVersion,
 		_cursor: &mut HistoricalCursor,
 		_batch_size: usize,
-	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
+	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
 		match *self {}
 	}
 }

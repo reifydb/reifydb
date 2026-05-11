@@ -60,7 +60,7 @@ pub mod tests {
 	fn test_get_at_version_basic() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		let key = CowVec::new(b"test_key".to_vec());
+		let key = EncodedKey::new(b"test_key".to_vec());
 		let version = CommitVersion(42);
 
 		// Insert a value
@@ -105,7 +105,7 @@ pub mod tests {
 	fn test_get_at_version_tombstone() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		let key = CowVec::new(b"test_key".to_vec());
+		let key = EncodedKey::new(b"test_key".to_vec());
 
 		// Insert a tombstone (None value)
 		storage.set(CommitVersion(1), HashMap::from([(EntryKind::Multi, vec![(key.clone(), None)])])).unwrap();
@@ -118,7 +118,7 @@ pub mod tests {
 	fn test_get_at_version_multiple_versions() {
 		let storage = MultiBufferTier::memory();
 
-		let key = CowVec::new(b"test_key".to_vec());
+		let key = EncodedKey::new(b"test_key".to_vec());
 
 		// Insert multiple versions
 		storage.set(
@@ -175,7 +175,7 @@ pub mod tests {
 	fn test_get_at_version_before_any_version() {
 		let storage = MultiBufferTier::memory();
 
-		let key = CowVec::new(b"test_key".to_vec());
+		let key = EncodedKey::new(b"test_key".to_vec());
 
 		// Insert at version 10
 		storage.set(

@@ -231,7 +231,7 @@ impl JoinOperator {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_row_number.0);
-		let composite_key = EncodedKey::new(serializer.finish());
+		let composite_key = serializer.finish();
 
 		let (result_row_number, _is_new) =
 			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
@@ -259,7 +259,7 @@ impl JoinOperator {
 				let mut serializer = KeySerializer::new();
 				serializer.extend_u8(b'L');
 				serializer.extend_u64(left_row_number.0);
-				EncodedKey::new(serializer.finish())
+				serializer.finish()
 			})
 			.collect();
 
@@ -306,7 +306,7 @@ impl JoinOperator {
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_num.0);
 		serializer.extend_u64(right_num.0);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn parse_composite_key(key_bytes: &[u8]) -> Option<(RowNumber, Option<RowNumber>)> {

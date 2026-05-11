@@ -82,14 +82,14 @@ impl RowNumberProvider {
 	fn make_counter_key(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'C');
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn make_map_key(&self, key: &EncodedKey) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'M');
 		serializer.extend_bytes(key.as_ref());
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	pub fn remove_by_prefix(&self, ctx: &mut OperatorContext, key_prefix: &[u8]) -> Result<()> {

@@ -165,7 +165,7 @@ pub(crate) fn prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(
 
 			if !key_buf.ptr.is_null() && key_buf.len > 0 {
 				let key_bytes = from_raw_parts(key_buf.ptr, key_buf.len).to_vec();
-				let key = EncodedKey(CowVec::new(key_bytes));
+				let key = EncodedKey::new(key_bytes);
 
 				let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
 					let value_bytes = from_raw_parts(value_buf.ptr, value_buf.len).to_vec();
@@ -267,7 +267,7 @@ pub(crate) fn range(
 
 			if !key_buf.ptr.is_null() && key_buf.len > 0 {
 				let key_bytes = from_raw_parts(key_buf.ptr, key_buf.len).to_vec();
-				let key = EncodedKey(CowVec::new(key_bytes));
+				let key = EncodedKey::new(key_bytes);
 
 				let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
 					let value_bytes = from_raw_parts(value_buf.ptr, value_buf.len).to_vec();

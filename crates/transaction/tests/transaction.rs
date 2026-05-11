@@ -48,7 +48,7 @@ use reifydb_transaction::{
 	},
 	single::SingleTransaction,
 };
-use reifydb_type::value::Value;
+use reifydb_type::{util::cowvec::CowVec, value::Value};
 
 /// A handle to either a read, write, or replica transaction for test tracking
 enum TransactionHandle {
@@ -224,7 +224,7 @@ impl<'a> Runner for MvccRunner {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for arg in args.rest_pos() {
-					let key = EncodedKey(decode_binary(&arg.value));
+					let key = EncodedKey::new(decode_binary(&arg.value));
 
 					match t {
 						TransactionHandle::Read(_) => {
@@ -246,8 +246,8 @@ impl<'a> Runner for MvccRunner {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
-					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(decode_binary(&kv.value));
+					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
+					let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 					match t {
 						TransactionHandle::Read(_) => {
 							unreachable!("can not call unset on rx")
@@ -282,7 +282,7 @@ impl<'a> Runner for MvccRunner {
 
 				let mut args = command.consume_args();
 				for arg in args.rest_pos() {
-					let key = EncodedKey(decode_binary(&arg.value));
+					let key = EncodedKey::new(decode_binary(&arg.value));
 
 					let value = match &mut t {
 						TransactionHandle::Read(rx) => {
@@ -312,8 +312,8 @@ impl<'a> Runner for MvccRunner {
 				let mut tx = MultiWriteTransaction::new(self.engine.clone()).unwrap();
 
 				for kv in args.rest_key() {
-					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(decode_binary(&kv.value));
+					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
+					let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 					if row.is_empty() {
 						tx.remove(&key).unwrap();
 					} else {
@@ -459,8 +459,9 @@ impl<'a> Runner for MvccRunner {
 
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let prefix =
-					EncodedKey(decode_binary(&args.next_pos().ok_or("prefixnot given")?.value));
+				let prefix = EncodedKey::new(decode_binary(
+					&args.next_pos().ok_or("prefixnot given")?.value,
+				));
 				args.reject_rest()?;
 
 				match &mut t {
@@ -500,8 +501,8 @@ impl<'a> Runner for MvccRunner {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
-					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(decode_binary(&kv.value));
+					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
+					let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 					match t {
 						TransactionHandle::Read(_) => {
 							unreachable!("can not call set on rx")

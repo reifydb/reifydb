@@ -365,7 +365,7 @@ pub mod tests {
 			.has_key(&key1)
 			.has_key(&key2)
 			.key_has_values(&key1, &[Value::Int8(10i64)], &shape)
-			.all_keys(|k| k.0.len() == 6); // "key1" and "key2" are 6 bytes (4 chars + 2-byte terminator 0xffff)
+			.all_keys(|k| k.len() == 6); // "key1" and "key2" are 6 bytes (4 chars + 2-byte terminator 0xffff)
 	}
 
 	#[test]

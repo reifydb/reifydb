@@ -135,7 +135,8 @@ impl testscript::runner::Runner for Runner {
 		match command.name.as_str() {
 			"get" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
@@ -145,7 +146,8 @@ impl testscript::runner::Runner for Runner {
 			}
 			"contains" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 				let contains = self.store.contains(&key, version)?;
@@ -200,11 +202,12 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
-				let prefix =
-					EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
+				let prefix = EncodedKey::new(decode_binary(
+					&args.next_pos().ok_or("prefix not given")?.value,
+				));
 				args.reject_rest()?;
 
-				let range = EncodedKeyRange::prefix(&prefix.0);
+				let range = EncodedKeyRange::prefix(prefix.as_slice());
 				if !reverse {
 					let items: Vec<_> = self
 						.store
@@ -223,8 +226,8 @@ impl testscript::runner::Runner for Runner {
 			"set" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					v
 				} else {
@@ -247,7 +250,8 @@ impl testscript::runner::Runner for Runner {
 
 			"remove" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					v
 				} else {
@@ -270,8 +274,8 @@ impl testscript::runner::Runner for Runner {
 			"unset" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					v
 				} else {
@@ -299,7 +303,8 @@ impl testscript::runner::Runner for Runner {
 
 			"buffer_get" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
@@ -318,7 +323,8 @@ impl testscript::runner::Runner for Runner {
 
 			"persistent_get" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
@@ -331,7 +337,7 @@ impl testscript::runner::Runner for Runner {
 			"persistent_set" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
 				let value_bytes = decode_binary(&kv.value);
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
@@ -343,9 +349,9 @@ impl testscript::runner::Runner for Runner {
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let table = classify_key(&key);
-				let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> =
+				let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> =
 					HashMap::new();
-				batches.entry(table).or_default().push((key.0.clone(), Some(value_bytes)));
+				batches.entry(table).or_default().push((key, Some(CowVec::new(value_bytes))));
 				persistent.set(version, batches)?;
 			}
 

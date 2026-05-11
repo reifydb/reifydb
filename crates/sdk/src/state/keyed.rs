@@ -18,7 +18,7 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 		for value in key_values.iter() {
 			serializer.extend_value(value);
 		}
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn load_state(&self, ctx: &mut OperatorContext, key_values: &[Value]) -> Result<Option<Self::State>> {

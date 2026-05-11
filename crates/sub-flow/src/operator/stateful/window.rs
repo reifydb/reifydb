@@ -84,7 +84,7 @@ pub mod tests {
 		let mut serializer = KeySerializer::with_capacity(16);
 		serializer.extend_bytes(b"w:");
 		serializer.extend_u64(window_id);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	// Extend TestOperator to implement WindowStateful

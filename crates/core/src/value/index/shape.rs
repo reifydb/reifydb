@@ -3,7 +3,7 @@
 
 use std::{alloc, ops::Deref, sync::Arc};
 
-use reifydb_type::{Result, util::cowvec::CowVec, value::r#type::Type};
+use reifydb_type::{Result, value::r#type::Type};
 
 use crate::{error::CoreError, sort::SortDirection, value::index::encoded::EncodedIndexKey};
 
@@ -102,7 +102,7 @@ impl IndexShapeInner {
 				alloc::handle_alloc_error(layout);
 			}
 			let vec = Vec::from_raw_parts(ptr, self.total_size, self.total_size);
-			EncodedIndexKey(CowVec::new(vec))
+			EncodedIndexKey::new(vec)
 		}
 	}
 

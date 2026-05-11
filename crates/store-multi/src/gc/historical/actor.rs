@@ -6,6 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_core::{
 	actors::historical_gc::HistoricalGcMessage as Message,
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	event::row::HistoricalGcSweepEvent,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
@@ -19,7 +20,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor as ActorTrait, Directive},
 };
-use reifydb_type::{Result, util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_type::{Result, value::datetime::DateTime};
 use tracing::{debug, trace, warn};
 
 use super::{GcStats, QueryWatermark};
@@ -165,7 +166,7 @@ impl<W: QueryWatermark> Actor<W> {
 		}
 
 		let count = entries.len() as u64;
-		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>> = HashMap::new();
+		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 		batches.insert(entry_kind, entries);
 		buffer.drop(batches)?;
 		Ok(count)

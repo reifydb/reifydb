@@ -520,6 +520,7 @@ pub mod tests {
 	};
 
 	use crate::{
+		encoded::key::EncodedKey,
 		interface::catalog::{id::IndexId, shape::ShapeId},
 		util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	};
@@ -687,7 +688,7 @@ pub mod tests {
 			Duration::new(12, 30, 0).unwrap(),
 		];
 
-		let keys: Vec<Vec<u8>> = durations
+		let keys: Vec<EncodedKey> = durations
 			.iter()
 			.map(|d| {
 				let mut ser = KeySerializer::new();

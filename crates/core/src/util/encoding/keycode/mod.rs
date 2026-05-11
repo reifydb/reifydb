@@ -36,7 +36,33 @@ use reifydb_type::{
 	error::{Error, TypeError},
 };
 
-use crate::util::encoding::keycode::{deserialize::Deserializer, serialize::Serializer};
+use crate::{
+	encoded::key::EncodedKey,
+	util::encoding::keycode::{deserialize::Deserializer, serialize::Serializer},
+};
+
+pub trait ByteSink {
+	fn push(&mut self, byte: u8);
+	fn extend_from_slice(&mut self, slice: &[u8]);
+}
+
+impl ByteSink for Vec<u8> {
+	fn push(&mut self, byte: u8) {
+		Vec::push(self, byte);
+	}
+	fn extend_from_slice(&mut self, slice: &[u8]) {
+		Vec::extend_from_slice(self, slice);
+	}
+}
+
+impl ByteSink for EncodedKey {
+	fn push(&mut self, byte: u8) {
+		EncodedKey::push(self, byte);
+	}
+	fn extend_from_slice(&mut self, slice: &[u8]) {
+		EncodedKey::extend_from_slice(self, slice);
+	}
+}
 
 pub fn encode_bool(value: bool) -> u8 {
 	if value {
@@ -80,7 +106,7 @@ pub fn encode_i64(value: i64) -> [u8; 8] {
 	(!(value as u64 ^ 0x8000000000000000)).to_be_bytes()
 }
 
-pub fn encode_i64_varint(value: i64, output: &mut Vec<u8>) {
+pub fn encode_i64_varint<B: ByteSink>(value: i64, output: &mut B) {
 	let mut buf = Vec::with_capacity(9);
 	varint::encode_i64_varint(value, &mut buf);
 	for b in buf.iter_mut() {
@@ -105,7 +131,7 @@ pub fn encode_u32(value: u32) -> [u8; 4] {
 	(!value).to_be_bytes()
 }
 
-pub fn encode_u32_varint(value: u32, output: &mut Vec<u8>) {
+pub fn encode_u32_varint<B: ByteSink>(value: u32, output: &mut B) {
 	encode_u64_varint(value as u64, output);
 }
 
@@ -113,7 +139,7 @@ pub fn encode_u64(value: u64) -> [u8; 8] {
 	(!value).to_be_bytes()
 }
 
-pub fn encode_u64_varint(value: u64, output: &mut Vec<u8>) {
+pub fn encode_u64_varint<B: ByteSink>(value: u64, output: &mut B) {
 	let mut buf = Vec::with_capacity(9);
 	varint::encode_u64_varint(value, &mut buf);
 	for b in buf.iter_mut() {
@@ -201,7 +227,7 @@ pub fn encode_u128(value: u128) -> [u8; 16] {
 	(!value).to_be_bytes()
 }
 
-pub fn encode_bytes(bytes: &[u8], output: &mut Vec<u8>) {
+pub fn encode_bytes<B: ByteSink>(bytes: &[u8], output: &mut B) {
 	let mut start = 0;
 	while let Some(pos) = bytes[start..].iter().position(|&b| b == 0xff) {
 		let end = start + pos;

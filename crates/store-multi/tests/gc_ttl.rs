@@ -5,7 +5,10 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write, path::Path
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
+	encoded::{
+		key::EncodedKey,
+		row::{EncodedRow, SHAPE_HEADER_SIZE},
+	},
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},
 		store::EntryKind,
@@ -69,9 +72,8 @@ impl Runner {
 		EntryKind::Source(self.shape)
 	}
 
-	fn row_key(&self, row_number: u64) -> CowVec<u8> {
-		let encoded = RowKey::encoded(self.shape, row_number);
-		CowVec::new(encoded.as_slice().to_vec())
+	fn row_key(&self, row_number: u64) -> EncodedKey {
+		RowKey::encoded(self.shape, row_number)
 	}
 }
 
