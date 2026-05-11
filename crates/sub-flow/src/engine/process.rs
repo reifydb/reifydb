@@ -125,29 +125,11 @@ impl FlowEngine {
 	}
 
 	fn dispatch_node(&self, txn: &mut FlowTransaction, node: &FlowNode, inbox: Vec<Change>) -> Result<Change> {
-		let inputs_to_apply: Vec<Change> = if node.inputs.len() <= 1 {
-			vec![Change::merge(inbox)?]
-		} else {
-			let mut by_origin: HashMap<ChangeOrigin, Vec<Change>> = HashMap::new();
-			for ch in inbox {
-				by_origin.entry(ch.origin.clone()).or_default().push(ch);
-			}
-			by_origin.into_values().map(Change::merge).collect::<Result<Vec<_>>>()?
-		};
-
-		let mut output_diffs = reifydb_core::interface::change::Diffs::new();
-		let mut output_changed_at = DateTime::default();
-		let mut output_version = inputs_to_apply.first().map(|c| c.version).unwrap_or(CommitVersion(0));
-		for input in inputs_to_apply {
-			output_version = input.version;
-			let result = self.apply(txn, node, Arc::new(input))?;
-			if result.changed_at > output_changed_at {
-				output_changed_at = result.changed_at;
-			}
-			output_diffs.extend(result.diffs);
-		}
-
-		let mut combined = Change::from_flow(node.id, output_version, output_diffs, output_changed_at);
+		let merged = Change::merge(inbox)?;
+		let version = merged.version;
+		let changed_at = merged.changed_at;
+		let result = self.apply(txn, node, Arc::new(merged))?;
+		let mut combined = Change::from_flow(node.id, version, result.diffs, changed_at.max(result.changed_at));
 		combined.coalesce()?;
 		Ok(combined)
 	}

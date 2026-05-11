@@ -44,8 +44,8 @@ impl AppendOperator {
 		}
 	}
 
-	fn determine_parent_index(&self, change: &Change) -> Option<usize> {
-		match &change.origin {
+	fn parent_index_for_origin(&self, origin: &ChangeOrigin) -> Option<usize> {
+		match origin {
 			ChangeOrigin::Flow(from_node) => self.input_nodes.iter().position(|n| n == from_node),
 			ChangeOrigin::Shape(_) => None,
 		}
@@ -81,16 +81,18 @@ impl Operator for AppendOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
-			Error(Box::new(internal!("Append received change from unknown node: {:?}", change.origin)))
-		})?;
-
+		let parent_origin = change.origin.clone();
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());
 
 		for diff in change.diffs {
+			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
+			let parent_index = self.parent_index_for_origin(&diff_origin).ok_or_else(|| {
+				Error(Box::new(internal!("Append received diff from unknown node: {:?}", diff_origin)))
+			})?;
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					if let Some(d) = self.translate_append_insert(txn, parent_index, post)? {
 						result_diffs.push(d);
@@ -99,6 +101,7 @@ impl Operator for AppendOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					if let Some(d) = self.translate_append_update(txn, parent_index, pre, post)? {
 						result_diffs.push(d);
@@ -106,6 +109,7 @@ impl Operator for AppendOperator {
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					if let Some(d) = self.translate_append_remove(txn, parent_index, pre)? {
 						result_diffs.push(d);

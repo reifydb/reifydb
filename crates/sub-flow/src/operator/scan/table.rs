@@ -50,6 +50,7 @@ impl Operator for PrimitiveTableOperator {
 			decoded_diffs.push(match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					let mut decoded = post;
 					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;
@@ -58,6 +59,7 @@ impl Operator for PrimitiveTableOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					let mut decoded_pre = pre;
 					let mut decoded_post = post;
@@ -67,6 +69,7 @@ impl Operator for PrimitiveTableOperator {
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					let mut decoded = pre;
 					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;

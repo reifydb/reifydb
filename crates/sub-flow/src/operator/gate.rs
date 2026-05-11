@@ -147,13 +147,16 @@ impl Operator for GateOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_gate_insert(txn, &post, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_gate_update(txn, pre, post, &mut result)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_gate_remove(txn, pre, &mut result)?,
 			}
 		}
@@ -211,6 +214,7 @@ impl GateOperator {
 			result.push(Diff::Update {
 				pre,
 				post,
+				origin: None,
 			});
 			return Ok(());
 		}
@@ -250,6 +254,7 @@ impl GateOperator {
 		if pre.row_numbers.is_empty() {
 			result.push(Diff::Remove {
 				pre,
+				origin: None,
 			});
 			return Ok(());
 		}

@@ -65,13 +65,16 @@ impl Operator for SinkTableViewOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_table_view_insert(txn, &view, &shape, object_id, post)?,
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_table_view_update(txn, &view, &shape, object_id, pre, post)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_table_view_remove(txn, &view, &shape, object_id, pre)?,
 			}
 		}

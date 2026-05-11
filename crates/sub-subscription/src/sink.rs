@@ -175,6 +175,7 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					let row_count = post.row_count();
 					let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
@@ -193,6 +194,7 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					let row_count = post.row_count();
 					let mut update_indices: Vec<usize> = Vec::new();
@@ -222,6 +224,7 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					let row_count = pre.row_count();
 					let mut remove_indices: Vec<usize> = Vec::new();

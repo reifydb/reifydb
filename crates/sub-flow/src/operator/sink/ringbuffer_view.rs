@@ -149,6 +149,7 @@ impl Operator for SinkRingBufferViewOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_ringbuffer_insert(
 					txn,
 					&view,
@@ -161,9 +162,11 @@ impl Operator for SinkRingBufferViewOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_ringbuffer_update(txn, &view, &shape, object_id, &state, pre, post)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_ringbuffer_remove(txn, &view, &shape, object_id, &mut state, pre)?,
 			}
 		}

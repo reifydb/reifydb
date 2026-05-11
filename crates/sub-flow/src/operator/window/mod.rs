@@ -966,13 +966,16 @@ impl WindowOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => result.extend(process_fn(self, txn, post)?),
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => result.extend(self.apply_window_update_diff(txn, pre, post, &process_fn)?),
 				Diff::Remove {
 					pre,
+					..
 				} => result.extend(self.process_event_removals(txn, pre)?),
 			}
 		}

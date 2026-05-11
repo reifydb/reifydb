@@ -557,6 +557,7 @@ impl Operator for DistinctOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					let insert_result = self.process_insert(state, &post)?;
 					result.extend(insert_result);
@@ -564,12 +565,14 @@ impl Operator for DistinctOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					let update_result = self.process_update(state, &pre, &post)?;
 					result.extend(update_result);
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					let remove_result = self.process_remove(state, &pre)?;
 					result.extend(remove_result);

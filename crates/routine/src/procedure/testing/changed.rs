@@ -175,9 +175,11 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 		match &entry.diff {
 			Diff::Insert {
 				post,
+				..
 			}
 			| Diff::Remove {
 				pre: post,
+				..
 			} => {
 				for col in post.iter() {
 					let name = col.name().text().to_string();
@@ -189,6 +191,7 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 			Diff::Update {
 				pre,
 				post,
+				..
 			} => {
 				for col in pre.iter() {
 					let name = col.name().text().to_string();
@@ -214,19 +217,23 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 		let (op, old_cols, new_cols): (&str, &Columns, &Columns) = match &entry.diff {
 			Diff::Insert {
 				post,
+				..
 			} => ("insert", &empty, post.as_ref()),
 			Diff::Update {
 				pre,
 				post,
+				..
 			} => ("update", pre.as_ref(), post.as_ref()),
 			Diff::Remove {
 				pre,
+				..
 			} => ("delete", pre.as_ref(), &empty),
 		};
 
 		let row_count = match &entry.diff {
 			Diff::Insert {
 				post,
+				..
 			} => post.row_count(),
 			Diff::Update {
 				post,
@@ -234,6 +241,7 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 			} => post.row_count(),
 			Diff::Remove {
 				pre,
+				..
 			} => pre.row_count(),
 		};
 

@@ -317,13 +317,16 @@ impl Operator for TakeOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_insert_diff(&mut state, txn, post, &mut output_diffs)?,
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_update_diff(&mut state, txn, pre, post, &mut output_diffs)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_remove_diff(&mut state, txn, pre, &mut output_diffs)?,
 			}
 		}

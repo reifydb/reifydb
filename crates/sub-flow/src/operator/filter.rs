@@ -142,13 +142,16 @@ impl Operator for FilterOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_filter_insert(&post, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_filter_update(&pre, &post, &mut result)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_filter_remove(&pre, &mut result)?,
 			}
 		}

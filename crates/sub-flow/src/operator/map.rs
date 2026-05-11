@@ -135,6 +135,7 @@ impl Operator for MapOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					let projected = match self.project(&post) {
 						Ok(projected) => projected,
@@ -150,6 +151,7 @@ impl Operator for MapOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					let projected_post = self.project(&post)?;
 					let projected_pre = self.project(&pre)?;
@@ -160,6 +162,7 @@ impl Operator for MapOperator {
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					let projected_pre = self.project(&pre)?;
 					if !projected_pre.is_empty() {

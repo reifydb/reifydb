@@ -98,6 +98,7 @@ impl Arena {
 		match diff {
 			Diff::Insert {
 				post,
+				..
 			} => DiffFFI {
 				diff_type: DiffType::Insert,
 				pre: ColumnsFFI::empty(),
@@ -106,6 +107,7 @@ impl Arena {
 			Diff::Update {
 				pre,
 				post,
+				..
 			} => DiffFFI {
 				diff_type: DiffType::Update,
 				pre: self.marshal_columns(pre),
@@ -113,6 +115,7 @@ impl Arena {
 			},
 			Diff::Remove {
 				pre,
+				..
 			} => DiffFFI {
 				diff_type: DiffType::Remove,
 				pre: self.marshal_columns(pre),

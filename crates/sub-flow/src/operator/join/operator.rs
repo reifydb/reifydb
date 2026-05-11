@@ -412,8 +412,8 @@ impl JoinOperator {
 		Ok(builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices))
 	}
 
-	fn determine_side(&self, change: &Change) -> Option<JoinSide> {
-		match &change.origin {
+	fn determine_side_from_origin(&self, origin: &ChangeOrigin) -> Option<JoinSide> {
+		match origin {
 			ChangeOrigin::Flow(from_node) => {
 				if *from_node == self.left_node {
 					Some(JoinSide::Left)
@@ -455,20 +455,21 @@ impl Operator for JoinOperator {
 		let mut state = JoinState::new(self.node);
 		let mut result = Vec::with_capacity(change.diffs.len() * 2);
 
-		let side = self
-			.determine_side(&change)
-			.ok_or_else(|| Error(Box::new(internal!("Join operator received change from unknown node"))))?;
-
-		let compiled_exprs = match side {
-			JoinSide::Left => &self.compiled_left_exprs,
-			JoinSide::Right => &self.compiled_right_exprs,
-		};
-
 		let version = change.version;
+		let parent_origin = change.origin.clone();
 		for diff in change.diffs {
+			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
+			let side = self.determine_side_from_origin(&diff_origin).ok_or_else(|| {
+				Error(Box::new(internal!("Join operator received diff from unknown node")))
+			})?;
+			let compiled_exprs = match side {
+				JoinSide::Left => &self.compiled_left_exprs,
+				JoinSide::Right => &self.compiled_right_exprs,
+			};
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_join_insert(
 					txn,
 					&post,
@@ -480,6 +481,7 @@ impl Operator for JoinOperator {
 				)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_join_remove(
 					txn,
 					&pre,
@@ -492,6 +494,7 @@ impl Operator for JoinOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_join_update(
 					txn,
 					&pre,
