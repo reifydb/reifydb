@@ -37,6 +37,16 @@ impl Pending {
 		self.writes.insert(key, PendingWrite::Remove);
 	}
 
+	pub fn insert_batch(&mut self, keys: &[EncodedKey], values: &[EncodedRow]) {
+		assert_eq!(keys.len(), values.len(), "Pending::insert_batch keys/values length mismatch");
+		self.writes
+			.extend(keys.iter().zip(values.iter()).map(|(k, v)| (k.clone(), PendingWrite::Set(v.clone()))));
+	}
+
+	pub fn remove_batch(&mut self, keys: &[EncodedKey]) {
+		self.writes.extend(keys.iter().map(|k| (k.clone(), PendingWrite::Remove)));
+	}
+
 	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
 		match self.writes.get(key) {
 			Some(PendingWrite::Set(value)) => Some(value),

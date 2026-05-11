@@ -27,7 +27,7 @@ pub mod deserialize;
 pub mod deserializer;
 pub mod serialize;
 pub mod serializer;
-pub mod varint;
+pub(crate) mod varint;
 
 use std::{f32, f64};
 

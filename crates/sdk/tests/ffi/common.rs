@@ -182,6 +182,7 @@ pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 	let out_columns = match &output.diffs[0] {
 		Diff::Insert {
 			post,
+			..
 		} => post,
 		Diff::Update {
 			post,
@@ -189,6 +190,7 @@ pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 		} => post,
 		Diff::Remove {
 			pre,
+			..
 		} => pre,
 	};
 	assert_eq!(out_columns.columns.len(), 1, "expected exactly one output column");
