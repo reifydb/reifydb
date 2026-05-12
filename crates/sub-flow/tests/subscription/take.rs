@@ -3,10 +3,9 @@
 
 use crate::common::{Row, normalize, random_rows, run_path_incremental, run_path_snapshot};
 
-// `take N` keeps the N rows with the largest RowNumber and discards the rest. reifydb iterates
-// storage descending by default, so this is "the newest N rows" - consistent with what RQL
-// `take N` returns from a regular query. Both bulk-hydrate (snapshot) and incremental (CDC)
-// ingest paths must converge on the same final sink state: each row appears at most once.
+// `take N` is a sliding window of the most recent N rows by arrival. Each new row is admitted;
+// when the window is full, the oldest in-window arrival is evicted. Both bulk-hydrate (snapshot)
+// and incremental (CDC) ingest paths must converge on the same final sink state.
 
 #[test]
 fn smoke_empty_log_take() {
@@ -16,8 +15,8 @@ fn smoke_empty_log_take() {
 	assert!(a.is_empty(), "empty input should produce empty sink output, got {:?}", a);
 }
 
-// 6 rows feed `take 5`. The contract is "newest 5 by RowNumber"; the oldest row is filtered.
-// Each output row appears exactly once in the final sink state.
+// 6 rows feed `take 5`. With monotonic insert order, arrival-order matches RowNumber order, so
+// the first-inserted row is the oldest arrival and is the one evicted.
 #[test]
 fn take_emits_newest_n_rows() {
 	let rql = "from app::t | take 5";
@@ -59,12 +58,12 @@ fn take_emits_newest_n_rows() {
 	assert_eq!(
 		normalize(run_path_snapshot(rql, &rows)),
 		expected,
-		"snapshot path must keep the 5 newest rows by RowNumber"
+		"snapshot path must keep the 5 most recent rows by arrival"
 	);
 	assert_eq!(
 		normalize(run_path_incremental(rql, &rows)),
 		expected,
-		"incremental path must keep the 5 newest rows by RowNumber"
+		"incremental path must keep the 5 most recent rows by arrival"
 	);
 }
 

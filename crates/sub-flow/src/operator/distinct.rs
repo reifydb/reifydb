@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{Arc, LazyLock};
+use std::{
+	collections::BTreeMap,
+	sync::{Arc, LazyLock},
+};
 
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
@@ -150,9 +153,7 @@ impl DistinctLayout {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctEntry {
-	count: usize,
-
-	first_row: SerializedRow,
+	rows: BTreeMap<RowNumber, SerializedRow>,
 
 	last_seen_nanos: u64,
 }
@@ -283,18 +284,6 @@ impl DistinctOperator {
 			.map_err(|e| Error(Box::new(internal!("Failed to deserialize DistinctState: {}", e))))
 	}
 
-	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> Result<()> {
-		let serialized = to_stdvec(state)
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize DistinctState: {}", e))))?;
-		let blob = Blob::from(serialized);
-
-		self.update_state(txn, |shape, row| {
-			shape.set_blob(row, 0, &blob);
-			Ok(())
-		})?;
-		Ok(())
-	}
-
 	fn process_insert(&self, state: &mut DistinctState, columns: &Columns) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
@@ -306,10 +295,9 @@ impl DistinctOperator {
 		let hashes = self.compute_hashes(columns)?;
 		let now_nanos = self.runtime_context.clock.now_nanos();
 
-		let row_count = columns.row_count();
 		let mut order: Vec<usize> = (0..row_count).collect();
 		if !columns.row_numbers.is_empty() {
-			order.sort_by_key(|&i| columns.row_numbers[i]);
+			order.sort_by(|&a, &b| columns.row_numbers[b].cmp(&columns.row_numbers[a]));
 		}
 
 		let mut new_distinct_indices: Vec<usize> = Vec::new();
@@ -319,33 +307,44 @@ impl DistinctOperator {
 		for &row_idx in &order {
 			let hash = hashes[row_idx];
 			let row_number = columns.row_numbers[row_idx];
-			match state.entries.get_mut(&hash) {
-				Some(entry) => {
-					entry.count += 1;
-					entry.last_seen_nanos = now_nanos;
-					if row_number < entry.first_row.number {
-						let old_row = entry.first_row.to_columns(&state.layout);
-						swap_out_rows.push(old_row);
-						entry.first_row =
-							SerializedRow::from_columns_at_index(columns, row_idx);
-						swap_in_indices.push(row_idx);
-					}
-				}
-				None => {
-					state.entries.insert(
-						hash,
-						DistinctEntry {
-							count: 1,
-							first_row: SerializedRow::from_columns_at_index(
-								columns, row_idx,
-							),
-							last_seen_nanos: now_nanos,
-						},
-					);
-					new_distinct_indices.push(row_idx);
-				}
+			let new_serialized = SerializedRow::from_columns_at_index(columns, row_idx);
+
+			let mut displaced: Option<SerializedRow> = None;
+			let mut is_new_entry = false;
+
+			if let Some(entry) = state.entries.get_mut(&hash) {
+				entry.last_seen_nanos = now_nanos;
+				let prev_rn = entry.rows.keys().next_back().copied().unwrap();
+				let prev_clone = if row_number > prev_rn {
+					entry.rows.get(&prev_rn).cloned()
+				} else {
+					None
+				};
+				entry.rows.insert(row_number, new_serialized);
+				displaced = prev_clone;
+			} else {
+				let mut rows = BTreeMap::new();
+				rows.insert(row_number, new_serialized);
+				state.entries.insert(
+					hash,
+					DistinctEntry {
+						rows,
+						last_seen_nanos: now_nanos,
+					},
+				);
+				is_new_entry = true;
+			}
+
+			if is_new_entry {
+				new_distinct_indices.push(row_idx);
+			} else if let Some(prev) = displaced {
+				swap_out_rows.push(prev.to_columns(&state.layout));
+				swap_in_indices.push(row_idx);
 			}
 		}
+
+		new_distinct_indices.sort_by_key(|&i| columns.row_numbers[i]);
+		swap_in_indices.sort_by_key(|&i| columns.row_numbers[i]);
 
 		for old_cols in swap_out_rows {
 			result.push(Diff::remove(old_cols));
@@ -380,44 +379,108 @@ impl DistinctOperator {
 		let post_hashes = self.compute_hashes(post_columns)?;
 		let now_nanos = self.runtime_context.clock.now_nanos();
 
-		let mut same_key_update_indices: Vec<usize> = Vec::new();
-		let mut removed_indices: Vec<usize> = Vec::new();
-		let mut inserted_indices: Vec<usize> = Vec::new();
+		let mut visible_update_indices: Vec<usize> = Vec::new();
+		let mut removes: Vec<Columns> = Vec::new();
+		let mut inserts: Vec<Columns> = Vec::new();
 
 		for row_idx in 0..row_count {
 			let pre_hash = pre_hashes[row_idx];
 			let post_hash = post_hashes[row_idx];
+			let row_number = post_columns.row_numbers[row_idx];
 
 			if pre_hash == post_hash {
-				update_same_distinct_key(
-					state,
-					pre_hash,
-					post_columns,
-					row_idx,
-					now_nanos,
-					&mut same_key_update_indices,
-				);
+				let new_serialized = SerializedRow::from_columns_at_index(post_columns, row_idx);
+				let visible = if let Some(entry) = state.entries.get_mut(&pre_hash) {
+					entry.last_seen_nanos = now_nanos;
+					let visible_rn = entry.rows.keys().next_back().copied();
+					entry.rows.insert(row_number, new_serialized);
+					visible_rn == Some(row_number)
+				} else {
+					false
+				};
+				if visible {
+					visible_update_indices.push(row_idx);
+				}
+				continue;
+			}
+
+			let mut pre_displaced_remove: Option<Columns> = None;
+			let mut pre_fallback_insert: Option<Columns> = None;
+			if let Some(entry) = state.entries.get_mut(&pre_hash) {
+				let prev_rn = entry.rows.keys().next_back().copied().unwrap();
+				let removed = entry.rows.remove(&row_number).is_some();
+				if removed {
+					if entry.rows.is_empty() {
+						pre_displaced_remove = Some(pre_columns.extract_by_indices(&[row_idx]));
+					} else {
+						let new_rn = entry.rows.keys().next_back().copied().unwrap();
+						if new_rn != prev_rn {
+							let new_visible_clone =
+								entry.rows.get(&new_rn).cloned().unwrap();
+							pre_displaced_remove =
+								Some(pre_columns.extract_by_indices(&[row_idx]));
+							pre_fallback_insert =
+								Some(new_visible_clone.to_columns(&state.layout));
+						}
+					}
+				}
+			}
+			let pre_entry_empty = state.entries.get(&pre_hash).map(|e| e.rows.is_empty()).unwrap_or(false);
+			if pre_entry_empty {
+				state.entries.shift_remove(&pre_hash);
+			}
+
+			let new_serialized = SerializedRow::from_columns_at_index(post_columns, row_idx);
+			let mut post_displaced: Option<SerializedRow> = None;
+			let mut post_is_new_entry = false;
+			if let Some(entry) = state.entries.get_mut(&post_hash) {
+				entry.last_seen_nanos = now_nanos;
+				let prev_rn = entry.rows.keys().next_back().copied().unwrap();
+				let prev_clone = if row_number > prev_rn {
+					entry.rows.get(&prev_rn).cloned()
+				} else {
+					None
+				};
+				entry.rows.insert(row_number, new_serialized);
+				post_displaced = prev_clone;
 			} else {
-				if drop_pre_distinct_key(state, pre_hash) {
-					removed_indices.push(row_idx);
-				}
-				if add_post_distinct_key(state, post_hash, post_columns, row_idx, now_nanos) {
-					inserted_indices.push(row_idx);
-				}
+				let mut rows = BTreeMap::new();
+				rows.insert(row_number, new_serialized);
+				state.entries.insert(
+					post_hash,
+					DistinctEntry {
+						rows,
+						last_seen_nanos: now_nanos,
+					},
+				);
+				post_is_new_entry = true;
+			}
+
+			if let Some(cols) = pre_displaced_remove {
+				removes.push(cols);
+			}
+			if let Some(cols) = pre_fallback_insert {
+				inserts.push(cols);
+			}
+			if let Some(prev) = post_displaced {
+				removes.push(prev.to_columns(&state.layout));
+				inserts.push(post_columns.extract_by_indices(&[row_idx]));
+			} else if post_is_new_entry {
+				inserts.push(post_columns.extract_by_indices(&[row_idx]));
 			}
 		}
 
 		let mut result = Vec::new();
-		if !same_key_update_indices.is_empty() {
-			let pre_output = pre_columns.extract_by_indices(&same_key_update_indices);
-			let post_output = post_columns.extract_by_indices(&same_key_update_indices);
+		if !visible_update_indices.is_empty() {
+			let pre_output = pre_columns.extract_by_indices(&visible_update_indices);
+			let post_output = post_columns.extract_by_indices(&visible_update_indices);
 			result.push(Diff::update(pre_output, post_output));
 		}
-		if !removed_indices.is_empty() {
-			result.push(Diff::remove(pre_columns.extract_by_indices(&removed_indices)));
+		for cols in removes {
+			result.push(Diff::remove(cols));
 		}
-		if !inserted_indices.is_empty() {
-			result.push(Diff::insert(post_columns.extract_by_indices(&inserted_indices)));
+		for cols in inserts {
+			result.push(Diff::insert(cols));
 		}
 		Ok(result)
 	}
@@ -431,86 +494,49 @@ impl DistinctOperator {
 
 		let hashes = self.compute_hashes(columns)?;
 
-		let mut removed_hashes: Vec<Hash128> = Vec::new();
+		let mut removes: Vec<Columns> = Vec::new();
+		let mut inserts: Vec<Columns> = Vec::new();
+		let mut empty_entries: Vec<Hash128> = Vec::new();
 
-		for &hash in &hashes {
-			if let Some(entry) = state.entries.get_mut(&hash) {
-				if entry.count > 1 {
-					entry.count -= 1;
-				} else {
-					removed_hashes.push(hash);
-				}
+		for (row_idx, &hash) in hashes.iter().enumerate() {
+			let row_number = columns.row_numbers[row_idx];
+
+			let Some(entry) = state.entries.get_mut(&hash) else {
+				continue;
+			};
+
+			let prev_rn = entry.rows.keys().next_back().copied().unwrap();
+			let removed = entry.rows.remove(&row_number).is_some();
+			if !removed {
+				continue;
+			}
+
+			if entry.rows.is_empty() {
+				removes.push(columns.extract_by_indices(&[row_idx]));
+				empty_entries.push(hash);
+				continue;
+			}
+
+			let new_rn = entry.rows.keys().next_back().copied().unwrap();
+			if new_rn != prev_rn {
+				let new_visible = entry.rows.get(&new_rn).cloned().unwrap();
+				removes.push(columns.extract_by_indices(&[row_idx]));
+				inserts.push(new_visible.to_columns(&state.layout));
 			}
 		}
 
-		for hash in removed_hashes {
-			if let Some(entry) = state.entries.shift_remove(&hash) {
-				let stored_columns = entry.first_row.to_columns(&state.layout);
-				result.push(Diff::remove(stored_columns));
-			}
+		for hash in empty_entries {
+			state.entries.shift_remove(&hash);
+		}
+
+		for cols in removes {
+			result.push(Diff::remove(cols));
+		}
+		for cols in inserts {
+			result.push(Diff::insert(cols));
 		}
 
 		Ok(result)
-	}
-}
-
-#[inline]
-fn update_same_distinct_key(
-	state: &mut DistinctState,
-	hash: Hash128,
-	post_columns: &Columns,
-	row_idx: usize,
-	now_nanos: u64,
-	indices: &mut Vec<usize>,
-) {
-	if let Some(entry) = state.entries.get_mut(&hash) {
-		if entry.first_row.number == post_columns.row_numbers[row_idx] {
-			entry.first_row = SerializedRow::from_columns_at_index(post_columns, row_idx);
-		}
-		entry.last_seen_nanos = now_nanos;
-		indices.push(row_idx);
-	}
-}
-
-#[inline]
-fn drop_pre_distinct_key(state: &mut DistinctState, hash: Hash128) -> bool {
-	let Some(entry) = state.entries.get_mut(&hash) else {
-		return false;
-	};
-	if entry.count > 1 {
-		entry.count -= 1;
-		false
-	} else {
-		state.entries.shift_remove(&hash);
-		true
-	}
-}
-
-#[inline]
-fn add_post_distinct_key(
-	state: &mut DistinctState,
-	hash: Hash128,
-	post_columns: &Columns,
-	row_idx: usize,
-	now_nanos: u64,
-) -> bool {
-	match state.entries.get_mut(&hash) {
-		Some(entry) => {
-			entry.count += 1;
-			entry.last_seen_nanos = now_nanos;
-			false
-		}
-		None => {
-			state.entries.insert(
-				hash,
-				DistinctEntry {
-					count: 1,
-					first_row: SerializedRow::from_columns_at_index(post_columns, row_idx),
-					last_seen_nanos: now_nanos,
-				},
-			);
-			true
-		}
 	}
 }
 

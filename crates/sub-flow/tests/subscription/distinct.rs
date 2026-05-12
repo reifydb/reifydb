@@ -3,13 +3,12 @@
 
 use crate::common::{Row, normalize, random_rows, run_path_incremental, run_path_snapshot};
 
-// `distinct {key}` emits exactly one row per distinct key value. When several rows share a
-// key, the operator preserves the FIRST row to arrive for that key (smallest RowNumber);
-// later duplicates are absorbed into the running count and never overwrite the emitted row.
-// Bulk-hydrate (snapshot) and incremental (CDC) ingest paths must converge on the same final
-// sink state.
+// `distinct {key}` emits exactly one row per distinct key value: the most recent row to arrive
+// for that key (largest RowNumber). When a new row with an existing key arrives, the previously
+// emitted row is replaced. Bulk-hydrate (snapshot) and incremental (CDC) ingest paths must
+// converge on the same final sink state.
 #[test]
-fn distinct_emits_first_row_per_key() {
+fn distinct_emits_most_recent_row_per_key() {
 	let rql = "from app::t | distinct {id}";
 	let rows = vec![
 		Row {
@@ -28,17 +27,17 @@ fn distinct_emits_first_row_per_key() {
 			ts_ms: 293762,
 		},
 	];
-	let expected = vec![(3, 320, 881420), (4, 948, 821663)];
+	let expected = vec![(3, 320, 881420), (4, 351, 293762)];
 
 	assert_eq!(
 		normalize(run_path_snapshot(rql, &rows)),
 		expected,
-		"snapshot path must emit the first row seen for each distinct key"
+		"snapshot path must emit the most recent row seen for each distinct key"
 	);
 	assert_eq!(
 		normalize(run_path_incremental(rql, &rows)),
 		expected,
-		"incremental path must emit the first row seen for each distinct key"
+		"incremental path must emit the most recent row seen for each distinct key"
 	);
 }
 
