@@ -153,7 +153,7 @@ impl FlowWorkerActor {
 		let result = self.engine.begin_command(IdentityId::system()).and_then(|mut txn| {
 			let (flow, _) =
 				self.flow_catalog.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)?;
-			state.flow_engine.register(&mut txn, flow)
+			state.flow_engine.register(&mut txn, flow.into())
 		});
 
 		let resp = match result {
@@ -179,7 +179,7 @@ impl FlowWorkerActor {
 			for fid in flow_ids {
 				let (flow, _) =
 					self.flow_catalog.get_or_load_flow(&mut Transaction::Command(&mut txn), fid)?;
-				state.flow_engine.register(&mut txn, flow)?;
+				state.flow_engine.register(&mut txn, flow.into())?;
 			}
 			Ok(())
 		});

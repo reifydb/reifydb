@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_type::{Result, value::datetime::DateTime};
@@ -254,7 +254,7 @@ impl Change {
 		if self.diffs.len() <= 1 {
 			return Ok(());
 		}
-		let original = std::mem::take(&mut self.diffs);
+		let original = mem::take(&mut self.diffs);
 		let mut merged: Diffs = SmallVec::with_capacity(original.len());
 		for diff in original {
 			if diff.row_count() == 0 {

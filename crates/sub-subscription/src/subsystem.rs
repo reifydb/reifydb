@@ -443,7 +443,7 @@ fn register_ephemeral_flow(
 		}
 	}
 	engine.analyzer.add(flow.clone());
-	engine.flows.insert(flow.id, flow);
+	engine.flows.insert(flow.id, Arc::new(flow));
 	Ok(())
 }
 

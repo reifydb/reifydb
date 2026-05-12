@@ -121,3 +121,13 @@ impl MultiReadTransaction {
 		Box::new(self.engine.store.range_rev(range, version, batch_size))
 	}
 }
+
+impl Clone for MultiReadTransaction {
+	fn clone(&self) -> Self {
+		Self {
+			engine: self.engine.clone(),
+			tm: self.tm.clone(),
+			lease: None,
+		}
+	}
+}

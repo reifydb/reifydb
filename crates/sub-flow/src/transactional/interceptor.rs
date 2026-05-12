@@ -71,6 +71,8 @@ pub(crate) fn execute_inline_flow_changes(
 		return Ok(());
 	}
 
+	let base_query = engine.multi().begin_query()?;
+	let base_state_query = engine.multi().begin_query()?;
 	let execution_levels = flow_engine.calculate_execution_levels();
 	if execution_levels.is_empty() {
 		return Ok(());
@@ -95,6 +97,8 @@ pub(crate) fn execute_inline_flow_changes(
 			read_version,
 			&base_pending,
 			&view_overlay,
+			&base_query,
+			&base_state_query,
 		)?;
 
 		if flow_txns.is_empty() {
@@ -163,6 +167,8 @@ fn prepare_level_flow_txns(
 	read_version: CommitVersion,
 	base_pending: &Pending,
 	view_overlay: &Arc<Vec<Change>>,
+	base_query: &MultiReadTransaction,
+	base_state_query: &MultiReadTransaction,
 ) -> Result<Vec<(FlowId, Vec<Change>, FlowTransaction)>> {
 	let mut flow_txns: Vec<(FlowId, Vec<Change>, FlowTransaction)> = Vec::new();
 	for &flow_id in level {
@@ -176,8 +182,8 @@ fn prepare_level_flow_txns(
 			continue;
 		}
 
-		let query = engine.multi().begin_query()?;
-		let state_query = engine.multi().begin_query()?;
+		let query = base_query.clone();
+		let state_query = base_state_query.clone();
 		let interceptors = engine.create_interceptors();
 
 		let flow_txn = FlowTransaction::transactional(TransactionalParams {

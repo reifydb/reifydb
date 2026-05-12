@@ -42,7 +42,7 @@ impl FlowEngine {
 	))]
 	pub fn process_batch(&self, txn: &mut FlowTransaction, changes: Vec<Change>, flow_id: FlowId) -> Result<()> {
 		let flow = match self.flows.get(&flow_id) {
-			Some(f) => f.clone(),
+			Some(f) => Arc::clone(f),
 			None => return Ok(()),
 		};
 
@@ -129,8 +129,7 @@ impl FlowEngine {
 		let version = merged.version;
 		let changed_at = merged.changed_at;
 		let result = self.apply(txn, node, Arc::new(merged))?;
-		let mut combined = Change::from_flow(node.id, version, result.diffs, changed_at.max(result.changed_at));
-		combined.coalesce()?;
+		let combined = Change::from_flow(node.id, version, result.diffs, changed_at.max(result.changed_at));
 		Ok(combined)
 	}
 
@@ -157,12 +156,11 @@ impl FlowEngine {
 		let owned = Arc::try_unwrap(change).unwrap_or_else(|arc| (*arc).clone());
 
 		let apply_start = self.runtime_context.clock.instant();
-		let mut result = operator.apply(txn, owned)?;
+		let result = operator.apply(txn, owned)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs_raw", result.diffs.len());
 
 		let coalesce_start = self.runtime_context.clock.instant();
-		result.coalesce()?;
 		Span::current().record("coalesce_time_us", coalesce_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
 		Span::current().record("output_rows", result.row_count());
@@ -175,7 +173,7 @@ impl FlowEngine {
 	))]
 	pub fn process_tick(&self, txn: &mut FlowTransaction, flow_id: FlowId, timestamp: DateTime) -> Result<()> {
 		let flow = match self.flows.get(&flow_id) {
-			Some(f) => f.clone(),
+			Some(f) => Arc::clone(f),
 			None => return Ok(()),
 		};
 
