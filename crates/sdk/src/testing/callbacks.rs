@@ -161,6 +161,131 @@ extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 	}
 }
 
+fn test_internal_envelope(operator_id: u64, user_key_bytes: &[u8]) -> EncodedKey {
+	FlowNodeInternalStateKey::new(FlowNodeId(operator_id), user_key_bytes.to_vec()).encode()
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn test_internal_state_get(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+	output: *mut BufferFFI,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() || output.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let key_bytes = from_raw_parts(key_ptr, key_len);
+		let envelope = test_internal_envelope(operator_id, key_bytes);
+
+		match test_ctx.get_state(&envelope) {
+			Some(value_bytes) => {
+				let value_ptr = test_alloc(value_bytes.len());
+				if value_ptr.is_null() {
+					return -2;
+				}
+				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
+				(*output).ptr = value_ptr;
+				(*output).len = value_bytes.len();
+				(*output).cap = value_bytes.len();
+				FFI_OK
+			}
+			None => FFI_NOT_FOUND,
+		}
+	}
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn test_internal_state_set(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+	value_ptr: *const u8,
+	value_len: usize,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() || value_ptr.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let key_bytes = from_raw_parts(key_ptr, key_len);
+		let envelope = test_internal_envelope(operator_id, key_bytes);
+		let value_bytes = from_raw_parts(value_ptr, value_len);
+		test_ctx.set_state(envelope, value_bytes.to_vec());
+		FFI_OK
+	}
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn test_internal_state_remove(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let key_bytes = from_raw_parts(key_ptr, key_len);
+		let envelope = test_internal_envelope(operator_id, key_bytes);
+		test_ctx.remove_state(&envelope);
+		FFI_OK
+	}
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn test_internal_state_prefix(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	prefix_ptr: *const u8,
+	prefix_len: usize,
+	iterator_out: *mut *mut StateIteratorFFI,
+) -> i32 {
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let user_prefix = if prefix_ptr.is_null() || prefix_len == 0 {
+			vec![]
+		} else {
+			from_raw_parts(prefix_ptr, prefix_len).to_vec()
+		};
+		let envelope_prefix = test_internal_envelope(operator_id, &user_prefix);
+		let envelope_bytes = envelope_prefix.as_ref();
+
+		let state_store = test_ctx.state_store();
+		let state = state_store.lock().unwrap();
+
+		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
+			.iter()
+			.filter(|(key, _)| key.starts_with(envelope_bytes))
+			.map(|(key, value)| (key.to_vec(), value.0.to_vec()))
+			.collect();
+
+		items.sort_by(|a, b| a.0.cmp(&b.0));
+
+		let iter = Box::new(TestStateIterator {
+			items,
+			position: 0,
+		});
+
+		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
+
+		FFI_OK
+	}
+}
+
 #[repr(C)]
 struct TestStateIterator {
 	items: Vec<(Vec<u8>, Vec<u8>)>,
@@ -413,7 +538,11 @@ use reifydb_abi::{
 	},
 	data::buffer::BufferFFI,
 };
-use reifydb_core::encoded::key::EncodedKey;
+use reifydb_core::{
+	encoded::key::EncodedKey,
+	interface::catalog::flow::FlowNodeId,
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+};
 
 use crate::testing::{
 	context::TestContext,
@@ -493,6 +622,10 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			range: test_state_range,
 			iterator_next: test_state_iterator_next,
 			iterator_free: test_state_iterator_free,
+			internal_get: test_internal_state_get,
+			internal_set: test_internal_state_set,
+			internal_remove: test_internal_state_remove,
+			internal_prefix: test_internal_state_prefix,
 		},
 		log: LogCallbacks {
 			message: test_log_message,

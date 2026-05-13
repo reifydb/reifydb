@@ -4,23 +4,21 @@
 use std::iter;
 
 use reifydb_core::{
-	encoded::key::EncodedKey,
-	interface::catalog::flow::FlowNodeId,
-	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
-	util::encoding::keycode::serializer::KeySerializer,
+	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId,
+	key::flow_node_internal_state::FlowNodeInternalStateKey, util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{error::Result, operator::context::OperatorContext};
 
 pub struct RowNumberProvider {
-	node: FlowNodeId,
+	_node: FlowNodeId,
 }
 
 impl RowNumberProvider {
 	pub fn new(node: FlowNodeId) -> Self {
 		Self {
-			node,
+			_node: node,
 		}
 	}
 
@@ -38,15 +36,14 @@ impl RowNumberProvider {
 
 		for key in keys {
 			let map_key = self.make_map_key(key);
-			let internal_key = FlowNodeInternalStateKey::new(self.node, map_key.as_ref().to_vec()).encode();
 
-			if let Some(row_num) = ctx.state().get::<u64>(&internal_key)? {
+			if let Some(row_num) = ctx.internal_state().get::<u64>(&map_key)? {
 				results.push((RowNumber(row_num), false));
 				continue;
 			}
 
 			let new_row_number = RowNumber(counter);
-			ctx.state().set::<u64>(&internal_key, &counter)?;
+			ctx.internal_state().set::<u64>(&map_key, &counter)?;
 
 			results.push((new_row_number, true));
 			counter += 1;
@@ -68,44 +65,24 @@ impl RowNumberProvider {
 	}
 
 	fn load_counter(&self, ctx: &mut OperatorContext) -> Result<u64> {
-		let internal_key =
-			FlowNodeInternalStateKey::new(self.node, self.make_counter_key().as_ref().to_vec()).encode();
-		Ok(ctx.state().get::<u64>(&internal_key)?.unwrap_or(1))
+		Ok(ctx.internal_state().get::<u64>(&self.make_counter_key())?.unwrap_or(1))
 	}
 
 	fn save_counter(&self, ctx: &mut OperatorContext, counter: u64) -> Result<()> {
-		let internal_key =
-			FlowNodeInternalStateKey::new(self.node, self.make_counter_key().as_ref().to_vec()).encode();
-		ctx.state().set::<u64>(&internal_key, &counter)
+		ctx.internal_state().set::<u64>(&self.make_counter_key(), &counter)
 	}
 
 	fn make_counter_key(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'C');
+		serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_COUNTER_TAG);
 		serializer.finish()
 	}
 
 	fn make_map_key(&self, key: &EncodedKey) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'M');
+		serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
 		serializer.extend_bytes(key.as_ref());
 		serializer.finish()
-	}
-
-	pub fn remove_by_prefix(&self, ctx: &mut OperatorContext, key_prefix: &[u8]) -> Result<()> {
-		let mut prefix = Vec::new();
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'M');
-		prefix.extend_from_slice(&serializer.finish());
-		prefix.extend_from_slice(key_prefix);
-
-		let internal_prefix = FlowNodeInternalStateKey::new(self.node, prefix);
-		let prefix_key = internal_prefix.encode();
-		for key in ctx.state().keys_with_prefix(&prefix_key)? {
-			ctx.state().remove(&key)?;
-		}
-
-		Ok(())
 	}
 }
 
@@ -305,49 +282,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_remove_by_prefix() {
-		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
-			.with_node_id(FlowNodeId(1))
-			.build()
-			.expect("Failed to build harness");
-
-		// Create keys with different prefixes
-		let key_a1 = encode_key("prefix_a_1");
-		let key_a2 = encode_key("prefix_a_2");
-		let key_b1 = encode_key("prefix_b_1");
-
-		let mut ctx = harness.create_operator_context();
-		ctx.get_or_create_row_number(&key_a1).unwrap();
-
-		let mut ctx = harness.create_operator_context();
-		ctx.get_or_create_row_number(&key_a2).unwrap();
-
-		let mut ctx = harness.create_operator_context();
-		ctx.get_or_create_row_number(&key_b1).unwrap();
-
-		// Remove all keys with prefix "prefix_a"
-		let provider = RowNumberProvider::new(FlowNodeId(1));
-		let mut ctx = harness.create_operator_context();
-		provider.remove_by_prefix(&mut ctx, b"prefix_a").unwrap();
-
-		// Keys with prefix_a should be new again
-		let mut ctx = harness.create_operator_context();
-		let (_, is_new_a1) = ctx.get_or_create_row_number(&key_a1).unwrap();
-
-		let mut ctx = harness.create_operator_context();
-		let (_, is_new_a2) = ctx.get_or_create_row_number(&key_a2).unwrap();
-
-		// But they'll get new row numbers (continuing from counter)
-		assert!(is_new_a1);
-		assert!(is_new_a2);
-
-		// Key with prefix_b should still be known
-		let mut ctx = harness.create_operator_context();
-		let (_, is_new_b1) = ctx.get_or_create_row_number(&key_b1).unwrap();
-		assert!(!is_new_b1);
-	}
-
-	#[test]
 	fn test_empty_key() {
 		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
@@ -424,21 +358,20 @@ pub mod tests {
 
 	#[test]
 	fn test_counter_key_uniqueness_per_node() {
-		// Counter keys for different nodes should be different after wrapping with FlowNodeInternalStateKey
+		// Counter inner-keys are identical across providers (just the tag byte) -
+		// the host's FlowNodeInternalStateKey wrapper adds the FlowNodeId at storage
+		// time, keeping different operators' counters in disjoint storage ranges.
 		let provider1 = RowNumberProvider::new(FlowNodeId(1));
 		let provider2 = RowNumberProvider::new(FlowNodeId(2));
 
 		let internal_key1 = provider1.make_counter_key();
 		let internal_key2 = provider2.make_counter_key();
 
-		// Internal keys are the same (node_id is added by wrapper)
 		assert_eq!(internal_key1, internal_key2);
 
-		// But after wrapping with FlowNodeInternalStateKey, they should be different
-		let final_key1 =
-			FlowNodeInternalStateKey::new(provider1.node, internal_key1.as_ref().to_vec()).encode();
-		let final_key2 =
-			FlowNodeInternalStateKey::new(provider2.node, internal_key2.as_ref().to_vec()).encode();
+		// And after wrapping with FlowNodeInternalStateKey, they differ:
+		let final_key1 = FlowNodeInternalStateKey::new(FlowNodeId(1), internal_key1.as_ref().to_vec()).encode();
+		let final_key2 = FlowNodeInternalStateKey::new(FlowNodeId(2), internal_key2.as_ref().to_vec()).encode();
 
 		assert!(!final_key1.is_empty());
 		assert!(!final_key2.is_empty());

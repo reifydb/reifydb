@@ -13,7 +13,7 @@ use crate::{
 	error::Result,
 	operator::{builder::ColumnsBuilder, diff::DiffStart},
 	rql::raw_rql,
-	state::{State, row::RowNumberProvider},
+	state::{InternalState, State, row::RowNumberProvider},
 	store::Store,
 };
 
@@ -35,6 +35,10 @@ impl OperatorContext {
 
 	pub fn state(&mut self) -> State<'_> {
 		State::new(self)
+	}
+
+	pub fn internal_state(&mut self) -> InternalState<'_> {
+		InternalState::new(self)
 	}
 
 	pub fn store(&mut self) -> Store<'_> {

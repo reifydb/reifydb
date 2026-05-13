@@ -24,7 +24,11 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_abi::flow::diff::DiffType;
-use reifydb_core::{encoded::key::IntoEncodedKey, interface::catalog::flow::FlowNodeId};
+use reifydb_core::{
+	encoded::key::{EncodedKey, IntoEncodedKey},
+	interface::catalog::flow::FlowNodeId,
+	key::flow_node_internal_state::FlowNodeInternalStateKey,
+};
 use reifydb_type::value::{Value, row_number::RowNumber};
 use serde::{Deserialize, Serialize};
 
@@ -43,6 +47,26 @@ use crate::{
 	},
 	state::cache::StateCache,
 };
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct MetaKey(EncodedKey);
+
+impl IntoEncodedKey for &MetaKey {
+	fn into_encoded_key(self) -> EncodedKey {
+		let inner = self.0.as_ref();
+		let mut bytes = Vec::with_capacity(1 + inner.len());
+		bytes.push(FlowNodeInternalStateKey::WINDOW_META_TAG);
+		bytes.extend_from_slice(inner);
+		EncodedKey::new(bytes)
+	}
+}
+
+fn meta_key_for<G>(group: &G) -> MetaKey
+where
+	for<'a> &'a G: IntoEncodedKey,
+{
+	MetaKey(group.into_encoded_key())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(
@@ -76,7 +100,7 @@ where
 	aggregator: A,
 	slots: StateCache<RowNumber, WindowSlots<A>>,
 
-	meta: StateCache<A::GroupKey, GroupMeta<A::SlotKey, A::SlotContribution>>,
+	meta: StateCache<MetaKey, GroupMeta<A::SlotKey, A::SlotContribution>>,
 }
 
 enum SlotEvent<A: TumblingOperator> {
@@ -101,7 +125,7 @@ where
 		Ok(Self {
 			aggregator,
 			slots: StateCache::<RowNumber, WindowSlots<A>>::new(1024),
-			meta: StateCache::<A::GroupKey, GroupMeta<A::SlotKey, A::SlotContribution>>::new(4096),
+			meta: StateCache::<MetaKey, GroupMeta<A::SlotKey, A::SlotContribution>>::new_internal(4096),
 		})
 	}
 
@@ -135,7 +159,7 @@ where
 		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::SlotKey, A::SlotContribution>> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let m = self.meta.get(ctx, group)?.unwrap_or_default();
+				let m = self.meta.get(ctx, &meta_key_for(group))?.unwrap_or_default();
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
@@ -213,7 +237,7 @@ where
 		}
 
 		for (group, meta) in meta_loaded {
-			self.meta.set(ctx, &group, &meta)?;
+			self.meta.set(ctx, &meta_key_for(&group), &meta)?;
 		}
 
 		Ok(())

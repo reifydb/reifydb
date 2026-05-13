@@ -8,9 +8,17 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{error::Result, operator::context::OperatorContext};
 
+#[derive(Clone, Copy, Debug)]
+pub enum StateBackend {
+	Data,
+
+	Internal,
+}
+
 pub struct StateCache<K, V> {
 	cache: LruCache<K, Arc<V>>,
 	dirty: HashMap<K, Option<Arc<V>>>,
+	backend: StateBackend,
 }
 
 impl<K, V> StateCache<K, V>
@@ -20,9 +28,18 @@ where
 	V: Clone + Serialize + DeserializeOwned,
 {
 	pub fn new(capacity: usize) -> Self {
+		Self::with_backend(capacity, StateBackend::Data)
+	}
+
+	pub fn new_internal(capacity: usize) -> Self {
+		Self::with_backend(capacity, StateBackend::Internal)
+	}
+
+	fn with_backend(capacity: usize, backend: StateBackend) -> Self {
 		Self {
 			cache: LruCache::new(capacity),
 			dirty: HashMap::new(),
+			backend,
 		}
 	}
 
@@ -36,7 +53,11 @@ where
 		}
 
 		let encoded_key = key.into_encoded_key();
-		match ctx.state().get::<V>(&encoded_key)? {
+		let loaded = match self.backend {
+			StateBackend::Data => ctx.state().get::<V>(&encoded_key)?,
+			StateBackend::Internal => ctx.internal_state().get::<V>(&encoded_key)?,
+		};
+		match loaded {
 			Some(value) => {
 				let arc = Arc::new(value);
 				self.cache.put(key.clone(), arc.clone());
@@ -90,9 +111,13 @@ where
 		let dirty = mem::take(&mut self.dirty);
 		for (key, slot) in dirty {
 			let encoded_key = (&key).into_encoded_key();
-			match slot {
-				Some(value) => ctx.state().set(&encoded_key, value.as_ref())?,
-				None => ctx.state().remove(&encoded_key)?,
+			match (slot, self.backend) {
+				(Some(value), StateBackend::Data) => ctx.state().set(&encoded_key, value.as_ref())?,
+				(Some(value), StateBackend::Internal) => {
+					ctx.internal_state().set(&encoded_key, value.as_ref())?
+				}
+				(None, StateBackend::Data) => ctx.state().remove(&encoded_key)?,
+				(None, StateBackend::Internal) => ctx.internal_state().remove(&encoded_key)?,
 			}
 		}
 		Ok(())

@@ -95,6 +95,62 @@ impl<'a> State<'a> {
 	}
 }
 
+/// Operator-internal sequence-and-mapping state, stored under
+/// `FlowNodeInternalStateKey` instead of `FlowNodeStateKey`. Use this for
+/// state that must outlive operator TTL GC (e.g. `RowNumberProvider`'s
+/// monotonic counter and `EncodedKey -> RowNumber` mappings).
+///
+/// The host wraps each user-supplied key in
+/// `FlowNodeInternalStateKey(operator_id, ...)` so callers pass only the
+/// inner-tag bytes.
+pub struct InternalState<'a> {
+	ctx: &'a mut OperatorContext,
+}
+
+impl<'a> InternalState<'a> {
+	pub(crate) fn new(ctx: &'a mut OperatorContext) -> Self {
+		Self {
+			ctx,
+		}
+	}
+
+	pub fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>> {
+		match ffi::internal_get(self.ctx, key)? {
+			Some(row) => decode_payload(&row).map(Some),
+			None => Ok(None),
+		}
+	}
+
+	pub fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
+		let row = encode_payload(value, self.now_nanos())?;
+		ffi::internal_set(self.ctx, key, &row)
+	}
+
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+		ffi::internal_remove(self.ctx, key)
+	}
+
+	pub fn contains(&self, key: &EncodedKey) -> Result<bool> {
+		Ok(ffi::internal_get(self.ctx, key)?.is_some())
+	}
+
+	pub fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>> {
+		ffi::internal_prefix(self.ctx, prefix)?
+			.into_iter()
+			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
+			.collect()
+	}
+
+	pub fn keys_with_prefix(&self, prefix: &EncodedKey) -> Result<Vec<EncodedKey>> {
+		Ok(ffi::internal_prefix(self.ctx, prefix)?.into_iter().map(|(k, _)| k).collect())
+	}
+
+	#[inline]
+	fn now_nanos(&self) -> u64 {
+		unsafe { (*self.ctx.ctx).clock_now_nanos }
+	}
+}
+
 #[inline]
 fn encode_payload<T: Serialize>(value: &T, now_nanos: u64) -> Result<EncodedRow> {
 	let bytes = to_allocvec(value)
@@ -154,5 +210,51 @@ pub trait FFIRawStatefulOperator: FFIOperator {
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>> {
 		ctx.state().range(start, end)
+	}
+
+	// `internal_state_*` mirrors the regular `state_*` surface but routes
+	// through `ctx.internal_state()`, which lives in
+	// `FlowNodeInternalStateKey` (outside operator TTL GC). Use for
+	// monotonic sequences, identity bindings, and watermarks.
+
+	fn internal_state_get<T: DeserializeOwned>(
+		&self,
+		ctx: &mut OperatorContext,
+		key: &EncodedKey,
+	) -> Result<Option<T>> {
+		ctx.internal_state().get(key)
+	}
+
+	fn internal_state_set<T: Serialize>(
+		&self,
+		ctx: &mut OperatorContext,
+		key: &EncodedKey,
+		value: &T,
+	) -> Result<()> {
+		ctx.internal_state().set(key, value)
+	}
+
+	fn internal_state_remove(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
+		ctx.internal_state().remove(key)
+	}
+
+	fn internal_state_scan_prefix<T: DeserializeOwned>(
+		&self,
+		ctx: &mut OperatorContext,
+		prefix: &EncodedKey,
+	) -> Result<Vec<(EncodedKey, T)>> {
+		ctx.internal_state().scan_prefix(prefix)
+	}
+
+	fn internal_state_keys_with_prefix(
+		&self,
+		ctx: &mut OperatorContext,
+		prefix: &EncodedKey,
+	) -> Result<Vec<EncodedKey>> {
+		ctx.internal_state().keys_with_prefix(prefix)
+	}
+
+	fn internal_state_contains(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<bool> {
+		ctx.internal_state().contains(key)
 	}
 }

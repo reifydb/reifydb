@@ -40,9 +40,30 @@ use reifydb_abi::flow::diff::DiffType;
 use reifydb_core::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	interface::catalog::flow::FlowNodeId,
+	key::flow_node_internal_state::FlowNodeInternalStateKey,
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct MetaKey(EncodedKey);
+
+impl IntoEncodedKey for &MetaKey {
+	fn into_encoded_key(self) -> EncodedKey {
+		let inner = self.0.as_ref();
+		let mut bytes = Vec::with_capacity(1 + inner.len());
+		bytes.push(FlowNodeInternalStateKey::WINDOW_META_TAG);
+		bytes.extend_from_slice(inner);
+		EncodedKey::new(bytes)
+	}
+}
+
+fn meta_key_for<G>(group: &G) -> MetaKey
+where
+	for<'a> &'a G: IntoEncodedKey,
+{
+	MetaKey(group.into_encoded_key())
+}
 
 use crate::{
 	error::Result,
@@ -189,7 +210,7 @@ where
 {
 	aggregator: A,
 	groups: StateCache<RowNumber, GroupState<A>>,
-	meta: StateCache<A::GroupKey, GroupMeta<A::WindowKey>>,
+	meta: StateCache<MetaKey, GroupMeta<A::WindowKey>>,
 }
 
 enum BufferEvent<A: MultiRollingOperator> {
@@ -209,7 +230,7 @@ where
 		Ok(Self {
 			aggregator,
 			groups: StateCache::<RowNumber, GroupState<A>>::new(1024),
-			meta: StateCache::<A::GroupKey, GroupMeta<A::WindowKey>>::new(4096),
+			meta: StateCache::<MetaKey, GroupMeta<A::WindowKey>>::new_internal(4096),
 		})
 	}
 
@@ -284,7 +305,7 @@ where
 		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowKey>> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let m = self.meta.get(ctx, group)?.unwrap_or_default();
+				let m = self.meta.get(ctx, &meta_key_for(group))?.unwrap_or_default();
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
@@ -430,7 +451,7 @@ where
 		}
 
 		for (group, meta) in meta_loaded {
-			self.meta.set(ctx, &group, &meta)?;
+			self.meta.set(ctx, &meta_key_for(&group), &meta)?;
 		}
 
 		Ok(())

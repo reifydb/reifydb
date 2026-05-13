@@ -44,6 +44,30 @@ impl EncodableKey for FlowNodeInternalStateKey {
 }
 
 impl FlowNodeInternalStateKey {
+	pub const ROW_NUMBER_COUNTER_TAG: u8 = b'C';
+
+	pub const ROW_NUMBER_MAPPING_TAG: u8 = b'M';
+
+	pub const WINDOW_META_TAG: u8 = b'W';
+
+	pub const GATE_VISIBILITY_TAG: u8 = b'G';
+
+	pub fn is_row_number_counter(&self) -> bool {
+		self.key.as_slice() == [Self::ROW_NUMBER_COUNTER_TAG]
+	}
+
+	pub fn is_row_number_mapping(&self) -> bool {
+		self.key.first() == Some(&Self::ROW_NUMBER_MAPPING_TAG)
+	}
+
+	pub fn is_window_meta(&self) -> bool {
+		self.key.first() == Some(&Self::WINDOW_META_TAG)
+	}
+
+	pub fn is_gate_visibility(&self) -> bool {
+		self.key.first() == Some(&Self::GATE_VISIBILITY_TAG)
+	}
+
 	pub fn new(node: FlowNodeId, key: Vec<u8>) -> Self {
 		Self {
 			node,
