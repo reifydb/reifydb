@@ -2,37 +2,41 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Test tokenization of global aggregate without BY clause
-tokenize 'aggregate { count(value) }'
+query 'CALL rql::tokenize("aggregate { count(value) }")'
 ---
-> Line 1:
->   [  0] Keyword(Aggregate)
->   [  1] Operator(OpenCurly)
->   [  2] Identifier("count")
->   [  3] Operator(OpenParen)
->   [  4] Keyword(Value)
->   [  5] Operator(CloseParen)
->   [  6] Operator(CloseCurly)
->
+> +-------+--------+----------+--------------+--------------+
+> |  idx  |  line  |  column  |     kind     |    value     |
+> +-------+--------+----------+--------------+--------------+
+> |   0   |   1    |    1     |   Keyword    |  Aggregate   |
+> |   1   |   1    |    11    |   Operator   |  OpenCurly   |
+> |   2   |   1    |    13    |  Identifier  |    count     |
+> |   3   |   1    |    18    |   Operator   |  OpenParen   |
+> |   4   |   1    |    19    |   Keyword    |    Value     |
+> |   5   |   1    |    24    |   Operator   |  CloseParen  |
+> |   6   |   1    |    26    |   Operator   |  CloseCurly  |
+> +-------+--------+----------+--------------+--------------+
 >
 
 # Test tokenization of global aggregate with empty BY clause
-tokenize 'aggregate { sum(amount), avg(price) } by {}'
+query 'CALL rql::tokenize("aggregate { sum(amount), avg(price) } by {}")'
 ---
-> Line 1:
->   [  0] Keyword(Aggregate)
->   [  1] Operator(OpenCurly)
->   [  2] Identifier("sum")
->   [  3] Operator(OpenParen)
->   [  4] Identifier("amount")
->   [  5] Operator(CloseParen)
->   [  6] Separator(Comma)
->   [  7] Identifier("avg")
->   [  8] Operator(OpenParen)
->   [  9] Identifier("price")
->   [ 10] Operator(CloseParen)
->   [ 11] Operator(CloseCurly)
->   [ 12] Keyword(By)
->   [ 13] Operator(OpenCurly)
->   [ 14] Operator(CloseCurly)
->
+> +-------+--------+----------+--------------+--------------+
+> |  idx  |  line  |  column  |     kind     |    value     |
+> +-------+--------+----------+--------------+--------------+
+> |   0   |   1    |    1     |   Keyword    |  Aggregate   |
+> |   1   |   1    |    11    |   Operator   |  OpenCurly   |
+> |   2   |   1    |    13    |  Identifier  |     sum      |
+> |   3   |   1    |    16    |   Operator   |  OpenParen   |
+> |   4   |   1    |    17    |  Identifier  |    amount    |
+> |   5   |   1    |    23    |   Operator   |  CloseParen  |
+> |   6   |   1    |    24    |  Separator   |    Comma     |
+> |   7   |   1    |    26    |  Identifier  |     avg      |
+> |   8   |   1    |    29    |   Operator   |  OpenParen   |
+> |   9   |   1    |    30    |  Identifier  |    price     |
+> |  10   |   1    |    35    |   Operator   |  CloseParen  |
+> |  11   |   1    |    37    |   Operator   |  CloseCurly  |
+> |  12   |   1    |    39    |   Keyword    |      By      |
+> |  13   |   1    |    42    |   Operator   |  OpenCurly   |
+> |  14   |   1    |    43    |   Operator   |  CloseCurly  |
+> +-------+--------+----------+--------------+--------------+
 >

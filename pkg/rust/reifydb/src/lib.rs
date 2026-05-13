@@ -50,7 +50,7 @@ pub use reifydb_runtime::{
 };
 pub use reifydb_sqlite::SqliteConfig;
 pub use reifydb_store_multi as multi_storage;
-pub use reifydb_store_multi::buffer::storage::BufferStorage;
+pub use reifydb_store_multi::buffer::tier::MultiBufferTier;
 pub use reifydb_store_single as single_storage;
 // subsystems
 pub use reifydb_sub_api as sub;

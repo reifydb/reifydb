@@ -80,16 +80,18 @@ impl<'a> ColumnBuilder<'a> {
 
 	pub fn write_bool(self, values: &[bool]) -> Result<CommittedColumn, FFIError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Bool, "write_bool requires a Bool ColumnBuilder");
+
 		let byte_count = values.len().div_ceil(8);
-		let mut packed = vec![0u8; byte_count];
+		let buffer_byte_len = values.len();
+		let mut packed = vec![0u8; buffer_byte_len.max(byte_count)];
 		for (i, &b) in values.iter().enumerate() {
 			if b {
 				packed[i / 8] |= 1 << (i % 8);
 			}
 		}
-		if byte_count > 0 {
+		if !packed.is_empty() {
 			unsafe {
-				core::ptr::copy_nonoverlapping(packed.as_ptr(), self.data_ptr(), byte_count);
+				core::ptr::copy_nonoverlapping(packed.as_ptr(), self.data_ptr(), packed.len());
 			}
 		}
 		self.commit(values.len())

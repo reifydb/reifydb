@@ -30,8 +30,8 @@ use super::{
 };
 use crate::{
 	MultiVersionScope, Result,
-	buffer::storage::BufferStorage,
-	persistent::PersistentStorage,
+	buffer::tier::MultiBufferTier,
+	persistent::MultiPersistentTier,
 	tier::{RangeBatch, RangeCursor, TierBatch, TierStorage},
 };
 
@@ -90,15 +90,18 @@ impl MultiVersionContains for StandardMultiStore {
 impl MultiVersionCommit for StandardMultiStore {
 	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
-		let Some(storage) = &self.buffer else {
-			return Ok(());
-		};
-
 		let classified = classify_deltas(&deltas);
 		let drop_batch = build_drop_batch(classified.explicit_drops, &classified.pending_set_keys, version);
 		self.dispatch_drops(drop_batch);
 
-		storage.set(version, classified.batches)?;
+		if let Some(buffer) = &self.buffer {
+			buffer.set(version, classified.batches)?;
+		} else if let Some(persistent) = &self.persistent {
+			persistent.set(version, classified.batches)?;
+		} else {
+			return Ok(());
+		}
+
 		self.emit_commit_metrics(classified.writes, classified.deletes, version);
 		Ok(())
 	}
@@ -210,7 +213,12 @@ fn build_drop_batch(
 impl StandardMultiStore {
 	#[inline]
 	fn dispatch_drops(&self, drop_batch: Vec<DropRequest>) {
-		if !drop_batch.is_empty() && self.drop_actor.send_blocking(DropMessage::Batch(drop_batch)).is_err() {
+		if drop_batch.is_empty() {
+			return;
+		}
+		if let Some(actor) = &self.drop_actor
+			&& actor.send_blocking(DropMessage::Batch(drop_batch)).is_err()
+		{
 			warn!("Failed to send drop batch");
 		}
 	}
@@ -341,9 +349,9 @@ pub fn collected_to_batch(
 
 #[inline]
 fn step_all_tiers(
-	buffer: Option<&BufferStorage>,
+	buffer: Option<&MultiBufferTier>,
 	buffer_cursor: &mut RangeCursor,
-	persistent: Option<&PersistentStorage>,
+	persistent: Option<&MultiPersistentTier>,
 	persistent_cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
 	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
@@ -363,8 +371,8 @@ fn step_all_tiers(
 }
 
 pub fn scan_tiers_latest(
-	buffer: Option<&BufferStorage>,
-	persistent: Option<&PersistentStorage>,
+	buffer: Option<&MultiBufferTier>,
+	persistent: Option<&MultiPersistentTier>,
 	range: EncodedKeyRange,
 	scope: MultiVersionScope,
 	max_keys: usize,
@@ -692,23 +700,44 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 			return Ok(None);
 		}
 
-		let storage = self.buffer.as_ref().expect("buffer storage required for version lookups");
-
 		let table = classify_key(key);
 		let prev_version = CommitVersion(before_version.0 - 1);
 
-		match get_at_version(storage, table, key.as_ref(), prev_version) {
-			Ok(VersionedGetResult::Value {
-				value,
-				version,
-			}) => Ok(Some(MultiVersionRow {
-				key: key.clone(),
-				row: EncodedRow(CowVec::new(value.to_vec())),
-				version,
-			})),
-			Ok(VersionedGetResult::Tombstone) | Ok(VersionedGetResult::NotFound) => Ok(None),
-			Err(e) => Err(e),
+		if let Some(buffer) = &self.buffer {
+			match get_at_version(buffer, table, key.as_ref(), prev_version)? {
+				VersionedGetResult::Value {
+					value,
+					version,
+				} => {
+					return Ok(Some(MultiVersionRow {
+						key: key.clone(),
+						row: EncodedRow(CowVec::new(value.to_vec())),
+						version,
+					}));
+				}
+				VersionedGetResult::Tombstone => return Ok(None),
+				VersionedGetResult::NotFound => {}
+			}
 		}
+
+		if let Some(persistent) = &self.persistent {
+			match get_at_version(persistent, table, key.as_ref(), prev_version)? {
+				VersionedGetResult::Value {
+					value,
+					version,
+				} => {
+					return Ok(Some(MultiVersionRow {
+						key: key.clone(),
+						row: EncodedRow(CowVec::new(value.to_vec())),
+						version,
+					}));
+				}
+				VersionedGetResult::Tombstone => return Ok(None),
+				VersionedGetResult::NotFound => {}
+			}
+		}
+
+		Ok(None)
 	}
 }
 

@@ -8,7 +8,7 @@ use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteConfig;
 
-use crate::{buffer::storage::BufferStorage, persistent::PersistentStorage};
+use crate::{buffer::tier::MultiBufferTier, persistent::MultiPersistentTier};
 
 #[derive(Clone)]
 pub struct MultiStoreConfig {
@@ -21,14 +21,68 @@ pub struct MultiStoreConfig {
 	pub clock: Clock,
 }
 
+impl MultiStoreConfig {
+	pub fn memory(actor_system: ActorSystem, clock: Clock, event_bus: EventBus) -> Self {
+		Self {
+			buffer: Some(BufferConfig {
+				storage: MultiBufferTier::memory(),
+			}),
+			persistent: None,
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus,
+			actor_system,
+			clock,
+		}
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn sqlite(
+		persistent: PersistentConfig,
+		actor_system: ActorSystem,
+		clock: Clock,
+		event_bus: EventBus,
+	) -> Self {
+		Self {
+			buffer: Some(BufferConfig {
+				storage: MultiBufferTier::memory(),
+			}),
+			persistent: Some(persistent),
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus,
+			actor_system,
+			clock,
+		}
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn sqlite_unbuffered(
+		persistent: PersistentConfig,
+		actor_system: ActorSystem,
+		clock: Clock,
+		event_bus: EventBus,
+	) -> Self {
+		Self {
+			buffer: None,
+			persistent: Some(persistent),
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus,
+			actor_system,
+			clock,
+		}
+	}
+}
+
 #[derive(Clone)]
 pub struct BufferConfig {
-	pub storage: BufferStorage,
+	pub storage: MultiBufferTier,
 }
 
 #[derive(Clone)]
 pub struct PersistentConfig {
-	pub storage: PersistentStorage,
+	pub storage: MultiPersistentTier,
 	pub flush_interval: Duration,
 }
 
@@ -36,7 +90,7 @@ impl PersistentConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(sqlite_config: SqliteConfig) -> Self {
 		Self {
-			storage: PersistentStorage::sqlite(sqlite_config),
+			storage: MultiPersistentTier::sqlite(sqlite_config),
 			flush_interval: Duration::from_secs(5),
 		}
 	}
@@ -44,7 +98,7 @@ impl PersistentConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite_in_memory() -> Self {
 		Self {
-			storage: PersistentStorage::sqlite_in_memory(),
+			storage: MultiPersistentTier::sqlite_in_memory(),
 			flush_interval: Duration::from_secs(5),
 		}
 	}

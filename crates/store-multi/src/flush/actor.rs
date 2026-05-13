@@ -22,7 +22,7 @@ use tracing::{debug, error, warn};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::{TierBatch, TierStorage};
-use crate::{buffer::storage::BufferStorage, persistent::PersistentStorage};
+use crate::{buffer::tier::MultiBufferTier, persistent::MultiPersistentTier};
 
 #[derive(Clone)]
 pub enum FlushMessage {
@@ -55,14 +55,14 @@ pub struct FlushActorState {
 
 #[allow(dead_code)]
 pub struct FlushActor {
-	buffer: BufferStorage,
-	persistent: PersistentStorage,
+	buffer: MultiBufferTier,
+	persistent: MultiPersistentTier,
 	flush_interval: Duration,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl FlushActor {
-	pub fn new(buffer: BufferStorage, persistent: PersistentStorage, flush_interval: Duration) -> Self {
+	pub fn new(buffer: MultiBufferTier, persistent: MultiPersistentTier, flush_interval: Duration) -> Self {
 		Self {
 			buffer,
 			persistent,
@@ -72,8 +72,8 @@ impl FlushActor {
 
 	pub fn spawn(
 		system: &ActorSystem,
-		buffer: BufferStorage,
-		persistent: PersistentStorage,
+		buffer: MultiBufferTier,
+		persistent: MultiPersistentTier,
 		flush_interval: Duration,
 	) -> ActorRef<FlushMessage> {
 		let actor = Self::new(buffer, persistent, flush_interval);

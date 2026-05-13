@@ -124,6 +124,20 @@ impl<'a> RowRef<'a> {
 		}
 	}
 
+	pub fn u128(&self, name: &str) -> Option<u128> {
+		match self.value(name)? {
+			Value::Uint16(v) => Some(v),
+			_ => None,
+		}
+	}
+
+	pub fn i128(&self, name: &str) -> Option<i128> {
+		match self.value(name)? {
+			Value::Int16(v) => Some(v),
+			_ => None,
+		}
+	}
+
 	pub fn f64(&self, name: &str) -> Option<f64> {
 		match self.value(name)? {
 			Value::Float8(v) => Some(v.into()),

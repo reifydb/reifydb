@@ -10,7 +10,7 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
-	buffer::storage::BufferStorage,
+	buffer::tier::MultiBufferTier,
 	config::{BufferConfig, MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
 };
@@ -21,6 +21,7 @@ mod common;
 use common::Runner;
 
 test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_tiered => test_tiered }
+test_each_path! { in "crates/store-multi/tests/scripts/historical" as store_multi_tiered_historical => test_tiered }
 
 fn test_tiered(path: &Path) {
 	temp_dir(|_db_path| {
@@ -29,7 +30,7 @@ fn test_tiered(path: &Path) {
 		let event_bus = EventBus::new(&actor_system);
 		let store = StandardMultiStore::new(MultiStoreConfig {
 			buffer: Some(BufferConfig {
-				storage: BufferStorage::memory(),
+				storage: MultiBufferTier::memory(),
 			}),
 			persistent: Some(PersistentConfig::sqlite_in_memory()),
 			retention: Default::default(),

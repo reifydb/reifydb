@@ -20,6 +20,7 @@ use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	pool::Pools,
 };
+use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::HealthStatus;
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 use reifydb_sub_flow::subsystem::FlowSubsystem;
@@ -202,8 +203,11 @@ impl Database {
 
 		debug!("Stopping system gracefully");
 
-		// Stop all subsystems (now synchronously waits for each to finish)
 		self.subsystems.stop_all()?;
+
+		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
+			single_store.flush_pending_blocking();
+		}
 
 		self.actor_system.shutdown();
 		let _ = self.actor_system.join();

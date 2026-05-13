@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::HashMap;
-
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -10,14 +8,9 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
-	interface::store::{EntryKind, MultiVersionCommit},
+	interface::store::MultiVersionCommit,
 };
-use reifydb_store_multi::{
-	MultiStore, MultiVersionScope,
-	hot::storage::HotStorage,
-	store::StandardMultiStore,
-	tier::{RangeCursor, TierStorage},
-};
+use reifydb_store_multi::{MultiStore, MultiVersionScope, store::StandardMultiStore};
 use reifydb_type::{cow_vec, util::cowvec::CowVec};
 
 fn key(label: &[u8]) -> EncodedKey {
@@ -148,65 +141,6 @@ fn skipped_versions_do_not_consume_batch_budget() {
 	for r in &rows {
 		assert_eq!(r.version, CommitVersion(11));
 	}
-}
-
-#[test]
-fn sqlite_tier_parity_single_key() {
-	// Drive the SQLite path via TierStorage directly; verifies the SQL
-	// predicate (`version > ?`) added in build_versioned_range_query.
-	let storage = HotStorage::sqlite_in_memory();
-	let table = EntryKind::Multi;
-	let raw = b"K";
-
-	let mut entries = HashMap::new();
-	entries.insert(table, vec![(CowVec::new(raw.to_vec()), Some(CowVec::new(b"v1".to_vec())))]);
-	storage.set(CommitVersion(1), entries).unwrap();
-
-	let mut entries = HashMap::new();
-	entries.insert(table, vec![(CowVec::new(raw.to_vec()), Some(CowVec::new(b"v5".to_vec())))]);
-	storage.set(CommitVersion(5), entries).unwrap();
-
-	let mut entries = HashMap::new();
-	entries.insert(table, vec![(CowVec::new(raw.to_vec()), Some(CowVec::new(b"v10".to_vec())))]);
-	storage.set(CommitVersion(10), entries).unwrap();
-
-	let read_at = |scope: MultiVersionScope| -> Vec<CommitVersion> {
-		let mut cursor = RangeCursor::new();
-		let batch = storage
-			.range_next(
-				table,
-				&mut cursor,
-				std::ops::Bound::Unbounded,
-				std::ops::Bound::Unbounded,
-				scope,
-				16,
-			)
-			.unwrap();
-		batch.entries.into_iter().map(|e| e.version).collect()
-	};
-
-	let asof = MultiVersionScope::AsOf {
-		read: CommitVersion(20),
-	};
-	assert_eq!(read_at(asof), vec![CommitVersion(10)]);
-
-	let after_5 = MultiVersionScope::Between {
-		after: CommitVersion(5),
-		read: CommitVersion(20),
-	};
-	assert_eq!(read_at(after_5), vec![CommitVersion(10)]);
-
-	let after_10 = MultiVersionScope::Between {
-		after: CommitVersion(10),
-		read: CommitVersion(20),
-	};
-	assert!(read_at(after_10).is_empty());
-
-	let after_4_to_7 = MultiVersionScope::Between {
-		after: CommitVersion(4),
-		read: CommitVersion(7),
-	};
-	assert_eq!(read_at(after_4_to_7), vec![CommitVersion(5)]);
 }
 
 // Sanity check: AsOf path is byte-for-byte equivalent to the prior

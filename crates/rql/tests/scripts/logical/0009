@@ -1,0 +1,11 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+query 'CALL rql::logical("create index idx_email on test::users {email}")'
+---
+> +-------+---------+----------+---------------+---------------------------------------------------------+
+> |  idx  |  depth  |  parent  |     kind      |                         detail                          |
+> +-------+---------+----------+---------------+---------------------------------------------------------+
+> |   0   |    0    |   none   |  CreateIndex  |  type=Index name=idx_email table=users columns=[email]  |
+> +-------+---------+----------+---------------+---------------------------------------------------------+
+>

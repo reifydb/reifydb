@@ -260,10 +260,12 @@ pub(crate) unsafe extern "C" fn test_grow(handle: *mut ColumnBufferHandle, addit
 	match inner.slots.get_mut(&h.id) {
 		Some(Slot::Active(a)) if a.generation == h.generation => {
 			let elem = elem_size_for(a.type_code);
-			a.data.reserve(additional.saturating_mul(elem));
-			if let Some(o) = a.offsets.as_mut() {
-				o.reserve(additional);
-			}
+			let extra_bytes = additional.saturating_mul(elem);
+			let old_cap = a.data.capacity();
+
+			unsafe { a.data.set_len(old_cap) };
+			a.data.reserve(extra_bytes);
+			unsafe { a.data.set_len(0) };
 			0
 		}
 		_ => -1,

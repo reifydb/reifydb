@@ -1,7 +1,11 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-ast 'create index idx_status on test::users {created_at:desc, status:asc}'
+query 'CALL rql::ast("create index idx_status on test::users {created_at:desc, status:asc}")'
 ---
-> └── Create @ line 1, column 1 — "create"
+> +-------+---------+----------+----------------------------------------+
+> |  idx  |  depth  |   kind   |                 detail                 |
+> +-------+---------+----------+----------------------------------------+
+> |   0   |    0    |  Create  |  Create @ line 1, column 1 - "create"  |
+> +-------+---------+----------+----------------------------------------+
 >

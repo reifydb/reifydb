@@ -1,0 +1,14 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+query 'CALL rql::explain("from users left join { from orders } as orders using (id, orders.user_id) filter {orders_id > 10}")'
+---
+> +-------+---------+----------+-------------+-------------------------------+
+> |  idx  |  depth  |  parent  |    kind     |            detail             |
+> +-------+---------+----------+-------------+-------------------------------+
+> |   0   |    0    |   none   |   Filter    |  (orders_id > Constant(10))   |
+> |   1   |    1    |    0     |  JoinLeft   |  on=[(id == orders.user_id)]  |
+> |   2   |    2    |    1     |  TableScan  |        default::users         |
+> |   3   |    2    |    1     |  TableScan  |        default::orders        |
+> +-------+---------+----------+-------------+-------------------------------+
+>

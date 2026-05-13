@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_type::value::Value;
 
-use crate::{error::Result, operator::column::OperatorColumn};
+use crate::{error::Result, operator::column::operator::OperatorColumn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

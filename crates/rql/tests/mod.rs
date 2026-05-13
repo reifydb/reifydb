@@ -1,171 +1,85 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{error::Error, fmt::Write, path::Path};
+use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb_catalog::catalog::{Catalog, namespace::NamespaceToCreate, table::TableToCreate};
-use reifydb_core::interface::catalog::{id::NamespaceId, namespace::Namespace};
-use reifydb_engine::test_harness::create_test_admin_transaction;
-use reifydb_rql::explain::{
-	ast::explain_ast, logical::explain_logical_plan, physical::explain_physical_plan, tokenize::explain_tokenize,
-};
-use reifydb_testing::testscript::{
-	command::Command,
-	runner::{Runner, run_path},
-};
-use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb::{Database, Params, SharedRuntimeConfig, embedded as db_embedded};
+use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
+use tokio::runtime::Runtime;
 
-test_each_path! { in "crates/rql/tests/scripts/tokenize" as tokenize => run_test }
-test_each_path! { in "crates/rql/tests/scripts/ast" as ast => run_test }
-test_each_path! { in "crates/rql/tests/scripts/logical_plan" as logical_plan => run_test }
-test_each_path! { in "crates/rql/tests/scripts/physical_plan" as physical_plan => run_test }
-
-fn run_test(path: &Path) {
-	run_path(&mut TestRunner {}, path).expect("test failed")
+pub struct Runner {
+	instance: Database,
 }
 
-pub struct TestRunner {}
+impl Runner {
+	pub fn new() -> Self {
+		Self {
+			instance: db_embedded::memory()
+				.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
+				.build()
+				.unwrap(),
+		}
+	}
+}
 
-impl Runner for TestRunner {
+impl testscript::runner::Runner for Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 		match command.name.as_str() {
-			// token QUERY
-			"tokenize" => {
-				let mut args = command.consume_args();
-				let query = args.next_pos().ok_or("args not given")?.value.as_str();
-				args.reject_rest()?;
-				let result = explain_tokenize(query).unwrap();
-				writeln!(output, "{}", result).unwrap();
+			"admin" => {
+				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+				for frame in self.instance.admin_as_root(rql.as_str(), Params::None)? {
+					writeln!(output, "{}", frame).unwrap();
+				}
 			}
-			// ast QUERY
-			"ast" => {
-				let mut args = command.consume_args();
-				let query = args.next_pos().ok_or("args not given")?.value.as_str();
-				args.reject_rest()?;
-				let result = explain_ast(query).unwrap();
-				writeln!(output, "{}", result).unwrap();
+			"command" => {
+				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+				for frame in self.instance.command_as_root(rql.as_str(), Params::None)? {
+					writeln!(output, "{}", frame).unwrap();
+				}
 			}
-			// logical QUERY
-			"logical" => {
-				let mut args = command.consume_args();
-				let query = args.next_pos().ok_or("args not given")?.value.as_str();
-				args.reject_rest()?;
-
-				let rt = tokio::runtime::Runtime::new().unwrap();
-				let result = rt.block_on(async {
-					let mut dummy_tx = create_test_admin_transaction();
-					let catalog = Catalog::testing();
-
-					let default_namespace = Namespace::default_namespace();
-
-					catalog.create_table(
-						&mut dummy_tx,
-						TableToCreate {
-							name: Fragment::internal("users"),
-							namespace: default_namespace.id(),
-							columns: vec![],
-							retention_strategy: None,
-							primary_key_columns: None,
-							underlying: false,
-						},
-					)
-					.unwrap();
-
-					catalog.create_table(
-						&mut dummy_tx,
-						TableToCreate {
-							name: Fragment::internal("orders"),
-							namespace: default_namespace.id(),
-							columns: vec![],
-							retention_strategy: None,
-							primary_key_columns: None,
-							underlying: false,
-						},
-					)
-					.unwrap();
-
-					// Also create test namespace for tests that
-					// explicitly use test::users
-					let test_ns = catalog
-						.create_namespace(
-							&mut dummy_tx,
-							NamespaceToCreate {
-								namespace_fragment: None,
-								name: "test".to_string(),
-								local_name: "test".to_string(),
-								parent_id: NamespaceId::ROOT,
-								grpc: None,
-								token: None,
-							},
-						)
-						.unwrap();
-
-					catalog.create_table(
-						&mut dummy_tx,
-						TableToCreate {
-							name: Fragment::internal("users"),
-							namespace: test_ns.id(),
-							columns: vec![],
-							retention_strategy: None,
-							primary_key_columns: None,
-							underlying: false,
-						},
-					)
-					.unwrap();
-
-					explain_logical_plan(&catalog, &mut (&mut dummy_tx).into(), query).unwrap()
-				});
-				writeln!(output, "{}", result).unwrap();
+			"query" => {
+				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+				for frame in self.instance.query_as_root(rql.as_str(), Params::None)? {
+					writeln!(output, "{}", frame).unwrap();
+				}
 			}
-			// physical QUERY
-			"physical" => {
-				let mut args = command.consume_args();
-				let query = args.next_pos().ok_or("args not given")?.value.as_str();
-				args.reject_rest()?;
-
-				let rt = tokio::runtime::Runtime::new().unwrap();
-				let result = rt.block_on(async {
-					let mut dummy_tx = create_test_admin_transaction();
-					let catalog = Catalog::testing();
-
-					let namespace = Namespace::default_namespace();
-
-					catalog.create_table(
-						&mut dummy_tx,
-						TableToCreate {
-							name: Fragment::internal("users"),
-							namespace: namespace.id(),
-							columns: vec![],
-							retention_strategy: None,
-							primary_key_columns: None,
-							underlying: false,
-						},
-					)
-					.unwrap();
-
-					catalog.create_table(
-						&mut dummy_tx,
-						TableToCreate {
-							name: Fragment::internal("orders"),
-							namespace: namespace.id(),
-							columns: vec![],
-							retention_strategy: None,
-							primary_key_columns: None,
-							underlying: false,
-						},
-					)
-					.unwrap();
-
-					explain_physical_plan(&catalog, &mut Transaction::Admin(&mut dummy_tx), query)
-						.unwrap()
-				});
-				writeln!(output, "{}", result).unwrap();
+			name => {
+				return Err(format!("invalid command {name}").into());
 			}
-			_ => unimplemented!(),
 		}
 		Ok(output)
 	}
+
+	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
+		self.instance.start()?;
+		self.instance.admin_as_root(
+			"create table users { id: int4, name: utf8, age: int4, email: utf8, status: utf8, active: bool, amount: int4, price: int4, created_at: datetime }",
+			Params::None,
+		)?;
+		self.instance.admin_as_root("create table orders { id: int4, user_id: int4 }", Params::None)?;
+		self.instance.admin_as_root("create namespace test", Params::None)?;
+		self.instance.admin_as_root(
+			"create table test::users { id: int4, name: utf8, age: int4, email: utf8, status: utf8, active: bool, created_at: datetime }",
+			Params::None,
+		)?;
+		Ok(())
+	}
+
+	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
+		self.instance.stop()?;
+		Ok(())
+	}
+}
+
+test_each_path! { in "crates/rql/tests/scripts/tokenize" as tokenize => test_embedded }
+test_each_path! { in "crates/rql/tests/scripts/ast" as ast => test_embedded }
+test_each_path! { in "crates/rql/tests/scripts/logical" as logical => test_embedded }
+test_each_path! { in "crates/rql/tests/scripts/explain" as explain => test_embedded }
+
+fn test_embedded(path: &Path) {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	testscript::runner::run_path(&mut Runner::new(), path).expect("test failed")
 }

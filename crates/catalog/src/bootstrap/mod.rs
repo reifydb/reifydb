@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_multi::{
-	MultiVersionScope, buffer::storage::BufferStorage, persistent::PersistentStorage,
+	MultiVersionScope, buffer::tier::MultiBufferTier, persistent::MultiPersistentTier,
 	store::multi::scan_tiers_latest,
 };
 use reifydb_transaction::{
@@ -95,8 +95,8 @@ pub fn load_catalog_cache(multi: &MultiTransaction, single: &SingleTransaction, 
 }
 
 pub fn read_configs(
-	buffer: Option<&BufferStorage>,
-	persistent: Option<&PersistentStorage>,
+	buffer: Option<&MultiBufferTier>,
+	persistent: Option<&MultiPersistentTier>,
 	keys: &[ConfigKey],
 ) -> Result<HashMap<ConfigKey, Value>> {
 	let mut found: HashMap<ConfigKey, Value> = HashMap::new();
@@ -144,13 +144,13 @@ mod read_configs_tests {
 		interface::{catalog::config::ConfigKey, store::EntryKind},
 		key::config::ConfigStorageKey,
 	};
-	use reifydb_store_multi::{buffer::storage::BufferStorage, tier::TierStorage};
+	use reifydb_store_multi::{buffer::tier::MultiBufferTier, tier::TierStorage};
 	use reifydb_type::value::Value;
 
 	use super::read_configs;
 	use crate::store::config::shape::config::{SHAPE, VALUE};
 
-	fn write_config(buffer: &BufferStorage, key: ConfigKey, value: Value, version: CommitVersion) {
+	fn write_config(buffer: &MultiBufferTier, key: ConfigKey, value: Value, version: CommitVersion) {
 		let mut row = SHAPE.allocate();
 		SHAPE.set_value(&mut row, VALUE, &Value::any(value));
 		let key_bytes = ConfigStorageKey::for_key(key);
@@ -159,7 +159,7 @@ mod read_configs_tests {
 		buffer.set(version, batches).unwrap();
 	}
 
-	fn delete_config(buffer: &BufferStorage, key: ConfigKey, version: CommitVersion) {
+	fn delete_config(buffer: &MultiBufferTier, key: ConfigKey, version: CommitVersion) {
 		let key_bytes = ConfigStorageKey::for_key(key);
 		let mut batches = HashMap::new();
 		batches.insert(EntryKind::Multi, vec![(key_bytes.0, None)]);
@@ -181,7 +181,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn returns_defaults_when_buffer_is_empty() {
-		let buffer = BufferStorage::memory();
+		let buffer = MultiBufferTier::memory();
 		let out = read_configs(
 			Some(&buffer),
 			None,
@@ -195,7 +195,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn reads_persisted_value_from_buffer() {
-		let buffer = BufferStorage::memory();
+		let buffer = MultiBufferTier::memory();
 		write_config(&buffer, ConfigKey::ThreadsQuery, Value::Uint2(8), CommitVersion(1));
 
 		let out =
@@ -207,7 +207,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn latest_version_wins() {
-		let buffer = BufferStorage::memory();
+		let buffer = MultiBufferTier::memory();
 		write_config(&buffer, ConfigKey::ThreadsSystem, Value::Uint2(4), CommitVersion(1));
 		write_config(&buffer, ConfigKey::ThreadsSystem, Value::Uint2(16), CommitVersion(5));
 		write_config(&buffer, ConfigKey::ThreadsSystem, Value::Uint2(8), CommitVersion(3));
@@ -219,7 +219,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn tombstone_returns_default() {
-		let buffer = BufferStorage::memory();
+		let buffer = MultiBufferTier::memory();
 		write_config(&buffer, ConfigKey::ThreadsQuery, Value::Uint2(12), CommitVersion(1));
 		delete_config(&buffer, ConfigKey::ThreadsQuery, CommitVersion(2));
 
@@ -230,7 +230,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn rejects_invalid_persisted_value_and_falls_back_to_default() {
-		let buffer = BufferStorage::memory();
+		let buffer = MultiBufferTier::memory();
 		write_config(&buffer, ConfigKey::ThreadsAsync, Value::Uint2(0), CommitVersion(1));
 
 		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsAsync]).unwrap();
@@ -240,7 +240,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn unrequested_keys_are_ignored() {
-		let buffer = BufferStorage::memory();
+		let buffer = MultiBufferTier::memory();
 		write_config(&buffer, ConfigKey::ThreadsQuery, Value::Uint2(8), CommitVersion(1));
 		write_config(&buffer, ConfigKey::OracleWindowSize, Value::Uint8(999), CommitVersion(1));
 
@@ -253,7 +253,7 @@ mod read_configs_tests {
 
 	#[test]
 	fn shape_stays_in_sync_with_set_config_path() {
-		let buffer = BufferStorage::memory();
+		let buffer = MultiBufferTier::memory();
 		let mut row = SHAPE.allocate();
 		SHAPE.set_value(&mut row, VALUE, &Value::any(Value::Uint2(5)));
 

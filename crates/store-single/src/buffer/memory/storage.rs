@@ -47,21 +47,20 @@ impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::single::memory::contains", level = "trace", skip(self, key), fields(key_len = key.len()), ret)]
 	fn contains(&self, key: &[u8]) -> Result<bool> {
 		let map = self.inner.data.read();
-		Ok(map.contains_key(key))
+		Ok(matches!(map.get(key), Some(Some(_))))
+	}
+
+	#[instrument(name = "store::single::memory::get_with_tombstone", level = "trace", skip(self, key), fields(key_len = key.len()))]
+	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
+		let map = self.inner.data.read();
+		Ok(map.get(key).cloned())
 	}
 
 	#[instrument(name = "store::single::memory::set", level = "debug", skip(self, entries), fields(entry_count = entries.len()))]
 	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
 		let mut map = self.inner.data.write();
 		for (key, value) in entries {
-			match value {
-				Some(v) => {
-					map.insert(key, Some(v));
-				}
-				None => {
-					map.remove(&key);
-				}
-			}
+			map.insert(key, value);
 		}
 		Ok(())
 	}

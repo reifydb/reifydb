@@ -1,7 +1,0 @@
-# Copyright (c) reifydb.com 2025
-# This file is licensed under the Apache-2.0, see license.md file
-
-physical 'window sliding { sum(amount) } with { count: 100, slide: 20 }'
----
-> └── Window: Sliding { size: Count(100), slide: Count(20) }
->

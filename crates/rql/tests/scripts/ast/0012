@@ -1,7 +1,11 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-ast 'window sliding { sum(amount) } with { count: 100, slide: 20 }'
+query 'CALL rql::ast("window sliding { sum(amount) } with { count: 100, slide: 20 }")'
 ---
-> └── Window @ line 1, column 1 — "window"
+> +-------+---------+----------+----------------------------------------+
+> |  idx  |  depth  |   kind   |                 detail                 |
+> +-------+---------+----------+----------------------------------------+
+> |   0   |    0    |  Window  |  Window @ line 1, column 1 - "window"  |
+> +-------+---------+----------+----------------------------------------+
 >

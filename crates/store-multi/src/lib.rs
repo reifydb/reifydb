@@ -104,13 +104,13 @@ impl MultiStore {
 		}
 	}
 
-	pub fn buffer(&self) -> Option<&buffer::storage::BufferStorage> {
+	pub fn buffer(&self) -> Option<&buffer::tier::MultiBufferTier> {
 		match self {
 			MultiStore::Standard(store) => store.buffer(),
 		}
 	}
 
-	pub fn persistent(&self) -> Option<&persistent::PersistentStorage> {
+	pub fn persistent(&self) -> Option<&persistent::MultiPersistentTier> {
 		match self {
 			MultiStore::Standard(store) => store.persistent(),
 		}

@@ -18,7 +18,7 @@ use reifydb_type::value::Value;
 
 use crate::{
 	ffi::wrapper::{OperatorWrapper, create_vtable},
-	operator::{FFIOperatorWithMetadata, column::OperatorColumn},
+	operator::{FFIOperatorWithMetadata, column::operator::OperatorColumn},
 };
 
 fn str_to_buffer(s: &'static str) -> BufferFFI {

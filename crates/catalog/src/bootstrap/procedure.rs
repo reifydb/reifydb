@@ -157,29 +157,67 @@ pub fn bootstrap_system_procedures(
 		NamespaceId::SYSTEM,
 	)?;
 
-	let descriptors = vec![EphemeralProcedureDescriptor::Native {
-		namespace: ensure_namespace(
-			&catalog_api,
-			&mut admin,
-			NamespaceId::SYSTEM_CONFIG,
-			"system::config",
-			"config",
-			NamespaceId::SYSTEM,
-		)?,
-		name: "set".to_string(),
-		params: vec![
-			ProcedureParam {
-				name: "key".to_string(),
-				param_type: TypeConstraint::unconstrained(Type::Utf8),
-			},
-			ProcedureParam {
-				name: "value".to_string(),
-				param_type: TypeConstraint::unconstrained(Type::Any),
-			},
-		],
-		return_type: None,
-		native_name: "system::config::set".to_string(),
-	}];
+	let rql_namespace =
+		ensure_namespace(&catalog_api, &mut admin, NamespaceId::RQL, "rql", "rql", NamespaceId::ROOT)?;
+
+	let rql_query_param = || ProcedureParam {
+		name: "query".to_string(),
+		param_type: TypeConstraint::unconstrained(Type::Utf8),
+	};
+
+	let descriptors = vec![
+		EphemeralProcedureDescriptor::Native {
+			namespace: ensure_namespace(
+				&catalog_api,
+				&mut admin,
+				NamespaceId::SYSTEM_CONFIG,
+				"system::config",
+				"config",
+				NamespaceId::SYSTEM,
+			)?,
+			name: "set".to_string(),
+			params: vec![
+				ProcedureParam {
+					name: "key".to_string(),
+					param_type: TypeConstraint::unconstrained(Type::Utf8),
+				},
+				ProcedureParam {
+					name: "value".to_string(),
+					param_type: TypeConstraint::unconstrained(Type::Any),
+				},
+			],
+			return_type: None,
+			native_name: "system::config::set".to_string(),
+		},
+		EphemeralProcedureDescriptor::Native {
+			namespace: rql_namespace,
+			name: "tokenize".to_string(),
+			params: vec![rql_query_param()],
+			return_type: None,
+			native_name: "rql::tokenize".to_string(),
+		},
+		EphemeralProcedureDescriptor::Native {
+			namespace: rql_namespace,
+			name: "ast".to_string(),
+			params: vec![rql_query_param()],
+			return_type: None,
+			native_name: "rql::ast".to_string(),
+		},
+		EphemeralProcedureDescriptor::Native {
+			namespace: rql_namespace,
+			name: "logical".to_string(),
+			params: vec![rql_query_param()],
+			return_type: None,
+			native_name: "rql::logical".to_string(),
+		},
+		EphemeralProcedureDescriptor::Native {
+			namespace: rql_namespace,
+			name: "explain".to_string(),
+			params: vec![rql_query_param()],
+			return_type: None,
+			native_name: "rql::explain".to_string(),
+		},
+	];
 
 	let commit_version = admin.commit()?;
 

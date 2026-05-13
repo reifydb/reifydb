@@ -15,7 +15,7 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 use super::OperatorScanStats;
 use crate::{
 	MultiVersionScope,
-	buffer::storage::BufferStorage,
+	buffer::tier::MultiBufferTier,
 	gc::row::scanner::ScanResult,
 	tier::{RangeCursor, TierStorage},
 };
@@ -27,7 +27,7 @@ pub struct ExpiredOperatorState {
 }
 
 pub fn scan_operator_by_created_at(
-	storage: &BufferStorage,
+	storage: &MultiBufferTier,
 	node_id: FlowNodeId,
 	ttl_config: &Ttl,
 	now_nanos: u64,
@@ -75,7 +75,7 @@ pub fn scan_operator_by_created_at(
 }
 
 pub fn scan_operator_by_updated_at(
-	storage: &BufferStorage,
+	storage: &MultiBufferTier,
 	node_id: FlowNodeId,
 	ttl_config: &Ttl,
 	now_nanos: u64,
@@ -131,7 +131,7 @@ fn bound_as_ref(bound: &Bound<impl AsRef<[u8]>>) -> Bound<&[u8]> {
 }
 
 pub fn drop_expired_operator_keys(
-	storage: &BufferStorage,
+	storage: &MultiBufferTier,
 	expired: &[ExpiredOperatorState],
 	stats: &mut OperatorScanStats,
 ) -> Result<()> {

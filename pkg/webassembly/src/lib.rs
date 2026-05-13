@@ -45,7 +45,7 @@ use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock, pool::PoolConfig};
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
-	buffer::storage::BufferStorage,
+	buffer::tier::MultiBufferTier,
 	config::{BufferConfig, MultiStoreConfig},
 };
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
@@ -208,7 +208,7 @@ impl WasmDB {
 		let eventbus = EventBus::new(&actor_system);
 		let multi_store = MultiStore::standard(MultiStoreConfig {
 			buffer: Some(BufferConfig {
-				storage: BufferStorage::memory(),
+				storage: MultiBufferTier::memory(),
 			}),
 			persistent: None,
 			retention: Default::default(),
@@ -217,7 +217,7 @@ impl WasmDB {
 			actor_system: actor_system.clone(),
 			clock: Clock::Real,
 		});
-		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
+		let single_store = SingleStore::testing_memory();
 
 		// Create transactions
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());

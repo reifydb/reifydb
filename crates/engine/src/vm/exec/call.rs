@@ -493,10 +493,15 @@ impl<'a> Vm<'a> {
 						ioc: &ctx.services.ioc,
 					};
 					let empty = Columns::empty();
+					let attach_metadata = routine.attaches_row_metadata();
 					let columns = routine
 						.call(&mut proc_ctx, &empty)
 						.map_err(|e| e.with_context(name.clone(), true))?;
-					let columns = assign_row_numbers_if_absent(columns);
+					let columns = if attach_metadata {
+						assign_row_numbers_if_absent(columns)
+					} else {
+						columns
+					};
 					self.stack.push(Variable::columns(columns));
 					Ok(())
 				} else {
@@ -664,9 +669,14 @@ impl<'a> Vm<'a> {
 				ioc: &ctx.services.ioc,
 			};
 			let empty = Columns::empty();
+			let attach_metadata = routine.attaches_row_metadata();
 			let columns =
 				routine.call(&mut proc_ctx, &empty).map_err(|e| e.with_context(name.clone(), true))?;
-			let columns = assign_row_numbers_if_absent(columns);
+			let columns = if attach_metadata {
+				assign_row_numbers_if_absent(columns)
+			} else {
+				columns
+			};
 
 			if func_name == "identity::inject"
 				&& let Some(col) = columns.first()

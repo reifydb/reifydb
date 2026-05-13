@@ -1,0 +1,15 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Constant folding: literal arithmetic is evaluated at compile time. The
+# original column header is preserved via an alias so user-facing output
+# columns keep their pre-fold names.
+query 'CALL rql::explain("from users map { 1 + 2 }")'
+---
+> +-------+---------+----------+-------------+------------------------+
+> |  idx  |  depth  |  parent  |    kind     |         detail         |
+> +-------+---------+----------+-------------+------------------------+
+> |   0   |    0    |   none   |     Map     |  Constant(3) as 1 + 2  |
+> |   1   |    1    |    0     |  TableScan  |     default::users     |
+> +-------+---------+----------+-------------+------------------------+
+>

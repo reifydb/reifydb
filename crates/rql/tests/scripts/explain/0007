@@ -1,0 +1,14 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+query 'CALL rql::explain("from users map {id, name} filter {id == 10} sort {id:asc}")'
+---
+> +-------+---------+----------+-------------+------------------------+
+> |  idx  |  depth  |  parent  |    kind     |         detail         |
+> +-------+---------+----------+-------------+------------------------+
+> |   0   |    0    |   none   |    Sort     |         id ASC         |
+> |   1   |    1    |    0     |   Filter    |  (id == Constant(10))  |
+> |   2   |    2    |    1     |     Map     |        id, name        |
+> |   3   |    3    |    2     |  TableScan  |     default::users     |
+> +-------+---------+----------+-------------+------------------------+
+>

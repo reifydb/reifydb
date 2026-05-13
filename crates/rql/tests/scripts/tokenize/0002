@@ -1,18 +1,20 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-tokenize 'create index idx_email on test::users {email}'
+query 'CALL rql::tokenize("create index idx_email on test::users {email}")'
 ---
-> Line 1:
->   [  0] Keyword(Create)
->   [  1] Keyword(Index)
->   [  2] Identifier("idx_email")
->   [  3] Keyword(On)
->   [  4] Identifier("test")
->   [  5] Operator(DoubleColon)
->   [  6] Identifier("users")
->   [  7] Operator(OpenCurly)
->   [  8] Identifier("email")
->   [  9] Operator(CloseCurly)
->
+> +-------+--------+----------+--------------+---------------+
+> |  idx  |  line  |  column  |     kind     |     value     |
+> +-------+--------+----------+--------------+---------------+
+> |   0   |   1    |    1     |   Keyword    |    Create     |
+> |   1   |   1    |    8     |   Keyword    |     Index     |
+> |   2   |   1    |    14    |  Identifier  |   idx_email   |
+> |   3   |   1    |    24    |   Keyword    |      On       |
+> |   4   |   1    |    27    |  Identifier  |     test      |
+> |   5   |   1    |    31    |   Operator   |  DoubleColon  |
+> |   6   |   1    |    33    |  Identifier  |     users     |
+> |   7   |   1    |    39    |   Operator   |   OpenCurly   |
+> |   8   |   1    |    40    |  Identifier  |     email     |
+> |   9   |   1    |    45    |   Operator   |  CloseCurly   |
+> +-------+--------+----------+--------------+---------------+
 >

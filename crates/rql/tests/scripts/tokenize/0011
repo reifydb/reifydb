@@ -1,10 +1,12 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-tokenize 'FROM users # this is a comment'
+query 'CALL rql::tokenize("FROM users # this is a comment")'
 ---
-> Line 1:
->   [  0] Keyword(From)
->   [  1] Identifier("users")
->
+> +-------+--------+----------+--------------+---------+
+> |  idx  |  line  |  column  |     kind     |  value  |
+> +-------+--------+----------+--------------+---------+
+> |   0   |   1    |    1     |   Keyword    |  From   |
+> |   1   |   1    |    6     |  Identifier  |  users  |
+> +-------+--------+----------+--------------+---------+
 >

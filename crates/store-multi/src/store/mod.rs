@@ -15,8 +15,8 @@ use reifydb_runtime::{
 use tracing::instrument;
 
 use crate::{
-	BufferConfig, buffer::storage::BufferStorage, config::MultiStoreConfig, flush::actor::FlushMessage,
-	persistent::PersistentStorage,
+	BufferConfig, buffer::tier::MultiBufferTier, config::MultiStoreConfig, flush::actor::FlushMessage,
+	persistent::MultiPersistentTier,
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
@@ -39,10 +39,10 @@ use crate::Result;
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
 
 pub struct StandardMultiStoreInner {
-	pub(crate) buffer: Option<BufferStorage>,
-	pub(crate) persistent: Option<PersistentStorage>,
+	pub(crate) buffer: Option<MultiBufferTier>,
+	pub(crate) persistent: Option<MultiPersistentTier>,
 
-	pub(crate) drop_actor: ActorRef<DropMessage>,
+	pub(crate) drop_actor: Option<ActorRef<DropMessage>>,
 
 	#[allow(dead_code)]
 	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
@@ -62,25 +62,26 @@ impl StandardMultiStore {
 
 		let actor_system = config.actor_system.clone();
 
-		let storage = buffer.as_ref().expect("buffer tier is required");
-		let drop_config = DropWorkerConfig::default();
-		let drop_actor = DropActor::spawn(
-			&actor_system,
-			drop_config,
-			storage.clone(),
-			config.event_bus.clone(),
-			config.clock,
-		);
+		let drop_actor = buffer.as_ref().map(|storage| {
+			let drop_config = DropWorkerConfig::default();
+			DropActor::spawn(
+				&actor_system,
+				drop_config,
+				storage.clone(),
+				config.event_bus.clone(),
+				config.clock,
+			)
+		});
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush_actor) = {
 			let persistent_config = config.persistent.clone();
 			let persistent = persistent_config.as_ref().map(|c| c.storage.clone());
-			let flush_actor = match (persistent.as_ref(), persistent_config.as_ref()) {
-				(Some(persistent_storage), Some(persistent_cfg)) => {
+			let flush_actor = match (buffer.as_ref(), persistent.as_ref(), persistent_config.as_ref()) {
+				(Some(buf), Some(persistent_storage), Some(persistent_cfg)) => {
 					let actor_ref = FlushActor::spawn(
 						&actor_system,
-						storage.clone(),
+						buf.clone(),
 						persistent_storage.clone(),
 						persistent_cfg.flush_interval,
 					);
@@ -95,7 +96,7 @@ impl StandardMultiStore {
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush_actor): (Option<PersistentStorage>, Option<ActorRef<FlushMessage>>) = {
+		let (persistent, flush_actor): (Option<MultiPersistentTier>, Option<ActorRef<FlushMessage>>) = {
 			let _ = config.persistent;
 			(None, None)
 		};
@@ -110,11 +111,11 @@ impl StandardMultiStore {
 		})))
 	}
 
-	pub fn buffer(&self) -> Option<&BufferStorage> {
+	pub fn buffer(&self) -> Option<&MultiBufferTier> {
 		self.buffer.as_ref()
 	}
 
-	pub fn persistent(&self) -> Option<&PersistentStorage> {
+	pub fn persistent(&self) -> Option<&MultiPersistentTier> {
 		self.persistent.as_ref()
 	}
 
@@ -160,7 +161,7 @@ impl StandardMultiStore {
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(MultiStoreConfig {
 			buffer: Some(BufferConfig {
-				storage: BufferStorage::memory(),
+				storage: MultiBufferTier::memory(),
 			}),
 			persistent: None,
 			retention: Default::default(),
@@ -185,7 +186,7 @@ impl StandardMultiStore {
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(MultiStoreConfig {
 			buffer: Some(BufferConfig {
-				storage: BufferStorage::memory(),
+				storage: MultiBufferTier::memory(),
 			}),
 			persistent: Some(PersistentConfig::sqlite_in_memory()),
 			retention: Default::default(),

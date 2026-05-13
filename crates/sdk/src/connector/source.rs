@@ -8,7 +8,7 @@ use reifydb_type::value::Value;
 
 use crate::{
 	error::{FFIError, Result},
-	operator::column::OperatorColumn,
+	operator::column::operator::OperatorColumn,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -153,6 +153,22 @@ impl<'a> RowView<'a> {
 		fixed_at::<i8>(&col, self.index)
 	}
 
+	pub fn u128(&self, name: &str) -> Option<u128> {
+		let col = self.column_defined(name)?;
+		if col.type_code() != ColumnTypeCode::Uint16 {
+			return None;
+		}
+		fixed_at::<u128>(&col, self.index)
+	}
+
+	pub fn i128(&self, name: &str) -> Option<i128> {
+		let col = self.column_defined(name)?;
+		if col.type_code() != ColumnTypeCode::Int16 {
+			return None;
+		}
+		fixed_at::<i128>(&col, self.index)
+	}
+
 	pub fn f64(&self, name: &str) -> Option<f64> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
