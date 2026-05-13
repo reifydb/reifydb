@@ -179,11 +179,14 @@ pub trait TumblingOperator {
 	/// window's `combine` for the same group. Default: the largest-key
 	/// slot's contribution (the latest event in this window).
 	///
-	/// Operators that want a different carry forward (e.g. an aggregated
-	/// summary rather than the latest slot) override this.
+	/// `carried_forward` is the carry value that was just consumed by
+	/// `combine` for this window. Operators whose carry depends on a
+	/// derived quantity (e.g. Heikin-Ashi's recursive ha_open/ha_close)
+	/// need access to the prior carry to compute the next one.
 	fn carry_forward(
 		&self,
 		slots: &BTreeMap<Self::SlotKey, Self::SlotContribution>,
+		_carried_forward: Option<&Self::SlotContribution>,
 	) -> Option<Self::SlotContribution> {
 		slots.last_key_value().map(|(_, v)| v.clone())
 	}

@@ -204,7 +204,7 @@ where
 			let output = self.aggregator.combine(&group, span, &slot_map, prev_close.as_ref());
 
 			if output.is_some()
-				&& let Some(new_carry) = self.aggregator.carry_forward(&slot_map)
+				&& let Some(new_carry) = self.aggregator.carry_forward(&slot_map, prev_close.as_ref())
 			{
 				let entry = meta_loaded.entry(group.clone()).or_default();
 				entry.current_window_carry = Some(new_carry);
