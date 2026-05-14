@@ -25,7 +25,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	Result,
 	params::Params,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
 use crate::{
@@ -100,6 +100,9 @@ impl FilterOperator {
 					match result_col.data().get_value(row_idx) {
 						Value::Boolean(true) => {}
 						Value::Boolean(false) => *mask_val = false,
+						Value::None {
+							inner: Type::Boolean,
+						} => *mask_val = false,
 						result => {
 							return internal_err!(
 								"Filter condition did not evaluate to boolean, got: {:?}",
