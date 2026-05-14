@@ -782,6 +782,7 @@ impl<'bump> Parser<'bump> {
 		};
 
 		let mut hydration = AstHydrationConfig::default();
+		let mut throttle: Option<Duration> = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -800,14 +801,17 @@ impl<'bump> Parser<'bump> {
 					"hydration" => {
 						hydration = self.parse_hydration_with_value()?;
 					}
+					"throttle" => {
+						throttle = Some(self.parse_tick_duration()?);
+					}
 					_ => {
 						let fragment = key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'hydration'".to_string(),
+								expected: "'hydration' or 'throttle'".to_string(),
 							},
 							message: format!(
-								"expected 'hydration', found `{}`",
+								"expected 'hydration' or 'throttle', found `{}`",
 								fragment.text()
 							),
 							fragment,
@@ -888,6 +892,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			hydration,
+			throttle,
 		}))
 	}
 

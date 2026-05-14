@@ -1121,6 +1121,7 @@ impl InstructionCompiler {
 						.map(|a| materialize_query_plan(BumpBox::into_inner(a)).map(Box::new))
 						.transpose()?,
 					hydration: node.hydration,
+					throttle: node.throttle.map(compile_tick_duration),
 				}));
 				self.emit(Instruction::Emit);
 			}

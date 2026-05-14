@@ -658,6 +658,7 @@ pub struct CreateSubscriptionNode<'bump> {
 	pub columns: Vec<SubscriptionColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub hydration: HydrationConfig,
+	pub throttle: Option<Duration>,
 }
 
 #[derive(Debug)]

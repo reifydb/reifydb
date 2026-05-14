@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use reifydb_client::{
 	HydrationConfig as ClientHydrationConfig, RawChangePayload, SubscriptionConfig as ClientSubscriptionConfig,
@@ -127,6 +127,7 @@ impl ReifyDbService {
 		format: WireFormat,
 		identity: IdentityId,
 		hydration: HydrationConfig,
+		throttle: Duration,
 		rql: &str,
 	) -> Result<Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
 		let (tx, rx) = mpsc::unbounded_channel();
@@ -140,7 +141,7 @@ impl ReifyDbService {
 			return Err(Status::internal("Failed to send subscribed event"));
 		}
 
-		self.registry.register(subscription_id, tx.clone(), format);
+		self.registry.register(subscription_id, tx.clone(), format, throttle);
 
 		if hydration.enabled {
 			let server_cap = self.state.subscribe_max_hydration_rows();
@@ -381,18 +382,24 @@ impl ReifyDb for ReifyDbService {
 			CreateSubscriptionResult::Local {
 				id,
 				hydration,
-			} => self.subscribe_local(id, format, identity, hydration, &inner.rql).await,
+				throttle,
+			} => {
+				let throttle = self.state.clamp_throttle(throttle);
+				self.subscribe_local(id, format, identity, hydration, throttle, &inner.rql).await
+			}
 			CreateSubscriptionResult::Remote {
 				address,
 				body,
 				token: ns_token,
 				hydration,
+				throttle,
 			} => {
 				let config = ClientSubscriptionConfig {
 					hydration: ClientHydrationConfig {
 						enabled: hydration.enabled,
 						max_rows: hydration.max_rows,
 					},
+					throttle,
 				};
 				self.subscribe_remote(address, &body, config, ns_token, format).await
 			}
@@ -443,15 +450,16 @@ impl ReifyDb for ReifyDbService {
 		}
 
 		let mut resolved: Vec<GrpcResolvedMember> = Vec::with_capacity(inner.rql.len());
-		let mut local_hydrations: Vec<(SubscriptionId, String, HydrationConfig)> = Vec::new();
+		let mut local_hydrations: Vec<(SubscriptionId, String, HydrationConfig, Option<Duration>)> = Vec::new();
 		for (index, rql) in inner.rql.iter().enumerate() {
 			let metadata = Self::build_metadata_placeholder();
 			match create_subscription(&self.state, identity, rql, metadata).await {
 				Ok(CreateSubscriptionResult::Local {
 					id,
 					hydration,
+					throttle,
 				}) => {
-					local_hydrations.push((id, rql.clone(), hydration));
+					local_hydrations.push((id, rql.clone(), hydration, throttle));
 					resolved.push(GrpcResolvedMember::Local {
 						index,
 						subscription_id: id,
@@ -462,6 +470,7 @@ impl ReifyDb for ReifyDbService {
 					body,
 					token: ns_token,
 					hydration,
+					throttle,
 				}) => {
 					let client_format = match format {
 						WireFormat::Rbcf => ClientWireFormat::Rbcf,
@@ -472,6 +481,7 @@ impl ReifyDb for ReifyDbService {
 							enabled: hydration.enabled,
 							max_rows: hydration.max_rows,
 						},
+						throttle,
 					};
 					match connect_remote(
 						&address,
@@ -522,7 +532,13 @@ impl ReifyDb for ReifyDbService {
 				..
 			} = member
 			{
-				self.registry.register_batch_member(*subscription_id, format);
+				let throttle = self.state.clamp_throttle(
+					local_hydrations
+						.iter()
+						.find(|(sid, _, _, _)| sid == subscription_id)
+						.and_then(|(_, _, _, t)| *t),
+				);
+				self.registry.register_batch_member(*subscription_id, format, throttle);
 			}
 		}
 
@@ -552,14 +568,14 @@ impl ReifyDb for ReifyDbService {
 			return Err(Status::internal("Failed to send subscribed event"));
 		}
 
-		if local_hydrations.iter().any(|(_, _, h)| h.enabled) {
+		if local_hydrations.iter().any(|(_, _, h, _)| h.enabled) {
 			let (_, lease) = self
 				.state
 				.engine()
 				.acquire_current_snapshot_lease()
 				.map_err(|e| status_for_engine_error(&e))?;
 			let server_cap = self.state.subscribe_max_hydration_rows();
-			for (sub_id, rql_owned, hydration) in &local_hydrations {
+			for (sub_id, rql_owned, hydration, _) in &local_hydrations {
 				if !hydration.enabled {
 					continue;
 				}

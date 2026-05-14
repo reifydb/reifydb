@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::time::Duration;
+
 use reifydb_core::interface::catalog::{id::SubscriptionId, subscription::HydrationConfig};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_type::value::frame::{column::FrameColumn, frame::Frame};
@@ -16,12 +18,14 @@ pub enum CreateSubscriptionResult {
 	Local {
 		id: SubscriptionId,
 		hydration: HydrationConfig,
+		throttle: Option<Duration>,
 	},
 	Remote {
 		address: String,
 		body: String,
 		token: Option<String>,
 		hydration: HydrationConfig,
+		throttle: Option<Duration>,
 	},
 }
 
@@ -79,6 +83,7 @@ fn extract_remote_result(frame: &Frame) -> Result<Option<CreateSubscriptionResul
 	let token = frame.columns.iter().find(|c| c.name == "remote_token").and_then(first_utf8_value);
 	let enabled = first_bool_value(frame, "remote_hydration_enabled").unwrap_or(true);
 	let max_rows = first_uint8_value(frame, "remote_hydration_max_rows");
+	let throttle = first_uint8_value(frame, "remote_throttle_ms").map(Duration::from_millis);
 	Ok(Some(CreateSubscriptionResult::Remote {
 		address,
 		body,
@@ -87,6 +92,7 @@ fn extract_remote_result(frame: &Frame) -> Result<Option<CreateSubscriptionResul
 			enabled,
 			max_rows,
 		},
+		throttle,
 	}))
 }
 
@@ -114,6 +120,7 @@ fn extract_local_result(frame: &Frame) -> Result<CreateSubscriptionResult, Creat
 
 	let enabled = first_bool_value(frame, "hydration_enabled").unwrap_or(true);
 	let max_rows = first_uint8_value(frame, "hydration_max_rows");
+	let throttle = first_uint8_value(frame, "throttle_ms").map(Duration::from_millis);
 
 	Ok(CreateSubscriptionResult::Local {
 		id,
@@ -121,6 +128,7 @@ fn extract_local_result(frame: &Frame) -> Result<CreateSubscriptionResult, Creat
 			enabled,
 			max_rows,
 		},
+		throttle,
 	})
 }
 

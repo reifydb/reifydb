@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::time::Duration;
+
 #[derive(Debug, Clone)]
 pub struct HydrationConfig {
 	pub enabled: bool,
@@ -19,6 +21,7 @@ impl Default for HydrationConfig {
 #[derive(Debug, Clone, Default)]
 pub struct SubscriptionConfig {
 	pub hydration: HydrationConfig,
+	pub throttle: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,10 +41,14 @@ impl<'a> BatchItem<'a> {
 
 pub fn build_subscription_rql(body: &str, config: &SubscriptionConfig) -> String {
 	let h = &config.hydration;
-	let with_clause = match h.max_rows {
-		Some(n) => format!(" WITH {{ hydration: {{ enabled: {}, max_rows: {} }} }}", h.enabled, n),
-		None => format!(" WITH {{ hydration: {{ enabled: {} }} }}", h.enabled),
+	let mut opts = match h.max_rows {
+		Some(n) => format!("hydration: {{ enabled: {}, max_rows: {} }}", h.enabled, n),
+		None => format!("hydration: {{ enabled: {} }}", h.enabled),
 	};
+	if let Some(throttle) = config.throttle {
+		opts.push_str(&format!(", throttle: \"{}ms\"", throttle.as_millis()));
+	}
+	let with_clause = format!(" WITH {{ {} }}", opts);
 	let mut out = String::with_capacity(body.len() + with_clause.len() + 32);
 	out.push_str("CREATE SUBSCRIPTION");
 	out.push_str(&with_clause);
@@ -68,6 +75,7 @@ mod tests {
 				enabled: true,
 				max_rows: Some(500),
 			},
+			throttle: None,
 		};
 		let s = build_subscription_rql("from a::b", &cfg);
 		assert_eq!(
@@ -83,6 +91,7 @@ mod tests {
 				enabled: false,
 				max_rows: None,
 			},
+			throttle: None,
 		};
 		let s = build_subscription_rql("from a::b | take 10", &cfg);
 		assert_eq!(s, "CREATE SUBSCRIPTION WITH { hydration: { enabled: false } } AS { from a::b | take 10 }");

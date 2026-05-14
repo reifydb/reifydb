@@ -28,6 +28,7 @@ impl<'bump> Compiler<'bump> {
 			columns: create.columns,
 			as_clause,
 			hydration: create.hydration,
+			throttle: create.throttle,
 		}))
 	}
 }

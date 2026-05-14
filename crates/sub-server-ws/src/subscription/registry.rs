@@ -4,6 +4,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	mem,
+	time::Duration,
 };
 
 use dashmap::DashMap;
@@ -81,6 +82,35 @@ struct SubscriptionState {
 	batch_id: Option<BatchId>,
 
 	warming: Option<WarmingBuffer>,
+
+	throttle: ThrottleState,
+}
+
+struct ThrottleState {
+	interval_millis: u64,
+	last_sent_at: Option<u64>,
+	pending: Vec<Columns>,
+}
+
+impl ThrottleState {
+	fn new(interval: Duration) -> Self {
+		Self {
+			interval_millis: interval.as_millis() as u64,
+			last_sent_at: None,
+			pending: Vec::new(),
+		}
+	}
+
+	fn enabled(&self) -> bool {
+		self.interval_millis != 0
+	}
+
+	fn ready(&self, now_millis: u64) -> bool {
+		match self.last_sent_at {
+			None => true,
+			Some(prev) => now_millis.saturating_sub(prev) >= self.interval_millis,
+		}
+	}
 }
 
 struct WarmingBuffer {
@@ -138,18 +168,22 @@ pub struct SubscriptionRegistry {
 	batches: DashMap<BatchId, BatchState>,
 
 	connection_batches: DashMap<ConnectionId, Vec<BatchId>>,
+
+	clock: Clock,
 }
 
 impl SubscriptionRegistry {
-	pub fn new() -> Self {
+	pub fn new(clock: Clock) -> Self {
 		Self {
 			subscriptions: DashMap::new(),
 			connections: DashMap::new(),
 			batches: DashMap::new(),
 			connection_batches: DashMap::new(),
+			clock,
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn subscribe(
 		&self,
 		subscription_id: SubscriptionId,
@@ -158,6 +192,7 @@ impl SubscriptionRegistry {
 		push_tx: mpsc::UnboundedSender<PushMessage>,
 		format: WireFormat,
 		warming_cap: Option<usize>,
+		throttle: Duration,
 	) {
 		self.subscriptions.insert(
 			subscription_id,
@@ -168,6 +203,7 @@ impl SubscriptionRegistry {
 				query,
 				batch_id: None,
 				warming: warming_cap.map(WarmingBuffer::new),
+				throttle: ThrottleState::new(throttle),
 			},
 		);
 
@@ -413,12 +449,6 @@ impl SubscriptionRegistry {
 	}
 }
 
-impl Default for SubscriptionRegistry {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl SubscriptionDelivery for SubscriptionRegistry {
 	fn try_deliver(&self, subscription_id: &SubscriptionId, columns: Columns) -> DeliveryResult {
 		if let Some(batch_id) = self.batch_for(subscription_id) {
@@ -430,26 +460,43 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 			return DeliveryResult::Disconnected;
 		}
 
-		if let Some(mut state) = self.subscriptions.get_mut(subscription_id)
-			&& let Some(buffer) = state.warming.as_mut()
-		{
+		let mut state = match self.subscriptions.get_mut(subscription_id) {
+			Some(s) => s,
+			None => return DeliveryResult::Disconnected,
+		};
+
+		if let Some(buffer) = state.warming.as_mut() {
 			buffer.push(columns);
 			return DeliveryResult::Delivered;
 		}
 
-		let (push_tx, format) = match self.get_push_target(subscription_id) {
-			Some(t) => t,
-			None => return DeliveryResult::Disconnected,
-		};
-
-		let msg = match encode_change(*subscription_id, columns, format) {
-			Some(msg) => msg,
-			None => return DeliveryResult::Disconnected,
-		};
-
-		match push_tx.send(msg) {
-			Ok(_) => DeliveryResult::Delivered,
-			Err(_) => DeliveryResult::Disconnected,
+		if state.throttle.enabled() {
+			let now = self.clock.now_millis();
+			if state.throttle.ready(now) && state.throttle.pending.is_empty() {
+				let msg = match encode_change(*subscription_id, columns, state.format) {
+					Some(msg) => msg,
+					None => return DeliveryResult::Disconnected,
+				};
+				match state.push_tx.send(msg) {
+					Ok(_) => {
+						state.throttle.last_sent_at = Some(now);
+						DeliveryResult::Delivered
+					}
+					Err(_) => DeliveryResult::Disconnected,
+				}
+			} else {
+				state.throttle.pending.push(columns);
+				DeliveryResult::Delivered
+			}
+		} else {
+			let msg = match encode_change(*subscription_id, columns, state.format) {
+				Some(msg) => msg,
+				None => return DeliveryResult::Disconnected,
+			};
+			match state.push_tx.send(msg) {
+				Ok(_) => DeliveryResult::Delivered,
+				Err(_) => DeliveryResult::Disconnected,
+			}
 		}
 	}
 
@@ -458,6 +505,51 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 	}
 
 	fn flush(&self) {
+		let now = self.clock.now_millis();
+		let mut throttle_ready: Vec<(
+			SubscriptionId,
+			Vec<Columns>,
+			WireFormat,
+			mpsc::UnboundedSender<PushMessage>,
+		)> = Vec::new();
+
+		for mut entry in self.subscriptions.iter_mut() {
+			let sub_id = *entry.key();
+			let state = entry.value_mut();
+			if state.batch_id.is_some() || state.warming.is_some() {
+				continue;
+			}
+			if !state.throttle.enabled() || state.throttle.pending.is_empty() {
+				continue;
+			}
+			if !state.throttle.ready(now) {
+				continue;
+			}
+			let drained = mem::take(&mut state.throttle.pending);
+			state.throttle.last_sent_at = Some(now);
+			throttle_ready.push((sub_id, drained, state.format, state.push_tx.clone()));
+		}
+
+		let mut dead_subs: Vec<SubscriptionId> = Vec::new();
+		for (sub_id, drained, format, push_tx) in throttle_ready {
+			for columns in drained {
+				let msg = match encode_change(sub_id, columns, format) {
+					Some(m) => m,
+					None => {
+						dead_subs.push(sub_id);
+						break;
+					}
+				};
+				if push_tx.send(msg).is_err() {
+					dead_subs.push(sub_id);
+					break;
+				}
+			}
+		}
+		for sub_id in dead_subs {
+			self.unsubscribe(sub_id);
+		}
+
 		let mut dead_batches: Vec<BatchId> = Vec::new();
 
 		for entry in self.batches.iter() {
@@ -677,12 +769,20 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_subscribe_unsubscribe() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (tx, mut rx) = mpsc::unbounded_channel();
 
 		let sub_id = SubscriptionId(12345);
-		registry.subscribe(sub_id, connection_id, "FROM test".to_string(), tx, WireFormat::Frames, None);
+		registry.subscribe(
+			sub_id,
+			connection_id,
+			"FROM test".to_string(),
+			tx,
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
 		assert_eq!(registry.subscription_count(), 1);
 
 		// Broadcast with a content_type + body
@@ -725,15 +825,31 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_cleanup_connection() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (tx1, _rx1) = mpsc::unbounded_channel();
 		let (tx2, _rx2) = mpsc::unbounded_channel();
 
 		let sub1 = SubscriptionId(12345);
 		let sub2 = SubscriptionId(12346);
-		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1, WireFormat::Json, None);
-		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2, WireFormat::Json, None);
+		registry.subscribe(
+			sub1,
+			connection_id,
+			"FROM test1".to_string(),
+			tx1,
+			WireFormat::Json,
+			None,
+			Duration::ZERO,
+		);
+		registry.subscribe(
+			sub2,
+			connection_id,
+			"FROM test2".to_string(),
+			tx2,
+			WireFormat::Json,
+			None,
+			Duration::ZERO,
+		);
 		assert_eq!(registry.subscription_count(), 2);
 
 		registry.cleanup_connection(connection_id);
@@ -744,15 +860,31 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_partial_unsubscribe() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (tx1, _rx1) = mpsc::unbounded_channel();
 		let (tx2, _rx2) = mpsc::unbounded_channel();
 
 		let sub1 = SubscriptionId(12345);
 		let sub2 = SubscriptionId(12346);
-		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1, WireFormat::Json, None);
-		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2, WireFormat::Json, None);
+		registry.subscribe(
+			sub1,
+			connection_id,
+			"FROM test1".to_string(),
+			tx1,
+			WireFormat::Json,
+			None,
+			Duration::ZERO,
+		);
+		registry.subscribe(
+			sub2,
+			connection_id,
+			"FROM test2".to_string(),
+			tx2,
+			WireFormat::Json,
+			None,
+			Duration::ZERO,
+		);
 		assert_eq!(registry.subscription_count(), 2);
 		assert_eq!(registry.connection_count(), 1);
 
@@ -768,7 +900,7 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_batch_flush_coalesces_two_members() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
 
@@ -782,6 +914,7 @@ pub mod tests {
 			push_tx.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::ZERO,
 		);
 		registry.subscribe(
 			sub_b,
@@ -790,6 +923,7 @@ pub mod tests {
 			push_tx.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::ZERO,
 		);
 
 		let batch_id = registry.register_batch(
@@ -840,7 +974,7 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_batch_flush_merges_repeated_member_deliveries() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
 
@@ -852,6 +986,7 @@ pub mod tests {
 			push_tx.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::ZERO,
 		);
 		let batch_id =
 			registry.register_batch(connection_id, vec![sub_a], push_tx, WireFormat::Frames, &clock, &rng);
@@ -882,7 +1017,7 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_batch_flush_empty_tick_is_noop() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
 		let sub_a = SubscriptionId(77);
@@ -893,6 +1028,7 @@ pub mod tests {
 			push_tx.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::ZERO,
 		);
 		registry.register_batch(connection_id, vec![sub_a], push_tx, WireFormat::Frames, &clock, &rng);
 
@@ -903,7 +1039,7 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_batch_unsubscribe_cascades_members() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (push_tx, _push_rx) = mpsc::unbounded_channel();
 		let sub_a = SubscriptionId(11);
@@ -915,6 +1051,7 @@ pub mod tests {
 			push_tx.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::ZERO,
 		);
 		registry.subscribe(
 			sub_b,
@@ -923,6 +1060,7 @@ pub mod tests {
 			push_tx.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::ZERO,
 		);
 		let batch_id = registry.register_batch(
 			connection_id,
@@ -942,7 +1080,7 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_batch_cleanup_on_connection_close() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (push_tx, _push_rx) = mpsc::unbounded_channel();
 		let sub_a = SubscriptionId(31);
@@ -953,6 +1091,7 @@ pub mod tests {
 			push_tx.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::ZERO,
 		);
 		registry.register_batch(connection_id, vec![sub_a], push_tx, WireFormat::Frames, &clock, &rng);
 
@@ -973,7 +1112,7 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_batch_flush_cascades_on_dead_channel() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (push_tx, push_rx) = mpsc::unbounded_channel();
 		let sub_a = SubscriptionId(55);
@@ -984,6 +1123,7 @@ pub mod tests {
 			push_tx.clone(),
 			WireFormat::Frames,
 			None,
+			Duration::ZERO,
 		);
 		let _batch_id =
 			registry.register_batch(connection_id, vec![sub_a], push_tx, WireFormat::Frames, &clock, &rng);
@@ -1001,12 +1141,20 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_warming_buffers_until_promote() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
 
 		let sub = SubscriptionId(7001);
-		registry.subscribe(sub, connection_id, "FROM warm".to_string(), push_tx, WireFormat::Frames, Some(16));
+		registry.subscribe(
+			sub,
+			connection_id,
+			"FROM warm".to_string(),
+			push_tx,
+			WireFormat::Frames,
+			Some(16),
+			Duration::ZERO,
+		);
 
 		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 1)), DeliveryResult::Delivered));
 		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 2)), DeliveryResult::Delivered));
@@ -1030,12 +1178,20 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_warming_overflow_marks_subscription() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (push_tx, _push_rx) = mpsc::unbounded_channel();
 
 		let sub = SubscriptionId(7002);
-		registry.subscribe(sub, connection_id, "FROM warm".to_string(), push_tx, WireFormat::Frames, Some(2));
+		registry.subscribe(
+			sub,
+			connection_id,
+			"FROM warm".to_string(),
+			push_tx,
+			WireFormat::Frames,
+			Some(2),
+			Duration::ZERO,
+		);
 
 		registry.try_deliver(&sub, single_int_columns("v", 1));
 		registry.try_deliver(&sub, single_int_columns("v", 2));
@@ -1049,7 +1205,7 @@ pub mod tests {
 
 	#[tokio::test]
 	async fn test_promote_unknown_subscription() {
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(Clock::Mock(MockClock::from_millis(0)));
 		match registry.promote_to_live(SubscriptionId(999)) {
 			PromoteResult::NotFound => {}
 			other => panic!("expected NotFound, got {:?}", other),
@@ -1059,12 +1215,20 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_promote_non_warming_subscription() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
 		let (push_tx, _push_rx) = mpsc::unbounded_channel();
 
 		let sub = SubscriptionId(7003);
-		registry.subscribe(sub, connection_id, "FROM live".to_string(), push_tx, WireFormat::Frames, None);
+		registry.subscribe(
+			sub,
+			connection_id,
+			"FROM live".to_string(),
+			push_tx,
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
 
 		match registry.promote_to_live(sub) {
 			PromoteResult::NotWarming => {}

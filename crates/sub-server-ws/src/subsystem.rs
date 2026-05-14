@@ -75,6 +75,7 @@ impl WsSubsystem {
 		subscription_store: Option<Arc<SubscriptionStore>>,
 	) -> Self {
 		let max_connections = state.max_connections();
+		let clock = state.clock().clone();
 		Self {
 			bind_addr,
 			admin_bind_addr,
@@ -88,7 +89,7 @@ impl WsSubsystem {
 			admin_shutdown_complete_rx: None,
 			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
 			runtime,
-			registry: Arc::new(SubscriptionRegistry::new()),
+			registry: Arc::new(SubscriptionRegistry::new(clock)),
 			poll_interval,
 			poll_batch_size,
 			subscription_store,
