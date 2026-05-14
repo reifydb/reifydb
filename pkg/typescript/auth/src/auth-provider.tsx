@@ -18,6 +18,8 @@ import {
   clearStoredSession,
   readStoredSession,
   storageKeyFor,
+  sweepExpiredSessions,
+  tabScopedNamespace,
   writeStoredSession,
 } from "./storage";
 import type {
@@ -73,8 +75,12 @@ export function AuthProvider<TClient extends AuthCapableClient>(
     children,
   } = props;
 
+  // Per-tab storage slot: each tab gets its own localStorage key so concurrent
+  // sign-ins in different tabs cannot stomp each other's session.
+  const effective_namespace = tabScopedNamespace(storageNamespace);
+
   const [state, setState] = useState<InternalState>(() => {
-    const stored = readStoredSession(storageNamespace);
+    const stored = readStoredSession(effective_namespace);
     return stored
       ? { status: "verifying", session: stored, clientReady: false, error: null }
       : { status: "disconnected", session: null, clientReady: false, error: null };
@@ -94,7 +100,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
 
   const tear_down = useCallback(
     (next_status: InternalState["status"], next_error: string | null) => {
-      clearStoredSession(storageNamespace);
+      clearStoredSession(effective_namespace);
       clearClient();
       setState({
         status: next_status,
@@ -103,7 +109,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
         error: next_error,
       });
     },
-    [storageNamespace],
+    [effective_namespace],
   );
 
   // Wallet-match gate: the security invariant. The authenticated client is only
@@ -162,37 +168,56 @@ export function AuthProvider<TClient extends AuthCapableClient>(
     tear_down,
   ]);
 
-  // Cross-tab defense: if our storage entry is changed or cleared by another
-  // tab, re-validate and tear down if it no longer matches our in-memory state.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const key = storageKeyFor(storageNamespace);
+    const key = storageKeyFor(effective_namespace);
     const on_storage = (e: StorageEvent) => {
       if (e.key !== key) return;
       const current = session_ref.current;
+
+      // Another tab signed out / cleared the session.
       if (e.newValue == null) {
         if (current != null) tear_down("disconnected", null);
         return;
       }
+
+      let parsed: Partial<AuthSession>;
       try {
-        const parsed = JSON.parse(e.newValue) as Partial<AuthSession>;
-        if (
-          current == null ||
-          parsed.token !== current.token ||
-          parsed.wallet_address !== current.wallet_address ||
-          parsed.identity !== current.identity
-        ) {
-          tear_down("disconnected", null);
-        }
+        parsed = JSON.parse(e.newValue) as Partial<AuthSession>;
       } catch {
+        // Corrupt entry written by another tab. Only react if we actually hold
+        // a session; otherwise there is nothing to defend.
+        if (current != null) tear_down("disconnected", null);
+        return;
+      }
+
+      // We hold no session of our own: nothing to defend. Clearing storage here
+      // would clobber the session the other tab just wrote (and bounce it back
+      // out through this same handler). Let our own sign-in / autoConnect flow
+      // converge independently.
+      if (current == null) return;
+
+      // A genuinely different principal took over our storage slot.
+      if (
+        parsed.wallet_address !== current.wallet_address ||
+        parsed.identity !== current.identity
+      ) {
         tear_down("disconnected", null);
       }
+
+      // Same principal, different token: a concurrent sign-in in another tab,
+      // not an intrusion. Keep our own still-valid client.
     };
     window.addEventListener("storage", on_storage);
     return () => {
       window.removeEventListener("storage", on_storage);
     };
-  }, [storageNamespace, tear_down]);
+  }, [effective_namespace, tear_down]);
+
+  // Housekeeping: drop expired per-tab slots left behind by closed tabs.
+  useEffect(() => {
+    sweepExpiredSessions(storageNamespace);
+  }, [storageNamespace]);
 
   const signIn = useCallback(async () => {
     const w = wallet_ref.current;
@@ -216,7 +241,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
       if (session.wallet_address !== wallet_ref.current.publicKey) {
         throw new Error("Wallet changed during sign in");
       }
-      writeStoredSession(storageNamespace, session);
+      writeStoredSession(effective_namespace, session);
       setState({
         status: "verifying",
         session,
@@ -239,7 +264,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
     domain,
     statement,
     sessionTtlSeconds,
-    storageNamespace,
+    effective_namespace,
   ]);
 
   const signOut = useCallback(async () => {
