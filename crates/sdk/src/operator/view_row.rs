@@ -4,7 +4,8 @@
 use postcard::from_bytes;
 use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_type::value::{
-	Value, decimal::Decimal, ordered_f32::OrderedF32, ordered_f64::OrderedF64, row_number::RowNumber, r#type::Type,
+	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, ordered_f32::OrderedF32,
+	ordered_f64::OrderedF64, row_number::RowNumber, time::Time, r#type::Type,
 };
 use serde::de::DeserializeOwned;
 
@@ -194,6 +195,38 @@ impl<'a> RowView<'a> {
 			ColumnTypeCode::Float4 => fixed_at::<f32>(&col, self.index).map(|v| Decimal::from(v as f64)),
 			_ => None,
 		}
+	}
+
+	pub fn date(&self, name: &str) -> Option<Date> {
+		let col = self.column_defined(name)?;
+		if col.type_code() != ColumnTypeCode::Date {
+			return None;
+		}
+		fixed_at::<Date>(&col, self.index)
+	}
+
+	pub fn datetime(&self, name: &str) -> Option<DateTime> {
+		let col = self.column_defined(name)?;
+		if col.type_code() != ColumnTypeCode::DateTime {
+			return None;
+		}
+		fixed_at::<DateTime>(&col, self.index)
+	}
+
+	pub fn time(&self, name: &str) -> Option<Time> {
+		let col = self.column_defined(name)?;
+		if col.type_code() != ColumnTypeCode::Time {
+			return None;
+		}
+		fixed_at::<Time>(&col, self.index)
+	}
+
+	pub fn duration(&self, name: &str) -> Option<Duration> {
+		let col = self.column_defined(name)?;
+		if col.type_code() != ColumnTypeCode::Duration {
+			return None;
+		}
+		fixed_at::<Duration>(&col, self.index)
 	}
 
 	pub fn value(&self, name: &str) -> Option<Value> {

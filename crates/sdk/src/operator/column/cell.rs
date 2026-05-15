@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use postcard::to_allocvec;
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_type::value::decimal::Decimal;
+use reifydb_type::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
 
 use crate::{
 	error::FFIError,
@@ -126,6 +126,58 @@ impl Cell for Decimal {
 	#[inline]
 	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
 		view.decimal(name)
+	}
+}
+
+impl Cell for Date {
+	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Date;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		e.push_date(col, *self);
+		Ok(())
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		view.date(name)
+	}
+}
+
+impl Cell for DateTime {
+	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::DateTime;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		e.push_datetime(col, *self);
+		Ok(())
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		view.datetime(name)
+	}
+}
+
+impl Cell for Time {
+	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Time;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		e.push_time(col, *self);
+		Ok(())
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		view.time(name)
+	}
+}
+
+impl Cell for Duration {
+	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Duration;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		e.push_duration(col, *self);
+		Ok(())
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		view.duration(name)
 	}
 }
 

@@ -214,6 +214,7 @@ pub struct CreateSubscriptionNode<'bump> {
 	pub columns: Vec<SubscriptionColumnToCreate>,
 	pub as_clause: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub hydration: HydrationConfig,
+	pub throttle: Option<Duration>,
 }
 
 #[derive(Debug)]

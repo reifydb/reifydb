@@ -133,6 +133,9 @@ export interface HydrationConfig {
 
 export interface SubscriptionConfig {
     hydration?: HydrationConfig;
+    // Minimum interval in milliseconds between updates pushed to this subscription.
+    // Omitted or undefined means no throttling (every change is delivered immediately).
+    throttle?: number;
 }
 
 export function default_hydration_config(): HydrationConfig {
@@ -146,10 +149,13 @@ export function default_subscription_config(): SubscriptionConfig {
 export function build_subscription_rql(body: string, config?: SubscriptionConfig): string {
     const h = config?.hydration ?? default_hydration_config();
     const enabled = h.enabled;
-    const with_clause = h.max_rows !== undefined
-        ? ` WITH { hydration: { enabled: ${enabled}, max_rows: ${h.max_rows} } }`
-        : ` WITH { hydration: { enabled: ${enabled} } }`;
-    return `CREATE SUBSCRIPTION${with_clause} AS { ${body} }`;
+    let opts = h.max_rows !== undefined
+        ? `hydration: { enabled: ${enabled}, max_rows: ${h.max_rows} }`
+        : `hydration: { enabled: ${enabled} }`;
+    if (config?.throttle !== undefined) {
+        opts += `, throttle: "${config.throttle}ms"`;
+    }
+    return `CREATE SUBSCRIPTION WITH { ${opts} } AS { ${body} }`;
 }
 
 export interface BatchSubscribeRequest {

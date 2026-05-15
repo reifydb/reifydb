@@ -270,6 +270,7 @@ pub struct CreateSubscriptionNode {
 	pub columns: Vec<SubscriptionColumnToCreate>,
 	pub as_clause: Option<Box<QueryPlan>>,
 	pub hydration: HydrationConfig,
+	pub throttle: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]

@@ -798,6 +798,7 @@ pub struct AstCreateSubscription<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub hydration: AstHydrationConfig,
+	pub throttle: Option<Duration>,
 }
 
 #[derive(Debug)]

@@ -4,6 +4,7 @@
 use core::marker::PhantomData;
 
 use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 use crate::{
 	error::FFIError,
@@ -241,6 +242,10 @@ pub type I64Writer<'a> = ScalarWriter<'a, i64>;
 pub type I128Writer<'a> = ScalarWriter<'a, i128>;
 pub type F32Writer<'a> = ScalarWriter<'a, f32>;
 pub type F64Writer<'a> = ScalarWriter<'a, f64>;
+pub type DateWriter<'a> = ScalarWriter<'a, Date>;
+pub type DateTimeWriter<'a> = ScalarWriter<'a, DateTime>;
+pub type TimeWriter<'a> = ScalarWriter<'a, Time>;
+pub type DurationWriter<'a> = ScalarWriter<'a, Duration>;
 pub type Utf8Writer<'a> = VarLenWriter<'a>;
 pub type BlobWriter<'a> = VarLenWriter<'a>;
 pub type DecimalWriter<'a> = VarLenWriter<'a>;
@@ -282,6 +287,18 @@ impl<'a> ColumnsBuilder<'a> {
 	pub fn f64_writer(&mut self, capacity: usize) -> Result<F64Writer<'_>, FFIError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Float8, capacity)?, capacity))
 	}
+	pub fn date_writer(&mut self, capacity: usize) -> Result<DateWriter<'_>, FFIError> {
+		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Date, capacity)?, capacity))
+	}
+	pub fn datetime_writer(&mut self, capacity: usize) -> Result<DateTimeWriter<'_>, FFIError> {
+		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::DateTime, capacity)?, capacity))
+	}
+	pub fn time_writer(&mut self, capacity: usize) -> Result<TimeWriter<'_>, FFIError> {
+		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Time, capacity)?, capacity))
+	}
+	pub fn duration_writer(&mut self, capacity: usize) -> Result<DurationWriter<'_>, FFIError> {
+		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Duration, capacity)?, capacity))
+	}
 	pub fn bool_writer(&mut self, capacity: usize) -> Result<BoolWriter<'_>, FFIError> {
 		Ok(BoolWriter::new(self.acquire(ColumnTypeCode::Bool, capacity)?, capacity))
 	}
@@ -306,7 +323,10 @@ mod tests {
 
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
-	use reifydb_type::value::{Value, decimal::Decimal, row_number::RowNumber};
+	use reifydb_type::value::{
+		Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber,
+		time::Time,
+	};
 
 	use crate::{
 		error::Result,
@@ -1117,5 +1137,224 @@ mod tests {
 		assert_eq!(post.row_count(), 1);
 		assert_eq!(post.row_ref(0).expect("r0").u128("a"), Some(u128::MAX));
 		assert_eq!(post.row_ref(0).expect("r0").i128("b"), Some(i128::MIN));
+	}
+
+	struct DateRow {
+		v: Date,
+	}
+	row!(DateRow {
+		v: Date
+	});
+
+	struct OpDate;
+	impl FFIOperatorMetadata for OpDate {
+		const NAME: &'static str = "writer_date";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "test fixture";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	}
+	impl FFIOperator for OpDate {
+		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+			Ok(Self)
+		}
+		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+			let values = [
+				Date::default(),
+				Date::new(2024, 3, 15).expect("date"),
+				Date::new(2554, 1, 1).expect("date"),
+			];
+			let mut batch = InsertBatch::<DateRow>::new(ctx, values.len())?;
+			for (i, &v) in values.iter().enumerate() {
+				batch.push(
+					RowNumber(i as u64 + 1),
+					&DateRow {
+						v,
+					},
+				)?;
+			}
+			batch.finish()
+		}
+		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
+			Ok(())
+		}
+	}
+
+	#[test]
+	fn scalar_date_roundtrip() {
+		let mut h = TestHarnessBuilder::<OpDate>::new().build().expect("harness");
+		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
+		let post = out.diffs[0].post().expect("post");
+		assert_eq!(post.row_count(), 3);
+		assert_eq!(post.row_ref(0).expect("r0").date("v"), Some(Date::default()));
+		assert_eq!(post.row_ref(1).expect("r1").date("v"), Date::new(2024, 3, 15));
+		assert_eq!(post.row_ref(2).expect("r2").date("v"), Date::new(2554, 1, 1));
+	}
+
+	struct DateTimeRow {
+		v: DateTime,
+	}
+	row!(DateTimeRow {
+		v: DateTime
+	});
+
+	struct OpDateTime;
+	impl FFIOperatorMetadata for OpDateTime {
+		const NAME: &'static str = "writer_datetime";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "test fixture";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	}
+	impl FFIOperator for OpDateTime {
+		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+			Ok(Self)
+		}
+		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+			let values = [
+				DateTime::from_nanos(0),
+				DateTime::from_nanos(1_700_000_000_000_000_000),
+				DateTime::from_nanos(u64::MAX),
+			];
+			let mut batch = InsertBatch::<DateTimeRow>::new(ctx, values.len())?;
+			for (i, &v) in values.iter().enumerate() {
+				batch.push(
+					RowNumber(i as u64 + 1),
+					&DateTimeRow {
+						v,
+					},
+				)?;
+			}
+			batch.finish()
+		}
+		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
+			Ok(())
+		}
+	}
+
+	#[test]
+	fn scalar_datetime_roundtrip() {
+		let mut h = TestHarnessBuilder::<OpDateTime>::new().build().expect("harness");
+		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
+		let post = out.diffs[0].post().expect("post");
+		assert_eq!(post.row_count(), 3);
+		assert_eq!(post.row_ref(0).expect("r0").datetime("v"), Some(DateTime::from_nanos(0)));
+		assert_eq!(
+			post.row_ref(1).expect("r1").datetime("v"),
+			Some(DateTime::from_nanos(1_700_000_000_000_000_000))
+		);
+		assert_eq!(post.row_ref(2).expect("r2").datetime("v"), Some(DateTime::from_nanos(u64::MAX)));
+	}
+
+	struct TimeRow {
+		v: Time,
+	}
+	row!(TimeRow {
+		v: Time
+	});
+
+	struct OpTime;
+	impl FFIOperatorMetadata for OpTime {
+		const NAME: &'static str = "writer_time";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "test fixture";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	}
+	impl FFIOperator for OpTime {
+		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+			Ok(Self)
+		}
+		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+			let values = [
+				Time::default(),
+				Time::new(14, 30, 45, 123_456_789).expect("time"),
+				Time::new(23, 59, 59, 999_999_999).expect("time"),
+			];
+			let mut batch = InsertBatch::<TimeRow>::new(ctx, values.len())?;
+			for (i, &v) in values.iter().enumerate() {
+				batch.push(
+					RowNumber(i as u64 + 1),
+					&TimeRow {
+						v,
+					},
+				)?;
+			}
+			batch.finish()
+		}
+		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
+			Ok(())
+		}
+	}
+
+	#[test]
+	fn scalar_time_roundtrip() {
+		let mut h = TestHarnessBuilder::<OpTime>::new().build().expect("harness");
+		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
+		let post = out.diffs[0].post().expect("post");
+		assert_eq!(post.row_count(), 3);
+		assert_eq!(post.row_ref(0).expect("r0").time("v"), Some(Time::default()));
+		assert_eq!(post.row_ref(1).expect("r1").time("v"), Time::new(14, 30, 45, 123_456_789));
+		assert_eq!(post.row_ref(2).expect("r2").time("v"), Time::new(23, 59, 59, 999_999_999));
+	}
+
+	struct DurationRow {
+		v: Duration,
+	}
+	row!(DurationRow {
+		v: Duration
+	});
+
+	struct OpDuration;
+	impl FFIOperatorMetadata for OpDuration {
+		const NAME: &'static str = "writer_duration";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "test fixture";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	}
+	impl FFIOperator for OpDuration {
+		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+			Ok(Self)
+		}
+		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+			let values = [
+				Duration::default(),
+				Duration::new(13, 5, 3_600_000_000_000).expect("duration"),
+				Duration::from_seconds(-30).expect("duration"),
+			];
+			let mut batch = InsertBatch::<DurationRow>::new(ctx, values.len())?;
+			for (i, &v) in values.iter().enumerate() {
+				batch.push(
+					RowNumber(i as u64 + 1),
+					&DurationRow {
+						v,
+					},
+				)?;
+			}
+			batch.finish()
+		}
+		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
+			Ok(())
+		}
+	}
+
+	#[test]
+	fn scalar_duration_roundtrip() {
+		let mut h = TestHarnessBuilder::<OpDuration>::new().build().expect("harness");
+		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
+		let post = out.diffs[0].post().expect("post");
+		assert_eq!(post.row_count(), 3);
+		assert_eq!(post.row_ref(0).expect("r0").duration("v"), Some(Duration::default()));
+		assert_eq!(post.row_ref(1).expect("r1").duration("v"), Duration::new(13, 5, 3_600_000_000_000).ok());
+		assert_eq!(post.row_ref(2).expect("r2").duration("v"), Duration::from_seconds(-30).ok());
 	}
 }

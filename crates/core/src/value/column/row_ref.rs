@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::{Value, decimal::Decimal, row_number::RowNumber};
+use reifydb_type::value::{
+	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
+};
 
 use crate::value::column::columns::Columns;
 
@@ -165,6 +167,34 @@ impl<'a> RowRef<'a> {
 	pub fn blob(&self, name: &str) -> Option<Vec<u8>> {
 		match self.value(name)? {
 			Value::Blob(b) => Some(b.as_bytes().to_vec()),
+			_ => None,
+		}
+	}
+
+	pub fn date(&self, name: &str) -> Option<Date> {
+		match self.value(name)? {
+			Value::Date(v) => Some(v),
+			_ => None,
+		}
+	}
+
+	pub fn datetime(&self, name: &str) -> Option<DateTime> {
+		match self.value(name)? {
+			Value::DateTime(v) => Some(v),
+			_ => None,
+		}
+	}
+
+	pub fn time(&self, name: &str) -> Option<Time> {
+		match self.value(name)? {
+			Value::Time(v) => Some(v),
+			_ => None,
+		}
+	}
+
+	pub fn duration(&self, name: &str) -> Option<Duration> {
+		match self.value(name)? {
+			Value::Duration(v) => Some(v),
 			_ => None,
 		}
 	}

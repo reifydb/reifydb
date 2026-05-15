@@ -107,7 +107,7 @@ impl GrpcSubsystem {
 
 	#[inline]
 	fn init_subscription_registry(&mut self) -> Arc<GrpcSubscriptionRegistry> {
-		let registry = Arc::new(GrpcSubscriptionRegistry::new());
+		let registry = Arc::new(GrpcSubscriptionRegistry::new(self.state.clock().clone()));
 		self.registry = Some(registry.clone());
 		registry
 	}

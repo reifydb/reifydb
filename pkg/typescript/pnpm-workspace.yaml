@@ -1,4 +1,6 @@
 packages:
+  - auth
+  - auth-solana
   - core
   - client
   - console

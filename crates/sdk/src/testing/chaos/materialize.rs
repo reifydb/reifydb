@@ -5,7 +5,7 @@ use reifydb_abi::flow::diff::DiffType;
 use reifydb_core::{
 	encoded::shape::SHAPE_HEADER_SIZE, interface::change::Change, row::Row, value::column::columns::Columns,
 };
-use reifydb_type::value::{Value, r#type::Type};
+use reifydb_type::value::{Value, date::Date, datetime::DateTime, duration::Duration, time::Time, r#type::Type};
 
 use super::{
 	event::{ChaosBatch, ChaosEvent},
@@ -137,7 +137,43 @@ fn row_to_materialized(row: &Row) -> MaterializedRow {
 				b.copy_from_slice(&buf[..8]);
 				Value::float8(f64::from_le_bytes(b))
 			}
+			Type::DateTime => {
+				let mut b = [0u8; 8];
+				b.copy_from_slice(&buf[..8]);
+				Value::datetime(DateTime::from_nanos(u64::from_le_bytes(b)))
+			}
+			Type::Duration => {
+				let mut months_b = [0u8; 4];
+				months_b.copy_from_slice(&buf[..4]);
+				let mut days_b = [0u8; 4];
+				days_b.copy_from_slice(&buf[4..8]);
+				let mut nanos_b = [0u8; 8];
+				nanos_b.copy_from_slice(&buf[8..16]);
+				let months = i32::from_le_bytes(months_b);
+				let days = i32::from_le_bytes(days_b);
+				let nanos = i64::from_le_bytes(nanos_b);
+				match Duration::new(months, days, nanos) {
+					Ok(d) => Value::duration(d),
+					Err(_) => Value::none_of(Type::Duration),
+				}
+			}
 
+			Type::Date => {
+				let mut b = [0u8; 4];
+				b.copy_from_slice(&buf[..4]);
+				match Date::from_days_since_epoch(i32::from_le_bytes(b)) {
+					Some(d) => Value::date(d),
+					None => Value::none_of(Type::Date),
+				}
+			}
+			Type::Time => {
+				let mut b = [0u8; 8];
+				b.copy_from_slice(&buf[..8]);
+				match Time::from_nanos_since_midnight(u64::from_le_bytes(b)) {
+					Some(t) => Value::time(t),
+					None => Value::none_of(Type::Time),
+				}
+			}
 			other => Value::none_of(other),
 		};
 		mat.set(field.name.clone(), v);
@@ -163,7 +199,10 @@ mod tests {
 		row::Row,
 		value::column::columns::Columns,
 	};
-	use reifydb_type::value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type};
+	use reifydb_type::value::{
+		Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
+		r#type::Type,
+	};
 
 	use super::*;
 	use crate::testing::builders::TestRowBuilder;
@@ -300,6 +339,76 @@ mod tests {
 		assert!(table.is_empty());
 
 		// Suppress unused-shape warning in this test.
+		let _ = s;
+	}
+
+	#[test]
+	fn datetime_and_duration_columns_survive_materialization() {
+		// A DateTime/Duration column must round-trip through
+		// row_to_materialized intact. Before DateTime/Duration cases
+		// existed they fell through to Value::none_of, nulling the
+		// operator's emitted window_start and breaking output-key
+		// comparison.
+		let s = RowShape::new(vec![
+			RowShapeField::unconstrained("window_start", Type::DateTime),
+			RowShapeField::unconstrained("window_duration", Type::Duration),
+			RowShapeField::unconstrained("v", Type::Float8),
+		]);
+		let window_start = DateTime::from_timestamp(1_700_000_000).unwrap();
+		let window_duration = Duration::from_seconds(60).unwrap();
+		let row = TestRowBuilder::new(RowNumber(1))
+			.with_shape(s.clone())
+			.with_values(vec![
+				Value::datetime(window_start),
+				Value::duration(window_duration),
+				Value::float8(1.5_f64),
+			])
+			.build();
+		let events = vec![ChaosEvent::Insert {
+			row_number: RowNumber(1),
+			row,
+		}];
+		let batches = vec![ChaosBatch::new(events)];
+		// Key on the DateTime column - this is the path that regressed.
+		let table = materialize_batches(&batches, &["window_start".to_string()]);
+		assert_eq!(table.len(), 1);
+		let stored = table
+			.get(&OutputKey::new(vec![Value::datetime(window_start)]))
+			.expect("DateTime output key must locate the row; a nulled window_start would miss it");
+		assert_eq!(stored.get("window_start"), Some(&Value::datetime(window_start)));
+		assert_eq!(stored.get("window_duration"), Some(&Value::duration(window_duration)));
+		assert_eq!(stored.get("v"), Some(&Value::float8(1.5_f64)));
+	}
+
+	#[test]
+	fn date_and_time_columns_survive_materialization() {
+		// A Date/Time column must round-trip through row_to_materialized intact.
+		// Before Date/Time cases existed they fell through to Value::none_of,
+		// nulling emitted columns and breaking output-key comparison.
+		let s = RowShape::new(vec![
+			RowShapeField::unconstrained("window_date", Type::Date),
+			RowShapeField::unconstrained("window_time", Type::Time),
+			RowShapeField::unconstrained("v", Type::Float8),
+		]);
+		let window_date = Date::new(2024, 3, 15).unwrap();
+		let window_time = Time::new(14, 30, 45, 0).unwrap();
+		let row = TestRowBuilder::new(RowNumber(1))
+			.with_shape(s.clone())
+			.with_values(vec![Value::date(window_date), Value::time(window_time), Value::float8(1.5_f64)])
+			.build();
+		let events = vec![ChaosEvent::Insert {
+			row_number: RowNumber(1),
+			row,
+		}];
+		let batches = vec![ChaosBatch::new(events)];
+		let table = materialize_batches(&batches, &["window_date".to_string()]);
+		assert_eq!(table.len(), 1);
+		let stored = table
+			.get(&OutputKey::new(vec![Value::date(window_date)]))
+			.expect("Date output key must locate the row; a nulled window_date would miss it");
+		assert_eq!(stored.get("window_date"), Some(&Value::date(window_date)));
+		assert_eq!(stored.get("window_time"), Some(&Value::time(window_time)));
+		assert_eq!(stored.get("v"), Some(&Value::float8(1.5_f64)));
 		let _ = s;
 	}
 }

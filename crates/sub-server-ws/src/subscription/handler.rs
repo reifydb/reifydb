@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use reifydb_client::{
 	HydrationConfig as ClientHydrationConfig, RawChangePayload, SubscriptionConfig as ClientSubscriptionConfig,
@@ -54,8 +54,10 @@ pub(crate) async fn handle_subscribe(
 		Ok(Local {
 			id: subscription_id,
 			hydration,
+			throttle,
 		}) => {
 			let server_cap = conn.state.subscribe_max_hydration_rows();
+			let throttle = conn.state.clamp_throttle(throttle);
 			let max_rows = match hydration.max_rows {
 				Some(n) if n > server_cap => {
 					warn!("clamping hydration.max_rows from {} to server cap {}", n, server_cap);
@@ -76,6 +78,7 @@ pub(crate) async fn handle_subscribe(
 				conn.push_tx.clone(),
 				format,
 				warming_cap,
+				throttle,
 			);
 
 			if hydration.enabled {
@@ -122,6 +125,7 @@ pub(crate) async fn handle_subscribe(
 			body,
 			token: ns_token,
 			hydration,
+			throttle,
 		}) => {
 			let client_fmt = match format {
 				WireFormat::Rbcf => ClientWireFormat::Rbcf,
@@ -132,6 +136,7 @@ pub(crate) async fn handle_subscribe(
 					enabled: hydration.enabled,
 					max_rows: hydration.max_rows,
 				},
+				throttle,
 			};
 			let remote_sub =
 				match connect_remote(&address, &body, config, ns_token.as_deref(), client_fmt).await {
@@ -299,7 +304,7 @@ pub(crate) async fn handle_batch_subscribe(
 	let format = req.format;
 
 	let mut resolved: Vec<ResolvedBatchMember> = Vec::with_capacity(req.queries.len());
-	let mut local_hydrations: Vec<(SubscriptionId, String, HydrationConfig)> = Vec::new();
+	let mut local_hydrations: Vec<(SubscriptionId, String, HydrationConfig, Option<Duration>)> = Vec::new();
 
 	for (index, user_rql) in req.queries.iter().enumerate() {
 		let metadata = RequestMetadata::new(Protocol::WebSocket);
@@ -307,8 +312,9 @@ pub(crate) async fn handle_batch_subscribe(
 			Ok(CreateSubscriptionResult::Local {
 				id: subscription_id,
 				hydration,
+				throttle,
 			}) => {
-				local_hydrations.push((subscription_id, user_rql.clone(), hydration));
+				local_hydrations.push((subscription_id, user_rql.clone(), hydration, throttle));
 				resolved.push(ResolvedBatchMember::Local {
 					index,
 					subscription_id,
@@ -320,6 +326,7 @@ pub(crate) async fn handle_batch_subscribe(
 				body,
 				token: ns_token,
 				hydration,
+				throttle,
 			}) => {
 				let client_format = match format {
 					WireFormat::Rbcf => ClientWireFormat::Rbcf,
@@ -330,6 +337,7 @@ pub(crate) async fn handle_batch_subscribe(
 						enabled: hydration.enabled,
 						max_rows: hydration.max_rows,
 					},
+					throttle,
 				};
 				let remote_sub = match connect_remote(
 					&address,
@@ -388,7 +396,7 @@ pub(crate) async fn handle_batch_subscribe(
 
 	let server_cap = conn.state.subscribe_max_hydration_rows();
 	let mut effective_max_rows: HashMap<SubscriptionId, u64> = HashMap::new();
-	for (sub_id, _, hydration) in &local_hydrations {
+	for (sub_id, _, hydration, _) in &local_hydrations {
 		let max_rows = match hydration.max_rows {
 			Some(n) if n > server_cap => {
 				warn!("clamping hydration.max_rows from {} to server cap {}", n, server_cap);
@@ -407,15 +415,22 @@ pub(crate) async fn handle_batch_subscribe(
 			..
 		} = member
 		{
-			let warming_cap = local_hydrations.iter().find(|(sid, _, _)| sid == subscription_id).and_then(
-				|(_, _, h)| {
+			let warming_cap = local_hydrations
+				.iter()
+				.find(|(sid, _, _, _)| sid == subscription_id)
+				.and_then(|(_, _, h, _)| {
 					if h.enabled {
 						Some(*effective_max_rows.get(subscription_id).unwrap_or(&server_cap)
 							as usize)
 					} else {
 						None
 					}
-				},
+				});
+			let throttle = conn.state.clamp_throttle(
+				local_hydrations
+					.iter()
+					.find(|(sid, _, _, _)| sid == subscription_id)
+					.and_then(|(_, _, _, t)| *t),
 			);
 			conn.registry.subscribe(
 				*subscription_id,
@@ -424,11 +439,12 @@ pub(crate) async fn handle_batch_subscribe(
 				conn.push_tx.clone(),
 				format,
 				warming_cap,
+				throttle,
 			);
 		}
 	}
 
-	let any_hydration = local_hydrations.iter().any(|(_, _, h)| h.enabled);
+	let any_hydration = local_hydrations.iter().any(|(_, _, h, _)| h.enabled);
 	if any_hydration {
 		let lease = match conn.state.engine().acquire_current_snapshot_lease() {
 			Ok((_, lease)) => lease,
@@ -442,7 +458,7 @@ pub(crate) async fn handle_batch_subscribe(
 				return Some(Response::internal_error(request_id, code, e.to_string()).to_json());
 			}
 		};
-		for (sub_id, rql, hydration) in &local_hydrations {
+		for (sub_id, rql, hydration, _) in &local_hydrations {
 			if !hydration.enabled {
 				continue;
 			}
@@ -451,7 +467,7 @@ pub(crate) async fn handle_batch_subscribe(
 				run_ws_hydrate(request_id, conn, *sub_id, rql, id, lease.clone(), max_rows, format)
 					.await
 			{
-				for (other_sub, _, _) in &local_hydrations {
+				for (other_sub, _, _, _) in &local_hydrations {
 					abort_warming(conn, *other_sub).await;
 				}
 				return Some(err_response);
