@@ -8,8 +8,8 @@ use serde::{
 };
 
 use super::{
-	encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32, encode_i64, encode_i128,
-	encode_u8, encode_u16, encode_u32, encode_u64, encode_u128,
+	encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32, encode_i64_varint,
+	encode_i128, encode_u8, encode_u16, encode_u32_varint, encode_u64_varint, encode_u128,
 };
 
 pub(crate) struct Serializer {
@@ -49,7 +49,7 @@ impl ser::Serializer for &mut Serializer {
 	}
 
 	fn serialize_i64(self, v: i64) -> Result<()> {
-		self.output.extend_from_slice(&encode_i64(v));
+		encode_i64_varint(v, &mut self.output);
 		Ok(())
 	}
 
@@ -69,12 +69,12 @@ impl ser::Serializer for &mut Serializer {
 	}
 
 	fn serialize_u32(self, v: u32) -> Result<()> {
-		self.output.extend_from_slice(&encode_u32(v));
+		encode_u32_varint(v, &mut self.output);
 		Ok(())
 	}
 
 	fn serialize_u64(self, v: u64) -> Result<()> {
-		self.output.extend_from_slice(&encode_u64(v));
+		encode_u64_varint(v, &mut self.output);
 		Ok(())
 	}
 

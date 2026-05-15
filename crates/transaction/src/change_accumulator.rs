@@ -99,6 +99,7 @@ fn coalesce_inserts(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 		match diff {
 			Diff::Insert {
 				post,
+				..
 			} => current_run.push(post),
 			other => {
 				flush_insert_run(&mut current_run, &mut result)?;

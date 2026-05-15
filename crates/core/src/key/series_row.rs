@@ -10,8 +10,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-const VERSION: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeriesRowKey {
 	pub series: SeriesId,
@@ -31,7 +29,7 @@ impl EncodableKey for SeriesRowKey {
 			27
 		};
 		let mut serializer = KeySerializer::with_capacity(capacity);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(object);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(object);
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
@@ -41,11 +39,6 @@ impl EncodableKey for SeriesRowKey {
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -58,8 +51,18 @@ impl EncodableKey for SeriesRowKey {
 			_ => return None,
 		};
 
-		let remaining = de.remaining();
-		let variant_tag = if remaining > 16 {
+		let mut temp_de = KeyDeserializer::from_bytes(de.remaining_bytes());
+		let tag_present = if temp_de.read_u64().is_ok() {
+			if temp_de.read_u64().is_ok() {
+				!temp_de.is_empty()
+			} else {
+				true
+			}
+		} else {
+			true
+		};
+
+		let variant_tag = if tag_present {
 			Some(de.read_u8().ok()?)
 		} else {
 			None
@@ -126,8 +129,8 @@ impl SeriesRowKeyRange {
 
 	fn start_key(&self) -> EncodedKey {
 		let object = ShapeId::Series(self.series);
-		let mut serializer = KeySerializer::with_capacity(28);
-		serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_shape_id(object);
+		let mut serializer = KeySerializer::with_capacity(27);
+		serializer.extend_u8(KeyKind::Row as u8).extend_shape_id(object);
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
@@ -141,8 +144,8 @@ impl SeriesRowKeyRange {
 	fn end_key(&self) -> EncodedKey {
 		if let Some(key_val) = self.key_start {
 			let object = ShapeId::Series(self.series);
-			let mut serializer = KeySerializer::with_capacity(28);
-			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_shape_id(object);
+			let mut serializer = KeySerializer::with_capacity(27);
+			serializer.extend_u8(KeyKind::Row as u8).extend_shape_id(object);
 			if let Some(tag) = self.variant_tag {
 				serializer.extend_u8(tag);
 			}
@@ -151,8 +154,8 @@ impl SeriesRowKeyRange {
 			serializer.to_encoded_key()
 		} else {
 			let object = ShapeId::Series(self.series);
-			let mut serializer = KeySerializer::with_capacity(11);
-			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_shape_id(object.prev());
+			let mut serializer = KeySerializer::with_capacity(10);
+			serializer.extend_u8(KeyKind::Row as u8).extend_shape_id(object.prev());
 			serializer.to_encoded_key()
 		}
 	}
@@ -210,8 +213,7 @@ mod tests {
 		};
 		let e1 = key1.encode();
 		let e2 = key2.encode();
-		// Keycode encoding uses NOT of big-endian, producing descending order
-		// Smaller key values sort AFTER larger key values
+
 		assert!(e1 > e2, "key descending ordering not preserved");
 	}
 
@@ -231,7 +233,7 @@ mod tests {
 		};
 		let e1 = key1.encode();
 		let e2 = key2.encode();
-		// Keycode encoding uses NOT of big-endian, producing descending order
+
 		assert!(e1 > e2, "sequence descending ordering not preserved");
 	}
 }

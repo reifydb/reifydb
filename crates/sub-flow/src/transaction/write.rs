@@ -16,6 +16,16 @@ impl FlowTransaction {
 		self.inner_mut().pending.remove(key.clone());
 		Ok(())
 	}
+
+	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedRow]) -> Result<()> {
+		self.inner_mut().pending.insert_batch(keys, values);
+		Ok(())
+	}
+
+	pub fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
+		self.inner_mut().pending.remove_batch(keys);
+		Ok(())
+	}
 }
 
 #[cfg(test)]

@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { ShapeNode, InferShape } from '@reifydb/core';
+import type { SubscriptionConfig } from '@reifydb/client';
 import {
     useSubscriptionExecutor,
     type SubscriptionExecutorOptions,
@@ -11,6 +12,7 @@ import {
 
 export interface SubscriptionOptions extends SubscriptionExecutorOptions {
     enabled?: boolean;  // Auto-subscribe (default: true)
+    config?: SubscriptionConfig;
 }
 
 export function useSubscription<S extends ShapeNode = any>(
@@ -34,16 +36,17 @@ export function useSubscription<S extends ShapeNode = any>(
 
     // Serialize params for stable comparison (objects create new refs each render)
     const params_key = useMemo(() => JSON.stringify(params), [params]);
+    const config_key = useMemo(() => JSON.stringify(options?.config), [options?.config]);
 
     useEffect(() => {
         if (options?.enabled === false) return;
 
-        subscribe(rql, params, shape);
+        subscribe(rql, params, shape, options?.config);
 
         return () => {
             unsubscribe();
         };
-    }, [rql, params_key, shape, options?.enabled, subscribe, unsubscribe]);
+    }, [rql, params_key, shape, config_key, options?.enabled, subscribe, unsubscribe]);
 
     return {
         data: state.data,

@@ -307,7 +307,7 @@ fn parse_two_versions(cmd: &Command) -> Result<(CommitVersion, CommitVersion), B
 }
 
 fn encoded_key(s: &str) -> EncodedKey {
-	EncodedKey(CowVec::new(s.as_bytes().to_vec()))
+	EncodedKey::new(s.as_bytes().to_vec())
 }
 
 fn encoded_row(s: &str) -> EncodedRow {
@@ -326,7 +326,7 @@ pub fn format_change(seq: usize, sc: &SystemChange) -> String {
 		} => format!(
 			"Change {{ seq: {}, change: Insert {{ key: {:?}, post: {:?} }} }}",
 			seq,
-			render_bytes(&key.0),
+			render_bytes(key.as_slice()),
 			render_bytes(&post.0),
 		),
 		SystemChange::Update {
@@ -336,7 +336,7 @@ pub fn format_change(seq: usize, sc: &SystemChange) -> String {
 		} => format!(
 			"Change {{ seq: {}, change: Update {{ key: {:?}, pre: {:?}, post: {:?} }} }}",
 			seq,
-			render_bytes(&key.0),
+			render_bytes(key.as_slice()),
 			render_bytes(&pre.0),
 			render_bytes(&post.0),
 		),
@@ -347,13 +347,13 @@ pub fn format_change(seq: usize, sc: &SystemChange) -> String {
 			Some(pre) => format!(
 				"Change {{ seq: {}, change: Delete {{ key: {:?}, pre: {:?} }} }}",
 				seq,
-				render_bytes(&key.0),
+				render_bytes(key.as_slice()),
 				render_bytes(&pre.0),
 			),
 			None => format!(
 				"Change {{ seq: {}, change: Delete {{ key: {:?} }} }}",
 				seq,
-				render_bytes(&key.0),
+				render_bytes(key.as_slice()),
 			),
 		},
 	}
@@ -375,7 +375,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 				s,
 				"{{ seq: {}, change: Insert {{ key: {:?}, post: {:?} }} }}",
 				i + 1,
-				render_bytes(&key.0),
+				render_bytes(key.as_slice()),
 				render_bytes(&post.0),
 			)
 			.unwrap(),
@@ -387,7 +387,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 				s,
 				"{{ seq: {}, change: Update {{ key: {:?}, pre: {:?}, post: {:?} }} }}",
 				i + 1,
-				render_bytes(&key.0),
+				render_bytes(key.as_slice()),
 				render_bytes(&pre.0),
 				render_bytes(&post.0),
 			)
@@ -400,7 +400,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 					s,
 					"{{ seq: {}, change: Delete {{ key: {:?}, pre: {:?} }} }}",
 					i + 1,
-					render_bytes(&key.0),
+					render_bytes(key.as_slice()),
 					render_bytes(&pre.0),
 				)
 				.unwrap(),
@@ -408,7 +408,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 					s,
 					"{{ seq: {}, change: Delete {{ key: {:?} }} }}",
 					i + 1,
-					render_bytes(&key.0)
+					render_bytes(key.as_slice())
 				)
 				.unwrap(),
 			},

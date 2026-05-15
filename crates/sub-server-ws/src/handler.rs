@@ -19,7 +19,7 @@ use reifydb_sub_server::{
 	interceptor::{Protocol, RequestContext, RequestMetadata},
 	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, encode_frames_rbcf, resolve_response_json},
 	state::AppState,
-	subscribe::cleanup_subscription,
+	subscription::cleanup::cleanup_subscription,
 };
 use reifydb_subscription::batch::BatchId;
 use reifydb_type::{

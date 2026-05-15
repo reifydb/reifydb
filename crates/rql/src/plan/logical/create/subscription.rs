@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::interface::catalog::subscription::HydrationConfig;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -34,9 +35,15 @@ impl<'bump> Compiler<'bump> {
 			BumpVec::new_in(self.bump)
 		};
 
+		let hydration = HydrationConfig {
+			enabled: ast.hydration.enabled,
+			max_rows: ast.hydration.max_rows,
+		};
+
 		Ok(LogicalPlan::CreateSubscription(CreateSubscriptionNode {
 			columns,
 			as_clause,
+			hydration,
 		}))
 	}
 }

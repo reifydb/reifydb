@@ -2,17 +2,22 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	sync::Arc,
+	collections::HashSet,
+	error::Error,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use reifydb_client::{GrpcClient, Value, WireFormat};
+use reifydb_client::{ChangeKind, GrpcClient, SubscriptionConfig, Value, WireFormat};
 use tokio::{runtime::Runtime, time::sleep};
 
 use crate::{
 	common::{cleanup_server, create_server_instance, start_server_and_get_grpc_port},
 	grpc::subscription::{
-		SubscriptionTestHarness, TestContext, create_test_table, find_column, get_op_value, recv_with_timeout,
+		SubscriptionTestHarness, TestContext, create_test_table, find_column, recv_with_timeout,
 		unique_table_name,
 	},
 };
@@ -21,7 +26,7 @@ use crate::{
 fn test_basic_subscribe_to_query() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_basic", "id: int4, name: utf8, value: int4").await?;
-		let sub = ctx.subscribe(&table).await?;
+		let sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
@@ -34,7 +39,7 @@ fn test_basic_subscribe_to_query() {
 fn test_basic_drop_subscription_success() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_unsub", "id: int4, name: utf8").await?;
-		let sub = ctx.subscribe(&table).await?;
+		let sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
@@ -48,13 +53,13 @@ fn test_basic_drop_subscription_success() {
 fn test_basic_receive_insert_notifications() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_insert", "id: int4, name: utf8, value: int4").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		// Insert data after subscription is established
 		ctx.insert(&table, "{ id: 1, name: 'test', value: 100 }").await?;
 
-		let frames = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		let frame = &frames[0];
+		let change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
+		let frame = &change.frames[0];
 
 		// Verify the data
 		let id_col = find_column(frame, "id").expect("id column should exist");
@@ -75,18 +80,15 @@ fn test_basic_receive_insert_notifications() {
 fn test_op_insert_callback() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_op_insert", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 
-		let frames = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		let frame = &frames[0];
+		let change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
+		let frame = &change.frames[0];
 
-		// Verify _op column indicates INSERT (1)
-		let op = get_op_value(frame, 0);
-		assert_eq!(op, Some(1), "_op should be 1 for INSERT");
+		assert_eq!(change.kind, ChangeKind::Insert, "kind should be Insert");
 
-		// Verify both rows
 		let id_col = find_column(frame, "id").expect("id column should exist");
 		assert_eq!(id_col.data.len(), 2, "Should have 2 rows");
 
@@ -99,25 +101,18 @@ fn test_op_insert_callback() {
 fn test_op_update_callback() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_op_update", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert initial data
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
-		let insert_frames = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		let insert_op = get_op_value(&insert_frames[0], 0);
-		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
+		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
+		assert_eq!(insert_change.kind, ChangeKind::Insert, "kind should be Insert");
 
-		// Update data
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
 
-		let update_frames = TestContext::recv(&mut sub).await.expect("Should receive update notification");
-		let frame = &update_frames[0];
+		let update_change = TestContext::recv(&mut sub).await.expect("Should receive update notification");
+		let frame = &update_change.frames[0];
+		assert_eq!(update_change.kind, ChangeKind::Update, "kind should be Update");
 
-		// Verify _op column indicates UPDATE (2)
-		let op = get_op_value(frame, 0);
-		assert_eq!(op, Some(2), "_op should be 2 for UPDATE");
-
-		// Verify updated name
 		let name_col = find_column(frame, "name").expect("name column should exist");
 		assert_eq!(name_col.data.get_value(0), Value::Utf8("alice_updated".to_string()));
 
@@ -130,23 +125,17 @@ fn test_op_update_callback() {
 fn test_op_remove_callback() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_op_remove", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert initial data
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
-		let insert_frames = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
-		let insert_op = get_op_value(&insert_frames[0], 0);
-		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
+		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
+		assert_eq!(insert_change.kind, ChangeKind::Insert, "kind should be Insert");
 
-		// Delete data
 		ctx.delete(&table, "id == 1").await?;
 
-		let delete_frames = TestContext::recv(&mut sub).await.expect("Should receive delete notification");
-		let frame = &delete_frames[0];
-
-		// Verify _op column indicates DELETE (3)
-		let op = get_op_value(frame, 0);
-		assert_eq!(op, Some(3), "_op should be 3 for DELETE");
+		let delete_change = TestContext::recv(&mut sub).await.expect("Should receive delete notification");
+		let _frame = &delete_change.frames[0];
+		assert_eq!(delete_change.kind, ChangeKind::Remove, "kind should be Remove");
 
 		drop(sub);
 		Ok(())
@@ -157,22 +146,19 @@ fn test_op_remove_callback() {
 fn test_op_multiple_types_in_sequence() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_op_multi", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
-		let insert_frames = TestContext::recv(&mut sub).await.expect("Should receive insert");
-		assert_eq!(get_op_value(&insert_frames[0], 0), Some(1));
+		let insert_change = TestContext::recv(&mut sub).await.expect("Should receive insert");
+		assert_eq!(insert_change.kind, ChangeKind::Insert);
 
-		// Update
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
-		let update_frames = TestContext::recv(&mut sub).await.expect("Should receive update");
-		assert_eq!(get_op_value(&update_frames[0], 0), Some(2));
+		let update_change = TestContext::recv(&mut sub).await.expect("Should receive update");
+		assert_eq!(update_change.kind, ChangeKind::Update);
 
-		// Remove
 		ctx.delete(&table, "id == 1").await?;
-		let delete_frames = TestContext::recv(&mut sub).await.expect("Should receive delete");
-		assert_eq!(get_op_value(&delete_frames[0], 0), Some(3));
+		let delete_change = TestContext::recv(&mut sub).await.expect("Should receive delete");
+		assert_eq!(delete_change.kind, ChangeKind::Remove);
 
 		drop(sub);
 		Ok(())
@@ -183,14 +169,14 @@ fn test_op_multiple_types_in_sequence() {
 fn test_op_batch_consecutive_rows() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_op_batch", "id: int4, name: utf8").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		// Insert 10 rows at once
 		let rows: Vec<String> = (1..=10).map(|i| format!("{{ id: {}, name: 'user{}' }}", i, i)).collect();
 		ctx.insert(&table, &rows.join(", ")).await?;
 
-		let frames = TestContext::recv(&mut sub).await.expect("Should receive batch notification");
-		let frame = &frames[0];
+		let change = TestContext::recv(&mut sub).await.expect("Should receive batch notification");
+		let frame = &change.frames[0];
 
 		// Should be batched into one notification with all 10 rows
 		let id_col = find_column(frame, "id").expect("id column should exist");
@@ -219,8 +205,14 @@ fn test_concurrent_multiple_subscriptions() {
 		create_test_table(&client, &table1, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 		create_test_table(&client, &table2, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
-		let mut sub1 = client.subscribe(&format!("from test::{}", table1)).await.unwrap();
-		let mut sub2 = client.subscribe(&format!("from test::{}", table2)).await.unwrap();
+		let mut sub1 = client
+			.subscribe(&format!("from test::{}", table1), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		let mut sub2 = client
+			.subscribe(&format!("from test::{}", table2), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Insert into table 1
 		client.command(&format!("INSERT test::{} [{{ id: 1, name: 'alice' }}]", table1), None).await.unwrap();
@@ -259,7 +251,10 @@ fn test_concurrent_5_plus_subscriptions() {
 		for i in 0..NUM_TABLES {
 			let table = unique_table_name(&format!("sub_conc_{}", i));
 			create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
-			let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			tables.push(table);
 			subs.push(sub);
 		}
@@ -274,8 +269,8 @@ fn test_concurrent_5_plus_subscriptions() {
 		// Wait for all callbacks - each subscription independently
 		let mut received = 0;
 		for sub in &mut subs {
-			let frames = recv_with_timeout(sub, 15000).await;
-			if frames.is_some() {
+			let change = recv_with_timeout(sub, 15000).await;
+			if change.is_some() {
 				received += 1;
 			}
 		}
@@ -303,7 +298,10 @@ fn test_reconnection_resubscribe_after_disconnect() {
 		let table = unique_table_name("sub_reconn");
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
-		let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
 		// Drop and reconnect
@@ -316,16 +314,19 @@ fn test_reconnection_resubscribe_after_disconnect() {
 		client2.authenticate("mysecrettoken");
 
 		// Resubscribe
-		let mut sub2 = client2.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub2 = client2
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Insert new data
 		client2.command(&format!("INSERT test::{} [{{ id: 1, name: 'after_reconnect' }}]", table), None)
 			.await
 			.unwrap();
 
-		let frames =
+		let change =
 			recv_with_timeout(&mut sub2, 5000).await.expect("Should receive notification after reconnect");
-		let frame = &frames[0];
+		let frame = &change.frames[0];
 
 		let name_col = find_column(frame, "name").expect("name column should exist");
 		assert_eq!(name_col.data.get_value(0), Value::Utf8("after_reconnect".to_string()));
@@ -357,7 +358,10 @@ fn test_reconnection_multiple_subscriptions() {
 		// Subscribe to all tables
 		let mut subs = Vec::new();
 		for table in &tables {
-			let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			subs.push(sub);
 		}
 
@@ -372,7 +376,10 @@ fn test_reconnection_multiple_subscriptions() {
 		// Resubscribe to all tables
 		let mut subs2 = Vec::new();
 		for table in &tables {
-			let sub = client2.subscribe(&format!("from test::{}", table)).await.unwrap();
+			let sub = client2
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
 			subs2.push(sub);
 		}
 
@@ -385,8 +392,8 @@ fn test_reconnection_multiple_subscriptions() {
 
 		let mut received = 0;
 		for sub in &mut subs2 {
-			let frames = recv_with_timeout(sub, 10000).await;
-			if frames.is_some() {
+			let change = recv_with_timeout(sub, 10000).await;
+			if change.is_some() {
 				received += 1;
 			}
 		}
@@ -410,7 +417,7 @@ fn test_error_invalid_query() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
-		let result = client.subscribe("INVALID RQL SYNTAX HERE").await;
+		let result = client.subscribe("INVALID RQL SYNTAX HERE", SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Should reject subscription with invalid query");
 	});
 
@@ -434,7 +441,8 @@ fn test_error_nonexistent_table() {
 			SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()
 		);
 
-		let result = client.subscribe(&format!("from {}", non_existent_table)).await;
+		let result =
+			client.subscribe(&format!("from {}", non_existent_table), SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Should reject subscription to non-existent table");
 	});
 
@@ -456,7 +464,10 @@ fn test_lifecycle_cleanup_on_disconnect() {
 		let table = unique_table_name("sub_cleanup");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let _sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let _sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Drop without explicit cleanup - should not panic
 		drop(_sub);
@@ -469,7 +480,7 @@ fn test_lifecycle_cleanup_on_disconnect() {
 fn test_lifecycle_no_callbacks_after_drop() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_no_cb", "id: int4, value: int4").await?;
-		let sub = ctx.subscribe(&table).await?;
+		let sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		// Drop subscription immediately
 		drop(sub);
@@ -481,12 +492,11 @@ fn test_lifecycle_no_callbacks_after_drop() {
 		sleep(Duration::from_millis(100)).await;
 
 		// Create new subscription to verify data was inserted
-		let mut sub2 = ctx.subscribe(&table).await?;
+		let mut sub2 = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		// Should NOT receive the previous insert (it happened before this subscription)
-		let frames = recv_with_timeout(&mut sub2, 500).await;
-		// Whether we get the old data depends on server behavior, just verify no panic
-		let _ = frames;
+		let change = recv_with_timeout(&mut sub2, 500).await;
+		let _ = change;
 
 		drop(sub2);
 		Ok(())
@@ -499,7 +509,13 @@ fn test_edge_empty_result_sets() {
 		let table = ctx.create_table("sub_empty", "id: int4, value: int4").await?;
 
 		// Subscribe with filter that won't match
-		let mut sub = ctx.client.subscribe(&format!("from test::{} filter {{ id > 1000 }}", table)).await?;
+		let mut sub = ctx
+			.client
+			.subscribe(
+				&format!("from test::{} filter {{ id > 1000 }}", table),
+				SubscriptionConfig::default(),
+			)
+			.await?;
 
 		// Insert data that doesn't match filter
 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
@@ -507,14 +523,14 @@ fn test_edge_empty_result_sets() {
 		// Small wait to verify no callback fires for non-matching data
 		sleep(Duration::from_millis(100)).await;
 
-		let frames = recv_with_timeout(&mut sub, 500).await;
-		assert!(frames.is_none(), "Should not trigger callback for non-matching data");
+		let change = recv_with_timeout(&mut sub, 500).await;
+		assert!(change.is_none(), "Should not trigger callback for non-matching data");
 
 		// Insert data that matches filter
 		ctx.insert(&table, "{ id: 1001, value: 200 }").await?;
 
-		let frames = recv_with_timeout(&mut sub, 5000).await.expect("Should receive matching data");
-		let frame = &frames[0];
+		let change = recv_with_timeout(&mut sub, 5000).await.expect("Should receive matching data");
+		let frame = &change.frames[0];
 
 		// Verify matching row data
 		let id_col = find_column(frame, "id").expect("id column should exist");
@@ -532,14 +548,14 @@ fn test_edge_empty_result_sets() {
 fn test_edge_large_batch_of_changes() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_large", "id: int4, value: int4").await?;
-		let mut sub = ctx.subscribe(&table).await?;
+		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
 		// Insert 100 rows
 		let rows: Vec<String> = (0..100).map(|i| format!("{{ id: {}, value: {} }}", i, i * 10)).collect();
 		ctx.insert(&table, &rows.join(", ")).await?;
 
-		let frames = TestContext::recv(&mut sub).await.expect("Should receive batch notification");
-		let frame = &frames[0];
+		let change = TestContext::recv(&mut sub).await.expect("Should receive batch notification");
+		let frame = &change.frames[0];
 
 		// Should have received all 100 rows
 		let id_col = find_column(frame, "id").expect("id column should exist");
@@ -548,4 +564,533 @@ fn test_edge_large_batch_of_changes() {
 		drop(sub);
 		Ok(())
 	});
+}
+
+#[test]
+#[ignore]
+fn test_edge_rapid_successive_changes() {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		client.authenticate("mysecrettoken");
+
+		let table = unique_table_name("sub_rapid");
+		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
+
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
+
+		// Fire 10 insert commands rapidly
+		for i in 0..10 {
+			client.command(&format!("INSERT test::{} [{{ id: {}, value: {} }}]", table, i, i * 10), None)
+				.await
+				.unwrap();
+		}
+
+		// Collect all changes with timeout
+		let mut total_rows = 0usize;
+		let deadline = tokio::time::Instant::now() + Duration::from_millis(15000);
+		while total_rows < 10 {
+			let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+			if remaining.is_zero() {
+				break;
+			}
+			match tokio::time::timeout(remaining, sub.recv()).await {
+				Ok(Some(change)) => {
+					total_rows += change
+						.frames
+						.iter()
+						.map(|f| find_column(f, "id").map(|c| c.data.len()).unwrap_or(0))
+						.sum::<usize>();
+				}
+				_ => break,
+			}
+		}
+		assert_eq!(total_rows, 10, "Should have received all 10 rows");
+
+		drop(sub);
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+#[ignore]
+fn test_stress_many_subscriptions_single_client() {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		client.authenticate("mysecrettoken");
+
+		const NUM_SUBS: usize = 50;
+		let mut subs = Vec::new();
+		let mut sub_ids = Vec::new();
+		let mut tables = Vec::new();
+
+		for i in 0..NUM_SUBS {
+			let table = unique_table_name(&format!("stress_{}", i));
+			create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
+			let sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
+			sub_ids.push(sub.subscription_id().to_string());
+			subs.push(sub);
+			tables.push(table);
+		}
+
+		for table in &tables {
+			client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
+		}
+
+		let received_count = Arc::new(AtomicUsize::new(0));
+		let received_ids: Arc<tokio::sync::Mutex<HashSet<String>>> =
+			Arc::new(tokio::sync::Mutex::new(HashSet::new()));
+
+		let mut handles = Vec::new();
+		for mut sub in subs {
+			let sub_id = sub.subscription_id().to_string();
+			let counter = Arc::clone(&received_count);
+			let ids = Arc::clone(&received_ids);
+			let handle = tokio::spawn(async move {
+				if recv_with_timeout(&mut sub, 30000).await.is_some() {
+					counter.fetch_add(1, Ordering::SeqCst);
+					ids.lock().await.insert(sub_id);
+				}
+				drop(sub);
+			});
+			handles.push(handle);
+		}
+
+		for h in handles {
+			let _ = h.await;
+		}
+
+		assert_eq!(
+			received_count.load(Ordering::SeqCst),
+			NUM_SUBS,
+			"Should receive {} notifications",
+			NUM_SUBS
+		);
+		let ids = received_ids.lock().await;
+		for sub_id in &sub_ids {
+			assert!(ids.contains(sub_id), "Missing notification for {}", sub_id);
+		}
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+fn test_stress_many_concurrent_clients() {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		const NUM_CLIENTS: usize = 20;
+
+		let mut setup_client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		setup_client.authenticate("mysecrettoken");
+
+		let shared_table = unique_table_name("stress_concurrent");
+		create_test_table(&setup_client, &shared_table, &[("id", "int4")]).await.unwrap();
+		drop(setup_client);
+
+		let received_count = Arc::new(AtomicUsize::new(0));
+
+		let mut handles = Vec::new();
+		for client_idx in 0..NUM_CLIENTS {
+			let port = port;
+			let table = shared_table.clone();
+			let counter = Arc::clone(&received_count);
+
+			let handle = tokio::spawn(async move {
+				let mut client =
+					GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
+						.await?;
+				client.authenticate("mysecrettoken");
+
+				let mut sub = client
+					.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+					.await?;
+
+				let change = recv_with_timeout(&mut sub, 10000).await;
+				if change.is_some() {
+					counter.fetch_add(1, Ordering::SeqCst);
+				}
+
+				drop(sub);
+				drop(client);
+				Ok::<_, Box<dyn Error + Send + Sync>>(())
+			});
+			handles.push((client_idx, handle));
+		}
+
+		sleep(Duration::from_millis(500)).await;
+
+		let mut trigger_client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		trigger_client.authenticate("mysecrettoken");
+		trigger_client.command(&format!("INSERT test::{} [{{ id: 999 }}]", shared_table), None).await.unwrap();
+		drop(trigger_client);
+
+		for (idx, handle) in handles {
+			match handle.await {
+				Ok(Ok(())) => {}
+				Ok(Err(e)) => eprintln!("Client {} failed: {}", idx, e),
+				Err(e) => eprintln!("Client {} task panicked: {}", idx, e),
+			}
+		}
+
+		let count = received_count.load(Ordering::SeqCst);
+		assert_eq!(
+			count, NUM_CLIENTS,
+			"All {} clients should receive notification, got {}",
+			NUM_CLIENTS, count
+		);
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+fn test_stress_rapid_subscribe_unsubscribe() {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		client.authenticate("mysecrettoken");
+
+		let table = unique_table_name("stress_rapid");
+		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
+
+		const NUM_CYCLES: usize = 100;
+		for i in 0..NUM_CYCLES {
+			let sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
+			drop(sub);
+
+			if (i + 1) % 25 == 0 {
+				eprintln!("Completed {} rapid cycles", i + 1);
+			}
+		}
+
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		assert!(!sub.subscription_id().is_empty(), "Should get valid subscription after rapid cycles");
+
+		client.command(&format!("INSERT test::{} [{{ id: 999 }}]", table), None).await.unwrap();
+
+		let change = recv_with_timeout(&mut sub, 5000).await;
+		assert!(change.is_some(), "Should still receive changes after {} rapid cycles", NUM_CYCLES);
+
+		drop(sub);
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+fn test_stress_client_disconnect_without_unsubscribe() {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		const NUM_CLIENTS: usize = 10;
+
+		let mut setup_client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		setup_client.authenticate("mysecrettoken");
+
+		let shared_table = unique_table_name("stress_disconnect");
+		create_test_table(&setup_client, &shared_table, &[("id", "int4")]).await.unwrap();
+		drop(setup_client);
+
+		for i in 0..NUM_CLIENTS {
+			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
+				.await
+				.unwrap();
+			client.authenticate("mysecrettoken");
+			let sub = client
+				.subscribe(&format!("from test::{}", shared_table), SubscriptionConfig::default())
+				.await
+				.unwrap();
+
+			// Drop everything abruptly
+			drop(sub);
+			drop(client);
+
+			if (i + 1) % 5 == 0 {
+				eprintln!("Dropped {} clients abruptly", i + 1);
+			}
+		}
+
+		sleep(Duration::from_millis(500)).await;
+
+		let mut new_client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		new_client.authenticate("mysecrettoken");
+
+		let mut sub = new_client
+			.subscribe(&format!("from test::{}", shared_table), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		assert!(
+			!sub.subscription_id().is_empty(),
+			"New client should be able to subscribe after abrupt disconnects"
+		);
+
+		new_client.command(&format!("INSERT test::{} [{{ id: 1 }}]", shared_table), None).await.unwrap();
+
+		let change = recv_with_timeout(&mut sub, 5000).await;
+		assert!(change.is_some(), "New client should receive notification");
+
+		drop(sub);
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+fn test_stress_concurrent_connect_disconnect() {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		const NUM_TASKS: usize = 10;
+		const ITERATIONS_PER_TASK: usize = 5;
+
+		let mut setup_client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		setup_client.authenticate("mysecrettoken");
+
+		let mut tables = Vec::new();
+		for i in 0..NUM_TASKS {
+			let table = unique_table_name(&format!("stress_concurrent_{}", i));
+			create_test_table(&setup_client, &table, &[("id", "int4")]).await.unwrap();
+			tables.push(table);
+		}
+		drop(setup_client);
+
+		let success_count = Arc::new(AtomicUsize::new(0));
+
+		let mut handles = Vec::new();
+		for task_idx in 0..NUM_TASKS {
+			let port = port;
+			let table = tables[task_idx].clone();
+			let counter = Arc::clone(&success_count);
+
+			let handle = tokio::spawn(async move {
+				for iter in 0..ITERATIONS_PER_TASK {
+					let mut retries = 0;
+					const MAX_RETRIES: usize = 3;
+
+					loop {
+						let mut client = GrpcClient::connect(
+							&format!("http://[::1]:{}", port),
+							WireFormat::Proto,
+						)
+						.await?;
+						client.authenticate("mysecrettoken");
+
+						match client
+							.subscribe(
+								&format!("from test::{}", table),
+								SubscriptionConfig::default(),
+							)
+							.await
+						{
+							Ok(sub) => {
+								sleep(Duration::from_millis(10)).await;
+								drop(sub);
+								drop(client);
+								counter.fetch_add(1, Ordering::SeqCst);
+								break;
+							}
+							Err(e) if retries < MAX_RETRIES
+								&& e.to_string().contains("TXN_001") =>
+							{
+								retries += 1;
+								drop(client);
+								sleep(Duration::from_millis(10 * retries as u64)).await;
+								continue;
+							}
+							Err(e) => {
+								drop(client);
+								return Err(e.into());
+							}
+						}
+					}
+
+					if iter == ITERATIONS_PER_TASK - 1 {
+						eprintln!(
+							"Task {} completed all {} iterations",
+							task_idx, ITERATIONS_PER_TASK
+						);
+					}
+				}
+				Ok::<_, Box<dyn Error + Send + Sync>>(())
+			});
+			handles.push((task_idx, handle));
+		}
+
+		for (idx, handle) in handles {
+			match handle.await {
+				Ok(Ok(())) => {}
+				Ok(Err(e)) => eprintln!("Task {} failed: {}", idx, e),
+				Err(e) => eprintln!("Task {} panicked: {}", idx, e),
+			}
+		}
+
+		let count = success_count.load(Ordering::SeqCst);
+		let expected = NUM_TASKS * ITERATIONS_PER_TASK;
+		assert_eq!(count, expected, "All {} connect/disconnect cycles should succeed, got {}", expected, count);
+
+		let mut final_client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		final_client.authenticate("mysecrettoken");
+
+		let mut sub = final_client
+			.subscribe(&format!("from test::{}", tables[0]), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		assert!(!sub.subscription_id().is_empty(), "Server should still accept new subscriptions");
+
+		final_client.command(&format!("INSERT test::{} [{{ id: 1 }}]", tables[0]), None).await.unwrap();
+
+		let change = recv_with_timeout(&mut sub, 5000).await;
+		assert!(change.is_some(), "Server should still deliver notifications after stress test");
+
+		drop(sub);
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+#[ignore]
+fn test_stress_subscribe_receive_unsubscribe_cycles() {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		client.authenticate("mysecrettoken");
+
+		let table = unique_table_name("stress_full_cycle");
+		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
+
+		const NUM_CYCLES: usize = 200;
+		for i in 0..NUM_CYCLES {
+			let mut sub = client
+				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.await
+				.unwrap();
+			client.command(&format!("INSERT test::{} [{{ id: {} }}]", table, i), None).await.unwrap();
+
+			let change = recv_with_timeout(&mut sub, 500).await;
+			assert!(change.is_some(), "Cycle {}: should receive notification", i);
+
+			drop(sub);
+
+			if (i + 1) % 50 == 0 {
+				eprintln!("Completed {} full cycles", i + 1);
+			}
+		}
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+fn test_stress_connection_churn() {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		const NUM_CONNECTIONS: usize = 50;
+
+		for i in 0..NUM_CONNECTIONS {
+			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
+				.await
+				.unwrap();
+			client.authenticate("mysecrettoken");
+			drop(client);
+
+			if (i + 1) % 10 == 0 {
+				eprintln!("Rapid connect/disconnect: {} completed", i + 1);
+			}
+		}
+
+		let mut final_client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+		final_client.authenticate("mysecrettoken");
+
+		let _ = final_client.command("create namespace stress_test_ns", None).await;
+
+		drop(final_client);
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+fn test_stress_connect_query_disconnect_cycles() {
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		const NUM_CYCLES: usize = 30;
+
+		for i in 0..NUM_CYCLES {
+			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
+				.await
+				.unwrap();
+			client.authenticate("mysecrettoken");
+
+			let _ = client.command("create namespace stress_test_ns", None).await;
+
+			drop(client);
+
+			if (i + 1) % 10 == 0 {
+				eprintln!("Connect/query/disconnect: {} completed", i + 1);
+			}
+		}
+	});
+
+	cleanup_server(Some(server));
 }

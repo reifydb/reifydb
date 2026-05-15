@@ -74,6 +74,24 @@ pub fn system_column_read_only(fragment: Fragment) -> Diagnostic {
 	}
 }
 
+pub fn as_clause_not_query(fragment: Fragment, kind: &str) -> Diagnostic {
+	Diagnostic {
+		code: "QUERY_005".to_string(),
+		rql: None,
+		message: format!("AS clause body must be a query, found {}", kind),
+		fragment,
+		label: Some("expected a query expression here".to_string()),
+		help: Some(
+			"AS { ... } accepts only query expressions (FROM, MAP, FILTER, JOIN, ...); nested DDL statements such as CREATE/DROP/ALTER are not allowed"
+				.to_string(),
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic {
 	Diagnostic {
 		code: "QUERY_003".to_string(),

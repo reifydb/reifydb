@@ -19,7 +19,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, error::Error};
 use tracing::{debug, error};
 
-use super::{checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost};
+use super::{checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost, watermark::CdcConsumerWatermark};
 use crate::storage::CdcStore;
 
 #[derive(Debug, Clone)]
@@ -37,10 +37,17 @@ pub struct PollActor<H: CdcHost, C: CdcConsume> {
 	consumer: Box<C>,
 	store: CdcStore,
 	consumer_key: EncodedKey,
+	consumer_watermark: Option<CdcConsumerWatermark>,
 }
 
 impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
-	pub fn new(config: PollActorConfig, host: H, consumer: C, store: CdcStore) -> Self {
+	pub fn new(
+		config: PollActorConfig,
+		host: H,
+		consumer: C,
+		store: CdcStore,
+		consumer_watermark: Option<CdcConsumerWatermark>,
+	) -> Self {
 		let consumer_key = CdcConsumerKey {
 			consumer: config.consumer_id.clone(),
 		}
@@ -52,6 +59,14 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			consumer: Box::new(consumer),
 			store,
 			consumer_key,
+			consumer_watermark,
+		}
+	}
+
+	#[inline]
+	fn publish_watermark(&self, version: CommitVersion) {
+		if let Some(wm) = &self.consumer_watermark {
+			wm.store(version);
 		}
 	}
 }
@@ -226,6 +241,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		latest_version: CommitVersion,
 	) {
 		state.cached_checkpoint = Some(latest_version);
+		self.publish_watermark(latest_version);
 		let _ = ctx.self_ref().send(CdcPollMessage::Poll);
 	}
 
@@ -236,6 +252,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		}
 		let v = self.seed_checkpoint_from_durable(ctx)?;
 		state.cached_checkpoint = Some(v);
+		self.publish_watermark(v);
 		Some(v)
 	}
 
@@ -311,6 +328,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		count: usize,
 	) {
 		state.cached_checkpoint = Some(latest_version);
+		self.publish_watermark(latest_version);
 		if count > 0 {
 			let _ = ctx.self_ref().send(CdcPollMessage::Poll);
 		} else {

@@ -23,5 +23,5 @@ pub mod format;
 pub mod interceptor;
 pub mod response;
 pub mod state;
-pub mod subscribe;
+pub mod subscription;
 pub mod wire;

@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::{
@@ -10,7 +11,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	internal,
-	util::encoding::keycode::serializer::KeySerializer,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	value::column::columns::Columns,
 };
 use reifydb_type::{Result, error::Error, value::row_number::RowNumber};
@@ -43,8 +44,8 @@ impl AppendOperator {
 		}
 	}
 
-	fn determine_parent_index(&self, change: &Change) -> Option<usize> {
-		match &change.origin {
+	fn parent_index_for_origin(&self, origin: &ChangeOrigin) -> Option<usize> {
+		match origin {
 			ChangeOrigin::Flow(from_node) => self.input_nodes.iter().position(|n| n == from_node),
 			ChangeOrigin::Shape(_) => None,
 		}
@@ -54,26 +55,18 @@ impl AppendOperator {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(parent_index);
 		serializer.extend_u64(source_row.0);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn parse_composite_key(key_bytes: &[u8]) -> Option<(usize, RowNumber)> {
-		if key_bytes.len() < 9 {
+		if key_bytes.is_empty() {
 			return None;
 		}
 
-		let parent_index = !key_bytes[0];
+		let mut de = KeyDeserializer::from_bytes(key_bytes);
+		let parent_index = de.read_u8().ok()?;
+		let source_row = de.read_u64().ok()?;
 
-		let source_row = u64::from_be_bytes([
-			!key_bytes[1],
-			!key_bytes[2],
-			!key_bytes[3],
-			!key_bytes[4],
-			!key_bytes[5],
-			!key_bytes[6],
-			!key_bytes[7],
-			!key_bytes[8],
-		]);
 		Some((parent_index as usize, RowNumber(source_row)))
 	}
 }
@@ -83,17 +76,23 @@ impl Operator for AppendOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
-			Error(Box::new(internal!("Append received change from unknown node: {:?}", change.origin)))
-		})?;
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
 
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		let parent_origin = change.origin.clone();
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());
 
 		for diff in change.diffs {
+			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
+			let parent_index = self.parent_index_for_origin(&diff_origin).ok_or_else(|| {
+				Error(Box::new(internal!("Append received diff from unknown node: {:?}", diff_origin)))
+			})?;
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					if let Some(d) = self.translate_append_insert(txn, parent_index, post)? {
 						result_diffs.push(d);
@@ -102,6 +101,7 @@ impl Operator for AppendOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					if let Some(d) = self.translate_append_update(txn, parent_index, pre, post)? {
 						result_diffs.push(d);
@@ -109,6 +109,7 @@ impl Operator for AppendOperator {
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					if let Some(d) = self.translate_append_remove(txn, parent_index, pre)? {
 						result_diffs.push(d);

@@ -5,6 +5,7 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write, ops::Bound
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	interface::{
 		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 		store::EntryKind,
@@ -82,7 +83,7 @@ impl Runner {
 		table: EntryKind,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-	) -> Result<Vec<(CowVec<u8>, Option<CowVec<u8>>)>, Box<dyn StdError>> {
+	) -> Result<Vec<(EncodedKey, Option<CowVec<u8>>)>, Box<dyn StdError>> {
 		let mut cursor = RangeCursor::new();
 		let mut results = Vec::new();
 		let version = CommitVersion(u64::MAX); // Get latest version
@@ -115,8 +116,8 @@ impl testscript::runner::Runner for Runner {
 			"set" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = decode_binary(&kv.key.unwrap());
-				let value = decode_binary(&kv.value);
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let value = CowVec::new(decode_binary(&kv.value));
 				let table = self.parse_table(&mut args)?;
 				args.reject_rest()?;
 
@@ -128,7 +129,8 @@ impl testscript::runner::Runner for Runner {
 			// delete KEY - creates tombstone (set with None)
 			"delete" => {
 				let mut args = command.consume_args();
-				let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let table = self.parse_table(&mut args)?;
 				args.reject_rest()?;
 
@@ -140,12 +142,13 @@ impl testscript::runner::Runner for Runner {
 			// drop KEY - physically removes all versions of the entry
 			"drop" => {
 				let mut args = command.consume_args();
-				let key = decode_binary(&args.next_pos().ok_or("key not given")?.value);
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let table = self.parse_table(&mut args)?;
 				args.reject_rest()?;
 
 				// Look up all versions of this key and drop them all
-				let all_versions = self.storage.get_all_versions(table, &key)?;
+				let all_versions = self.storage.get_all_versions(table, key.as_slice())?;
 				if !all_versions.is_empty() {
 					let versions_to_drop: Vec<_> =
 						all_versions.iter().map(|(v, _)| (key.clone(), *v)).collect();

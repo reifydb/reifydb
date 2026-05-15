@@ -22,7 +22,6 @@ use reifydb_runtime::{
 	},
 	context::clock::{Clock, Instant},
 };
-use reifydb_type::util::cowvec::CowVec;
 use tracing::{Span, debug, error, instrument};
 
 use super::drop::find_keys_to_drop;
@@ -106,7 +105,7 @@ impl DropActor {
 
 	#[instrument(name = "drop::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
 	fn process_batch(storage: &MultiBufferTier, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
-		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>> = HashMap::new();
+		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 
 		let mut drops_with_stats = Vec::new();
 		let mut max_pending_version = CommitVersion(0);
@@ -121,7 +120,7 @@ impl DropActor {
 				Ok(entries_to_drop) => {
 					for entry in entries_to_drop {
 						drops_with_stats.push(MultiDrop {
-							key: EncodedKey(request.key.clone()),
+							key: request.key.clone(),
 							value_bytes: entry.value_bytes,
 						});
 

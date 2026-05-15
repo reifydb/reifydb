@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	sync::Arc,
+};
 
 use postcard::{from_bytes, to_stdvec};
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::{
@@ -30,8 +34,11 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct TakeState {
-	active: BTreeMap<RowNumber, usize>,
-	candidates: BTreeMap<RowNumber, usize>,
+	by_seq: BTreeMap<u64, RowNumber>,
+	by_row: HashMap<RowNumber, (u64, usize)>,
+	candidates_by_seq: BTreeMap<u64, RowNumber>,
+	candidates_by_row: HashMap<RowNumber, (u64, usize)>,
+	next_seq: u64,
 }
 
 pub struct TakeOperator {
@@ -67,61 +74,6 @@ impl TakeOperator {
 			.map_err(|e| Error(Box::new(internal!("Failed to deserialize TakeState: {}", e))))
 	}
 
-	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> Result<()> {
-		let serialized = to_stdvec(state)
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize TakeState: {}", e))))?;
-		let blob = Blob::from(serialized);
-
-		self.update_state(txn, |shape, row| {
-			shape.set_blob(row, 0, &blob);
-			Ok(())
-		})?;
-		Ok(())
-	}
-
-	fn promote_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> Result<Vec<Diff>> {
-		let mut output_diffs = Vec::new();
-
-		while state.active.len() < self.limit && !state.candidates.is_empty() {
-			if let Some((&candidate_row, &count)) = state.candidates.iter().next_back() {
-				state.candidates.remove(&candidate_row);
-				state.active.insert(candidate_row, count);
-
-				let cols = self.parent.pull(txn, &[candidate_row])?;
-				if !cols.is_empty() {
-					output_diffs.push(Diff::insert(cols));
-				}
-			}
-		}
-
-		Ok(output_diffs)
-	}
-
-	fn evict_to_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> Result<Vec<Diff>> {
-		let mut output_diffs = Vec::new();
-		let candidate_limit = self.limit * 4;
-
-		while state.active.len() > self.limit {
-			if let Some((&evicted_row, &count)) = state.active.iter().next() {
-				state.active.remove(&evicted_row);
-				state.candidates.insert(evicted_row, count);
-
-				let cols = self.parent.pull(txn, &[evicted_row])?;
-				if !cols.is_empty() {
-					output_diffs.push(Diff::remove(cols));
-				}
-			}
-		}
-
-		while state.candidates.len() > candidate_limit {
-			if let Some((&removed_row, _)) = state.candidates.iter().next() {
-				state.candidates.remove(&removed_row);
-			}
-		}
-
-		Ok(output_diffs)
-	}
-
 	#[inline]
 	fn acquire_take_state(&self, txn: &mut FlowTransaction) -> Result<(TakeState, PersistFn)> {
 		let node_id = self.node;
@@ -146,7 +98,42 @@ impl TakeOperator {
 	}
 
 	#[inline]
-	fn admit_or_evict_new_row(
+	fn prune_candidates(&self, state: &mut TakeState) {
+		let cap = self.limit.saturating_mul(4);
+		while state.candidates_by_seq.len() > cap {
+			let Some((&oldest_seq, &oldest_row)) = state.candidates_by_seq.iter().next() else {
+				break;
+			};
+			state.candidates_by_seq.remove(&oldest_seq);
+			state.candidates_by_row.remove(&oldest_row);
+		}
+	}
+
+	#[inline]
+	fn promote_one_candidate(
+		&self,
+		state: &mut TakeState,
+		txn: &mut FlowTransaction,
+		output_diffs: &mut Vec<Diff>,
+	) -> Result<()> {
+		let Some((&seq, &row_number)) = state.candidates_by_seq.iter().next_back() else {
+			return Ok(());
+		};
+		let count = state.candidates_by_row.get(&row_number).map(|(_, c)| *c).unwrap_or(1);
+		state.candidates_by_seq.remove(&seq);
+		state.candidates_by_row.remove(&row_number);
+		state.by_seq.insert(seq, row_number);
+		state.by_row.insert(row_number, (seq, count));
+
+		let cols = self.parent.pull(txn, &[row_number])?;
+		if !cols.is_empty() {
+			output_diffs.push(Diff::insert(cols));
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn admit_new_row(
 		&self,
 		state: &mut TakeState,
 		txn: &mut FlowTransaction,
@@ -154,30 +141,32 @@ impl TakeOperator {
 		single_row: Columns,
 		output_diffs: &mut Vec<Diff>,
 	) -> Result<()> {
-		if state.active.len() < self.limit {
-			state.active.insert(row_number, 1);
-			output_diffs.push(Diff::insert(single_row));
+		if self.limit == 0 {
 			return Ok(());
 		}
 
-		let Some(smallest) = state.active.keys().next().copied() else {
-			return Ok(());
-		};
+		let seq = state.next_seq;
+		state.next_seq += 1;
+		state.by_seq.insert(seq, row_number);
+		state.by_row.insert(row_number, (seq, 1));
+		output_diffs.push(Diff::insert(single_row));
 
-		if row_number > smallest {
-			if let Some(count) = state.active.remove(&smallest) {
-				state.candidates.insert(smallest, count);
-				let cols = self.parent.pull(txn, &[smallest])?;
+		if state.by_seq.len() > self.limit {
+			let oldest = state.by_seq.iter().next().map(|(s, r)| (*s, *r));
+			if let Some((oldest_seq, oldest_row)) = oldest {
+				let count = state.by_row.get(&oldest_row).map(|(_, c)| *c).unwrap_or(1);
+				state.by_seq.remove(&oldest_seq);
+				state.by_row.remove(&oldest_row);
+				state.candidates_by_seq.insert(oldest_seq, oldest_row);
+				state.candidates_by_row.insert(oldest_row, (oldest_seq, count));
+				let cols = self.parent.pull(txn, &[oldest_row])?;
 				if !cols.is_empty() {
 					output_diffs.push(Diff::remove(cols));
 				}
 			}
-			state.active.insert(row_number, 1);
-			output_diffs.push(Diff::insert(single_row));
-		} else {
-			state.candidates.insert(row_number, 1);
 		}
-		prune_candidates(state, self.limit);
+
+		self.prune_candidates(state);
 		Ok(())
 	}
 
@@ -193,17 +182,18 @@ impl TakeOperator {
 		for row_idx in 0..row_count {
 			let row_number = post.row_numbers[row_idx];
 
-			if state.active.contains_key(&row_number) {
-				*state.active.get_mut(&row_number).unwrap() += 1;
+			if let Some(slot) = state.by_row.get_mut(&row_number) {
+				slot.1 += 1;
 				continue;
 			}
-			if state.candidates.contains_key(&row_number) {
-				*state.candidates.get_mut(&row_number).unwrap() += 1;
+
+			if let Some(slot) = state.candidates_by_row.get_mut(&row_number) {
+				slot.1 += 1;
 				continue;
 			}
 
 			let single = post.extract_by_indices(&[row_idx]);
-			self.admit_or_evict_new_row(state, txn, row_number, single, output_diffs)?;
+			self.admit_new_row(state, txn, row_number, single, output_diffs)?;
 		}
 		Ok(())
 	}
@@ -223,17 +213,17 @@ impl TakeOperator {
 		for row_idx in 0..row_count {
 			let row_number = post.row_numbers[row_idx];
 
-			if state.active.contains_key(&row_number) {
+			if state.by_row.contains_key(&row_number) {
 				update_indices.push(row_idx);
 				continue;
 			}
 
-			if state.candidates.contains_key(&row_number) {
+			if state.candidates_by_row.contains_key(&row_number) {
 				continue;
 			}
 
 			let single = post.extract_by_indices(&[row_idx]);
-			self.admit_or_evict_new_row(state, txn, row_number, single, output_diffs)?;
+			self.admit_new_row(state, txn, row_number, single, output_diffs)?;
 		}
 
 		if !update_indices.is_empty() {
@@ -257,34 +247,33 @@ impl TakeOperator {
 		for row_idx in 0..row_count {
 			let row_number = pre.row_numbers[row_idx];
 
-			if let Some(count) = state.active.get_mut(&row_number) {
-				if *count > 1 {
-					*count -= 1;
-				} else {
-					state.active.remove(&row_number);
-					output_diffs.push(Diff::remove(pre.extract_by_indices(&[row_idx])));
-					let promoted = self.promote_candidates(state, txn)?;
-					output_diffs.extend(promoted);
+			if let Some(slot) = state.by_row.get_mut(&row_number) {
+				if slot.1 > 1 {
+					slot.1 -= 1;
+					continue;
 				}
-			} else if let Some(count) = state.candidates.get_mut(&row_number) {
-				if *count > 1 {
-					*count -= 1;
+				let seq = slot.0;
+				state.by_row.remove(&row_number);
+				state.by_seq.remove(&seq);
+				output_diffs.push(Diff::remove(pre.extract_by_indices(&[row_idx])));
+
+				if state.by_seq.len() < self.limit && !state.candidates_by_seq.is_empty() {
+					self.promote_one_candidate(state, txn, output_diffs)?;
+				}
+				continue;
+			}
+
+			if let Some(slot) = state.candidates_by_row.get_mut(&row_number) {
+				if slot.1 > 1 {
+					slot.1 -= 1;
 				} else {
-					state.candidates.remove(&row_number);
+					let seq = slot.0;
+					state.candidates_by_row.remove(&row_number);
+					state.candidates_by_seq.remove(&seq);
 				}
 			}
 		}
 		Ok(())
-	}
-}
-
-#[inline]
-fn prune_candidates(state: &mut TakeState, limit: usize) {
-	let candidate_limit = limit * 4;
-	while state.candidates.len() > candidate_limit {
-		if let Some((&r, _)) = state.candidates.iter().next() {
-			state.candidates.remove(&r);
-		}
 	}
 }
 
@@ -301,6 +290,10 @@ impl Operator for TakeOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let node_id = self.node;
 		let (mut state, persist) = self.acquire_take_state(txn)?;
@@ -312,13 +305,16 @@ impl Operator for TakeOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_insert_diff(&mut state, txn, post, &mut output_diffs)?,
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_update_diff(&mut state, txn, pre, post, &mut output_diffs)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_remove_diff(&mut state, txn, pre, &mut output_diffs)?,
 			}
 		}

@@ -3,7 +3,7 @@
 
 use std::{error, fmt, string::FromUtf8Error};
 
-use reifydb_sub_server::{auth::AuthError, execute::ExecuteError, subscribe::CreateSubscriptionError};
+use reifydb_sub_server::{auth::AuthError, execute::ExecuteError, subscription::errors::CreateSubscriptionError};
 use reifydb_type::value::r#type::Type;
 use serde_json::to_string as to_json;
 use tonic::Status;

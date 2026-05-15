@@ -83,7 +83,9 @@ struct EngineQueryWatermark {
 }
 
 impl QueryWatermark for EngineQueryWatermark {
-	fn query_done_until(&self) -> CommitVersion {
-		self.engine.query_done_until()
+	fn effective_gc_cutoff(&self) -> CommitVersion {
+		let qdu = self.engine.query_done_until();
+		let lease_min = self.engine.multi().leases().min_active().unwrap_or(CommitVersion(u64::MAX));
+		qdu.min(lease_min)
 	}
 }

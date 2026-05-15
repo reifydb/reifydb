@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	encoded::shape::{RowShape, RowShapeField},
 	interface::{
@@ -38,6 +39,7 @@ fn build_view_overlay<'a>(overlay: &'a [Change], view_id: u64) -> HashMap<RowNum
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					for (idx, rn) in post.row_numbers.iter().enumerate() {
 						map.insert(*rn, OverlayRow::Present(post, idx));
@@ -53,6 +55,7 @@ fn build_view_overlay<'a>(overlay: &'a [Change], view_id: u64) -> HashMap<RowNum
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					for rn in pre.row_numbers.iter() {
 						map.insert(*rn, OverlayRow::Removed);
@@ -83,12 +86,17 @@ impl Operator for PrimitiveViewOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs {
 			decoded_diffs.push(match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					let mut decoded = post;
 					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;
@@ -97,6 +105,7 @@ impl Operator for PrimitiveViewOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					let mut decoded_pre = pre;
 					let mut decoded_post = post;
@@ -106,6 +115,7 @@ impl Operator for PrimitiveViewOperator {
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					let mut decoded = pre;
 					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;

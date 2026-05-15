@@ -4,7 +4,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_abi::flow::diff::DiffType;
+use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	encoded::{
@@ -66,7 +66,7 @@ impl SinkSubscriptionOperator {
 		let counter_key = {
 			let mut serializer = KeySerializer::new();
 			serializer.extend_u64(subscription.def().id.0);
-			EncodedKey::new(serializer.finish())
+			serializer.finish()
 		};
 
 		Self {
@@ -151,6 +151,10 @@ impl SingleStateful for SinkSubscriptionOperator {
 impl Operator for SinkSubscriptionOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
+	}
+
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

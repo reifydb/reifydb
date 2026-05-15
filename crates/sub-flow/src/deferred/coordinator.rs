@@ -36,7 +36,10 @@ use reifydb_runtime::{
 	},
 	context::clock::{Clock, Instant},
 };
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::{
+	multi::lease::VersionLeaseGuard,
+	transaction::{Transaction, command::CommandTransaction},
+};
 use reifydb_type::{
 	Result,
 	error::Error,
@@ -100,6 +103,9 @@ struct ConsumeContext {
 	downstream_flows: collections::HashSet<FlowId>,
 
 	view_changes: Vec<Change>,
+
+	#[allow(dead_code)]
+	state_lease: VersionLeaseGuard,
 }
 
 impl ConsumeContext {
@@ -132,7 +138,10 @@ enum Phase {
 		ctx: ConsumeContext,
 	},
 
-	Ticking,
+	Ticking {
+		#[allow(dead_code)]
+		state_lease: VersionLeaseGuard,
+	},
 }
 
 struct TickSchedule {
@@ -340,8 +349,8 @@ impl CoordinatorActor {
 		let consume_start = self.clock.instant();
 		let latest_version = cdcs.last().map(|c| c.version);
 
-		let state_version = match self.engine.begin_query(IdentityId::system()) {
-			Ok(q) => q.version(),
+		let (state_version, state_lease) = match self.engine.acquire_current_snapshot_lease() {
+			Ok(pair) => pair,
 			Err(e) => {
 				(reply)(coordinator_error(e));
 				return;
@@ -361,6 +370,7 @@ impl CoordinatorActor {
 			latest_version,
 			downstream_flows: collections::HashSet::new(),
 			view_changes: Vec::new(),
+			state_lease,
 		};
 
 		let new_flows = match self.discover_and_load_new_flows(state, &cdcs) {
@@ -486,7 +496,9 @@ impl CoordinatorActor {
 				flows,
 				ctx: cctx,
 			} => self.continue_advancing_backfill(state, ctx, response, flows, cctx),
-			Phase::Ticking => self.continue_ticking(response),
+			Phase::Ticking {
+				..
+			} => self.continue_ticking(response),
 			Phase::Idle => {}
 		}
 	}
@@ -1195,10 +1207,10 @@ impl CoordinatorActor {
 			return;
 		}
 
-		let state_version = match self.engine.begin_query(IdentityId::system()) {
-			Ok(q) => q.version(),
+		let (state_version, state_lease) = match self.engine.acquire_current_snapshot_lease() {
+			Ok(pair) => pair,
 			Err(e) => {
-				warn!(error = %e, "failed to begin query for tick");
+				warn!(error = %e, "failed to acquire snapshot lease for tick");
 				return;
 			}
 		};
@@ -1221,7 +1233,9 @@ impl CoordinatorActor {
 			return;
 		}
 
-		state.phase = Phase::Ticking;
+		state.phase = Phase::Ticking {
+			state_lease,
+		};
 	}
 
 	fn commit_tick_writes(&self, pending: Pending, pending_shapes: Vec<RowShape>) {

@@ -3,7 +3,10 @@
 
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
-use reifydb_core::{common::CommitVersion, error::diagnostic::internal::internal, interface::store::EntryKind};
+use reifydb_core::{
+	common::CommitVersion, encoded::key::EncodedKey, error::diagnostic::internal::internal,
+	interface::store::EntryKind,
+};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sqlite::{
 	SqliteConfig,
@@ -122,7 +125,7 @@ impl SqlitePersistentStorage {
 			let version_blob: Vec<u8> = row.get(1)?;
 			let value: Option<Vec<u8>> = row.get(2)?;
 			Ok(RawEntry {
-				key: CowVec::new(key),
+				key: EncodedKey::new(key),
 				version: version_from_bytes(&version_blob),
 				value: value.map(CowVec::new),
 			})
@@ -294,7 +297,7 @@ impl TierStorage for SqlitePersistentStorage {
 		Ok(())
 	}
 
-	fn drop(&self, _batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
+	fn drop(&self, _batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		// TODO: change the TierStorage interface so persistent doesn't have to expose
 
 		panic!("SqlitePersistentStorage::drop: persistent tier has no historical chain to drop versions from");
@@ -336,7 +339,7 @@ impl TierStorage for SqlitePersistentStorage {
 		_cutoff: CommitVersion,
 		_cursor: &mut HistoricalCursor,
 		_batch_size: usize,
-	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
+	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
 		// TODO: change the TierStorage interface so persistent doesn't have to expose
 
 		panic!("SqlitePersistentStorage::scan_historical_below: persistent tier has no historical chain");

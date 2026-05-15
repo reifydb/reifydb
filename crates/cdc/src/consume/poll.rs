@@ -17,6 +17,7 @@ use super::{
 	actor::{PollActor, PollActorConfig},
 	consumer::{CdcConsume, CdcConsumer},
 	host::CdcHost,
+	watermark::CdcConsumerWatermark,
 };
 use crate::storage::CdcStore;
 
@@ -29,6 +30,8 @@ pub struct PollConsumerConfig {
 	pub poll_interval: Duration,
 
 	pub max_batch_size: Option<u64>,
+
+	pub consumer_watermark: Option<CdcConsumerWatermark>,
 }
 
 impl PollConsumerConfig {
@@ -43,7 +46,13 @@ impl PollConsumerConfig {
 			thread_name: thread_name.into(),
 			poll_interval,
 			max_batch_size,
+			consumer_watermark: None,
 		}
+	}
+
+	pub fn with_consumer_watermark(mut self, watermark: CdcConsumerWatermark) -> Self {
+		self.consumer_watermark = Some(watermark);
+		self
 	}
 }
 
@@ -99,7 +108,8 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollCons
 			return Ok(());
 		}
 		let (host, consumer, store) = self.take_resources();
-		let actor = PollActor::new(self.build_actor_config(), host, consumer, store);
+		let watermark = self.config.consumer_watermark.clone();
+		let actor = PollActor::new(self.build_actor_config(), host, consumer, store, watermark);
 		self.handle = Some(self.actor_system.spawn_system(&self.config.thread_name, actor));
 		Ok(())
 	}

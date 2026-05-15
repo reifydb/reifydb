@@ -3,12 +3,14 @@
 
 use std::sync::{Arc, LazyLock};
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
+	key::flow_node_internal_state::FlowNodeInternalStateKey,
 	value::column::columns::Columns,
 };
 use reifydb_engine::{
@@ -112,19 +114,22 @@ impl GateOperator {
 	}
 
 	fn row_number_key(rn: RowNumber) -> EncodedKey {
-		EncodedKey::new(rn.0.to_be_bytes().to_vec())
+		let mut bytes = Vec::with_capacity(1 + 8);
+		bytes.push(FlowNodeInternalStateKey::GATE_VISIBILITY_TAG);
+		bytes.extend_from_slice(&rn.0.to_be_bytes());
+		EncodedKey::new(bytes)
 	}
 
 	fn is_visible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<bool> {
-		Ok(self.state_get(txn, &Self::row_number_key(rn))?.is_some())
+		Ok(self.internal_state_get(txn, &Self::row_number_key(rn))?.is_some())
 	}
 
 	fn mark_visible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<()> {
-		self.state_set(txn, &Self::row_number_key(rn), VISIBLE_MARKER.clone())
+		self.internal_state_set(txn, &Self::row_number_key(rn), VISIBLE_MARKER.clone())
 	}
 
 	fn mark_invisible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<()> {
-		self.state_remove(txn, &Self::row_number_key(rn))
+		self.internal_state_remove(txn, &Self::row_number_key(rn))
 	}
 }
 
@@ -135,6 +140,10 @@ impl Operator for GateOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
@@ -142,13 +151,16 @@ impl Operator for GateOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_gate_insert(txn, &post, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_gate_update(txn, pre, post, &mut result)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_gate_remove(txn, pre, &mut result)?,
 			}
 		}
@@ -206,6 +218,7 @@ impl GateOperator {
 			result.push(Diff::Update {
 				pre,
 				post,
+				origin: None,
 			});
 			return Ok(());
 		}
@@ -245,6 +258,7 @@ impl GateOperator {
 		if pre.row_numbers.is_empty() {
 			result.push(Diff::Remove {
 				pre,
+				origin: None,
 			});
 			return Ok(());
 		}

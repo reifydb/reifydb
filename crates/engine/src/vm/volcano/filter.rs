@@ -5,11 +5,8 @@ use std::{mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::{catalog::dictionary::Dictionary, resolved::ResolvedShape},
-	value::{
-		batch::lazy::LazyBatch,
-		column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
-	},
+	interface::resolved::ResolvedShape,
+	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::display_label};
@@ -17,7 +14,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{util::bitvec::BitVec, value::constraint::Constraint};
 use tracing::instrument;
 
-use super::{NoopNode, decode_dictionary_columns};
+use super::NoopNode;
 use crate::{
 	Result,
 	expression::{
@@ -76,45 +73,24 @@ impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
-		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
+		let (stored_ctx, _) = self.context.as_ref().unwrap();
+		let stored_ctx = stored_ctx.clone();
 
 		loop {
-			if let Some(mut lazy_batch) = self.input.next_lazy(rx, ctx)? {
-				let filter_result =
-					self.evaluate_filter_on_lazy(&lazy_batch, stored_ctx, compiled, rx)?;
-
-				if let Some(filter_mask) = filter_result {
-					lazy_batch.apply_filter(&filter_mask);
+			match self.input.next(rx, ctx)? {
+				Some(columns) => {
+					let transform_ctx = TransformContext {
+						routines: &ctx.services.routines,
+						runtime_context: &stored_ctx.services.runtime_context,
+						params: &stored_ctx.params,
+					};
+					let mut columns = self.apply(&transform_ctx, columns)?;
+					if columns.row_count() > 0 {
+						strip_udf_columns(&mut columns, &self.udf_names);
+						return Ok(Some(columns));
+					}
 				}
-
-				if lazy_batch.valid_row_count() == 0 {
-					continue;
-				}
-
-				let dictionaries: Vec<Option<Dictionary>> =
-					lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
-
-				let mut columns = lazy_batch.into_columns();
-
-				decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
-
-				strip_udf_columns(&mut columns, &self.udf_names);
-				return Ok(Some(columns));
-			}
-
-			if let Some(columns) = self.input.next(rx, ctx)? {
-				let transform_ctx = TransformContext {
-					routines: &ctx.services.routines,
-					runtime_context: &stored_ctx.services.runtime_context,
-					params: &stored_ctx.params,
-				};
-				let mut columns = self.apply(&transform_ctx, columns)?;
-				if columns.row_count() > 0 {
-					strip_udf_columns(&mut columns, &self.udf_names);
-					return Ok(Some(columns));
-				}
-			} else {
-				return Ok(None);
+				None => return Ok(None),
 			}
 		}
 	}
@@ -178,66 +154,6 @@ impl Transform for FilterNode {
 		}
 
 		Ok(columns)
-	}
-}
-
-impl FilterNode {
-	fn evaluate_filter_on_lazy<'a>(
-		&self,
-		lazy_batch: &LazyBatch,
-		ctx: &QueryContext,
-		compiled: &[CompiledExpr],
-		rx: &mut Transaction<'a>,
-	) -> Result<Option<BitVec>> {
-		let dictionaries: Vec<Option<Dictionary>> =
-			lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
-		let mut columns = lazy_batch.clone().into_columns();
-		decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
-		let row_count = columns.row_count();
-
-		if row_count == 0 {
-			return Ok(Some(BitVec::empty()));
-		}
-
-		let session = EvalContext::from_query(ctx);
-		let mut mask = BitVec::repeat(row_count, true);
-
-		for compiled_expr in compiled {
-			let exec_ctx = session.with_eval(columns.clone(), row_count);
-
-			let result = compiled_expr.execute(&exec_ctx)?;
-
-			match result.data() {
-				ColumnBuffer::Bool(container) => {
-					for i in 0..row_count {
-						if mask.get(i) {
-							let valid = container.is_defined(i);
-							let filter_result = container.data().get(i);
-							mask.set(i, valid & filter_result);
-						}
-					}
-				}
-				ColumnBuffer::Option {
-					inner,
-					bitvec,
-				} => match inner.as_ref() {
-					ColumnBuffer::Bool(container) => {
-						for i in 0..row_count {
-							if mask.get(i) {
-								let defined = i < bitvec.len() && bitvec.get(i);
-								let valid = defined && container.is_defined(i);
-								let value = valid && container.data().get(i);
-								mask.set(i, value);
-							}
-						}
-					}
-					_ => panic!("filter expression must evaluate to a boolean column"),
-				},
-				_ => panic!("filter expression must evaluate to a boolean column"),
-			}
-		}
-
-		Ok(Some(mask))
 	}
 }
 

@@ -19,6 +19,7 @@ use reifydb_core::{
 			column::{Column, ColumnIndex},
 			id::{ColumnId, NamespaceId, TableId},
 			namespace::Namespace,
+			subscription::HydrationConfig,
 			table::Table,
 		},
 		resolved::{
@@ -212,6 +213,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 pub struct CreateSubscriptionNode<'bump> {
 	pub columns: Vec<SubscriptionColumnToCreate>,
 	pub as_clause: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub hydration: HydrationConfig,
 }
 
 #[derive(Debug)]

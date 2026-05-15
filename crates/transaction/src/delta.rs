@@ -11,7 +11,6 @@ use reifydb_core::{
 	delta::Delta,
 	encoded::{key::EncodedKey, row::EncodedRow},
 };
-use reifydb_type::util::cowvec::CowVec;
 
 #[derive(Debug, Clone)]
 enum OptimizedDeltaState {
@@ -171,7 +170,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 				result.push((
 					idx,
 					Delta::Set {
-						key: EncodedKey(CowVec::new(key_bytes)),
+						key: EncodedKey::new(key_bytes),
 						row,
 					},
 				));
@@ -182,7 +181,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 				result.push((
 					idx,
 					Delta::Unset {
-						key: EncodedKey(CowVec::new(key_bytes)),
+						key: EncodedKey::new(key_bytes),
 						row,
 					},
 				));
@@ -191,7 +190,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 				result.push((
 					idx,
 					Delta::Remove {
-						key: EncodedKey(CowVec::new(key_bytes)),
+						key: EncodedKey::new(key_bytes),
 					},
 				));
 			}
@@ -206,10 +205,12 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_type::util::cowvec::CowVec;
+
 	use super::*;
 
 	fn make_key(s: &str) -> EncodedKey {
-		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
+		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
 	fn make_row(s: &str) -> EncodedRow {

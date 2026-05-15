@@ -27,6 +27,7 @@ pub mod deserialize;
 pub mod deserializer;
 pub mod serialize;
 pub mod serializer;
+pub(crate) mod varint;
 
 use std::{f32, f64};
 
@@ -35,7 +36,33 @@ use reifydb_type::{
 	error::{Error, TypeError},
 };
 
-use crate::util::encoding::keycode::{deserialize::Deserializer, serialize::Serializer};
+use crate::{
+	encoded::key::EncodedKey,
+	util::encoding::keycode::{deserialize::Deserializer, serialize::Serializer},
+};
+
+pub trait ByteSink {
+	fn push(&mut self, byte: u8);
+	fn extend_from_slice(&mut self, slice: &[u8]);
+}
+
+impl ByteSink for Vec<u8> {
+	fn push(&mut self, byte: u8) {
+		Vec::push(self, byte);
+	}
+	fn extend_from_slice(&mut self, slice: &[u8]) {
+		Vec::extend_from_slice(self, slice);
+	}
+}
+
+impl ByteSink for EncodedKey {
+	fn push(&mut self, byte: u8) {
+		EncodedKey::push(self, byte);
+	}
+	fn extend_from_slice(&mut self, slice: &[u8]) {
+		EncodedKey::extend_from_slice(self, slice);
+	}
+}
 
 pub fn encode_bool(value: bool) -> u8 {
 	if value {
@@ -46,72 +73,67 @@ pub fn encode_bool(value: bool) -> u8 {
 }
 
 pub fn encode_f32(value: f32) -> [u8; 4] {
-	let mut bytes = value.to_be_bytes();
-	match value.is_sign_negative() {
-		false => bytes[0] ^= 1 << 7,
-		true => bytes.iter_mut().for_each(|b| *b = !*b),
+	let bits = value.to_bits();
+	if value.is_sign_negative() {
+		bits.to_be_bytes()
+	} else {
+		(!(bits ^ 0x80000000)).to_be_bytes()
 	}
-	for b in bytes.iter_mut() {
-		*b = !*b;
-	}
-	bytes
 }
 
 pub fn encode_f64(value: f64) -> [u8; 8] {
-	let mut bytes = value.to_be_bytes();
-	match value.is_sign_negative() {
-		false => bytes[0] ^= 1 << 7,
-		true => bytes.iter_mut().for_each(|b| *b = !*b),
+	let bits = value.to_bits();
+	if value.is_sign_negative() {
+		bits.to_be_bytes()
+	} else {
+		(!(bits ^ 0x8000000000000000)).to_be_bytes()
 	}
-	for b in bytes.iter_mut() {
-		*b = !*b;
-	}
-	bytes
 }
 
 pub fn encode_i8(value: i8) -> [u8; 1] {
-	let mut bytes = value.to_be_bytes();
-	bytes[0] ^= 1 << 7;
-	for b in bytes.iter_mut() {
-		*b = !*b;
-	}
-	bytes
+	(!(value as u8 ^ 0x80)).to_be_bytes()
 }
 
 pub fn encode_i16(value: i16) -> [u8; 2] {
-	let mut bytes = value.to_be_bytes();
-	bytes[0] ^= 1 << 7;
-	for b in bytes.iter_mut() {
-		*b = !*b;
-	}
-	bytes
+	(!(value as u16 ^ 0x8000)).to_be_bytes()
 }
 
 pub fn encode_i32(value: i32) -> [u8; 4] {
-	let mut bytes = value.to_be_bytes();
-	bytes[0] ^= 1 << 7;
-	for b in bytes.iter_mut() {
-		*b = !*b;
-	}
-	bytes
+	(!(value as u32 ^ 0x80000000)).to_be_bytes()
 }
 
 pub fn encode_i64(value: i64) -> [u8; 8] {
-	let mut bytes = value.to_be_bytes();
-	bytes[0] ^= 1 << 7;
-	for b in bytes.iter_mut() {
-		*b = !*b;
+	(!(value as u64 ^ 0x8000000000000000)).to_be_bytes()
+}
+
+pub fn encode_i64_varint<B: ByteSink>(value: i64, output: &mut B) {
+	if value >= 0 {
+		if value < 64 {
+			output.push(!(0x80 | value as u8));
+		} else if value < 8192 + 64 {
+			let v = (value - 64) as u16;
+			output.push(!(0xc0 | (v >> 8) as u8));
+			output.push(!(v as u8));
+		} else {
+			output.push(!0xfe);
+			let inv = !(value as u64);
+			output.extend_from_slice(&inv.to_be_bytes());
+		}
+	} else if value >= -64 {
+		output.push(!(0x40 | (value + 64) as u8));
+	} else if value >= -8192 - 64 {
+		let v = (value + 64 + 8192) as u16;
+		output.push(!(0x20 | (v >> 8) as u8));
+		output.push(!(v as u8));
+	} else {
+		output.push(!0x01);
+		let inv = !(value as u64);
+		output.extend_from_slice(&inv.to_be_bytes());
 	}
-	bytes
 }
 
 pub fn encode_i128(value: i128) -> [u8; 16] {
-	let mut bytes = value.to_be_bytes();
-	bytes[0] ^= 1 << 7;
-	for b in bytes.iter_mut() {
-		*b = !*b;
-	}
-	bytes
+	(!(value as u128 ^ 0x80000000000000000000000000000000)).to_be_bytes()
 }
 
 pub fn encode_u8(value: u8) -> u8 {
@@ -119,48 +141,162 @@ pub fn encode_u8(value: u8) -> u8 {
 }
 
 pub fn encode_u16(value: u16) -> [u8; 2] {
-	let mut bytes = value.to_be_bytes();
-	for b in bytes.iter_mut() {
-		*b = !*b;
-	}
-	bytes
+	(!value).to_be_bytes()
 }
 
 pub fn encode_u32(value: u32) -> [u8; 4] {
-	let mut bytes = value.to_be_bytes();
-	for b in bytes.iter_mut() {
-		*b = !*b;
-	}
-	bytes
+	(!value).to_be_bytes()
+}
+
+pub fn encode_u32_varint<B: ByteSink>(value: u32, output: &mut B) {
+	encode_u64_varint(value as u64, output);
 }
 
 pub fn encode_u64(value: u64) -> [u8; 8] {
-	let mut bytes = value.to_be_bytes();
-	for b in bytes.iter_mut() {
+	(!value).to_be_bytes()
+}
+
+pub fn encode_u64_varint<B: ByteSink>(value: u64, output: &mut B) {
+	if value < (1 << 7) {
+		output.push(!(value as u8));
+	} else if value < (1 << 14) {
+		output.push(!(0x80 | (value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 21) {
+		output.push(!(0xc0 | (value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 28) {
+		output.push(!(0xe0 | (value >> 24) as u8));
+		output.push(!((value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 35) {
+		output.push(!(0xf0 | (value >> 32) as u8));
+		output.push(!((value >> 24) as u8));
+		output.push(!((value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 42) {
+		output.push(!(0xf8 | (value >> 40) as u8));
+		output.push(!((value >> 32) as u8));
+		output.push(!((value >> 24) as u8));
+		output.push(!((value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 49) {
+		output.push(!(0xfc | (value >> 48) as u8));
+		output.push(!((value >> 40) as u8));
+		output.push(!((value >> 32) as u8));
+		output.push(!((value >> 24) as u8));
+		output.push(!((value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else if value < (1 << 56) {
+		output.push(!(0xfe | (value >> 56) as u8));
+		output.push(!((value >> 48) as u8));
+		output.push(!((value >> 40) as u8));
+		output.push(!((value >> 32) as u8));
+		output.push(!((value >> 24) as u8));
+		output.push(!((value >> 16) as u8));
+		output.push(!((value >> 8) as u8));
+		output.push(!(value as u8));
+	} else {
+		output.push(!0xff);
+		let inv = !value;
+		output.extend_from_slice(&inv.to_be_bytes());
+	}
+}
+
+pub fn decode_i64_varint(input: &mut &[u8]) -> Result<i64> {
+	if input.is_empty() {
+		return Err(Error::from(TypeError::SerdeKeycode {
+			message: "unexpected end of key while decoding i64 varint".to_string(),
+		}));
+	}
+	let first = !input[0];
+	let len = if first >= 0x80 {
+		if first < 0xc0 {
+			1
+		} else if first < 0xfe {
+			2
+		} else {
+			9
+		}
+	} else if first >= 0x40 {
+		1
+	} else if first >= 0x20 {
+		2
+	} else {
+		9
+	};
+
+	if input.len() < len {
+		return Err(Error::from(TypeError::SerdeKeycode {
+			message: "unexpected end of key while decoding i64 varint".to_string(),
+		}));
+	}
+
+	let mut buf = input[..len].to_vec();
+	for b in buf.iter_mut() {
 		*b = !*b;
 	}
-	bytes
+	let mut slice = &buf[..];
+	let v = varint::decode_i64_varint(&mut slice).ok_or_else(|| {
+		Error::from(TypeError::SerdeKeycode {
+			message: "failed to decode signed varint".to_string(),
+		})
+	})?;
+	*input = &input[len..];
+	Ok(v)
+}
+
+pub fn decode_u64_varint(input: &mut &[u8]) -> Result<u64> {
+	if input.is_empty() {
+		return Err(Error::from(TypeError::SerdeKeycode {
+			message: "unexpected end of key while decoding varint".to_string(),
+		}));
+	}
+	let first = !input[0];
+	let prefix = first.leading_ones() as usize;
+	let len = if prefix == 0 {
+		1
+	} else if prefix < 8 {
+		prefix + 1
+	} else {
+		9
+	};
+
+	if input.len() < len {
+		return Err(Error::from(TypeError::SerdeKeycode {
+			message: "unexpected end of key while decoding varint".to_string(),
+		}));
+	}
+
+	let mut buf = input[..len].to_vec();
+	for b in buf.iter_mut() {
+		*b = !*b;
+	}
+	let mut slice = &buf[..];
+	let v = varint::decode_u64_varint(&mut slice).unwrap();
+	*input = &input[len..];
+	Ok(v)
 }
 
 pub fn encode_u128(value: u128) -> [u8; 16] {
-	let mut bytes = value.to_be_bytes();
-	for b in bytes.iter_mut() {
-		*b = !*b;
-	}
-	bytes
+	(!value).to_be_bytes()
 }
 
-pub fn encode_bytes(bytes: &[u8], output: &mut Vec<u8>) {
-	for &byte in bytes {
-		if byte == 0xff {
-			output.push(0xff);
-			output.push(0x00);
-		} else {
-			output.push(byte);
-		}
+pub fn encode_bytes<B: ByteSink>(bytes: &[u8], output: &mut B) {
+	let mut start = 0;
+	while let Some(pos) = bytes[start..].iter().position(|&b| b == 0xff) {
+		let end = start + pos;
+		output.extend_from_slice(&bytes[start..end]);
+		output.extend_from_slice(&[0xff, 0x00]);
+		start = end + 1;
 	}
-	output.push(0xff);
-	output.push(0xff);
+	output.extend_from_slice(&bytes[start..]);
+	output.extend_from_slice(&[0xff, 0xff]);
 }
 
 #[macro_export]
@@ -281,13 +417,13 @@ pub mod tests {
 	i32_1: 1i32 => "7ffffffe",
 	i32_max: i32::MAX => "00000000",
 
-	i64_min: i64::MIN => "ffffffffffffffff",
-	i64_neg_65535: -65535i64 => "800000000000fffe",
-	i64_neg_1: -1i64 => "8000000000000000",
-	i64_0: 0i64 => "7fffffffffffffff",
-	i64_1: 1i64 => "7ffffffffffffffe",
-	i64_65535: 65535i64 => "7fffffffffff0000",
-	i64_max: i64::MAX => "0000000000000000",
+	i64_min: i64::MIN => "fe7fffffffffffffff",
+	i64_neg_65535: -65535i64 => "fe000000000000fffe",
+	i64_neg_1: -1i64 => "80",
+	i64_0: 0i64 => "7f",
+	i64_1: 1i64 => "7e",
+	i64_65535: 65535i64 => "01ffffffffffff0000",
+	i64_max: i64::MAX => "018000000000000000",
 
 	i128_min: i128::MIN => "ffffffffffffffffffffffffffffffff",
 	i128_neg_1: -1i128 => "80000000000000000000000000000000",
@@ -304,15 +440,15 @@ pub mod tests {
 	u16_255: 255_u16 => "ff00",
 	u16_65535: u16::MAX => "0000",
 
-	u32_min: u32::MIN => "ffffffff",
-	u32_1: 1_u32 => "fffffffe",
-	u32_65535: 65535_u32 => "ffff0000",
-	u32_max: u32::MAX => "00000000",
+	u32_min: u32::MIN => "ff",
+	u32_1: 1_u32 => "fe",
+	u32_65535: 65535_u32 => "3f0000",
+	u32_max: u32::MAX => "0f00000000",
 
-	u64_min: u64::MIN => "ffffffffffffffff",
-	u64_1: 1_u64 => "fffffffffffffffe",
-	u64_65535: 65535_u64 => "ffffffffffff0000",
-	u64_max: u64::MAX => "0000000000000000",
+	u64_min: u64::MIN => "ff",
+	u64_1: 1_u64 => "fe",
+	u64_65535: 65535_u64 => "3f0000",
+	u64_max: u64::MAX => "000000000000000000",
 
 	u128_min: u128::MIN => "ffffffffffffffffffffffffffffffff",
 	u128_1: 1_u128 => "fffffffffffffffffffffffffffffffe",
@@ -328,14 +464,14 @@ pub mod tests {
 	string_escape: "foo\x00bar".to_string() => "666f6f00626172ffff",
 	string_utf8: "👋".to_string() => "f09f918bffff",
 
-	tuple: (true, u64::MAX, ByteBuf::from(vec![0x00, 0x01])) => "0000000000000000000001ffff",
+	tuple: (true, u64::MAX, ByteBuf::from(vec![0x00, 0x01])) => "000000000000000000000001ffff",
 	array_bool: [false, true, false] => "010001",
 	vec_bool: vec![false, true, false] => "010001",
-	vec_u64: vec![u64::MIN, u64::MAX, 65535_u64] => "ffffffffffffffff0000000000000000ffffffffffff0000",
+	vec_u64: vec![u64::MIN, u64::MAX, 65535_u64] => "ff0000000000000000003f0000",
 
 	enum_unit: Key::Unit => "00",
 	enum_newtype: Key::NewType("foo".to_string()) => "01666f6fffff",
-	enum_tuple: Key::Tuple(false, vec![0x00, 0x01], u64::MAX) => "02010001ffff0000000000000000",
+	enum_tuple: Key::Tuple(false, vec![0x00, 0x01], u64::MAX) => "02010001ffff000000000000000000",
 	enum_cow: Key::Cow(vec![0x00, 0x01].into(), false, String::from("foo").into()) => "030001ffff01666f6fffff",
 	enum_cow_borrow: Key::Cow([0x00, 0x01].as_slice().into(), false, "foo".into()) => "030001ffff01666f6fffff",
 
@@ -345,13 +481,13 @@ pub mod tests {
 	value_float8: Value::Float8(OrderedF64::try_from(PI_F64).unwrap()) => "033ff6de04abbbd2e7",
 	value_int1: Value::Int1(-1) => "0480",
 	value_int4: Value::Int4(123456) => "067ffe1dbf",
-	value_int8: Value::Int8(31415926) => "077ffffffffe20a189",
+	value_int8: Value::Int8(31415926) => "0701fffffffffe20a189",
 	value_int16: Value::Int16(-123456789012345678901234567890i128) => "08800000018ee90ff6c373e0ee4e3f0ad1",
 	value_string: Value::Utf8("foo".to_string()) => "09666f6fffff",
 	value_uint1: Value::Uint1(255) => "0a00",
 	value_uint2: Value::Uint2(65535) => "0b0000",
-	value_uint4: Value::Uint4(4294967295) => "0c00000000",
-	value_uint8: Value::Uint8(18446744073709551615) => "0d0000000000000000",
+	value_uint4: Value::Uint4(4294967295) => "0c0f00000000",
+	value_uint8: Value::Uint8(18446744073709551615) => "0d000000000000000000",
 	value_uint16: Value::Uint16(340282366920938463463374607431768211455u128) => "0e00000000000000000000000000000000",
 
 	// Option<bool>
@@ -381,7 +517,7 @@ pub mod tests {
 
 	// Option<i64>
 	option_none_i64: None::<i64> => "00",
-	option_some_i64: Some(0i64) => "017fffffffffffffff",
+	option_some_i64: Some(0i64) => "017f",
 
 	// Option<i128>
 	option_none_i128: None::<i128> => "00",
@@ -397,11 +533,11 @@ pub mod tests {
 
 	// Option<u32>
 	option_none_u32: None::<u32> => "00",
-	option_some_u32: Some(0u32) => "01ffffffff",
+	option_some_u32: Some(0u32) => "01ff",
 
 	// Option<u64>
 	option_none_u64: None::<u64> => "00",
-	option_some_u64: Some(0u64) => "01ffffffffffffffff",
+	option_some_u64: Some(0u64) => "01ff",
 
 	// Option<u128>
 	option_none_u128: None::<u128> => "00",
@@ -474,12 +610,12 @@ pub mod tests {
 		// Test u64
 		let mut s = KeySerializer::new();
 		s.extend_u64(0u64);
-		assert_eq!(s.finish(), vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+		assert_eq!(s.finish(), vec![0xff]);
 
 		// Test i64
 		let mut s = KeySerializer::new();
 		s.extend_i64(0i64);
-		assert_eq!(s.finish(), vec![0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+		assert_eq!(s.finish(), vec![0x7f]);
 
 		// Test f32
 		let mut s = KeySerializer::new();
@@ -501,6 +637,6 @@ pub mod tests {
 		s.extend_bool(true).extend_u32(1u32).extend_i16(-1i16).extend_bytes(b"test");
 		let result = s.finish();
 		assert!(!result.is_empty());
-		assert!(result.len() > 10); // Should have all the encoded values
+		assert!(result.len() >= 10); // Should have all the encoded values
 	}
 }

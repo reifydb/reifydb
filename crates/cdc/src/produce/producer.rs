@@ -445,16 +445,19 @@ pub(crate) fn merge_diffs(diffs: Vec<Diff>) -> Vec<Diff> {
 		match diff {
 			Diff::Insert {
 				post,
+				..
 			} => merge_or_init(&mut insert_post, post, "insert"),
 			Diff::Update {
 				pre,
 				post,
+				..
 			} => {
 				merge_or_init(&mut update_pre, pre, "update pre");
 				merge_or_init(&mut update_post, post, "update post");
 			}
 			Diff::Remove {
 				pre,
+				..
 			} => merge_or_init(&mut remove_pre, pre, "remove"),
 		}
 	}
@@ -463,17 +466,20 @@ pub(crate) fn merge_diffs(diffs: Vec<Diff>) -> Vec<Diff> {
 	if let Some(post) = insert_post {
 		result.push(Diff::Insert {
 			post,
+			origin: None,
 		});
 	}
 	if let (Some(pre), Some(post)) = (update_pre, update_post) {
 		result.push(Diff::Update {
 			pre,
 			post,
+			origin: None,
 		});
 	}
 	if let Some(pre) = remove_pre {
 		result.push(Diff::Remove {
 			pre,
+			origin: None,
 		});
 	}
 	result

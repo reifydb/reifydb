@@ -6,6 +6,7 @@
 //! work; eval is where individual operators run; register is the wiring step that turns a flow definition into
 //! an executable graph.
 
+pub mod cache;
 pub mod eval;
 pub mod process;
 pub mod register;
@@ -45,16 +46,17 @@ use tracing::instrument;
 use crate::operator::BoxedOperator;
 #[cfg(reifydb_target = "native")]
 use crate::operator::ffi::FFIOperator;
-use crate::{builder::OperatorFactory, operator::Operators};
+use crate::{builder::OperatorFactory, engine::cache::ExecutionLevelCache, operator::Operators};
 
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
 	pub(crate) executor: Executor,
 	pub operators: BTreeMap<FlowNodeId, Arc<Operators>>,
-	pub flows: BTreeMap<FlowId, FlowDag>,
+	pub flows: BTreeMap<FlowId, Arc<FlowDag>>,
 	pub sources: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
 	pub sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
 	pub analyzer: FlowGraphAnalyzer,
+	pub(crate) execution_level_cache: ExecutionLevelCache,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
@@ -83,6 +85,7 @@ impl FlowEngine {
 			sources: BTreeMap::new(),
 			sinks: BTreeMap::new(),
 			analyzer: FlowGraphAnalyzer::new(),
+			execution_level_cache: ExecutionLevelCache::new(),
 			event_bus,
 			flow_creation_versions: BTreeMap::new(),
 			runtime_context,
@@ -139,6 +142,7 @@ impl FlowEngine {
 		self.sinks.clear();
 		self.analyzer.clear();
 		self.flow_creation_versions.clear();
+		self.execution_level_cache.invalidate();
 	}
 
 	pub fn remove_flow(&mut self, flow_id: FlowId) {
@@ -162,6 +166,7 @@ impl FlowEngine {
 		self.flows.remove(&flow_id);
 
 		self.analyzer.remove(flow_id);
+		self.execution_level_cache.invalidate();
 	}
 
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {
@@ -184,7 +189,13 @@ impl FlowEngine {
 	}
 
 	pub fn calculate_execution_levels(&self) -> Vec<Vec<FlowId>> {
+		if let Some(levels) = self.execution_level_cache.get() {
+			return levels;
+		}
+
 		let dependency_graph = self.analyzer.get_dependency_graph();
-		self.analyzer.calculate_execution_levels(dependency_graph)
+		let levels = self.analyzer.calculate_execution_levels(dependency_graph);
+		self.execution_level_cache.set(levels.clone());
+		levels
 	}
 }

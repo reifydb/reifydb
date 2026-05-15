@@ -34,7 +34,7 @@ use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
 
 pub(crate) use crate::multi::oracle::Oracle;
-use crate::{TransactionId, multi::types::*, single::SingleTransaction};
+use crate::{TransactionId, error::TransactionError, multi::types::*, single::SingleTransaction};
 
 pub mod manager;
 pub mod read;
@@ -46,6 +46,7 @@ use reifydb_store_single::SingleStore;
 
 use crate::multi::{
 	MultiReadTransaction, MultiReplicaTransaction, MultiWriteTransaction,
+	lease::{VersionLeaseGuard, VersionLeases},
 	transaction::manager::TransactionManagerQuery,
 };
 
@@ -123,7 +124,13 @@ where
 		let safe_version = self.inner.version()?;
 
 		Ok(if let Some(version) = version {
-			assert!(version <= safe_version);
+			if version > safe_version {
+				return Err(TransactionError::SnapshotVersionEvicted {
+					version,
+					cutoff: safe_version,
+				}
+				.into());
+			}
 			TransactionManagerQuery::new_time_travel(
 				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
 				self.clone(),
@@ -170,6 +177,24 @@ where
 		self.inner.advance_version_for_replica(version);
 		self.inner.command.advance_to(version);
 		self.inner.query.advance_to(version);
+	}
+
+	pub fn leases(&self) -> Arc<VersionLeases> {
+		self.inner.leases.clone()
+	}
+
+	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
+		self.inner.leases.try_acquire(version, self.inner.query.done_until())
+	}
+
+	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
+		let oracle = self.inner.clone();
+		let (guard, version) = oracle.leases.try_acquire_with(|| {
+			let version = oracle.version()?;
+			let qdu = oracle.query.done_until();
+			Ok((version, qdu, version))
+		})?;
+		Ok((version, guard))
 	}
 }
 
@@ -307,9 +332,21 @@ impl MultiTransaction {
 		MultiReadTransaction::new(self.clone(), None)
 	}
 
-	#[instrument(name = "transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0))]
-	pub fn begin_query_at_version(&self, version: CommitVersion) -> Result<MultiReadTransaction> {
-		MultiReadTransaction::new(self.clone(), Some(version))
+	#[instrument(name = "transaction::begin_query_at_version", level = "debug", skip(self, lease), fields(version = %lease.version().0))]
+	pub fn begin_query_at_version(&self, lease: &VersionLeaseGuard) -> Result<MultiReadTransaction> {
+		MultiReadTransaction::new_with_lease(self.clone(), lease.clone())
+	}
+
+	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
+		self.0.tm.acquire_version_lease(version)
+	}
+
+	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
+		self.0.tm.acquire_current_snapshot_lease()
+	}
+
+	pub fn leases(&self) -> Arc<VersionLeases> {
+		self.0.tm.leases()
 	}
 }
 

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{GrpcClient, Value, WireFormat};
+use reifydb_client::{GrpcClient, SubscriptionConfig, Value, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -27,16 +27,19 @@ fn test_filtered_subscription() {
 		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
 		// Subscribe with filter: only id > 10
-		let mut sub = client.subscribe(&format!("from test::{} filter {{ id > 10 }}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{} filter {{ id > 10 }}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Insert matching data
 		client.command(&format!("INSERT test::{} [{{ id: 15, value: 150 }}]", table), None).await.unwrap();
 
-		let frames = recv_with_timeout(&mut sub, 5000).await;
-		assert!(frames.is_some(), "Should receive matching insert");
+		let change = recv_with_timeout(&mut sub, 5000).await;
+		assert!(change.is_some(), "Should receive matching insert");
 
-		let frames = frames.unwrap();
-		let id_col = find_column(&frames[0], "id").unwrap();
+		let change = change.unwrap();
+		let id_col = find_column(&change.frames[0], "id").unwrap();
 		assert_eq!(id_col.data.get_value(0), Value::Int4(15));
 
 		drop(sub);
@@ -61,7 +64,13 @@ fn test_no_callback_for_non_matching() {
 		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
 		// Subscribe with filter: only id > 100
-		let mut sub = client.subscribe(&format!("from test::{} filter {{ id > 100 }}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(
+				&format!("from test::{} filter {{ id > 100 }}", table),
+				SubscriptionConfig::default(),
+			)
+			.await
+			.unwrap();
 
 		// Insert non-matching data (id = 5, which is < 100)
 		client.command(&format!("INSERT test::{} [{{ id: 5, value: 50 }}]", table), None).await.unwrap();

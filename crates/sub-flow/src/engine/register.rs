@@ -58,12 +58,12 @@ use crate::{
 
 impl FlowEngine {
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
+	pub fn register(&mut self, txn: &mut CommandTransaction, flow: Arc<FlowDag>) -> Result<()> {
 		self.register_with_transaction(&mut Transaction::Command(txn), flow)
 	}
 
 	#[instrument(name = "flow::register_with_transaction", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: FlowDag) -> Result<()> {
+	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: Arc<FlowDag>) -> Result<()> {
 		debug_assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.topological_order()? {
@@ -71,8 +71,9 @@ impl FlowEngine {
 			self.add(txn, &flow, node)?;
 		}
 
-		self.analyzer.add(flow.clone());
-		self.flows.insert(flow.id, flow);
+		self.analyzer.add((*flow).clone());
+		self.flows.insert(flow.id, flow.clone());
+		self.execution_level_cache.invalidate();
 
 		Ok(())
 	}

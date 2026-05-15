@@ -74,6 +74,7 @@ impl<'a> ChangeAssertion<'a> {
 			.filter_map(|d| match d {
 				Diff::Insert {
 					post,
+					..
 				} => Some(post.as_ref()),
 				_ => None,
 			})
@@ -88,6 +89,7 @@ impl<'a> ChangeAssertion<'a> {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => Some((pre.as_ref(), post.as_ref())),
 				_ => None,
 			})
@@ -101,6 +103,7 @@ impl<'a> ChangeAssertion<'a> {
 			.filter_map(|d| match d {
 				Diff::Remove {
 					pre,
+					..
 				} => Some(pre.as_ref()),
 				_ => None,
 			})
@@ -141,6 +144,7 @@ impl<'a> DiffAssertion<'a> {
 		match self.diff {
 			Diff::Insert {
 				post,
+				..
 			} => post,
 			_ => panic!("Expected insert diff, found {:?}", self.diff),
 		}
@@ -151,6 +155,7 @@ impl<'a> DiffAssertion<'a> {
 			Diff::Update {
 				pre,
 				post,
+				..
 			} => (pre, post),
 			_ => panic!("Expected update diff, found {:?}", self.diff),
 		}
@@ -160,6 +165,7 @@ impl<'a> DiffAssertion<'a> {
 		match self.diff {
 			Diff::Remove {
 				pre,
+				..
 			} => pre,
 			_ => panic!("Expected remove diff, found {:?}", self.diff),
 		}
@@ -365,7 +371,7 @@ pub mod tests {
 			.has_key(&key1)
 			.has_key(&key2)
 			.key_has_values(&key1, &[Value::Int8(10i64)], &shape)
-			.all_keys(|k| k.0.len() == 6); // "key1" and "key2" are 6 bytes (4 chars + 2-byte terminator 0xffff)
+			.all_keys(|k| k.len() == 6); // "key1" and "key2" are 6 bytes (4 chars + 2-byte terminator 0xffff)
 	}
 
 	#[test]

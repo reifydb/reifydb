@@ -327,7 +327,7 @@ fn test_non_table_events_filtered() {
 	let table_key = RowKey::encoded(ShapeId::table(1), RowNumber(1));
 	txn.set(&table_key, EncodedRow(CowVec::new(b"table_value".to_vec()))).expect("Failed to set table encoded");
 
-	let non_table_key = EncodedKey(CowVec::new(b"non_table_key".to_vec()));
+	let non_table_key = EncodedKey::new(b"non_table_key".to_vec());
 	txn.set(&non_table_key, EncodedRow(CowVec::new(b"non_table_value".to_vec())))
 		.expect("Failed to set non-table encoded");
 

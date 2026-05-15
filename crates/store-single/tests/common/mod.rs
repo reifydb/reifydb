@@ -127,7 +127,8 @@ impl testscript::runner::Runner for Runner {
 		match command.name.as_str() {
 			"get" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 				let value: Option<SingleVersionRow> = self.store.get(&key)?.into();
 				let value = value.map(|sv| sv.row.to_vec());
@@ -135,7 +136,8 @@ impl testscript::runner::Runner for Runner {
 			}
 			"contains" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 				let contains = self.store.contains(&key)?;
 				writeln!(output, "{} => {}", Raw::key(&key), contains)?;
@@ -176,8 +178,9 @@ impl testscript::runner::Runner for Runner {
 			"prefix" => {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let prefix =
-					EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
+				let prefix = EncodedKey::new(decode_binary(
+					&args.next_pos().ok_or("prefix not given")?.value,
+				));
 				args.reject_rest()?;
 
 				if !reverse {
@@ -192,8 +195,8 @@ impl testscript::runner::Runner for Runner {
 			"set" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 				args.reject_rest()?;
 
 				self.store.commit(cow_vec![
@@ -207,7 +210,8 @@ impl testscript::runner::Runner for Runner {
 
 			"remove" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
 				self.store.commit(cow_vec![
@@ -221,8 +225,8 @@ impl testscript::runner::Runner for Runner {
 			"unset" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 				args.reject_rest()?;
 
 				self.store.commit(cow_vec![
@@ -236,7 +240,8 @@ impl testscript::runner::Runner for Runner {
 
 			"drop" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
 				self.store.commit(cow_vec![
@@ -254,7 +259,8 @@ impl testscript::runner::Runner for Runner {
 
 			"buffer_get" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
 				let buffer = self.store.buffer().ok_or("buffer tier not configured")?;
@@ -269,7 +275,8 @@ impl testscript::runner::Runner for Runner {
 
 			"persistent_get" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
@@ -280,13 +287,12 @@ impl testscript::runner::Runner for Runner {
 			"persistent_set" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let value_bytes = decode_binary(&kv.value);
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let value_bytes = CowVec::new(decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				let entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)> =
-					vec![(key.0.clone(), Some(value_bytes))];
+				let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> = vec![(key, Some(value_bytes))];
 				persistent.set(entries)?;
 			}
 

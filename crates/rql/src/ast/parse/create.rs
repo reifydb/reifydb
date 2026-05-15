@@ -18,9 +18,9 @@ use crate::{
 			AstCreateDictionary, AstCreateEvent, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer,
 			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
-			AstCreateTest, AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKey,
-			AstProcedureParam, AstStatement, AstTimestampPrecision, AstTtl, AstType, AstVariant,
-			AstViewStorageKind,
+			AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn,
+			AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstStatement, AstTimestampPrecision,
+			AstTtl, AstType, AstVariant, AstViewStorageKind,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -764,20 +764,70 @@ impl<'bump> Parser<'bump> {
 			Vec::new()
 		} else if self.current()?.is_operator(Operator::OpenCurly) {
 			self.parse_columns()?
+		} else if self.current()?.is_keyword(Keyword::With) {
+			Vec::new()
 		} else {
 			let fragment = self.current()?.fragment.to_owned();
 			return Err(Error::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
-					expected: "'{' or 'AS'".to_string(),
+					expected: "'{', 'WITH', or 'AS'".to_string(),
 				},
 				message: format!(
 					"Unexpected token: expected {}, got {}",
-					"'{' or 'AS'",
+					"'{', 'WITH', or 'AS'",
 					fragment.text()
 				),
 				fragment,
 			}));
 		};
+
+		let mut hydration = AstHydrationConfig::default();
+
+		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
+			self.consume_operator(Operator::OpenCurly)?;
+
+			loop {
+				self.skip_new_line()?;
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let key = self.consume(TokenKind::Identifier)?;
+				self.consume_operator(Operator::Colon)?;
+
+				match key.fragment.text() {
+					"hydration" => {
+						hydration = self.parse_hydration_with_value()?;
+					}
+					_ => {
+						let fragment = key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "'hydration'".to_string(),
+							},
+							message: format!(
+								"expected 'hydration', found `{}`",
+								fragment.text()
+							),
+							fragment,
+						}));
+					}
+				}
+
+				self.skip_new_line()?;
+
+				if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+					continue;
+				}
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+		}
 
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -837,6 +887,7 @@ impl<'bump> Parser<'bump> {
 			token,
 			columns,
 			as_clause,
+			hydration,
 		}))
 	}
 
@@ -2245,6 +2296,125 @@ impl<'bump> Parser<'bump> {
 		Compiler::parse_duration(duration_str)
 	}
 
+	fn parse_hydration_with_value(&mut self) -> Result<AstHydrationConfig> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut enabled: Option<bool> = None;
+		let mut max_rows: Option<u64> = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"enabled" => {
+					let current = self.current()?;
+					match current.kind {
+						TokenKind::Literal(Literal::True) => {
+							self.advance()?;
+							enabled = Some(true);
+						}
+						TokenKind::Literal(Literal::False) => {
+							self.advance()?;
+							enabled = Some(false);
+						}
+						_ => {
+							let fragment = current.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "boolean literal".to_string(),
+								},
+								message: format!(
+									"expected boolean literal for hydration.enabled, found `{}`",
+									fragment.text()
+								),
+								fragment,
+							}));
+						}
+					}
+				}
+				"max_rows" => {
+					let token = self.consume(TokenKind::Literal(Literal::Number))?;
+					let text = token.fragment.text();
+					if text.starts_with('-') {
+						let fragment = token.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "non-negative integer".to_string(),
+							},
+							message: format!(
+								"hydration.max_rows must be a positive integer, found `{}`",
+								fragment.text()
+							),
+							fragment,
+						}));
+					}
+					let parsed = text.parse::<u64>().map_err(|_| {
+						let fragment = token.fragment.to_owned();
+						Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "valid u64 integer".to_string(),
+							},
+							message: format!(
+								"hydration.max_rows must be a valid u64, found `{}`",
+								fragment.text()
+							),
+							fragment,
+						})
+					})?;
+					if parsed == 0 {
+						let fragment = token.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "positive integer".to_string(),
+							},
+							message:
+								"hydration.max_rows must be greater than zero (use enabled: false to disable)"
+									.to_string(),
+							fragment,
+						}));
+					}
+					max_rows = Some(parsed);
+				}
+				_other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'enabled' or 'max_rows'".to_string(),
+						},
+						message: format!(
+							"expected 'enabled' or 'max_rows' in hydration config, found `{}`",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstHydrationConfig {
+			enabled: enabled.unwrap_or(true),
+			max_rows,
+		})
+	}
+
 	fn parse_row_config(&mut self) -> Result<AstTtl<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -2487,7 +2657,8 @@ pub mod tests {
 			ast::{
 				Ast, AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
 				AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
-				AstCreateSumType, AstCreateTable, AstCreateTransactionalView, AstType,
+				AstCreateSumType, AstCreateTable, AstCreateTransactionalView, AstHydrationConfig,
+				AstType,
 			},
 			parse::Parser,
 		},
@@ -3684,5 +3855,112 @@ pub mod tests {
 			}
 			_ => unreachable!("Expected Subscription create"),
 		}
+	}
+
+	fn parse_subscription_hydration(source: &str) -> AstHydrationConfig {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let r = result.pop().unwrap();
+		match r.first_unchecked().as_create() {
+			AstCreate::Subscription(s) => s.hydration.clone(),
+			_ => unreachable!("expected subscription"),
+		}
+	}
+
+	#[test]
+	fn test_subscription_hydration_disabled() {
+		let cfg = parse_subscription_hydration(
+			"CREATE SUBSCRIPTION WITH { hydration: { enabled: false } } AS { FROM demo::events }",
+		);
+		assert!(!cfg.enabled);
+		assert_eq!(cfg.max_rows, None);
+	}
+
+	#[test]
+	fn test_subscription_hydration_with_max_rows() {
+		let cfg = parse_subscription_hydration(
+			"CREATE SUBSCRIPTION WITH { hydration: { enabled: true, max_rows: 1000 } } AS { FROM demo::events }",
+		);
+		assert!(cfg.enabled);
+		assert_eq!(cfg.max_rows, Some(1000));
+	}
+
+	#[test]
+	fn test_subscription_hydration_max_rows_only_defaults_enabled() {
+		let cfg = parse_subscription_hydration(
+			"CREATE SUBSCRIPTION WITH { hydration: { max_rows: 250 } } AS { FROM demo::events }",
+		);
+		assert!(cfg.enabled);
+		assert_eq!(cfg.max_rows, Some(250));
+	}
+
+	#[test]
+	fn test_subscription_hydration_empty_struct() {
+		let cfg = parse_subscription_hydration(
+			"CREATE SUBSCRIPTION WITH { hydration: { } } AS { FROM demo::events }",
+		);
+		assert!(cfg.enabled);
+		assert_eq!(cfg.max_rows, None);
+	}
+
+	#[test]
+	fn test_subscription_with_clause_omitted_defaults_to_enabled() {
+		let cfg = parse_subscription_hydration("CREATE SUBSCRIPTION AS { FROM demo::events }");
+		assert!(cfg.enabled);
+		assert_eq!(cfg.max_rows, None);
+	}
+
+	fn parse_subscription_must_fail(source: &str) -> String {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let err = parser.parse().expect_err("expected parse error");
+		err.to_string()
+	}
+
+	#[test]
+	fn test_subscription_with_unknown_top_level_key_rejected() {
+		let msg = parse_subscription_must_fail(
+			"CREATE SUBSCRIPTION WITH { snapshot: { enabled: false } } AS { FROM demo::events }",
+		);
+		assert!(msg.contains("hydration"), "error should reference 'hydration', got: {}", msg);
+	}
+
+	#[test]
+	fn test_subscription_with_unknown_sub_key_rejected() {
+		let msg = parse_subscription_must_fail(
+			"CREATE SUBSCRIPTION WITH { hydration: { foo: 1 } } AS { FROM demo::events }",
+		);
+		assert!(msg.contains("'enabled' or 'max_rows'"), "error should reference legal sub-keys, got: {}", msg);
+	}
+
+	#[test]
+	fn test_subscription_with_non_struct_hydration_value_rejected() {
+		let msg = parse_subscription_must_fail(
+			"CREATE SUBSCRIPTION WITH { hydration: false } AS { FROM demo::events }",
+		);
+		assert!(!msg.is_empty(), "expected a parse error message");
+	}
+
+	#[test]
+	fn test_subscription_with_max_rows_zero_rejected() {
+		let msg = parse_subscription_must_fail(
+			"CREATE SUBSCRIPTION WITH { hydration: { max_rows: 0 } } AS { FROM demo::events }",
+		);
+		assert!(
+			msg.contains("greater than zero") || msg.contains("positive"),
+			"error should explain zero rejection, got: {}",
+			msg
+		);
+	}
+
+	#[test]
+	fn test_subscription_with_non_bool_enabled_rejected() {
+		let msg = parse_subscription_must_fail(
+			"CREATE SUBSCRIPTION WITH { hydration: { enabled: 1 } } AS { FROM demo::events }",
+		);
+		assert!(msg.contains("boolean"), "error should reference boolean expectation, got: {}", msg);
 	}
 }

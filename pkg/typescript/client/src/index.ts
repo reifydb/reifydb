@@ -68,6 +68,8 @@ export type {
     ChangeMessage,
     SubscriptionCallbacks,
     SubscriptionOperation,
+    HydrationConfig,
+    SubscriptionConfig,
     BatchSubscribeRequest,
     BatchSubscribedResponse,
     BatchUnsubscribeRequest,
@@ -83,4 +85,9 @@ export type {
     LoginResult,
     LogoutRequest,
     LogoutResponse,
+} from './types';
+export {
+    default_hydration_config,
+    default_subscription_config,
+    build_subscription_rql,
 } from './types';

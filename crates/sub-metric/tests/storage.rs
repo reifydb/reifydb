@@ -55,7 +55,7 @@ use reifydb_testing::testscript::{
 	command::Command,
 	runner::{self, Runner as TestRunner},
 };
-use reifydb_type::cow_vec;
+use reifydb_type::{cow_vec, util::cowvec::CowVec};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/sub-metric/tests/scripts/storage" as metric_memory => test_memory }
@@ -175,7 +175,8 @@ impl TestRunner for Runner {
 		match command.name.as_str() {
 			"get" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
@@ -187,7 +188,8 @@ impl TestRunner for Runner {
 
 			"contains" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 				let contains = self.multi_store.contains(&key, version)?;
@@ -222,8 +224,8 @@ impl TestRunner for Runner {
 			"set" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					let v = CommitVersion(v);
 					if v > self.version {
@@ -249,7 +251,8 @@ impl TestRunner for Runner {
 
 			"remove" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					let v = CommitVersion(v);
 					if v > self.version {
@@ -283,7 +286,8 @@ impl TestRunner for Runner {
 			// drop KEY [version=VERSION]
 			"drop" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					let v = CommitVersion(v);
 					if v > self.version {
@@ -433,7 +437,7 @@ impl TestRunner for Runner {
 			"cdc_write" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
 				let value_bytes = decode_binary(&kv.value).len() as u64;
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
@@ -454,7 +458,7 @@ impl TestRunner for Runner {
 			"cdc_drop" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value_bytes not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
 				let value_bytes: u64 = String::from_utf8_lossy(&decode_binary(&kv.value)).parse()?;
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)

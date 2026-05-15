@@ -16,11 +16,13 @@ use crate::{
 	multi::transaction::{version::VersionProvider, *},
 };
 
+#[derive(Clone)]
 pub enum TransactionKind {
 	Current(CommitVersion),
 	TimeTravel(CommitVersion),
 }
 
+#[derive(Clone)]
 pub struct TransactionManagerQuery<L>
 where
 	L: VersionProvider,

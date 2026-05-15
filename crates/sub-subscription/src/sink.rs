@@ -8,7 +8,7 @@ use std::{
 };
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_abi::flow::diff::DiffType;
+use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
 use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::{
@@ -145,6 +145,10 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let node_id = self.node;
 		let shape_for_persist = self.shape.clone();
@@ -171,16 +175,26 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					let row_count = post.row_count();
+					let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
 					for row_idx in 0..row_count {
-						state.rows.insert(post.row_numbers[row_idx]);
+						if state.rows.insert(post.row_numbers[row_idx]) {
+							new_indices.push(row_idx);
+						}
 					}
-					self.stage(post, DiffType::Insert);
+					if new_indices.len() == row_count {
+						self.stage(post, DiffType::Insert);
+					} else if !new_indices.is_empty() {
+						let sub_post = post.extract_by_indices(&new_indices);
+						self.stage(&sub_post, DiffType::Insert);
+					}
 				}
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					let row_count = post.row_count();
 					let mut update_indices: Vec<usize> = Vec::new();
@@ -210,6 +224,7 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					let row_count = pre.row_count();
 					let mut remove_indices: Vec<usize> = Vec::new();

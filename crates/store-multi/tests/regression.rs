@@ -5,6 +5,7 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},
 		store::EntryKind,
@@ -17,8 +18,8 @@ use reifydb_store_multi::{
 };
 use reifydb_type::util::cowvec::CowVec;
 
-fn k(s: &str) -> CowVec<u8> {
-	CowVec::new(s.as_bytes().to_vec())
+fn k(s: &str) -> EncodedKey {
+	EncodedKey::new(s.as_bytes().to_vec())
 }
 
 fn v(s: &str) -> CowVec<u8> {

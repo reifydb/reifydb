@@ -505,6 +505,18 @@ impl Columns {
 				(ColumnBuffer::Uuid7(container), Type::Uuid7) => {
 					container.push(shape.get_uuid7(row, index));
 				}
+				(ColumnBuffer::IdentityId(container), Type::IdentityId) => {
+					container.push(shape.get_identity_id(row, index));
+				}
+				(
+					ColumnBuffer::Blob {
+						container,
+						..
+					},
+					Type::Blob,
+				) => {
+					container.push(shape.get_blob(row, index));
+				}
 				(
 					ColumnBuffer::Int {
 						container,
@@ -904,8 +916,10 @@ pub mod tests {
 			util::bitvec::BitVec,
 			value::{
 				Value,
+				blob::Blob,
 				constraint::TypeConstraint,
 				dictionary::{DictionaryEntryId, DictionaryId},
+				identity::IdentityId,
 				ordered_f32::OrderedF32,
 				ordered_f64::OrderedF64,
 				r#type::Type,
@@ -1774,6 +1788,98 @@ pub mod tests {
 			assert!(!test_instance[0].is_defined(1));
 			assert!(test_instance[0].is_defined(2));
 			assert_eq!(test_instance[0].get_value(2), Value::DictionaryId(DictionaryEntryId::U4(5)));
+		}
+
+		#[test]
+		fn test_all_defined_identity_id() {
+			let id1 = IdentityId::anonymous();
+			let id2 = IdentityId::root();
+
+			let shape = RowShape::testing(&[Type::IdentityId]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				Fragment::internal("id_col"),
+				ColumnBuffer::identity_id(Vec::<IdentityId>::new()),
+			)]);
+
+			let mut row_one = shape.allocate();
+			shape.set_identity_id(&mut row_one, 0, id1);
+			let mut row_two = shape.allocate();
+			shape.set_identity_id(&mut row_two, 0, id2);
+
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+
+			assert_eq!(test_instance[0].get_value(0), Value::IdentityId(id1));
+			assert_eq!(test_instance[0].get_value(1), Value::IdentityId(id2));
+		}
+
+		#[test]
+		fn test_fallback_identity_id() {
+			let id = IdentityId::anonymous();
+
+			let shape = RowShape::testing(&[Type::IdentityId, Type::Boolean]);
+			let mut test_instance = Columns::new(vec![
+				ColumnWithName::new(
+					Fragment::internal("id_col"),
+					ColumnBuffer::identity_id(Vec::<IdentityId>::new()),
+				),
+				ColumnWithName::bool("bool_col", Vec::<bool>::new()),
+			]);
+
+			let mut row = shape.allocate();
+			shape.set_identity_id(&mut row, 0, id);
+			shape.set_none(&mut row, 1);
+
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+
+			assert_eq!(test_instance[0].get_value(0), Value::IdentityId(id));
+			assert!(test_instance[0].is_defined(0));
+			assert!(!test_instance[1].is_defined(0));
+		}
+
+		#[test]
+		fn test_all_defined_blob() {
+			let blob1 = Blob::new(vec![1, 2, 3]);
+			let blob2 = Blob::new(vec![4, 5]);
+
+			let shape = RowShape::testing(&[Type::Blob]);
+			let mut test_instance = Columns::new(vec![ColumnWithName::new(
+				Fragment::internal("blob_col"),
+				ColumnBuffer::blob(Vec::<Blob>::new()),
+			)]);
+
+			let mut row_one = shape.allocate();
+			shape.set_blob(&mut row_one, 0, &blob1);
+			let mut row_two = shape.allocate();
+			shape.set_blob(&mut row_two, 0, &blob2);
+
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+
+			assert_eq!(test_instance[0].get_value(0), Value::Blob(blob1));
+			assert_eq!(test_instance[0].get_value(1), Value::Blob(blob2));
+		}
+
+		#[test]
+		fn test_fallback_blob() {
+			let blob = Blob::new(vec![10, 20, 30]);
+
+			let shape = RowShape::testing(&[Type::Blob, Type::Boolean]);
+			let mut test_instance = Columns::new(vec![
+				ColumnWithName::new(
+					Fragment::internal("blob_col"),
+					ColumnBuffer::blob(Vec::<Blob>::new()),
+				),
+				ColumnWithName::bool("bool_col", Vec::<bool>::new()),
+			]);
+
+			let mut row = shape.allocate();
+			shape.set_blob(&mut row, 0, &blob);
+			shape.set_none(&mut row, 1);
+
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+
+			assert_eq!(test_instance[0].get_value(0), Value::Blob(blob));
+			assert!(test_instance[0].is_defined(0));
+			assert!(!test_instance[1].is_defined(0));
 		}
 
 		fn test_instance_with_columns() -> Columns {

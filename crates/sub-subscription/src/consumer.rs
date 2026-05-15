@@ -31,6 +31,8 @@ pub struct SubscriptionCdcConsumer {
 
 	flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
 
+	hydration_versions: Arc<DashMap<FlowId, CommitVersion>>,
+
 	delivery: Arc<DeliveryBuffer>,
 }
 
@@ -40,6 +42,7 @@ impl SubscriptionCdcConsumer {
 		multi: MultiTransaction,
 		catalog: Catalog,
 		flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
+		hydration_versions: Arc<DashMap<FlowId, CommitVersion>>,
 		delivery: Arc<DeliveryBuffer>,
 	) -> Self {
 		Self {
@@ -47,6 +50,7 @@ impl SubscriptionCdcConsumer {
 			multi,
 			catalog,
 			flow_states,
+			hydration_versions,
 			delivery,
 		}
 	}
@@ -102,6 +106,11 @@ impl SubscriptionCdcConsumer {
 		flow_entries: &[(FlowId, FlowNodeId)],
 	) {
 		for (flow_id, node_id) in flow_entries {
+			if let Some(hydrated) = self.hydration_versions.get(flow_id)
+				&& version <= *hydrated
+			{
+				continue;
+			}
 			let state = self.flow_states.remove(flow_id).map(|(_, v)| v).unwrap_or_default();
 			let Ok(primitive_query) = self.multi.begin_query() else {
 				continue;

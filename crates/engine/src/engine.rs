@@ -20,7 +20,11 @@ use reifydb_catalog::{
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
 };
-use reifydb_cdc::{consume::host::CdcHost, produce::watermark::CdcProducerWatermark, storage::CdcStore};
+use reifydb_cdc::{
+	consume::{host::CdcHost, watermark::CdcConsumerWatermark},
+	produce::watermark::CdcProducerWatermark,
+	storage::CdcStore,
+};
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::{catalog::namespace_not_found, engine::read_only_rejection},
@@ -45,7 +49,7 @@ use reifydb_runtime::{
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
-	multi::transaction::MultiTransaction,
+	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
@@ -228,6 +232,53 @@ impl StandardEngine {
 		};
 		let mut outcome = self.executor.query(
 			&mut txn,
+			Query {
+				rql,
+				params,
+			},
+		);
+		if let Some(ref mut e) = outcome.error {
+			e.with_rql(rql.to_string());
+		}
+		outcome
+	}
+
+	#[instrument(name = "engine::query_as_at_version", level = "debug", skip(self, params, lease), fields(rql = %rql, version = %lease.version().0))]
+	pub fn query_as_at_version(
+		&self,
+		identity: IdentityId,
+		rql: &str,
+		params: Params,
+		lease: &VersionLeaseGuard,
+	) -> ExecutionResult {
+		let mut txn = match self.begin_query_at_version(lease, identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_rql(rql.to_string());
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.query(
+			&mut txn,
+			Query {
+				rql,
+				params,
+			},
+		);
+		if let Some(ref mut e) = outcome.error {
+			e.with_rql(rql.to_string());
+		}
+		outcome
+	}
+
+	#[instrument(name = "engine::query_in_txn", level = "debug", skip(self, txn, params), fields(rql = %rql))]
+	pub fn query_in_txn(&self, txn: &mut QueryTransaction, rql: &str, params: Params) -> ExecutionResult {
+		let mut outcome = self.executor.query(
+			txn,
 			Query {
 				rql,
 				params,
@@ -423,16 +474,27 @@ impl StandardEngine {
 		self.interceptors.add_late(factory);
 	}
 
-	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0
+	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self, lease), fields(version = %lease.version().0
     ))]
-	pub fn begin_query_at_version(&self, version: CommitVersion, identity: IdentityId) -> Result<QueryTransaction> {
-		let mut txn = QueryTransaction::new(
-			self.multi.begin_query_at_version(version)?,
-			self.single.clone(),
-			identity,
-		);
+	pub fn begin_query_at_version(
+		&self,
+		lease: &VersionLeaseGuard,
+		identity: IdentityId,
+	) -> Result<QueryTransaction> {
+		let mut txn =
+			QueryTransaction::new(self.multi.begin_query_at_version(lease)?, self.single.clone(), identity);
 		txn.set_executor(Arc::new(self.executor.clone()));
 		Ok(txn)
+	}
+
+	#[instrument(name = "engine::acquire_version_lease", level = "debug", skip(self), fields(version = %version.0))]
+	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
+		self.multi.acquire_version_lease(version)
+	}
+
+	#[instrument(name = "engine::acquire_current_snapshot_lease", level = "debug", skip(self))]
+	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
+		self.multi.acquire_current_snapshot_lease()
 	}
 
 	#[inline]
@@ -530,6 +592,11 @@ impl StandardEngine {
 			.resolve::<CdcProducerWatermark>()
 			.expect("CdcProducerWatermark must be registered")
 			.get()
+	}
+
+	#[inline]
+	pub fn cdc_consumer_watermark(&self) -> CommitVersion {
+		self.executor.ioc.try_resolve::<CdcConsumerWatermark>().map(|w| w.get()).unwrap_or(CommitVersion(0))
 	}
 
 	pub fn set_read_only(&self) {

@@ -315,7 +315,7 @@ impl FlowSubsystem {
 					)?;
 					fresh_engine.register_with_transaction(
 						&mut Transaction::Test(Box::new(test_txn.reborrow())),
-						dag,
+						Arc::new(dag),
 					)?;
 				}
 

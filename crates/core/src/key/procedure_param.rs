@@ -14,28 +14,17 @@ pub struct ProcedureParamKey {
 	pub param_index: u16,
 }
 
-const VERSION: u8 = 1;
-
 impl EncodableKey for ProcedureParamKey {
 	const KIND: KeyKind = KeyKind::ProcedureParam;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(12);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.procedure)
-			.extend_u16(self.param_index);
+		let mut serializer = KeySerializer::with_capacity(11);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.procedure).extend_u16(self.param_index);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -66,14 +55,14 @@ impl ProcedureParamKey {
 	}
 
 	fn params_start(procedure: ProcedureId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(procedure);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(procedure);
 		serializer.to_encoded_key()
 	}
 
 	fn params_end(procedure: ProcedureId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(*procedure - 1);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(*procedure - 1);
 		serializer.to_encoded_key()
 	}
 }

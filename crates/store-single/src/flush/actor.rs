@@ -9,6 +9,8 @@ use std::{
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_core::encoded::key::EncodedKey;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
@@ -83,7 +85,7 @@ impl FlushActor {
 			return;
 		}
 
-		let entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)> = drained.into_iter().collect();
+		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> = drained.into_iter().collect();
 		let count = entries.len();
 		if let Err(e) = self.persistent.set(entries) {
 			error!(error = %e, "single persistent flush: set failed");

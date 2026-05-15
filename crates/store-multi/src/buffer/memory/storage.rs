@@ -10,6 +10,7 @@ use std::{
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::key::EncodedKey,
 	interface::{
 		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 		store::EntryKind,
@@ -101,7 +102,7 @@ impl MemoryPrimitiveStorage {
 		&self,
 		table: EntryKind,
 		version: CommitVersion,
-		entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>,
+		entries: Vec<(EncodedKey, Option<CowVec<u8>>)>,
 	) {
 		let table_entry = self.get_or_create_table(table);
 		let mut current = table_entry.current.write();
@@ -137,10 +138,8 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => return Ok(None),
 		};
 
-		let key = CowVec::new(key.to_vec());
-
 		let current = entry.current.read();
-		if let Some((cur_version, value)) = current.get(&key)
+		if let Some((cur_version, value)) = current.get(key)
 			&& *cur_version <= version
 		{
 			return Ok(value.clone());
@@ -148,7 +147,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		drop(current);
 
 		let historical = entry.historical.read();
-		if let Some(versions) = historical.get(&key) {
+		if let Some(versions) = historical.get(key) {
 			for (Reverse(v), value) in versions.range(Reverse(version)..) {
 				if *v <= version {
 					return Ok(value.clone());
@@ -167,10 +166,8 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => return Ok(false),
 		};
 
-		let key = CowVec::new(key.to_vec());
-
 		let current = entry.current.read();
-		if let Some((cur_version, value)) = current.get(&key)
+		if let Some((cur_version, value)) = current.get(key)
 			&& *cur_version <= version
 		{
 			return Ok(value.is_some());
@@ -178,7 +175,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		drop(current);
 
 		let historical = entry.historical.read();
-		if let Some(versions) = historical.get(&key) {
+		if let Some(versions) = historical.get(key) {
 			for (Reverse(v), value) in versions.range(Reverse(version)..) {
 				if *v <= version {
 					return Ok(value.is_some());
@@ -228,15 +225,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		};
 
-		let start_key = match start {
-			Bound::Included(k) | Bound::Excluded(k) => Some(CowVec::new(k.to_vec())),
-			Bound::Unbounded => None,
-		};
-		let end_key = match end {
-			Bound::Included(k) | Bound::Excluded(k) => Some(CowVec::new(k.to_vec())),
-			Bound::Unbounded => None,
-		};
-
 		let cursor_key = cursor.last_key.clone();
 
 		let current = entry.current.read();
@@ -244,28 +232,14 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		let mut entries: Vec<RawEntry> = Vec::with_capacity(batch_size + 1);
 
-		let iter_start: Bound<&CowVec<u8>> = match &cursor_key {
-			Some(last) => Bound::Excluded(last),
-			None => match &start_key {
-				Some(k) => match start {
-					Bound::Included(_) => Bound::Included(k),
-					Bound::Excluded(_) => Bound::Excluded(k),
-					Bound::Unbounded => Bound::Unbounded,
-				},
-				None => Bound::Unbounded,
-			},
+		let iter_start: Bound<&[u8]> = match &cursor_key {
+			Some(last) => Bound::Excluded(last.as_slice()),
+			None => start,
 		};
 
-		let iter_end: Bound<&CowVec<u8>> = match &end_key {
-			Some(k) => match end {
-				Bound::Included(_) => Bound::Included(k),
-				Bound::Excluded(_) => Bound::Excluded(k),
-				Bound::Unbounded => Bound::Unbounded,
-			},
-			None => Bound::Unbounded,
-		};
+		let iter_end: Bound<&[u8]> = end;
 
-		let current_keys: Vec<_> = current.range::<CowVec<u8>, _>((iter_start, iter_end)).collect();
+		let current_keys: Vec<_> = current.range::<[u8], _>((iter_start, iter_end)).collect();
 
 		for (key, (cur_version, cur_value)) in current_keys {
 			if entries.len() > batch_size {
@@ -301,7 +275,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		}
 
-		for (key, versions) in historical.range::<CowVec<u8>, _>((iter_start, iter_end)) {
+		for (key, versions) in historical.range::<[u8], _>((iter_start, iter_end)) {
 			if entries.len() > batch_size {
 				break;
 			}
@@ -328,8 +302,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 				}
 			}
 		}
-
-		entries.sort_by(|a, b| a.key.cmp(&b.key));
 
 		let has_more = entries.len() > batch_size;
 		if has_more {
@@ -372,15 +344,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		};
 
-		let start_key = match start {
-			Bound::Included(k) | Bound::Excluded(k) => Some(CowVec::new(k.to_vec())),
-			Bound::Unbounded => None,
-		};
-		let end_key = match end {
-			Bound::Included(k) | Bound::Excluded(k) => Some(CowVec::new(k.to_vec())),
-			Bound::Unbounded => None,
-		};
-
 		let cursor_key = cursor.last_key.clone();
 
 		let current = entry.current.read();
@@ -388,28 +351,14 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		let mut entries: Vec<RawEntry> = Vec::with_capacity(batch_size + 1);
 
-		let iter_start: Bound<&CowVec<u8>> = match &start_key {
-			Some(k) => match start {
-				Bound::Included(_) => Bound::Included(k),
-				Bound::Excluded(_) => Bound::Excluded(k),
-				Bound::Unbounded => Bound::Unbounded,
-			},
-			None => Bound::Unbounded,
+		let iter_start: Bound<&[u8]> = start;
+
+		let iter_end: Bound<&[u8]> = match &cursor_key {
+			Some(last) => Bound::Excluded(last.as_slice()),
+			None => end,
 		};
 
-		let iter_end: Bound<&CowVec<u8>> = match &cursor_key {
-			Some(last) => Bound::Excluded(last),
-			None => match &end_key {
-				Some(k) => match end {
-					Bound::Included(_) => Bound::Included(k),
-					Bound::Excluded(_) => Bound::Excluded(k),
-					Bound::Unbounded => Bound::Unbounded,
-				},
-				None => Bound::Unbounded,
-			},
-		};
-
-		let current_keys: Vec<_> = current.range::<CowVec<u8>, _>((iter_start, iter_end)).rev().collect();
+		let current_keys: Vec<_> = current.range::<[u8], _>((iter_start, iter_end)).rev().collect();
 
 		for (key, (cur_version, cur_value)) in current_keys {
 			if entries.len() > batch_size {
@@ -445,7 +394,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 			}
 		}
 
-		for (key, versions) in historical.range::<CowVec<u8>, _>((iter_start, iter_end)).rev() {
+		for (key, versions) in historical.range::<[u8], _>((iter_start, iter_end)).rev() {
 			if entries.len() > batch_size {
 				break;
 			}
@@ -472,8 +421,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 				}
 			}
 		}
-
-		entries.sort_by(|a, b| b.key.cmp(&a.key));
 
 		let has_more = entries.len() > batch_size;
 		if has_more {
@@ -513,7 +460,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		table_count = batches.len(),
 		total_entry_count = field::Empty
 	))]
-	fn drop(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
+	fn drop(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
 
 		for (table, entries) in batches {
@@ -521,7 +468,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 			let mut current = table_entry.current.write();
 			let mut historical = table_entry.historical.write();
 
-			let mut by_key: HashMap<CowVec<u8>, Vec<CommitVersion>> = HashMap::new();
+			let mut by_key: HashMap<EncodedKey, Vec<CommitVersion>> = HashMap::new();
 			for (key, version) in entries {
 				by_key.entry(key).or_default().push(version);
 			}
@@ -588,17 +535,16 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => return Ok(Vec::new()),
 		};
 
-		let key = CowVec::new(key.to_vec());
 		let mut versions: Vec<(CommitVersion, Option<CowVec<u8>>)> = Vec::new();
 
 		let current = entry.current.read();
-		if let Some((cur_version, value)) = current.get(&key) {
+		if let Some((cur_version, value)) = current.get(key) {
 			versions.push((*cur_version, value.clone()));
 		}
 		drop(current);
 
 		let historical = entry.historical.read();
-		if let Some(hist_versions) = historical.get(&key) {
+		if let Some(hist_versions) = historical.get(key) {
 			for (Reverse(v), value) in hist_versions.iter() {
 				versions.push((*v, value.clone()));
 			}
@@ -616,7 +562,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		cutoff: CommitVersion,
 		cursor: &mut HistoricalCursor,
 		batch_size: usize,
-	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
+	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
 		if cursor.exhausted || batch_size == 0 {
 			return Ok(Vec::new());
 		}
@@ -632,7 +578,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		let historical = entry.historical.read();
 
-		let mut collected: Vec<(CowVec<u8>, CommitVersion)> = Vec::new();
+		let mut collected: Vec<(EncodedKey, CommitVersion)> = Vec::new();
 		let mut over_limit = false;
 
 		for (key, versions) in historical.iter() {
@@ -703,7 +649,7 @@ pub mod tests {
 	fn test_basic_operations() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		let key = CowVec::new(b"key1".to_vec());
+		let key = EncodedKey::new(b"key1".to_vec());
 		let version = CommitVersion(1);
 
 		// Put and get
@@ -734,7 +680,7 @@ pub mod tests {
 		let source1 = ShapeId::Table(TableId(1));
 		let source2 = ShapeId::Table(TableId(2));
 
-		let key = CowVec::new(b"key".to_vec());
+		let key = EncodedKey::new(b"key".to_vec());
 		let version = CommitVersion(1);
 
 		storage.set(
@@ -768,7 +714,7 @@ pub mod tests {
 	fn test_version_promotion_to_historical() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		let key = CowVec::new(b"key1".to_vec());
+		let key = EncodedKey::new(b"key1".to_vec());
 
 		// Insert version 1
 		storage.set(
@@ -814,7 +760,7 @@ pub mod tests {
 	fn test_insert_older_version() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		let key = CowVec::new(b"key1".to_vec());
+		let key = EncodedKey::new(b"key1".to_vec());
 
 		// Insert version 3 first
 		storage.set(
@@ -859,9 +805,9 @@ pub mod tests {
 			HashMap::from([(
 				EntryKind::Multi,
 				vec![
-					(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-					(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-					(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+					(EncodedKey::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
+					(EncodedKey::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
+					(EncodedKey::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
 				],
 			)]),
 		)
@@ -901,9 +847,9 @@ pub mod tests {
 			HashMap::from([(
 				EntryKind::Multi,
 				vec![
-					(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-					(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-					(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+					(EncodedKey::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
+					(EncodedKey::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
+					(EncodedKey::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
 				],
 			)]),
 		)
@@ -941,7 +887,7 @@ pub mod tests {
 
 		// Insert 10 entries
 		let entries: Vec<_> =
-			(0..10u8).map(|i| (CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))).collect();
+			(0..10u8).map(|i| (EncodedKey::new(vec![i]), Some(CowVec::new(vec![i * 10])))).collect();
 		storage.set(version, HashMap::from([(EntryKind::Multi, entries)])).unwrap();
 
 		// Use a single cursor to stream through all entries
@@ -1050,7 +996,7 @@ pub mod tests {
 
 		// Insert 10 entries
 		let entries: Vec<_> =
-			(0..10u8).map(|i| (CowVec::new(vec![i]), Some(CowVec::new(vec![i * 10])))).collect();
+			(0..10u8).map(|i| (EncodedKey::new(vec![i]), Some(CowVec::new(vec![i * 10])))).collect();
 		storage.set(version, HashMap::from([(EntryKind::Multi, entries)])).unwrap();
 
 		// Use a single cursor to stream in reverse
@@ -1101,7 +1047,7 @@ pub mod tests {
 	fn test_drop_from_historical() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		let key = CowVec::new(b"key1".to_vec());
+		let key = EncodedKey::new(b"key1".to_vec());
 
 		// Insert versions 1, 2, 3
 		for v in 1..=3u64 {
@@ -1137,7 +1083,7 @@ pub mod tests {
 	fn test_tombstones() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		let key = CowVec::new(b"key1".to_vec());
+		let key = EncodedKey::new(b"key1".to_vec());
 
 		// Insert version 1 with value
 		storage.set(

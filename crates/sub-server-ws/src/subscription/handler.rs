@@ -1,21 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
-use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
-use reifydb_core::interface::catalog::id::SubscriptionId;
+use reifydb_client::{
+	HydrationConfig as ClientHydrationConfig, RawChangePayload, SubscriptionConfig as ClientSubscriptionConfig,
+	WireFormat as ClientWireFormat,
+};
+use reifydb_core::interface::catalog::{id::SubscriptionId, subscription::HydrationConfig};
+use reifydb_engine::subscription::HydrateError;
 use reifydb_remote_proxy::{RemoteSubscription, connect_remote, proxy_remote, proxy_remote_to_sink};
 use reifydb_sub_server::{
 	format::WireFormat,
 	interceptor::{Protocol, RequestMetadata},
 	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, resolve_response_json},
-	subscribe::{
-		CreateSubscriptionError, CreateSubscriptionResult, CreateSubscriptionResult::*, cleanup_subscription,
-		create_subscription,
+	subscription::{
+		cleanup::cleanup_subscription,
+		create::{CreateSubscriptionResult, CreateSubscriptionResult::*, create_subscription},
+		errors::CreateSubscriptionError,
+		hydrate::run_hydrate,
 	},
 };
 use reifydb_subscription::batch::BatchId;
+use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_type::value::identity::IdentityId;
 use reifydb_wire_format::{encode::encode_frames, json::to::convert_frames, options::EncodeOptions};
 use serde_json::{Value as JsonValue, from_str, json};
@@ -26,7 +33,10 @@ use crate::{
 	handler::{BinaryKind, ConnectionContext, encode_rbcf_envelope, error_to_response},
 	protocol::{BatchSubscribeRequest, BatchUnsubscribeRequest, SubscribeRequest},
 	response::{BatchMemberInfo, Response},
-	subscription::{PushMessage, registry::SubscriptionRegistry},
+	subscription::{
+		PushMessage,
+		registry::{PromoteResult, SubscriptionRegistry, encode_change_for_handler},
+	},
 };
 
 pub(crate) async fn handle_subscribe(
@@ -41,42 +51,100 @@ pub(crate) async fn handle_subscribe(
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 
 	match create_subscription(conn.state, id, &user_rql, metadata).await {
-		Ok(Local(subscription_id)) => {
+		Ok(Local {
+			id: subscription_id,
+			hydration,
+		}) => {
+			let server_cap = conn.state.subscribe_max_hydration_rows();
+			let max_rows = match hydration.max_rows {
+				Some(n) if n > server_cap => {
+					warn!("clamping hydration.max_rows from {} to server cap {}", n, server_cap);
+					server_cap
+				}
+				Some(n) => n,
+				None => server_cap,
+			};
+			let warming_cap = if hydration.enabled {
+				Some(max_rows as usize)
+			} else {
+				None
+			};
 			conn.registry.subscribe(
 				subscription_id,
 				conn.connection_id,
-				user_rql,
+				user_rql.clone(),
 				conn.push_tx.clone(),
 				format,
+				warming_cap,
 			);
 
+			if hydration.enabled {
+				let lease = match conn.state.engine().acquire_current_snapshot_lease() {
+					Ok((_, lease)) => lease,
+					Err(e) => {
+						let code = if e.0.code == "TXN_012" {
+							"HYDRATION_VERSION_EVICTED"
+						} else {
+							"PIN_VERSION_FAILED"
+						};
+						abort_warming(conn, subscription_id).await;
+						return Some(Response::internal_error(request_id, code, e.to_string())
+							.to_json());
+					}
+				};
+				if let Some(err_response) = run_ws_hydrate(
+					request_id,
+					conn,
+					subscription_id,
+					&user_rql,
+					id,
+					lease,
+					max_rows,
+					format,
+				)
+				.await
+				{
+					return Some(err_response);
+				}
+			} else {
+				let _ = conn.registry.promote_to_live(subscription_id);
+			}
+
 			info!(
-				"Connection {} subscribed: subscription_id={} format={:?}",
-				conn.connection_id, subscription_id, format
+				"Connection {} subscribed: subscription_id={} format={:?} hydration_enabled={}",
+				conn.connection_id, subscription_id, format, hydration.enabled
 			);
 
 			Some(Response::subscribed(request_id, subscription_id.to_string()).to_json())
 		}
 		Ok(Remote {
 			address,
-			rql,
+			body,
 			token: ns_token,
+			hydration,
 		}) => {
 			let client_fmt = match format {
 				WireFormat::Rbcf => ClientWireFormat::Rbcf,
 				WireFormat::Json | WireFormat::Frames => ClientWireFormat::Rbcf,
 			};
-			let remote_sub = match connect_remote(&address, &rql, ns_token.as_deref(), client_fmt).await {
-				Ok(s) => s,
-				Err(e) => {
-					return Some(Response::internal_error(
-						request_id,
-						"REMOTE_SUBSCRIBE_FAILED",
-						e.to_string(),
-					)
-					.to_json());
-				}
+			let config = ClientSubscriptionConfig {
+				hydration: ClientHydrationConfig {
+					enabled: hydration.enabled,
+					max_rows: hydration.max_rows,
+				},
 			};
+			let remote_sub =
+				match connect_remote(&address, &body, config, ns_token.as_deref(), client_fmt).await {
+					Ok(s) => s,
+					Err(e) => {
+						return Some(Response::internal_error(
+							request_id,
+							"REMOTE_SUBSCRIBE_FAILED",
+							e.to_string(),
+						)
+						.to_json());
+					}
+				};
 
 			let remote_id = remote_sub.subscription_id().to_string();
 			let subscription_id = match remote_id.parse::<u64>() {
@@ -231,11 +299,16 @@ pub(crate) async fn handle_batch_subscribe(
 	let format = req.format;
 
 	let mut resolved: Vec<ResolvedBatchMember> = Vec::with_capacity(req.queries.len());
+	let mut local_hydrations: Vec<(SubscriptionId, String, HydrationConfig)> = Vec::new();
 
 	for (index, user_rql) in req.queries.iter().enumerate() {
 		let metadata = RequestMetadata::new(Protocol::WebSocket);
 		match create_subscription(conn.state, id, user_rql, metadata).await {
-			Ok(CreateSubscriptionResult::Local(subscription_id)) => {
+			Ok(CreateSubscriptionResult::Local {
+				id: subscription_id,
+				hydration,
+			}) => {
+				local_hydrations.push((subscription_id, user_rql.clone(), hydration));
 				resolved.push(ResolvedBatchMember::Local {
 					index,
 					subscription_id,
@@ -244,16 +317,24 @@ pub(crate) async fn handle_batch_subscribe(
 			}
 			Ok(CreateSubscriptionResult::Remote {
 				address,
-				rql,
+				body,
 				token: ns_token,
+				hydration,
 			}) => {
 				let client_format = match format {
 					WireFormat::Rbcf => ClientWireFormat::Rbcf,
 					WireFormat::Json | WireFormat::Frames => ClientWireFormat::Rbcf,
 				};
+				let config = ClientSubscriptionConfig {
+					hydration: ClientHydrationConfig {
+						enabled: hydration.enabled,
+						max_rows: hydration.max_rows,
+					},
+				};
 				let remote_sub = match connect_remote(
 					&address,
-					&rql,
+					&body,
+					config,
 					ns_token.as_deref(),
 					client_format,
 				)
@@ -305,6 +386,20 @@ pub(crate) async fn handle_batch_subscribe(
 		}
 	}
 
+	let server_cap = conn.state.subscribe_max_hydration_rows();
+	let mut effective_max_rows: HashMap<SubscriptionId, u64> = HashMap::new();
+	for (sub_id, _, hydration) in &local_hydrations {
+		let max_rows = match hydration.max_rows {
+			Some(n) if n > server_cap => {
+				warn!("clamping hydration.max_rows from {} to server cap {}", n, server_cap);
+				server_cap
+			}
+			Some(n) => n,
+			None => server_cap,
+		};
+		effective_max_rows.insert(*sub_id, max_rows);
+	}
+
 	for member in &resolved {
 		if let ResolvedBatchMember::Local {
 			subscription_id,
@@ -312,13 +407,55 @@ pub(crate) async fn handle_batch_subscribe(
 			..
 		} = member
 		{
+			let warming_cap = local_hydrations.iter().find(|(sid, _, _)| sid == subscription_id).and_then(
+				|(_, _, h)| {
+					if h.enabled {
+						Some(*effective_max_rows.get(subscription_id).unwrap_or(&server_cap)
+							as usize)
+					} else {
+						None
+					}
+				},
+			);
 			conn.registry.subscribe(
 				*subscription_id,
 				conn.connection_id,
 				query.clone(),
 				conn.push_tx.clone(),
 				format,
+				warming_cap,
 			);
+		}
+	}
+
+	let any_hydration = local_hydrations.iter().any(|(_, _, h)| h.enabled);
+	if any_hydration {
+		let lease = match conn.state.engine().acquire_current_snapshot_lease() {
+			Ok((_, lease)) => lease,
+			Err(e) => {
+				let code = if e.0.code == "TXN_012" {
+					"HYDRATION_VERSION_EVICTED"
+				} else {
+					"PIN_VERSION_FAILED"
+				};
+				rollback_batch_members(conn, &resolved).await;
+				return Some(Response::internal_error(request_id, code, e.to_string()).to_json());
+			}
+		};
+		for (sub_id, rql, hydration) in &local_hydrations {
+			if !hydration.enabled {
+				continue;
+			}
+			let max_rows = *effective_max_rows.get(sub_id).unwrap_or(&server_cap);
+			if let Some(err_response) =
+				run_ws_hydrate(request_id, conn, *sub_id, rql, id, lease.clone(), max_rows, format)
+					.await
+			{
+				for (other_sub, _, _) in &local_hydrations {
+					abort_warming(conn, *other_sub).await;
+				}
+				return Some(err_response);
+			}
 		}
 	}
 
@@ -364,7 +501,7 @@ pub(crate) async fn handle_batch_subscribe(
 		conn.connection_id,
 		batch_id,
 		members_for_ack.len(),
-		format
+		format,
 	);
 
 	Some(Response::batch_subscribed(request_id, batch_id.to_string(), members_for_ack).to_json())
@@ -432,5 +569,79 @@ async fn rollback_batch_members(conn: &ConnectionContext<'_>, resolved: &[Resolv
 		{
 			warn!("Failed to cleanup partial batch member {} during rollback: {:?}", subscription_id, e);
 		}
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_ws_hydrate(
+	request_id: &str,
+	conn: &mut ConnectionContext<'_>,
+	subscription_id: SubscriptionId,
+	rql: &str,
+	identity: IdentityId,
+	lease: VersionLeaseGuard,
+	max_rows: u64,
+	format: WireFormat,
+) -> Option<String> {
+	let service = match conn.state.engine().services().ioc.resolve() {
+		Ok(s) => s,
+		Err(e) => {
+			abort_warming(conn, subscription_id).await;
+			return Some(Response::internal_error(
+				request_id,
+				"SUBSCRIPTION_SERVICE_UNAVAILABLE",
+				e.to_string(),
+			)
+			.to_json());
+		}
+	};
+
+	let engine = conn.state.engine_clone();
+
+	let (version, outcome) = match run_hydrate(service, engine, subscription_id, identity, lease, max_rows).await {
+		Ok(t) => t,
+		Err(err) => {
+			abort_warming(conn, subscription_id).await;
+			return Some(hydrate_error_to_response(request_id, err, rql, max_rows));
+		}
+	};
+
+	if let Some((cols, metrics)) = outcome {
+		let row_count = cols.row_count();
+		info!(
+			subscription_id = subscription_id.0,
+			version = version.0,
+			total_us = metrics.total.microseconds(),
+			compute_us = metrics.compute.microseconds(),
+			statement_count = metrics.statements.len(),
+			row_count = row_count,
+			fingerprint = %metrics.fingerprint.to_hex(),
+			"ws hydrate completed"
+		);
+		if let Some(msg) = encode_change_for_handler(subscription_id, cols, format) {
+			let _ = conn.push_tx.send(msg);
+		}
+	}
+
+	match conn.registry.promote_to_live(subscription_id) {
+		PromoteResult::Promoted(_) | PromoteResult::NotWarming | PromoteResult::NotFound => None,
+		PromoteResult::Overflowed => Some(Response::internal_error(
+			request_id,
+			"HYDRATION_BACKPRESSURE",
+			"Live diffs overflowed warming buffer during hydration; retry with smaller TAKE or lower hydration.max_rows",
+		)
+		.to_json()),
+		PromoteResult::Disconnected => None,
+	}
+}
+
+fn hydrate_error_to_response(request_id: &str, err: HydrateError, rql: &str, cap: u64) -> String {
+	Response::internal_error(request_id, err.wire_code(), err.wire_message(rql, cap)).to_json()
+}
+
+async fn abort_warming(conn: &mut ConnectionContext<'_>, subscription_id: SubscriptionId) {
+	conn.registry.unsubscribe(subscription_id);
+	if let Err(e) = cleanup_subscription(conn.state, subscription_id).await {
+		warn!("Failed to cleanup subscription {} after hydrate failure: {:?}", subscription_id, e);
 	}
 }

@@ -466,16 +466,15 @@ fn test_replica_unset() {
 #[test]
 fn test_replica_prefix() {
 	use reifydb_core::encoded::key::EncodedKey;
-	use reifydb_type::util::cowvec::CowVec;
 
 	let engine = test_multi();
 
 	// Use raw byte keys with a shared prefix so prefix queries work correctly.
-	let k_aa = EncodedKey(CowVec::new(vec![0x01, 0x01]));
-	let k_ab = EncodedKey(CowVec::new(vec![0x01, 0x02]));
-	let k_ac = EncodedKey(CowVec::new(vec![0x01, 0x03]));
-	let k_ba = EncodedKey(CowVec::new(vec![0x02, 0x01]));
-	let prefix_01 = EncodedKey(CowVec::new(vec![0x01]));
+	let k_aa = EncodedKey::new(vec![0x01, 0x01]);
+	let k_ab = EncodedKey::new(vec![0x01, 0x02]);
+	let k_ac = EncodedKey::new(vec![0x01, 0x03]);
+	let k_ba = EncodedKey::new(vec![0x02, 0x01]);
+	let prefix_01 = EncodedKey::new(vec![0x01]);
 
 	{
 		let mut tx = engine.begin_replica(CommitVersion(100)).unwrap();

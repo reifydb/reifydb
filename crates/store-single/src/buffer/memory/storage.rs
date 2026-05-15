@@ -3,13 +3,14 @@
 
 use std::{collections::BTreeMap, ops::Bound, sync::Arc};
 
+use reifydb_core::encoded::key::EncodedKey;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
-type MemoryStore = Arc<RwLock<BTreeMap<CowVec<u8>, Option<CowVec<u8>>>>>;
+type MemoryStore = Arc<RwLock<BTreeMap<EncodedKey, Option<CowVec<u8>>>>>;
 
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
@@ -57,7 +58,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::single::memory::set", level = "debug", skip(self, entries), fields(entry_count = entries.len()))]
-	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
+	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
 		let mut map = self.inner.data.write();
 		for (key, value) in entries {
 			map.insert(key, value);

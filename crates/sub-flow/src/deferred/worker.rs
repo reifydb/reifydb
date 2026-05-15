@@ -153,7 +153,7 @@ impl FlowWorkerActor {
 		let result = self.engine.begin_command(IdentityId::system()).and_then(|mut txn| {
 			let (flow, _) =
 				self.flow_catalog.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)?;
-			state.flow_engine.register(&mut txn, flow)
+			state.flow_engine.register(&mut txn, flow.into())
 		});
 
 		let resp = match result {
@@ -179,7 +179,7 @@ impl FlowWorkerActor {
 			for fid in flow_ids {
 				let (flow, _) =
 					self.flow_catalog.get_or_load_flow(&mut Transaction::Command(&mut txn), fid)?;
-				state.flow_engine.register(&mut txn, flow)?;
+				state.flow_engine.register(&mut txn, flow.into())?;
 			}
 			Ok(())
 		});
@@ -206,8 +206,9 @@ impl FlowWorkerActor {
 		timestamp: DateTime,
 		state_version: CommitVersion,
 	) -> Result<(Pending, Vec<RowShape>)> {
-		let query = self.engine.multi().begin_query_at_version(state_version)?;
-		let state_query = self.engine.multi().begin_query_at_version(state_version)?;
+		let lease = self.engine.multi().acquire_version_lease(state_version)?;
+		let query = self.engine.multi().begin_query_at_version(&lease)?;
+		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
 		let interceptors = self.engine.create_interceptors();
 
 		let mut txn = FlowTransaction::deferred_from_parts(
@@ -257,8 +258,10 @@ impl FlowWorkerActor {
 
 			let primitive_version = instruction.to_version;
 
-			let query = self.engine.multi().begin_query_at_version(primitive_version)?;
-			let state_query = self.engine.multi().begin_query_at_version(batch.state_version)?;
+			let state_lease = self.engine.multi().acquire_version_lease(batch.state_version)?;
+			let mut query = self.engine.multi().begin_query_at_version(&state_lease)?;
+			query.read_as_of_version_inclusive(primitive_version);
+			let state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
 
 			let mut txn = FlowTransaction::deferred_from_parts(
 				primitive_version,
@@ -270,10 +273,8 @@ impl FlowWorkerActor {
 				self.engine.clock().clone(),
 			);
 
-			for change in &instruction.changes {
-				if let Err(e) = flow_engine.process(&mut txn, change.clone(), flow_id) {
-					error!(flow_id = flow_id.0, error = %e, "failed to process flow");
-				}
+			if let Err(e) = flow_engine.process_batch(&mut txn, instruction.changes.clone(), flow_id) {
+				error!(flow_id = flow_id.0, error = %e, "failed to process flow");
 			}
 
 			txn.flush_operator_states()?;

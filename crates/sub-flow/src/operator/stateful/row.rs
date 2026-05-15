@@ -104,14 +104,14 @@ impl RowNumberProvider {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'M');
 		serializer.extend_bytes(key.as_ref());
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn make_reverse_map_key(&self, row_number: RowNumber) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'R');
 		serializer.extend_u64(row_number.0);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> Result<()> {

@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryPrimitiveStorage;
@@ -117,7 +117,7 @@ impl TierStorage for MultiBufferTier {
 	}
 
 	#[inline]
-	fn drop(&self, batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>>) -> Result<()> {
+	fn drop(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.drop(batches),
 		}
@@ -137,7 +137,7 @@ impl TierStorage for MultiBufferTier {
 		cutoff: CommitVersion,
 		cursor: &mut HistoricalCursor,
 		batch_size: usize,
-	) -> Result<Vec<(CowVec<u8>, CommitVersion)>> {
+	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
 		match self {
 			Self::Memory(s) => s.scan_historical_below(table, cutoff, cursor, batch_size),
 		}
@@ -154,7 +154,7 @@ pub mod tests {
 	fn test_memory_backend() {
 		let storage = MultiBufferTier::memory();
 
-		let key = CowVec::new(b"key".to_vec());
+		let key = EncodedKey::new(b"key".to_vec());
 		let version = CommitVersion(1);
 
 		storage.set(
@@ -175,9 +175,9 @@ pub mod tests {
 			HashMap::from([(
 				EntryKind::Multi,
 				vec![
-					(CowVec::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
-					(CowVec::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
-					(CowVec::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
+					(EncodedKey::new(b"a".to_vec()), Some(CowVec::new(b"1".to_vec()))),
+					(EncodedKey::new(b"b".to_vec()), Some(CowVec::new(b"2".to_vec()))),
+					(EncodedKey::new(b"c".to_vec()), Some(CowVec::new(b"3".to_vec()))),
 				],
 			)]),
 		)

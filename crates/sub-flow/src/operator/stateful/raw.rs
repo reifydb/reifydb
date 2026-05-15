@@ -34,6 +34,18 @@ pub trait RawStatefulOperator: Operator {
 	fn state_clear(&self, txn: &mut FlowTransaction) -> Result<()> {
 		utils::state_clear(self.id(), txn)
 	}
+
+	fn internal_state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		utils::internal_state_get(self.id(), txn, key)
+	}
+
+	fn internal_state_set(&self, txn: &mut FlowTransaction, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+		utils::internal_state_set(self.id(), txn, key, value)
+	}
+
+	fn internal_state_remove(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
+		utils::internal_state_remove(self.id(), txn, key)
+	}
 }
 
 #[cfg(test)]

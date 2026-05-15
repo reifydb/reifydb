@@ -16,3 +16,18 @@ pub trait SubscriptionInspector: Send + Sync {
 }
 
 pub type SubscriptionInspectorRef = Arc<dyn SubscriptionInspector>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HydrationConfig {
+	pub enabled: bool,
+	pub max_rows: Option<u64>,
+}
+
+impl Default for HydrationConfig {
+	fn default() -> Self {
+		Self {
+			enabled: true,
+			max_rows: None,
+		}
+	}
+}

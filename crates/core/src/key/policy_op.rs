@@ -8,8 +8,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-const VERSION: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolicyOpKey {
 	pub policy: PolicyId,
@@ -29,18 +27,18 @@ impl PolicyOpKey {
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(2);
-		start.extend_u8(VERSION).extend_u8(Self::KIND as u8);
-		let mut end = KeySerializer::with_capacity(2);
-		end.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
+		let mut start = KeySerializer::with_capacity(1);
+		start.extend_u8(Self::KIND as u8);
+		let mut end = KeySerializer::with_capacity(1);
+		end.extend_u8(Self::KIND as u8 - 1);
 		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
 	}
 
 	pub fn policy_scan(policy: PolicyId) -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(10);
-		start.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(policy);
-		let mut end = KeySerializer::with_capacity(18);
-		end.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(policy);
+		let mut start = KeySerializer::with_capacity(9);
+		start.extend_u8(Self::KIND as u8).extend_u64(policy);
+		let mut end = KeySerializer::with_capacity(17);
+		end.extend_u8(Self::KIND as u8).extend_u64(policy);
 		let start_key = start.to_encoded_key();
 		let mut end_bytes = end.to_encoded_key().to_vec();
 
@@ -53,21 +51,13 @@ impl EncodableKey for PolicyOpKey {
 	const KIND: KeyKind = KeyKind::PolicyOp;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.policy)
-			.extend_u64(self.op_index);
+		let mut serializer = KeySerializer::with_capacity(17);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.policy).extend_u64(self.op_index);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;

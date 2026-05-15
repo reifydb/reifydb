@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashSet, fmt, fmt::Debug, mem, sync::Arc, time};
+use std::{collections::HashSet, fmt, fmt::Debug, sync::Arc, time};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	error::diagnostic::query,
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
 	interface::catalog::series::{SeriesKey, TimestampPrecision},
 	util::lru::LruCache,
@@ -12,7 +13,7 @@ use reifydb_core::{
 use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
-	Result,
+	Result, error,
 	fragment::Fragment,
 	value::{Value, duration::Duration},
 };
@@ -321,8 +322,8 @@ fn compile_tick_duration(std_dur: time::Duration) -> Duration {
 	Duration::from_nanoseconds(std_dur.as_nanos() as i64).unwrap()
 }
 
-fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
-	match plan {
+fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
+	Ok(match plan {
 		PhysicalPlan::TableScan(node) => QueryPlan::TableScan(node),
 		PhysicalPlan::TableVirtualScan(node) => QueryPlan::TableVirtualScan(node),
 		PhysicalPlan::ViewScan(node) => QueryPlan::ViewScan(node),
@@ -340,84 +341,102 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		PhysicalPlan::Environment(node) => QueryPlan::Environment(node),
 
 		PhysicalPlan::Aggregate(node) => QueryPlan::Aggregate(nodes::AggregateNode {
-			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			by: node.by,
 			map: node.map,
 		}),
 		PhysicalPlan::Distinct(node) => QueryPlan::Distinct(nodes::DistinctNode {
-			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			columns: node.columns,
 			ttl: node.ttl,
 		}),
 		PhysicalPlan::Assert(node) => QueryPlan::Assert(nodes::AssertNode {
-			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
+			input: node
+				.input
+				.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
+				.transpose()?,
 			conditions: node.conditions,
 			message: node.message,
 		}),
 		PhysicalPlan::Filter(node) => QueryPlan::Filter(nodes::FilterNode {
-			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			conditions: node.conditions,
 		}),
 		PhysicalPlan::Gate(node) => QueryPlan::Gate(nodes::GateNode {
-			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			conditions: node.conditions,
 		}),
 		PhysicalPlan::JoinInner(node) => QueryPlan::JoinInner(nodes::JoinInnerNode {
-			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))),
-			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))),
+			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))?),
+			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
 			on: node.on,
 			alias: node.alias,
 			ttl: node.ttl,
 		}),
 		PhysicalPlan::JoinLeft(node) => QueryPlan::JoinLeft(nodes::JoinLeftNode {
-			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))),
-			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))),
+			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))?),
+			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
 			on: node.on,
 			alias: node.alias,
 			ttl: node.ttl,
 		}),
 		PhysicalPlan::JoinNatural(node) => QueryPlan::JoinNatural(nodes::JoinNaturalNode {
-			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))),
-			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))),
+			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))?),
+			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
 			join_type: node.join_type,
 			alias: node.alias,
 			ttl: node.ttl,
 		}),
 		PhysicalPlan::Take(node) => QueryPlan::Take(nodes::TakeNode {
-			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			take: node.take,
 		}),
 		PhysicalPlan::Sort(node) => QueryPlan::Sort(nodes::SortNode {
-			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			by: node.by,
 		}),
 		PhysicalPlan::Map(node) => QueryPlan::Map(nodes::MapNode {
-			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
+			input: node
+				.input
+				.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
+				.transpose()?,
 			map: node.map,
 		}),
 		PhysicalPlan::Extend(node) => QueryPlan::Extend(nodes::ExtendNode {
-			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
+			input: node
+				.input
+				.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
+				.transpose()?,
 			extend: node.extend,
 		}),
 		PhysicalPlan::Patch(node) => QueryPlan::Patch(nodes::PatchNode {
-			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
+			input: node
+				.input
+				.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
+				.transpose()?,
 			assignments: node.assignments,
 		}),
 		PhysicalPlan::Apply(node) => QueryPlan::Apply(nodes::ApplyNode {
-			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
+			input: node
+				.input
+				.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
+				.transpose()?,
 			operator: node.operator,
 			expressions: node.expressions,
 			ttl: node.ttl,
 		}),
 		PhysicalPlan::Window(node) => QueryPlan::Window(nodes::WindowNode {
-			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
+			input: node
+				.input
+				.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
+				.transpose()?,
 			kind: node.kind,
 			group_by: node.group_by,
 			aggregations: node.aggregations,
 			ts: node.ts,
 		}),
 		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
-			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			fragment: node.fragment,
 		}),
 
@@ -425,8 +444,8 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			left,
 			right,
 		}) => QueryPlan::Append(nodes::AppendQueryNode {
-			left: Box::new(materialize_query_plan(BumpBox::into_inner(left))),
-			right: Box::new(materialize_query_plan(BumpBox::into_inner(right))),
+			left: Box::new(materialize_query_plan(BumpBox::into_inner(left))?),
+			right: Box::new(materialize_query_plan(BumpBox::into_inner(right))?),
 		}),
 
 		PhysicalPlan::RunTests(node) => QueryPlan::RunTests(node),
@@ -437,10 +456,73 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 			is_procedure_call: node.is_procedure_call,
 		}),
 
-		other => panic!(
-			"cannot materialize non-query PhysicalPlan to QueryPlan: {:?}",
-			mem::discriminant(&other)
-		),
+		other => {
+			let kind = physical_plan_kind_name(&other);
+			return Err(error!(query::as_clause_not_query(Fragment::None, kind)));
+		}
+	})
+}
+
+fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
+	match plan {
+		PhysicalPlan::CreateDeferredView(_) => "CREATE DEFERRED VIEW",
+		PhysicalPlan::CreateTransactionalView(_) => "CREATE TRANSACTIONAL VIEW",
+		PhysicalPlan::CreateNamespace(_) => "CREATE NAMESPACE",
+		PhysicalPlan::CreateRemoteNamespace(_) => "CREATE REMOTE NAMESPACE",
+		PhysicalPlan::CreateTable(_) => "CREATE TABLE",
+		PhysicalPlan::CreateRingBuffer(_) => "CREATE RING BUFFER",
+		PhysicalPlan::CreateDictionary(_) => "CREATE DICTIONARY",
+		PhysicalPlan::CreateSumType(_) => "CREATE SUM TYPE",
+		PhysicalPlan::CreateSubscription(_) => "CREATE SUBSCRIPTION",
+		PhysicalPlan::CreatePrimaryKey(_) => "CREATE PRIMARY KEY",
+		PhysicalPlan::CreateColumnProperty(_) => "CREATE COLUMN PROPERTY",
+		PhysicalPlan::CreateProcedure(_) => "CREATE PROCEDURE",
+		PhysicalPlan::CreateEvent(_) => "CREATE EVENT",
+		PhysicalPlan::CreateSeries(_) => "CREATE SERIES",
+		PhysicalPlan::CreateTag(_) => "CREATE TAG",
+		PhysicalPlan::CreateSource(_) => "CREATE SOURCE",
+		PhysicalPlan::CreateSink(_) => "CREATE SINK",
+		PhysicalPlan::CreateBinding(_) => "CREATE BINDING",
+		PhysicalPlan::CreateTest(_) => "CREATE TEST",
+		PhysicalPlan::CreateMigration(_) => "CREATE MIGRATION",
+		PhysicalPlan::Migrate(_) => "MIGRATE",
+		PhysicalPlan::RollbackMigration(_) => "ROLLBACK MIGRATION",
+		PhysicalPlan::Dispatch(_) => "DISPATCH",
+		PhysicalPlan::DropNamespace(_) => "DROP NAMESPACE",
+		PhysicalPlan::DropTable(_) => "DROP TABLE",
+		PhysicalPlan::DropView(_) => "DROP VIEW",
+		PhysicalPlan::DropRingBuffer(_) => "DROP RING BUFFER",
+		PhysicalPlan::DropDictionary(_) => "DROP DICTIONARY",
+		PhysicalPlan::DropSumType(_) => "DROP SUM TYPE",
+		PhysicalPlan::DropSubscription(_) => "DROP SUBSCRIPTION",
+		PhysicalPlan::DropSeries(_) => "DROP SERIES",
+		PhysicalPlan::DropSource(_) => "DROP SOURCE",
+		PhysicalPlan::DropSink(_) => "DROP SINK",
+		PhysicalPlan::DropProcedure(_) => "DROP PROCEDURE",
+		PhysicalPlan::DropHandler(_) => "DROP HANDLER",
+		PhysicalPlan::DropTest(_) => "DROP TEST",
+		PhysicalPlan::DropBinding(_) => "DROP BINDING",
+		PhysicalPlan::AlterSequence(_) => "ALTER SEQUENCE",
+		PhysicalPlan::AlterTable(_) => "ALTER TABLE",
+		PhysicalPlan::AlterRemoteNamespace(_) => "ALTER REMOTE NAMESPACE",
+		PhysicalPlan::Delete(_) | PhysicalPlan::DeleteRingBuffer(_) | PhysicalPlan::DeleteSeries(_) => "DELETE",
+		PhysicalPlan::InsertTable(_)
+		| PhysicalPlan::InsertRingBuffer(_)
+		| PhysicalPlan::InsertDictionary(_)
+		| PhysicalPlan::InsertSeries(_) => "INSERT",
+		PhysicalPlan::Update(_) | PhysicalPlan::UpdateRingBuffer(_) | PhysicalPlan::UpdateSeries(_) => "UPDATE",
+		PhysicalPlan::CreateIdentity(_) => "CREATE IDENTITY",
+		PhysicalPlan::CreateRole(_) => "CREATE ROLE",
+		PhysicalPlan::Grant(_) => "GRANT",
+		PhysicalPlan::Revoke(_) => "REVOKE",
+		PhysicalPlan::DropIdentity(_) => "DROP IDENTITY",
+		PhysicalPlan::DropRole(_) => "DROP ROLE",
+		PhysicalPlan::CreateAuthentication(_) => "CREATE AUTHENTICATION",
+		PhysicalPlan::DropAuthentication(_) => "DROP AUTHENTICATION",
+		PhysicalPlan::CreatePolicy(_) => "CREATE POLICY",
+		PhysicalPlan::AlterPolicy(_) => "ALTER POLICY",
+		PhysicalPlan::DropPolicy(_) => "DROP POLICY",
+		_ => "non-query statement",
 	}
 }
 
@@ -1009,7 +1091,7 @@ impl InstructionCompiler {
 					columns: node.columns,
 					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
 						node.as_clause,
-					))),
+					))?),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
 					tick: node.tick.map(compile_tick_duration),
 					ttl: node.ttl,
@@ -1024,7 +1106,7 @@ impl InstructionCompiler {
 					columns: node.columns,
 					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
 						node.as_clause,
-					))),
+					))?),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
 					tick: node.tick.map(compile_tick_duration),
 					ttl: node.ttl,
@@ -1036,7 +1118,9 @@ impl InstructionCompiler {
 					columns: node.columns,
 					as_clause: node
 						.as_clause
-						.map(|a| Box::new(materialize_query_plan(BumpBox::into_inner(a)))),
+						.map(|a| materialize_query_plan(BumpBox::into_inner(a)).map(Box::new))
+						.transpose()?,
+					hydration: node.hydration,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1075,7 +1159,8 @@ impl InstructionCompiler {
 				self.emit(Instruction::Delete(nodes::DeleteTableNode {
 					input: node
 						.input
-						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
+						.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
+						.transpose()?,
 					target: node.target,
 					returning: node.returning,
 				}));
@@ -1085,7 +1170,8 @@ impl InstructionCompiler {
 				self.emit(Instruction::DeleteRingBuffer(nodes::DeleteRingBufferNode {
 					input: node
 						.input
-						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
+						.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
+						.transpose()?,
 					target: node.target,
 					returning: node.returning,
 				}));
@@ -1093,7 +1179,7 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::InsertTable(node) => {
 				self.emit(Instruction::InsertTable(nodes::InsertTableNode {
-					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 					target: node.target,
 					returning: node.returning,
 				}));
@@ -1101,7 +1187,7 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::InsertRingBuffer(node) => {
 				self.emit(Instruction::InsertRingBuffer(nodes::InsertRingBufferNode {
-					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 					target: node.target,
 					returning: node.returning,
 				}));
@@ -1109,7 +1195,7 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::InsertDictionary(node) => {
 				self.emit(Instruction::InsertDictionary(nodes::InsertDictionaryNode {
-					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 					target: node.target,
 					returning: node.returning,
 				}));
@@ -1117,7 +1203,7 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::InsertSeries(node) => {
 				self.emit(Instruction::InsertSeries(nodes::InsertSeriesNode {
-					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 					target: node.target,
 					returning: node.returning,
 				}));
@@ -1127,7 +1213,8 @@ impl InstructionCompiler {
 				self.emit(Instruction::DeleteSeries(nodes::DeleteSeriesNode {
 					input: node
 						.input
-						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
+						.map(|i| materialize_query_plan(BumpBox::into_inner(i)).map(Box::new))
+						.transpose()?,
 					target: node.target,
 					returning: node.returning,
 				}));
@@ -1135,7 +1222,7 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::Update(node) => {
 				self.emit(Instruction::Update(nodes::UpdateTableNode {
-					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 					target: node.target,
 					returning: node.returning,
 				}));
@@ -1143,7 +1230,7 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::UpdateRingBuffer(node) => {
 				self.emit(Instruction::UpdateRingBuffer(nodes::UpdateRingBufferNode {
-					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 					target: node.target,
 					returning: node.returning,
 				}));
@@ -1151,7 +1238,7 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::UpdateSeries(node) => {
 				self.emit(Instruction::UpdateSeries(nodes::UpdateSeriesNode {
-					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
+					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 					target: node.target,
 					returning: node.returning,
 				}));
@@ -1174,7 +1261,7 @@ impl InstructionCompiler {
 								message: block.message,
 							}));
 						} else {
-							let query = materialize_query_plan(inner);
+							let query = materialize_query_plan(inner)?;
 							self.emit(Instruction::Query(query));
 						}
 					}
@@ -1190,7 +1277,7 @@ impl InstructionCompiler {
 						self.compile_expression(&expr);
 					}
 					physical::AssignValue::Statement(plan) => {
-						let query = materialize_query_plan(BumpBox::into_inner(plan));
+						let query = materialize_query_plan(BumpBox::into_inner(plan))?;
 						self.emit(Instruction::Query(query));
 					}
 				}
@@ -1211,7 +1298,7 @@ impl InstructionCompiler {
 							left,
 							right,
 						},
-					))));
+					))?));
 					self.emit(Instruction::Emit);
 				}
 			},
@@ -1326,15 +1413,15 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Aggregate(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Aggregate(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Aggregate(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Distinct(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Distinct(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Distinct(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Assert(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Assert(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Assert(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::AssertBlock(node) => {
@@ -1349,47 +1436,47 @@ impl InstructionCompiler {
 				}
 			}
 			PhysicalPlan::Filter(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Gate(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Gate(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Gate(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::JoinInner(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinInner(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinInner(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::JoinLeft(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinLeft(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinLeft(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::JoinNatural(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinNatural(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinNatural(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Take(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Take(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Take(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Sort(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Sort(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Sort(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Map(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Map(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Map(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Extend(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Extend(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Extend(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Patch(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Patch(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Patch(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Apply(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Apply(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Apply(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::InlineData(node) => {
@@ -1405,7 +1492,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Window(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Window(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Window(node))?));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Variable(node) => {
@@ -1417,7 +1504,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::Scalarize(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Scalarize(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Scalarize(node))?));
 				self.emit(Instruction::Emit);
 			}
 		}
@@ -1623,13 +1710,13 @@ impl InstructionCompiler {
 			}
 
 			PhysicalPlan::Aggregate(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Aggregate(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Aggregate(node))?));
 			}
 			PhysicalPlan::Distinct(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Distinct(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Distinct(node))?));
 			}
 			PhysicalPlan::Assert(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Assert(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Assert(node))?));
 			}
 			PhysicalPlan::AssertBlock(node) => {
 				self.emit(Instruction::AssertBlock(nodes::AssertBlockNode {
@@ -1639,43 +1726,43 @@ impl InstructionCompiler {
 				}));
 			}
 			PhysicalPlan::Filter(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Filter(node))?));
 			}
 			PhysicalPlan::Gate(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Gate(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Gate(node))?));
 			}
 			PhysicalPlan::JoinInner(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinInner(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinInner(node))?));
 			}
 			PhysicalPlan::JoinLeft(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinLeft(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinLeft(node))?));
 			}
 			PhysicalPlan::JoinNatural(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinNatural(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::JoinNatural(node))?));
 			}
 			PhysicalPlan::Take(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Take(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Take(node))?));
 			}
 			PhysicalPlan::Sort(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Sort(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Sort(node))?));
 			}
 			PhysicalPlan::Map(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Map(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Map(node))?));
 			}
 			PhysicalPlan::Extend(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Extend(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Extend(node))?));
 			}
 			PhysicalPlan::Patch(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Patch(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Patch(node))?));
 			}
 			PhysicalPlan::Apply(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Apply(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Apply(node))?));
 			}
 			PhysicalPlan::Window(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Window(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Window(node))?));
 			}
 			PhysicalPlan::Scalarize(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Scalarize(node))));
+				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Scalarize(node))?));
 			}
 
 			other => {
@@ -1715,7 +1802,7 @@ impl InstructionCompiler {
 						left,
 						right,
 					},
-				))));
+				))?));
 				self.emit(Instruction::Emit);
 				Ok(())
 			}

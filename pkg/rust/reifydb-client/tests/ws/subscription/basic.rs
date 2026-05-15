@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{WireFormat, WsClient};
+use reifydb_client::{SubscriptionConfig, WireFormat, WsClient};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -25,7 +25,10 @@ fn test_subscribe_returns_subscription_id() {
 		let table = unique_table_name("sub_basic");
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub_id = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 		assert_eq!(sub_id, "1");
 
 		client.unsubscribe(&sub_id).await.unwrap();
@@ -49,7 +52,10 @@ fn test_unsubscribe_success() {
 		let table = unique_table_name("sub_unsub");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub_id = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Unsubscribe should succeed without error
 		let result = client.unsubscribe(&sub_id).await;
@@ -73,7 +79,7 @@ fn test_subscribe_invalid_query() {
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		// Invalid RQL should return an error
-		let result = client.subscribe("INVALID RQL SYNTAX HERE").await;
+		let result = client.subscribe("INVALID RQL SYNTAX HERE", SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Invalid query should return error");
 
 		client.close().await.unwrap();
@@ -94,7 +100,7 @@ fn test_subscribe_nonexistent_table() {
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		// Non-existent table should return an error
-		let result = client.subscribe("from nonexistent_table_xyz_12345").await;
+		let result = client.subscribe("from nonexistent_table_xyz_12345", SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Non-existent table should return error");
 
 		client.close().await.unwrap();
@@ -139,7 +145,10 @@ fn test_try_recv_empty() {
 		let table = unique_table_name("sub_try_recv");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let sub_id = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub_id = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// try_recv should return Empty when no changes
 		let result = client.try_recv();

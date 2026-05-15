@@ -9,9 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_type::util::cowvec::CowVec;
-
-pub fn decode_binary(s: &str) -> CowVec<u8> {
+pub fn decode_binary(s: &str) -> Vec<u8> {
 	let mut buf = [0; 4];
 	let mut bytes = Vec::new();
 	for c in s.chars() {
@@ -20,5 +18,5 @@ pub fn decode_binary(s: &str) -> CowVec<u8> {
 			_ => bytes.extend(c.encode_utf8(&mut buf).as_bytes()),
 		}
 	}
-	CowVec::new(bytes)
+	bytes
 }

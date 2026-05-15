@@ -11,7 +11,7 @@ use reifydb_type::{
 	params::Params,
 	value::frame::frame::Frame,
 };
-use reifydb_wire_format::decode::decode_frames;
+use reifydb_wire_format::{decode::decode_frames, json::from::convert_envelope_response};
 use serde_json::{Value, from_str, to_string};
 use tokio::{
 	net::TcpStream,
@@ -23,10 +23,13 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_conf
 use crate::{
 	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchClosedPayload,
 	BatchMemberClosedPayload, BatchMemberInfo, BatchSubscribeRequest, BatchUnsubscribeRequest, CallRequest,
-	ChangePayload, CommandRequest, CommandResult, LoginResult, QueryRequest, QueryResult, Request, RequestPayload,
-	Response, ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest, WireFormat,
+	ChangeKind, ChangePayload, CommandRequest, CommandResult, LoginResult, QueryRequest, QueryResult, Request,
+	RequestPayload, Response, ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest,
+	WireBatchChangePayload, WireChangePayload, WireFormat,
+	changes::{read_op_kind, strip_op_column},
 	params_to_wire,
 	session::{parse_admin_response, parse_call_response, parse_command_response, parse_query_response},
+	subscription::{BatchItem, SubscriptionConfig, build_subscription_rql},
 	utils::generate_request_id,
 };
 
@@ -152,16 +155,17 @@ impl WsClient {
 							// Then try to parse as ServerPush (no id field)
 							else if let Ok(push) = from_str::<ServerPush>(&text) {
 								match push {
-									ServerPush::Change(change) => {
-										let _ = change_tx.send(change).await;
+									ServerPush::Change(wire) => {
+										let _ = change_tx.send(payload_from_json_change(wire)).await;
 									}
-									ServerPush::BatchChange(batch) => {
+									ServerPush::BatchChange(wire) => {
+										let payload = batch_change_from_json(wire);
 										let sender = {
 											let routers = batch_routers.lock().await;
-											routers.get(&batch.batch_id).cloned()
+											routers.get(&payload.batch_id).cloned()
 										};
 										if let Some(tx) = sender {
-											let _ = tx.send(BatchPushEvent::Change(batch)).await;
+											let _ = tx.send(BatchPushEvent::Change(payload)).await;
 										}
 									}
 									ServerPush::BatchMemberClosed(m) => {
@@ -240,11 +244,14 @@ impl WsClient {
 									}
 								}
 								0x01 => {
+									let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
+									let stripped: Vec<Frame> = frames.into_iter().map(strip_op_column).collect();
 									let _ = change_tx.send(ChangePayload {
 										subscription_id: id,
+										kind,
 										content_type: "application/vnd.reifydb.rbcf".to_string(),
 										body: Value::Null,
-										frames: Some(frames),
+										frames: Some(stripped),
 									}).await;
 								}
 								_ => {}
@@ -508,12 +515,12 @@ impl WsClient {
 	}
 
 	/// Subscribe to real-time changes for a query.
-	pub async fn subscribe(&self, rql: &str) -> Result<String, Error> {
+	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<String, Error> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
 			payload: RequestPayload::Subscribe(SubscribeRequest {
-				rql: rql.to_string(),
+				rql: build_subscription_rql(rql, &config),
 				format: self.wire_format(),
 			}),
 		};
@@ -546,12 +553,12 @@ impl WsClient {
 
 	/// Open a batch subscription over multiple RQL queries. Returns a handle that
 	/// receives coalesced per-tick envelopes.
-	pub async fn batch_subscribe(&self, queries: &[&str]) -> Result<WsBatchSubscription, Error> {
+	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<WsBatchSubscription, Error> {
 		let id = generate_request_id();
 		let request = Request {
 			id,
 			payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
-				queries: queries.iter().map(|q| q.to_string()).collect(),
+				queries: items.iter().map(|i| build_subscription_rql(i.rql, &i.config)).collect(),
 				format: self.wire_format(),
 			}),
 		};
@@ -714,12 +721,17 @@ fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
 		}
 		let rbcf_bytes = &data[pos..pos + rbcf_len];
 		pos += rbcf_len;
-		let (frames, decode_error) = match decode_frames(rbcf_bytes) {
-			Ok(f) => (Some(f), None),
-			Err(e) => (None, Some(e.to_string())),
+		let (frames, kind, decode_error) = match decode_frames(rbcf_bytes) {
+			Ok(frames) => {
+				let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
+				let stripped: Vec<Frame> = frames.into_iter().map(strip_op_column).collect();
+				(Some(stripped), kind, None)
+			}
+			Err(e) => (None, ChangeKind::Insert, Some(e.to_string())),
 		};
 		entries.push(BatchChangeEntry {
 			subscription_id: sub_id,
+			kind,
 			content_type: "application/vnd.reifydb.rbcf".to_string(),
 			body: Value::Null,
 			frames,
@@ -730,4 +742,41 @@ fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
 		batch_id,
 		entries,
 	})
+}
+
+fn payload_from_json_change(wire: WireChangePayload) -> ChangePayload {
+	let frames = convert_envelope_response(wire.body.clone());
+	let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
+	let stripped: Vec<Frame> = frames.into_iter().map(strip_op_column).collect();
+	ChangePayload {
+		subscription_id: wire.subscription_id,
+		kind,
+		content_type: wire.content_type,
+		body: wire.body,
+		frames: Some(stripped),
+	}
+}
+
+fn batch_change_from_json(wire: WireBatchChangePayload) -> BatchChangePayload {
+	let entries = wire
+		.entries
+		.into_iter()
+		.map(|entry| {
+			let frames = convert_envelope_response(entry.body.clone());
+			let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
+			let stripped: Vec<Frame> = frames.into_iter().map(strip_op_column).collect();
+			BatchChangeEntry {
+				subscription_id: entry.subscription_id,
+				kind,
+				content_type: entry.content_type,
+				body: entry.body,
+				frames: Some(stripped),
+				decode_error: None,
+			}
+		})
+		.collect();
+	BatchChangePayload {
+		batch_id: wire.batch_id,
+		entries,
+	}
 }

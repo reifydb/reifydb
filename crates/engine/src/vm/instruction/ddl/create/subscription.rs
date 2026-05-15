@@ -26,10 +26,16 @@ pub(crate) fn create_subscription(
 			Some(t) => Value::Utf8(t.clone()),
 			None => Value::none(),
 		};
+		let max_rows_value = match plan.hydration.max_rows {
+			Some(n) => Value::Uint8(n),
+			None => Value::none(),
+		};
 		return Ok(Columns::single_row([
 			("remote_address", Value::Utf8(remote.address.clone())),
-			("remote_rql", Value::Utf8(remote.remote_rql.clone())),
+			("remote_body", Value::Utf8(remote.remote_rql.clone())),
 			("remote_token", token_value),
+			("remote_hydration_enabled", Value::Boolean(plan.hydration.enabled)),
+			("remote_hydration_max_rows", max_rows_value),
 		]));
 	}
 
@@ -49,8 +55,15 @@ pub(crate) fn create_subscription(
 
 	sub_service.register_subscription(subscription_id, flow_dag, column_names, txn)?;
 
+	let hydration_max_rows = match plan.hydration.max_rows {
+		Some(n) => Value::Uint8(n),
+		None => Value::none(),
+	};
+
 	Ok(Columns::single_row([
 		("subscription_id", Value::Uint8(subscription_id.0)),
 		("created", Value::Boolean(true)),
+		("hydration_enabled", Value::Boolean(plan.hydration.enabled)),
+		("hydration_max_rows", hydration_max_rows),
 	]))
 }

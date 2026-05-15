@@ -7,6 +7,7 @@ use std::{
 };
 
 use postcard::{from_bytes, to_stdvec};
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_catalog::store::ringbuffer::update::{decode_ringbuffer_metadata, encode_ringbuffer_metadata};
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
@@ -133,6 +134,10 @@ impl Operator for SinkRingBufferViewOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape: RowShape = view.columns().into();
@@ -144,6 +149,7 @@ impl Operator for SinkRingBufferViewOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_ringbuffer_insert(
 					txn,
 					&view,
@@ -156,9 +162,11 @@ impl Operator for SinkRingBufferViewOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_ringbuffer_update(txn, &view, &shape, object_id, &state, pre, post)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_ringbuffer_remove(txn, &view, &shape, object_id, &mut state, pre)?,
 			}
 		}

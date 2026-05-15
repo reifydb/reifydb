@@ -17,7 +17,7 @@ fn key(label: &[u8]) -> EncodedKey {
 	let mut bytes = Vec::with_capacity(1 + label.len());
 	bytes.push(0x00);
 	bytes.extend_from_slice(label);
-	EncodedKey(CowVec::new(bytes))
+	EncodedKey::new(bytes)
 }
 
 fn row(label: &[u8]) -> EncodedRow {

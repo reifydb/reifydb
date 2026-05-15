@@ -3,12 +3,18 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
+use reifydb_client::{
+	HydrationConfig as ClientHydrationConfig, RawChangePayload, SubscriptionConfig as ClientSubscriptionConfig,
+	WireFormat as ClientWireFormat,
+};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
-	interface::catalog::{binding::BindingFormat, id::SubscriptionId},
+	common::CommitVersion,
+	interface::catalog::{binding::BindingFormat, id::SubscriptionId, subscription::HydrationConfig},
 	metric::ExecutionMetrics,
+	value::column::columns::Columns,
 };
+use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef};
 use reifydb_remote_proxy::{RemoteSubscription, connect_remote, proxy_remote, proxy_remote_to_sink};
 use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
@@ -16,10 +22,19 @@ use reifydb_sub_server::{
 	binding::dispatch_binding,
 	dispatch::dispatch,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
-	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
+	subscription::{
+		cleanup::cleanup_subscription_sync,
+		create::{CreateSubscriptionResult, create_subscription},
+		hydrate::run_hydrate,
+	},
 };
 use reifydb_subscription::batch::BatchId;
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_transaction::multi::lease::VersionLeaseGuard;
+use reifydb_type::{
+	error::Error,
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use tokio::{
 	select, spawn,
@@ -37,13 +52,14 @@ use crate::{
 	convert::{frames_to_proto, proto_params_to_params},
 	error::GrpcError,
 	generated::{
-		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, BatchMember,
-		BatchSubscribeRequest, BatchSubscribedEvent, BatchSubscriptionEvent, BatchUnsubscribeRequest,
-		BatchUnsubscribeResponse, ChangeEvent, CommandRequest, CommandResponse, FramesPayload, LogoutRequest,
-		LogoutResponse, OperationRequest, OperationResponse, Params as ProtoParams, QueryRequest,
-		QueryResponse, SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest,
-		UnsubscribeResponse, admin_response, batch_subscription_event, change_event, command_response,
-		operation_response, query_response, reify_db_server::ReifyDb, subscription_event,
+		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, BatchChangeEntry,
+		BatchChangeEvent, BatchMember, BatchSubscribeRequest, BatchSubscribedEvent, BatchSubscriptionEvent,
+		BatchUnsubscribeRequest, BatchUnsubscribeResponse, ChangeEvent, CommandRequest, CommandResponse,
+		FramesPayload, LogoutRequest, LogoutResponse, OperationRequest, OperationResponse,
+		Params as ProtoParams, QueryRequest, QueryResponse, SubscribeRequest, SubscribedEvent,
+		SubscriptionEvent, UnsubscribeRequest, UnsubscribeResponse, admin_response, batch_subscription_event,
+		change_event, command_response, operation_response, query_response, reify_db_server::ReifyDb,
+		subscription_event,
 	},
 	server_state::GrpcServerState,
 	subscription::{GrpcSubscriptionRegistry, WireFormat},
@@ -109,6 +125,9 @@ impl ReifyDbService {
 		&self,
 		subscription_id: SubscriptionId,
 		format: WireFormat,
+		identity: IdentityId,
+		hydration: HydrationConfig,
+		rql: &str,
 	) -> Result<Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
 		let (tx, rx) = mpsc::unbounded_channel();
 
@@ -122,6 +141,35 @@ impl ReifyDbService {
 		}
 
 		self.registry.register(subscription_id, tx.clone(), format);
+
+		if hydration.enabled {
+			let server_cap = self.state.subscribe_max_hydration_rows();
+			let max_rows = match hydration.max_rows {
+				Some(n) if n > server_cap => {
+					warn!("clamping hydration.max_rows from {} to server cap {}", n, server_cap);
+					server_cap
+				}
+				Some(n) => n,
+				None => server_cap,
+			};
+			let (_, lease) = self
+				.state
+				.engine()
+				.acquire_current_snapshot_lease()
+				.map_err(|e| status_for_engine_error(&e))?;
+			run_grpc_hydrate(
+				&self.state,
+				&self.registry,
+				subscription_id,
+				identity,
+				lease,
+				max_rows,
+				rql,
+				format,
+				&tx,
+			)
+			.await?;
+		}
 
 		info!("gRPC subscription created: {}", subscription_id);
 
@@ -167,7 +215,8 @@ impl ReifyDbService {
 	async fn subscribe_remote(
 		&self,
 		address: String,
-		rql: &str,
+		body: &str,
+		config: ClientSubscriptionConfig,
 		token: Option<String>,
 		format: WireFormat,
 	) -> Result<Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
@@ -175,7 +224,7 @@ impl ReifyDbService {
 			WireFormat::Rbcf => ClientWireFormat::Rbcf,
 			WireFormat::Proto => ClientWireFormat::Proto,
 		};
-		let remote_sub = connect_remote(&address, rql, token.as_deref(), client_format)
+		let remote_sub = connect_remote(&address, body, config, token.as_deref(), client_format)
 			.await
 			.map_err(|e| Status::unavailable(e.to_string()))?;
 
@@ -329,14 +378,24 @@ impl ReifyDb for ReifyDbService {
 		let format = WireFormat::from_proto_i32(inner.format);
 
 		match create_subscription(&self.state, identity, &inner.rql, metadata).await.map_err(GrpcError::from)? {
-			CreateSubscriptionResult::Local(subscription_id) => {
-				self.subscribe_local(subscription_id, format).await
-			}
+			CreateSubscriptionResult::Local {
+				id,
+				hydration,
+			} => self.subscribe_local(id, format, identity, hydration, &inner.rql).await,
 			CreateSubscriptionResult::Remote {
 				address,
-				rql,
+				body,
 				token: ns_token,
-			} => self.subscribe_remote(address, &rql, ns_token, format).await,
+				hydration,
+			} => {
+				let config = ClientSubscriptionConfig {
+					hydration: ClientHydrationConfig {
+						enabled: hydration.enabled,
+						max_rows: hydration.max_rows,
+					},
+				};
+				self.subscribe_remote(address, &body, config, ns_token, format).await
+			}
 		}
 	}
 
@@ -384,27 +443,40 @@ impl ReifyDb for ReifyDbService {
 		}
 
 		let mut resolved: Vec<GrpcResolvedMember> = Vec::with_capacity(inner.rql.len());
+		let mut local_hydrations: Vec<(SubscriptionId, String, HydrationConfig)> = Vec::new();
 		for (index, rql) in inner.rql.iter().enumerate() {
 			let metadata = Self::build_metadata_placeholder();
 			match create_subscription(&self.state, identity, rql, metadata).await {
-				Ok(CreateSubscriptionResult::Local(subscription_id)) => {
+				Ok(CreateSubscriptionResult::Local {
+					id,
+					hydration,
+				}) => {
+					local_hydrations.push((id, rql.clone(), hydration));
 					resolved.push(GrpcResolvedMember::Local {
 						index,
-						subscription_id,
+						subscription_id: id,
 					});
 				}
 				Ok(CreateSubscriptionResult::Remote {
 					address,
-					rql: upstream_rql,
+					body,
 					token: ns_token,
+					hydration,
 				}) => {
 					let client_format = match format {
 						WireFormat::Rbcf => ClientWireFormat::Rbcf,
 						WireFormat::Proto => ClientWireFormat::Proto,
 					};
+					let config = ClientSubscriptionConfig {
+						hydration: ClientHydrationConfig {
+							enabled: hydration.enabled,
+							max_rows: hydration.max_rows,
+						},
+					};
 					match connect_remote(
 						&address,
-						&upstream_rql,
+						&body,
+						config,
 						ns_token.as_deref(),
 						client_format,
 					)
@@ -480,6 +552,48 @@ impl ReifyDb for ReifyDbService {
 			return Err(Status::internal("Failed to send subscribed event"));
 		}
 
+		if local_hydrations.iter().any(|(_, _, h)| h.enabled) {
+			let (_, lease) = self
+				.state
+				.engine()
+				.acquire_current_snapshot_lease()
+				.map_err(|e| status_for_engine_error(&e))?;
+			let server_cap = self.state.subscribe_max_hydration_rows();
+			for (sub_id, rql_owned, hydration) in &local_hydrations {
+				if !hydration.enabled {
+					continue;
+				}
+				let max_rows = match hydration.max_rows {
+					Some(n) if n > server_cap => {
+						warn!(
+							"clamping hydration.max_rows from {} to server cap {}",
+							n, server_cap
+						);
+						server_cap
+					}
+					Some(n) => n,
+					None => server_cap,
+				};
+				if let Err(status) = run_grpc_batch_hydrate(
+					&self.state,
+					batch_id,
+					*sub_id,
+					identity,
+					lease.clone(),
+					max_rows,
+					rql_owned,
+					format,
+					&batch_tx,
+				)
+				.await
+				{
+					self.registry.unsubscribe_batch(batch_id);
+					rollback_grpc_batch(&self.state, &resolved).await;
+					return Err(status);
+				}
+			}
+		}
+
 		let mut remote_handles = Vec::new();
 		for member in resolved {
 			if let GrpcResolvedMember::Remote {
@@ -549,7 +663,11 @@ impl ReifyDb for ReifyDbService {
 		if let Some(members) = self.registry.unsubscribe_batch(batch_id) {
 			for member in members {
 				let engine = self.state.engine_clone();
-				let _ = spawn_blocking(move || cleanup_subscription_sync(&engine, member)).await;
+				match spawn_blocking(move || cleanup_subscription_sync(&engine, member)).await {
+					Ok(Ok(())) => {}
+					Ok(Err(e)) => warn!("Failed to cleanup batch member {}: {:?}", member, e),
+					Err(e) => warn!("Cleanup task panicked for batch member {}: {:?}", member, e),
+				}
 			}
 		}
 
@@ -774,7 +892,179 @@ async fn rollback_grpc_batch(state: &GrpcServerState, resolved: &[GrpcResolvedMe
 		{
 			let engine = state.engine_clone();
 			let sub_id = *subscription_id;
-			let _ = spawn_blocking(move || cleanup_subscription_sync(&engine, sub_id)).await;
+			match spawn_blocking(move || cleanup_subscription_sync(&engine, sub_id)).await {
+				Ok(Ok(())) => {}
+				Ok(Err(e)) => warn!(
+					"Failed to cleanup subscription {} during batch rollback: {:?}",
+					sub_id, e
+				),
+				Err(e) => warn!(
+					"Cleanup task panicked for subscription {} during batch rollback: {:?}",
+					sub_id, e
+				),
+			}
 		}
 	}
+}
+
+async fn resolve_snapshot_service(state: &GrpcServerState) -> Result<SubscriptionServiceRef, Status> {
+	state.engine()
+		.services()
+		.ioc
+		.resolve::<SubscriptionServiceRef>()
+		.map_err(|e| Status::internal(format!("subscription service unavailable: {}", e)))
+}
+
+fn hydrate_error_to_status(err: HydrateError, rql: &str, cap: u64) -> Status {
+	let msg = err.wire_message(rql, cap);
+	let evicted = err.is_version_evicted();
+	match err {
+		HydrateError::SubscriptionNotFound => Status::not_found(msg),
+		HydrateError::UnsupportedSourceType => Status::unimplemented(msg),
+		HydrateError::RowCapExceeded {
+			..
+		} => Status::resource_exhausted(msg),
+		HydrateError::Engine(_) if evicted => Status::out_of_range(msg),
+		HydrateError::Engine(_) => Status::internal(msg),
+		HydrateError::Internal(_) => Status::internal(msg),
+	}
+}
+
+fn status_for_engine_error(err: &Error) -> Status {
+	if err.0.code == "TXN_012" {
+		Status::out_of_range(err.0.message.clone())
+	} else {
+		Status::internal(err.to_string())
+	}
+}
+
+fn encode_change_payload(merged: Columns, format: WireFormat) -> change_event::Payload {
+	let frames = vec![Frame::from(merged)];
+	match format {
+		WireFormat::Rbcf => {
+			change_event::Payload::Rbcf(encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default())
+		}
+		WireFormat::Proto => change_event::Payload::Frames(FramesPayload {
+			frames: frames_to_proto(frames),
+		}),
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_grpc_hydrate(
+	state: &GrpcServerState,
+	registry: &Arc<GrpcSubscriptionRegistry>,
+	subscription_id: SubscriptionId,
+	identity: IdentityId,
+	lease: VersionLeaseGuard,
+	max_rows: u64,
+	rql: &str,
+	format: WireFormat,
+	tx: &mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>,
+) -> Result<(), Status> {
+	let output = match grpc_hydrate(state, subscription_id, identity, lease, max_rows, rql).await {
+		Ok(Some(o)) => o,
+		Ok(None) => return Ok(()),
+		Err(status) => {
+			registry.unregister(&subscription_id);
+			let engine = state.engine_clone();
+			match spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id)).await {
+				Ok(Ok(())) => {}
+				Ok(Err(e)) => warn!(
+					"Failed to cleanup subscription {} after hydrate failure: {:?}",
+					subscription_id, e
+				),
+				Err(e) => warn!(
+					"Cleanup task panicked for subscription {} after hydrate failure: {:?}",
+					subscription_id, e
+				),
+			}
+			return Err(status);
+		}
+	};
+	let (version, merged, metrics) = output;
+
+	let row_count = merged.row_count();
+	info!(
+		subscription_id = subscription_id.0,
+		version = version.0,
+		total_us = metrics.total.microseconds(),
+		compute_us = metrics.compute.microseconds(),
+		statement_count = metrics.statements.len(),
+		row_count = row_count,
+		fingerprint = %metrics.fingerprint.to_hex(),
+		"grpc hydrate completed"
+	);
+
+	let event = SubscriptionEvent {
+		event: Some(subscription_event::Event::Change(ChangeEvent {
+			payload: Some(encode_change_payload(merged, format)),
+		})),
+	};
+	let _ = tx.send(Ok(event));
+	Ok(())
+}
+
+async fn grpc_hydrate(
+	state: &GrpcServerState,
+	subscription_id: SubscriptionId,
+	identity: IdentityId,
+	lease: VersionLeaseGuard,
+	max_rows: u64,
+	rql: &str,
+) -> Result<Option<(CommitVersion, Columns, ExecutionMetrics)>, Status> {
+	let service = resolve_snapshot_service(state).await?;
+	let engine = state.engine_clone();
+
+	match run_hydrate(service, engine, subscription_id, identity, lease, max_rows).await {
+		Ok((version, Some((merged, metrics)))) => Ok(Some((version, merged, metrics))),
+		Ok((_, None)) => Ok(None),
+		Err(err) => Err(hydrate_error_to_status(err, rql, max_rows)),
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_grpc_batch_hydrate(
+	state: &GrpcServerState,
+	batch_id: BatchId,
+	subscription_id: SubscriptionId,
+	identity: IdentityId,
+	lease: VersionLeaseGuard,
+	max_rows: u64,
+	rql: &str,
+	format: WireFormat,
+	batch_tx: &mpsc::UnboundedSender<Result<BatchSubscriptionEvent, Status>>,
+) -> Result<(), Status> {
+	let Some((version, merged, metrics)) =
+		grpc_hydrate(state, subscription_id, identity, lease, max_rows, rql).await?
+	else {
+		return Ok(());
+	};
+
+	let row_count = merged.row_count();
+	info!(
+		batch_id = %batch_id,
+		subscription_id = subscription_id.0,
+		version = version.0,
+		total_us = metrics.total.microseconds(),
+		compute_us = metrics.compute.microseconds(),
+		statement_count = metrics.statements.len(),
+		row_count = row_count,
+		fingerprint = %metrics.fingerprint.to_hex(),
+		"grpc batch hydrate completed"
+	);
+
+	let event = BatchSubscriptionEvent {
+		event: Some(batch_subscription_event::Event::Change(BatchChangeEvent {
+			batch_id: batch_id.to_string(),
+			entries: vec![BatchChangeEntry {
+				subscription_id: subscription_id.to_string(),
+				change: Some(ChangeEvent {
+					payload: Some(encode_change_payload(merged, format)),
+				}),
+			}],
+		})),
+	};
+	let _ = batch_tx.send(Ok(event));
+	Ok(())
 }

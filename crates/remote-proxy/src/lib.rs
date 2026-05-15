@@ -15,7 +15,7 @@
 
 use std::fmt;
 
-use reifydb_client::{GrpcClient, GrpcSubscription, RawChangePayload, WireFormat};
+use reifydb_client::{GrpcClient, GrpcSubscription, RawChangePayload, SubscriptionConfig, WireFormat};
 use tokio::{
 	select,
 	sync::{mpsc, watch},
@@ -49,7 +49,8 @@ impl RemoteSubscription {
 
 pub async fn connect_remote(
 	address: &str,
-	rql: &str,
+	body: &str,
+	config: SubscriptionConfig,
 	token: Option<&str>,
 	wire_format: WireFormat,
 ) -> Result<RemoteSubscription, RemoteSubscriptionError> {
@@ -59,7 +60,8 @@ pub async fn connect_remote(
 	if let Some(t) = token {
 		client.authenticate(t);
 	}
-	let sub = client.subscribe(rql).await.map_err(|e| RemoteSubscriptionError::Subscribe(e.to_string()))?;
+	let sub =
+		client.subscribe(body, config).await.map_err(|e| RemoteSubscriptionError::Subscribe(e.to_string()))?;
 	let subscription_id = sub.subscription_id().to_string();
 	Ok(RemoteSubscription {
 		inner: sub,

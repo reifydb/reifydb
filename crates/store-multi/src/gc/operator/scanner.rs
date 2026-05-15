@@ -5,12 +5,12 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::row::EncodedRow,
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{catalog::flow::FlowNodeId, store::EntryKind},
 	key::flow_node_state::FlowNodeStateKey,
 	row::Ttl,
 };
-use reifydb_type::{Result, util::cowvec::CowVec};
+use reifydb_type::Result;
 
 use super::OperatorScanStats;
 use crate::{
@@ -22,7 +22,7 @@ use crate::{
 
 pub struct ExpiredOperatorState {
 	pub node_id: FlowNodeId,
-	pub key: CowVec<u8>,
+	pub key: EncodedKey,
 	pub scanned_bytes: u64,
 }
 
@@ -139,7 +139,7 @@ pub fn drop_expired_operator_keys(
 		return Ok(());
 	}
 
-	let mut drop_batches: HashMap<EntryKind, Vec<(CowVec<u8>, CommitVersion)>> = HashMap::new();
+	let mut drop_batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 
 	for row in expired {
 		let table = EntryKind::Operator(row.node_id);

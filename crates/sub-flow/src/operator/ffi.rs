@@ -204,6 +204,10 @@ impl Operator for FFIOperator {
 		self.operator_id
 	}
 
+	fn capabilities(&self) -> u32 {
+		self.descriptor.capabilities
+	}
+
 	#[instrument(name = "flow::ffi::apply", level = "debug", skip_all, fields(
 		operator_id = self.operator_id.0,
 		input_diff_count = change.diffs.len(),

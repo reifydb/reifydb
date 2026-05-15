@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use postcard::to_allocvec;
 use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_type::value::decimal::Decimal;
@@ -83,6 +85,19 @@ impl Cell for String {
 	#[inline]
 	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
 		view.utf8(name).map(|s| s.to_string())
+	}
+}
+
+impl Cell for Arc<str> {
+	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Utf8;
+	const AVG_BYTES: usize = 24;
+	#[inline]
+	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+		e.push_utf8(col, self.as_ref())
+	}
+	#[inline]
+	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+		view.utf8(name).map(Arc::from)
 	}
 }
 

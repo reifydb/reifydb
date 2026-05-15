@@ -35,7 +35,7 @@ impl WindowOperator {
 		let mut serializer = KeySerializer::with_capacity(32);
 		serializer.extend_bytes(b"ses:");
 		serializer.extend_u128(group_hash);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn load_session_tracker(&self, txn: &mut FlowTransaction, group_hash: Hash128) -> Result<(u64, u64)> {

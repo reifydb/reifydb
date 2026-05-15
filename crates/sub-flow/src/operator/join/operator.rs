@@ -4,6 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use postcard::to_stdvec;
+use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
 use reifydb_core::{
 	common::{CommitVersion, JoinType},
 	encoded::{key::EncodedKey, shape::RowShape},
@@ -12,7 +13,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	internal,
-	util::encoding::keycode::serializer::KeySerializer,
+	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{
@@ -230,7 +231,7 @@ impl JoinOperator {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_row_number.0);
-		let composite_key = EncodedKey::new(serializer.finish());
+		let composite_key = serializer.finish();
 
 		let (result_row_number, _is_new) =
 			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
@@ -258,7 +259,7 @@ impl JoinOperator {
 				let mut serializer = KeySerializer::new();
 				serializer.extend_u8(b'L');
 				serializer.extend_u64(left_row_number.0);
-				EncodedKey::new(serializer.finish())
+				serializer.finish()
 			})
 			.collect();
 
@@ -305,26 +306,17 @@ impl JoinOperator {
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_num.0);
 		serializer.extend_u64(right_num.0);
-		EncodedKey::new(serializer.finish())
-	}
-
-	fn decode_row_number_from_keycode(bytes: &[u8]) -> u64 {
-		let arr: [u8; 8] =
-			[!bytes[0], !bytes[1], !bytes[2], !bytes[3], !bytes[4], !bytes[5], !bytes[6], !bytes[7]];
-		u64::from_be_bytes(arr)
+		serializer.finish()
 	}
 
 	fn parse_composite_key(key_bytes: &[u8]) -> Option<(RowNumber, Option<RowNumber>)> {
-		if key_bytes.len() < 9 || key_bytes[0] != !b'L' {
+		if key_bytes.is_empty() || key_bytes[0] != !b'L' {
 			return None;
 		}
 
-		let left_num = Self::decode_row_number_from_keycode(&key_bytes[1..9]);
-		let right_num = if key_bytes.len() >= 17 {
-			Some(RowNumber(Self::decode_row_number_from_keycode(&key_bytes[9..17])))
-		} else {
-			None
-		};
+		let mut de = KeyDeserializer::from_bytes(&key_bytes[1..]);
+		let left_num = de.read_u64().ok()?;
+		let right_num = de.read_u64().ok().map(RowNumber);
 
 		Some((RowNumber(left_num), right_num))
 	}
@@ -420,8 +412,8 @@ impl JoinOperator {
 		Ok(builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices))
 	}
 
-	fn determine_side(&self, change: &Change) -> Option<JoinSide> {
-		match &change.origin {
+	fn determine_side_from_origin(&self, origin: &ChangeOrigin) -> Option<JoinSide> {
+		match origin {
 			ChangeOrigin::Flow(from_node) => {
 				if *from_node == self.left_node {
 					Some(JoinSide::Left)
@@ -449,6 +441,10 @@ impl Operator for JoinOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.node
@@ -459,20 +455,21 @@ impl Operator for JoinOperator {
 		let mut state = JoinState::new(self.node);
 		let mut result = Vec::with_capacity(change.diffs.len() * 2);
 
-		let side = self
-			.determine_side(&change)
-			.ok_or_else(|| Error(Box::new(internal!("Join operator received change from unknown node"))))?;
-
-		let compiled_exprs = match side {
-			JoinSide::Left => &self.compiled_left_exprs,
-			JoinSide::Right => &self.compiled_right_exprs,
-		};
-
 		let version = change.version;
+		let parent_origin = change.origin.clone();
 		for diff in change.diffs {
+			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
+			let side = self.determine_side_from_origin(&diff_origin).ok_or_else(|| {
+				Error(Box::new(internal!("Join operator received diff from unknown node")))
+			})?;
+			let compiled_exprs = match side {
+				JoinSide::Left => &self.compiled_left_exprs,
+				JoinSide::Right => &self.compiled_right_exprs,
+			};
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_join_insert(
 					txn,
 					&post,
@@ -484,6 +481,7 @@ impl Operator for JoinOperator {
 				)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_join_remove(
 					txn,
 					&pre,
@@ -496,6 +494,7 @@ impl Operator for JoinOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_join_update(
 					txn,
 					&pre,

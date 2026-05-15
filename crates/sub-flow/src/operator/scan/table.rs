@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::{
@@ -39,12 +40,17 @@ impl Operator for PrimitiveTableOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs {
 			decoded_diffs.push(match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					let mut decoded = post;
 					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;
@@ -53,6 +59,7 @@ impl Operator for PrimitiveTableOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					let mut decoded_pre = pre;
 					let mut decoded_post = post;
@@ -62,6 +69,7 @@ impl Operator for PrimitiveTableOperator {
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					let mut decoded = pre;
 					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;

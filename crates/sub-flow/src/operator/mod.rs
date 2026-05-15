@@ -9,6 +9,7 @@ use crate::transaction::FlowTransaction;
 
 pub mod append;
 pub mod apply;
+pub mod capability_guard;
 pub mod distinct;
 pub mod extend;
 #[cfg(reifydb_target = "native")]
@@ -26,6 +27,7 @@ pub mod window;
 
 use append::AppendOperator;
 use apply::ApplyOperator;
+use capability_guard::{enforce_apply_capabilities, enforce_pull_capability, enforce_tick_capability};
 use distinct::DistinctOperator;
 use extend::ExtendOperator;
 use filter::FilterOperator;
@@ -46,6 +48,8 @@ use window::WindowOperator;
 
 pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId;
+
+	fn capabilities(&self) -> u32;
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change>;
 
@@ -82,7 +86,58 @@ pub enum Operators {
 }
 
 impl Operators {
+	pub fn id(&self) -> FlowNodeId {
+		match self {
+			Operators::Filter(op) => op.id(),
+			Operators::Gate(op) => op.id(),
+			Operators::Map(op) => op.id(),
+			Operators::Extend(op) => op.id(),
+			Operators::Join(op) => op.id(),
+			Operators::Sort(op) => op.id(),
+			Operators::Take(op) => op.id(),
+			Operators::Distinct(op) => op.id(),
+			Operators::Append(op) => op.id(),
+			Operators::Apply(op) => op.id(),
+			Operators::SinkTableView(op) => op.id(),
+			Operators::SinkRingBufferView(op) => op.id(),
+			Operators::SinkSeriesView(op) => op.id(),
+			Operators::Window(op) => op.id(),
+			Operators::SourceTable(op) => op.id(),
+			Operators::SourceView(op) => op.id(),
+			Operators::SourceFlow(op) => op.id(),
+			Operators::SourceRingBuffer(op) => op.id(),
+			Operators::SourceSeries(op) => op.id(),
+			Operators::Custom(op) => op.id(),
+		}
+	}
+
+	pub fn capabilities(&self) -> u32 {
+		match self {
+			Operators::Filter(op) => op.capabilities(),
+			Operators::Gate(op) => op.capabilities(),
+			Operators::Map(op) => op.capabilities(),
+			Operators::Extend(op) => op.capabilities(),
+			Operators::Join(op) => op.capabilities(),
+			Operators::Sort(op) => op.capabilities(),
+			Operators::Take(op) => op.capabilities(),
+			Operators::Distinct(op) => op.capabilities(),
+			Operators::Append(op) => op.capabilities(),
+			Operators::Apply(op) => op.capabilities(),
+			Operators::SinkTableView(op) => op.capabilities(),
+			Operators::SinkRingBufferView(op) => op.capabilities(),
+			Operators::SinkSeriesView(op) => op.capabilities(),
+			Operators::Window(op) => op.capabilities(),
+			Operators::SourceTable(op) => op.capabilities(),
+			Operators::SourceView(op) => op.capabilities(),
+			Operators::SourceFlow(op) => op.capabilities(),
+			Operators::SourceRingBuffer(op) => op.capabilities(),
+			Operators::SourceSeries(op) => op.capabilities(),
+			Operators::Custom(op) => op.capabilities(),
+		}
+	}
+
 	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		enforce_apply_capabilities(self.id(), self.capabilities(), &change);
 		match self {
 			Operators::Filter(op) => op.apply(txn, change),
 			Operators::Gate(op) => op.apply(txn, change),
@@ -109,16 +164,32 @@ impl Operators {
 
 	pub fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		match self {
-			Operators::Window(op) => op.tick(txn, tick),
-			Operators::Custom(op) => op.tick(txn, tick),
-			Operators::Apply(op) => op.tick(txn, tick),
-			Operators::Distinct(op) => op.tick(txn, tick),
-			Operators::Join(op) => op.tick(txn, tick),
+			Operators::Window(op) => {
+				enforce_tick_capability(op.id(), op.capabilities());
+				op.tick(txn, tick)
+			}
+			Operators::Custom(op) => {
+				enforce_tick_capability(op.id(), op.capabilities());
+				op.tick(txn, tick)
+			}
+			Operators::Apply(op) => {
+				enforce_tick_capability(op.id(), op.capabilities());
+				op.tick(txn, tick)
+			}
+			Operators::Distinct(op) => {
+				enforce_tick_capability(op.id(), op.capabilities());
+				op.tick(txn, tick)
+			}
+			Operators::Join(op) => {
+				enforce_tick_capability(op.id(), op.capabilities());
+				op.tick(txn, tick)
+			}
 			_ => Ok(None),
 		}
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
+		enforce_pull_capability(self.id(), self.capabilities());
 		match self {
 			Operators::Filter(op) => op.pull(txn, rows),
 			Operators::Gate(op) => op.pull(txn, rows),

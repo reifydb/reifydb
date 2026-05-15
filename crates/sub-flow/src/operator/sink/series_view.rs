@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
@@ -56,6 +57,10 @@ impl Operator for SinkSeriesViewOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape: RowShape = view.columns().into();
@@ -65,13 +70,16 @@ impl Operator for SinkSeriesViewOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_series_view_insert(txn, &view, &shape, object_id, post)?,
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_series_view_update(txn, &view, &shape, object_id, pre, post)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_series_view_remove(txn, &view, &shape, object_id, pre)?,
 			}
 		}

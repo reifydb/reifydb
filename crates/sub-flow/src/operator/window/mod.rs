@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
 use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
@@ -333,7 +334,7 @@ impl WindowOperator {
 		serializer.extend_bytes(b"win:");
 		serializer.extend_u128(group_hash);
 		serializer.extend_u64(window_id);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn create_row_index_key(&self, group_hash: Hash128, row_number: RowNumber) -> EncodedKey {
@@ -341,7 +342,7 @@ impl WindowOperator {
 		serializer.extend_bytes(b"idx:");
 		serializer.extend_u128(group_hash);
 		serializer.extend_u64(row_number.0);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	pub fn store_row_index(
@@ -808,7 +809,7 @@ impl WindowOperator {
 		let mut serializer = KeySerializer::with_capacity(32);
 		serializer.extend_bytes(b"cnt:");
 		serializer.extend_u128(group_hash);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	fn create_group_registry_key(&self) -> EncodedKey {
@@ -965,13 +966,16 @@ impl WindowOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => result.extend(process_fn(self, txn, post)?),
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => result.extend(self.apply_window_update_diff(txn, pre, post, &process_fn)?),
 				Diff::Remove {
 					pre,
+					..
 				} => result.extend(self.process_event_removals(txn, pre)?),
 			}
 		}
@@ -1037,6 +1041,10 @@ impl WindowStateful for WindowOperator {
 impl Operator for WindowOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
+	}
+
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

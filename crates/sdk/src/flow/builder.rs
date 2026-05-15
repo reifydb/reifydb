@@ -82,16 +82,19 @@ impl ChangeBuilder {
 			.map(|diff| match diff {
 				Diff::Insert {
 					post,
+					..
 				} => Diff::insert(Self::ensure_timestamps((*post).clone(), timestamp)),
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => Diff::update(
 					Self::ensure_timestamps((*pre).clone(), timestamp),
 					Self::ensure_timestamps((*post).clone(), timestamp),
 				),
 				Diff::Remove {
 					pre,
+					..
 				} => Diff::remove(Self::ensure_timestamps((*pre).clone(), timestamp)),
 			})
 			.collect();

@@ -26,15 +26,15 @@ pub fn parse_key_range(s: &str) -> Result<KeyRange, Box<dyn Error>> {
 		let end_part = &s[dot_pos + 2..];
 
 		if !start_part.is_empty() {
-			bound.0 = Bound::Included(decode_binary(start_part));
+			bound.0 = Bound::Included(CowVec::new(decode_binary(start_part)));
 		}
 
 		if let Some(end_str) = end_part.strip_prefix('=') {
 			if !end_str.is_empty() {
-				bound.1 = Bound::Included(decode_binary(end_str));
+				bound.1 = Bound::Included(CowVec::new(decode_binary(end_str)));
 			}
 		} else if !end_part.is_empty() {
-			bound.1 = Bound::Excluded(decode_binary(end_part));
+			bound.1 = Bound::Excluded(CowVec::new(decode_binary(end_part)));
 		}
 
 		Ok(bound)

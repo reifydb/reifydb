@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, LazyLock};
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
@@ -130,6 +131,10 @@ impl Operator for FilterOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
@@ -137,13 +142,16 @@ impl Operator for FilterOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => self.apply_filter_insert(&post, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => self.apply_filter_update(&pre, &post, &mut result)?,
 				Diff::Remove {
 					pre,
+					..
 				} => self.apply_filter_remove(&pre, &mut result)?,
 			}
 		}

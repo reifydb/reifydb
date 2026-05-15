@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,
@@ -34,6 +35,10 @@ impl SortOperator {
 impl Operator for SortOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
+	}
+
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
 	}
 
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {

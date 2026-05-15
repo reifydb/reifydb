@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, LazyLock};
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
@@ -123,6 +124,10 @@ impl Operator for MapOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
@@ -130,6 +135,7 @@ impl Operator for MapOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					let projected = match self.project(&post) {
 						Ok(projected) => projected,
@@ -145,6 +151,7 @@ impl Operator for MapOperator {
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					let projected_post = self.project(&post)?;
 					let projected_pre = self.project(&pre)?;
@@ -155,6 +162,7 @@ impl Operator for MapOperator {
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					let projected_pre = self.project(&pre)?;
 					if !projected_pre.is_empty() {

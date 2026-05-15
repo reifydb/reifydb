@@ -45,7 +45,7 @@ pub(super) extern "C" fn host_state_get(
 		let flow_txn = get_transaction_mut(ctx_handle);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		let result = flow_txn.state_get(FlowNodeId(operator_id), &key);
 
@@ -89,7 +89,7 @@ pub(super) extern "C" fn host_state_set(
 		let flow_txn = get_transaction_mut(ctx_handle);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		let value_bytes = from_raw_parts(value_ptr, value_len);
 		let value = EncodedRow(CowVec::new(value_bytes.to_vec()));
@@ -117,7 +117,7 @@ pub(super) extern "C" fn host_state_remove(
 		let flow_txn = get_transaction_mut(ctx_handle);
 
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
 		match flow_txn.state_remove(FlowNodeId(operator_id), &key) {
 			Ok(_) => FFI_OK,
@@ -234,14 +234,14 @@ pub(super) extern "C" fn host_state_range(
 					return FFI_ERROR_NULL_PTR;
 				}
 				let bytes = from_raw_parts(start_ptr, start_len).to_vec();
-				Bound::Included(EncodedKey(CowVec::new(bytes)))
+				Bound::Included(EncodedKey::new(bytes))
 			}
 			BOUND_EXCLUDED => {
 				if start_ptr.is_null() {
 					return FFI_ERROR_NULL_PTR;
 				}
 				let bytes = from_raw_parts(start_ptr, start_len).to_vec();
-				Bound::Excluded(EncodedKey(CowVec::new(bytes)))
+				Bound::Excluded(EncodedKey::new(bytes))
 			}
 			_ => return FFI_ERROR_INTERNAL,
 		};
@@ -253,14 +253,14 @@ pub(super) extern "C" fn host_state_range(
 					return FFI_ERROR_NULL_PTR;
 				}
 				let bytes = from_raw_parts(end_ptr, end_len).to_vec();
-				Bound::Included(EncodedKey(CowVec::new(bytes)))
+				Bound::Included(EncodedKey::new(bytes))
 			}
 			BOUND_EXCLUDED => {
 				if end_ptr.is_null() {
 					return FFI_ERROR_NULL_PTR;
 				}
 				let bytes = from_raw_parts(end_ptr, end_len).to_vec();
-				Bound::Excluded(EncodedKey(CowVec::new(bytes)))
+				Bound::Excluded(EncodedKey::new(bytes))
 			}
 			_ => return FFI_ERROR_INTERNAL,
 		};
@@ -349,5 +349,154 @@ pub(super) extern "C" fn host_state_iterator_free(iterator: *mut StateIteratorFF
 		state_iterator::free_iterator(handle);
 
 		host_free(iter_internal as *mut u8, mem::size_of::<StateIteratorInternal>());
+	}
+}
+
+#[unsafe(no_mangle)]
+pub(super) extern "C" fn host_internal_state_get(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+	output: *mut BufferFFI,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() || output.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+
+		let key_bytes = from_raw_parts(key_ptr, key_len);
+		let key = EncodedKey::new(key_bytes.to_vec());
+
+		let result = flow_txn.internal_state_get(FlowNodeId(operator_id), &key);
+
+		match result {
+			Ok(Some(value)) => {
+				let value_bytes = value.as_slice();
+				let value_ptr = host_alloc(value_bytes.len());
+				if value_ptr.is_null() {
+					return FFI_ERROR_ALLOC;
+				}
+
+				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
+
+				(*output).ptr = value_ptr;
+				(*output).len = value_bytes.len();
+				(*output).cap = value_bytes.len();
+
+				FFI_OK
+			}
+			Ok(None) => FFI_NOT_FOUND,
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
+#[unsafe(no_mangle)]
+pub(super) extern "C" fn host_internal_state_set(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+	value_ptr: *const u8,
+	value_len: usize,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() || value_ptr.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+
+		let key_bytes = from_raw_parts(key_ptr, key_len);
+		let key = EncodedKey::new(key_bytes.to_vec());
+
+		let value_bytes = from_raw_parts(value_ptr, value_len);
+		let value = EncodedRow(CowVec::new(value_bytes.to_vec()));
+
+		match flow_txn.internal_state_set(FlowNodeId(operator_id), &key, value) {
+			Ok(_) => FFI_OK,
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
+#[unsafe(no_mangle)]
+pub(super) extern "C" fn host_internal_state_remove(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+
+		let key_bytes = from_raw_parts(key_ptr, key_len);
+		let key = EncodedKey::new(key_bytes.to_vec());
+
+		match flow_txn.internal_state_remove(FlowNodeId(operator_id), &key) {
+			Ok(_) => FFI_OK,
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
+#[unsafe(no_mangle)]
+pub(super) extern "C" fn host_internal_state_prefix(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	prefix_ptr: *const u8,
+	prefix_len: usize,
+	iterator_out: *mut *mut StateIteratorFFI,
+) -> i32 {
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+		let node_id = FlowNodeId(operator_id);
+
+		let prefix_bytes = if prefix_ptr.is_null() {
+			vec![]
+		} else {
+			from_raw_parts(prefix_ptr, prefix_len).to_vec()
+		};
+
+		let result = flow_txn.internal_state_prefix(node_id, &prefix_bytes);
+
+		match result {
+			Ok(batch) => {
+				let handle = state_iterator::create_iterator(batch);
+
+				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
+					as *mut StateIteratorInternal;
+				if iter_ptr.is_null() {
+					state_iterator::free_iterator(handle);
+					return FFI_ERROR_ALLOC;
+				}
+
+				ptr::write(
+					iter_ptr,
+					StateIteratorInternal {
+						handle,
+					},
+				);
+
+				*iterator_out = iter_ptr as *mut StateIteratorFFI;
+				FFI_OK
+			}
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
 	}
 }

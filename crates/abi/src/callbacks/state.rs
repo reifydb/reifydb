@@ -57,4 +57,32 @@ pub struct StateCallbacks {
 	) -> i32,
 
 	pub iterator_free: extern "C" fn(iterator: *mut StateIteratorFFI),
+
+	pub internal_get: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		key: *const u8,
+		key_len: usize,
+		output: *mut BufferFFI,
+	) -> i32,
+
+	pub internal_set: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		key: *const u8,
+		key_len: usize,
+		value: *const u8,
+		value_len: usize,
+	) -> i32,
+
+	pub internal_remove:
+		extern "C" fn(operator_id: u64, ctx: *mut ContextFFI, key: *const u8, key_len: usize) -> i32,
+
+	pub internal_prefix: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		prefix: *const u8,
+		prefix_len: usize,
+		iterator_out: *mut *mut StateIteratorFFI,
+	) -> i32,
 }

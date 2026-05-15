@@ -3,6 +3,7 @@
 
 use std::ops::Bound;
 
+use reifydb_core::encoded::key::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteConfig;
 use reifydb_type::{Result, util::cowvec::CowVec};
@@ -57,7 +58,7 @@ impl TierStorage for SinglePersistentTier {
 	}
 
 	#[inline]
-	fn set(&self, entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
+	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
 		match self {
 			Self::Sqlite(s) => s.set(entries),
 		}
@@ -114,7 +115,7 @@ impl TierStorage for SinglePersistentTier {
 		match *self {}
 	}
 
-	fn set(&self, _entries: Vec<(CowVec<u8>, Option<CowVec<u8>>)>) -> Result<()> {
+	fn set(&self, _entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
 		match *self {}
 	}
 

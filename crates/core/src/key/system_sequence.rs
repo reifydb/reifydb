@@ -13,24 +13,17 @@ pub struct SystemSequenceKey {
 	pub sequence: SequenceId,
 }
 
-const VERSION: u8 = 1;
-
 impl EncodableKey for SystemSequenceKey {
 	const KIND: KeyKind = KeyKind::SystemSequence;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.sequence.0);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.sequence.0);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -58,14 +51,14 @@ impl SystemSequenceKey {
 	}
 
 	fn sequence_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(Self::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn sequence_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(Self::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -81,11 +74,7 @@ pub mod tests {
 			sequence: SequenceId(0xABCD),
 		};
 		let encoded = key.encode();
-		let expected = vec![
-			0xFE, // version
-			0xFA, // kind
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32,
-		];
+		let expected = vec![0xFA, 0x3F, 0x54, 0x32];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = SystemSequenceKey::decode(&encoded).unwrap();

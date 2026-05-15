@@ -13,24 +13,17 @@ pub struct PrimaryKeyKey {
 	pub primary_key: PrimaryKeyId,
 }
 
-const VERSION: u8 = 1;
-
 impl EncodableKey for PrimaryKeyKey {
 	const KIND: KeyKind = KeyKind::PrimaryKey;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.primary_key);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.primary_key);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -58,14 +51,14 @@ impl PrimaryKeyKey {
 	}
 
 	fn primary_key_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(Self::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn primary_key_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(Self::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }

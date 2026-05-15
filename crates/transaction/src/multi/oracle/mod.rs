@@ -21,7 +21,10 @@ use reifydb_runtime::{
 use reifydb_type::Result;
 use tracing::{Span, field, instrument};
 
-use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvider, watermark::watermark::WaterMark};
+use crate::multi::{
+	conflict::ConflictManager, lease::VersionLeases, transaction::version::VersionProvider,
+	watermark::watermark::WaterMark,
+};
 
 pub mod cleanup;
 
@@ -95,6 +98,7 @@ where
 	pub(crate) inner: RwLock<OracleState>,
 	pub(crate) query: WaterMark,
 	pub(crate) command: WaterMark,
+	pub(crate) leases: Arc<VersionLeases>,
 	shutdown_signal: Arc<RwLock<bool>>,
 	actor_system: ActorSystem,
 	metrics_clock: Clock,
@@ -123,6 +127,7 @@ where
 			}),
 			query: WaterMark::new("txn-mark-query".into(), &actor_system),
 			command: WaterMark::new("txn-mark-cmd".into(), &actor_system),
+			leases: VersionLeases::new(),
 			shutdown_signal,
 			actor_system,
 			metrics_clock,

@@ -180,7 +180,7 @@ pub(super) unsafe fn collect_iterator_results(
 
 		if !key_buf.ptr.is_null() && key_buf.len > 0 {
 			let key_bytes = unsafe { from_raw_parts(key_buf.ptr, key_buf.len) }.to_vec();
-			let key = EncodedKey(CowVec::new(key_bytes));
+			let key = EncodedKey::new(key_bytes);
 
 			let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
 				let value_bytes = unsafe { from_raw_parts(value_buf.ptr, value_buf.len) }.to_vec();

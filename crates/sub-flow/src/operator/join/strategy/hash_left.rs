@@ -177,11 +177,6 @@ impl LeftHashJoin {
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		for &idx in indices {
-			let row_number = pre.row_numbers[idx];
-			ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
-		}
-
 		let emit_ctx = JoinEmitContext {
 			opposite_store: &ctx.state.right,
 			key_hash,
@@ -199,6 +194,7 @@ impl LeftHashJoin {
 
 		for &idx in indices {
 			let row_number = pre.row_numbers[idx];
+			ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
 			remove_from_state_entry(txn, &mut ctx.state.left, key_hash, row_number)?;
 		}
 		Ok(result)

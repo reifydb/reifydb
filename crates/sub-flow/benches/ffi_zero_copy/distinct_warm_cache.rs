@@ -9,6 +9,7 @@ mod common;
 use std::{sync::Arc as StdArc, time::Instant};
 
 use common::with_counting;
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -36,6 +37,9 @@ struct NoOpParent;
 impl Operator for NoOpParent {
 	fn id(&self) -> FlowNodeId {
 		FlowNodeId(0)
+	}
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
 	}
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> TypeResult<Change> {
 		Ok(change)

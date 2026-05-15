@@ -108,7 +108,7 @@ impl CatalogStore {
 			let metadata = decode_ringbuffer_metadata(&multi.row);
 			let mut de = KeyDeserializer::from_bytes(multi.key.as_slice());
 
-			let _ = (de.read_u8(), de.read_u8(), de.read_u64());
+			let _ = (de.read_u8(), de.read_u64());
 			let mut partition_values = vec![];
 			while !de.is_empty() {
 				if let Ok(value) = de.read_value() {

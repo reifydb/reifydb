@@ -8,7 +8,7 @@ use reifydb_core::{
 		shape::RowShape,
 	},
 	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_type::Result;
@@ -61,6 +61,73 @@ impl FlowTransaction {
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
 		self.remove(&encoded_key)
+	}
+
+	#[instrument(name = "flow::internal_state::get", level = "trace", skip(self), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len(),
+		found = field::Empty
+	))]
+	pub fn internal_state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
+		let encoded_key = state_key.encode();
+		let result = self.get(&encoded_key)?;
+		Span::current().record("found", result.is_some());
+		Ok(result)
+	}
+
+	#[instrument(name = "flow::internal_state::set", level = "trace", skip(self, value), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len(),
+		value_len = value.len()
+	))]
+	pub fn internal_state_set(&mut self, id: FlowNodeId, key: &EncodedKey, mut value: EncodedRow) -> Result<()> {
+		let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
+		let encoded_key = state_key.encode();
+
+		if value.len() >= SHAPE_HEADER_SIZE
+			&& let Some(prior) = self.get(&encoded_key)?
+			&& prior.len() >= SHAPE_HEADER_SIZE
+		{
+			let prior_created = prior.created_at_nanos();
+			if prior_created != 0 {
+				let updated = value.updated_at_nanos();
+				value.set_timestamps(prior_created, updated);
+			}
+		}
+
+		self.set(&encoded_key, value)
+	}
+
+	#[instrument(name = "flow::internal_state::remove", level = "trace", skip(self), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len()
+	))]
+	pub fn internal_state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
+		let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
+		let encoded_key = state_key.encode();
+		self.remove(&encoded_key)
+	}
+
+	#[instrument(name = "flow::internal_state::prefix", level = "debug", skip(self, prefix), fields(
+		node_id = id.0,
+		prefix_len = prefix.len()
+	))]
+	pub fn internal_state_prefix(&mut self, id: FlowNodeId, prefix: &[u8]) -> Result<MultiVersionBatch> {
+		let mut full_prefix = Vec::new();
+		let env = FlowNodeInternalStateKey::encoded(id, vec![]);
+		full_prefix.extend_from_slice(env.as_ref());
+		full_prefix.extend_from_slice(prefix);
+		let range = EncodedKeyRange::prefix(&full_prefix);
+		let iter = self.range(range, RangeScope::All, 1024);
+		let mut items = Vec::new();
+		for result in iter {
+			items.push(result?);
+		}
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
 	}
 
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(

@@ -3,15 +3,15 @@
 
 use std::{cmp::Reverse, collections::BTreeMap, sync::Arc};
 
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 use reifydb_runtime::sync::{map::Map, rwlock::RwLock};
 use reifydb_type::util::cowvec::CowVec;
 
 pub(super) type Value = Option<CowVec<u8>>;
 
-pub(super) type CurrentMap = BTreeMap<CowVec<u8>, (CommitVersion, Value)>;
+pub(super) type CurrentMap = BTreeMap<EncodedKey, (CommitVersion, Value)>;
 
-pub(super) type HistoricalMap = BTreeMap<CowVec<u8>, BTreeMap<Reverse<CommitVersion>, Value>>;
+pub(super) type HistoricalMap = BTreeMap<EncodedKey, BTreeMap<Reverse<CommitVersion>, Value>>;
 
 pub(super) struct Entry {
 	pub current: Arc<RwLock<CurrentMap>>,

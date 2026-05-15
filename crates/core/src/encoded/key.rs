@@ -2,58 +2,81 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
+	borrow::Borrow,
+	cmp::Ordering,
 	collections::{
 		Bound,
 		Bound::{Excluded, Included, Unbounded},
 	},
-	iter,
+	fmt,
+	hash::{Hash, Hasher},
+	iter, mem,
 	ops::{Deref, RangeBounds},
+	sync::Arc,
 };
 
-use reifydb_type::{
-	util::cowvec::CowVec,
-	value::{
-		Value,
-		blob::Blob,
-		date::Date,
-		datetime::DateTime,
-		decimal::Decimal,
-		duration::Duration,
-		identity::IdentityId,
-		int::Int,
-		row_number::RowNumber,
-		time::Time,
-		uint::Uint,
-		uuid::{Uuid4, Uuid7},
-	},
+use reifydb_type::value::{
+	Value,
+	blob::Blob,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	identity::IdentityId,
+	int::Int,
+	row_number::RowNumber,
+	time::Time,
+	uint::Uint,
+	uuid::{Uuid4, Uuid7},
 };
-use serde::{Deserialize, Serialize};
+use serde::{
+	de::{Deserialize, Deserializer},
+	ser::{Serialize, Serializer},
+};
 
 use crate::{
 	interface::catalog::{id::IndexId, shape::ShapeId},
 	util::encoding::{binary::decode_binary, keycode::serializer::KeySerializer},
 };
 
-#[derive(Debug, Clone, PartialOrd, Ord, Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EncodedKey(pub CowVec<u8>);
-
-impl Deref for EncodedKey {
-	type Target = CowVec<u8>;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
+#[derive(Clone)]
+pub enum EncodedKey {
+	Inline {
+		len: u8,
+		buf: [u8; 62],
+	},
+	Heap(Vec<u8>),
 }
 
-impl AsRef<[u8]> for EncodedKey {
-	fn as_ref(&self) -> &[u8] {
-		self.0.as_ref()
-	}
-}
+const _: () = assert!(mem::size_of::<EncodedKey>() == 64);
 
 impl EncodedKey {
+	const INLINE_CAP: usize = 62;
+
 	pub fn new(key: impl Into<Vec<u8>>) -> Self {
-		Self(CowVec::new(key.into()))
+		let vec = key.into();
+		if vec.len() <= Self::INLINE_CAP {
+			let len = vec.len() as u8;
+			let mut buf = [0u8; 62];
+			buf[..vec.len()].copy_from_slice(&vec);
+			EncodedKey::Inline {
+				len,
+				buf,
+			}
+		} else {
+			EncodedKey::Heap(vec)
+		}
+	}
+
+	pub fn with_capacity(capacity: usize) -> Self {
+		if capacity <= Self::INLINE_CAP {
+			EncodedKey::Inline {
+				len: 0,
+				buf: [0u8; 62],
+			}
+		} else {
+			EncodedKey::Heap(Vec::with_capacity(capacity))
+		}
 	}
 
 	pub fn builder() -> EncodedKeyBuilder {
@@ -61,11 +84,141 @@ impl EncodedKey {
 	}
 
 	pub fn as_bytes(&self) -> &[u8] {
-		self.0.as_ref()
+		self.as_slice()
 	}
 
 	pub fn as_slice(&self) -> &[u8] {
-		self.0.as_ref()
+		match self {
+			EncodedKey::Inline {
+				len,
+				buf,
+			} => &buf[..*len as usize],
+			EncodedKey::Heap(v) => v.as_slice(),
+		}
+	}
+
+	pub fn to_vec(&self) -> Vec<u8> {
+		self.as_slice().to_vec()
+	}
+
+	pub fn push(&mut self, byte: u8) {
+		match self {
+			EncodedKey::Inline {
+				len,
+				buf,
+			} => {
+				let cur = *len as usize;
+				if cur < Self::INLINE_CAP {
+					buf[cur] = byte;
+					*len += 1;
+					return;
+				}
+				let mut vec = Vec::with_capacity(cur + 1);
+				vec.extend_from_slice(&buf[..cur]);
+				vec.push(byte);
+				*self = EncodedKey::Heap(vec);
+			}
+			EncodedKey::Heap(v) => v.push(byte),
+		}
+	}
+
+	pub fn extend_from_slice(&mut self, slice: &[u8]) {
+		match self {
+			EncodedKey::Inline {
+				len,
+				buf,
+			} => {
+				let cur = *len as usize;
+				let total = cur + slice.len();
+				if total <= Self::INLINE_CAP {
+					buf[cur..total].copy_from_slice(slice);
+					*len = total as u8;
+					return;
+				}
+				let mut vec = Vec::with_capacity(total);
+				vec.extend_from_slice(&buf[..cur]);
+				vec.extend_from_slice(slice);
+				*self = EncodedKey::Heap(vec);
+			}
+			EncodedKey::Heap(v) => v.extend_from_slice(slice),
+		}
+	}
+}
+
+impl Deref for EncodedKey {
+	type Target = [u8];
+
+	fn deref(&self) -> &[u8] {
+		self.as_slice()
+	}
+}
+
+impl AsRef<[u8]> for EncodedKey {
+	fn as_ref(&self) -> &[u8] {
+		self.as_slice()
+	}
+}
+
+impl Borrow<[u8]> for EncodedKey {
+	fn borrow(&self) -> &[u8] {
+		self.as_slice()
+	}
+}
+
+impl PartialEq for EncodedKey {
+	fn eq(&self, other: &Self) -> bool {
+		self.as_slice() == other.as_slice()
+	}
+}
+
+impl Eq for EncodedKey {}
+
+impl PartialOrd for EncodedKey {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl Ord for EncodedKey {
+	fn cmp(&self, other: &Self) -> Ordering {
+		self.as_slice().cmp(other.as_slice())
+	}
+}
+
+impl Hash for EncodedKey {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.as_slice().hash(state);
+	}
+}
+
+impl PartialEq<Vec<u8>> for EncodedKey {
+	fn eq(&self, other: &Vec<u8>) -> bool {
+		self.as_slice() == other.as_slice()
+	}
+}
+
+impl PartialEq<[u8]> for EncodedKey {
+	fn eq(&self, other: &[u8]) -> bool {
+		self.as_slice() == other
+	}
+}
+
+impl Serialize for EncodedKey {
+	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		self.as_slice().serialize(serializer)
+	}
+}
+
+impl<'de> Deserialize<'de> for EncodedKey {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		let vec = Vec::<u8>::deserialize(deserializer)?;
+		Ok(EncodedKey::new(vec))
+	}
+}
+
+impl fmt::Debug for EncodedKey {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "EncodedKey({:02x?})", self.as_slice())
 	}
 }
 
@@ -494,6 +647,24 @@ impl IntoEncodedKey for (&str, &str) {
 	}
 }
 
+impl IntoEncodedKey for (Arc<str>, Arc<str>) {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(&self.0);
+		serializer.extend_str(&self.1);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &(Arc<str>, Arc<str>) {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(&self.0);
+		serializer.extend_str(&self.1);
+		serializer.to_encoded_key()
+	}
+}
+
 impl IntoEncodedKey for (String, String, String) {
 	fn into_encoded_key(self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
@@ -553,32 +724,32 @@ impl EncodedKeyRange {
 	pub fn with_prefix(&self, prefix: EncodedKey) -> Self {
 		let start = match self.start_bound() {
 			Included(key) => {
-				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
+				let mut prefixed = EncodedKey::with_capacity(prefix.len() + key.len());
 				prefixed.extend_from_slice(prefix.as_ref());
 				prefixed.extend_from_slice(key.as_ref());
-				Included(EncodedKey::new(prefixed))
+				Included(prefixed)
 			}
 			Excluded(key) => {
-				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
+				let mut prefixed = EncodedKey::with_capacity(prefix.len() + key.len());
 				prefixed.extend_from_slice(prefix.as_ref());
 				prefixed.extend_from_slice(key.as_ref());
-				Excluded(EncodedKey::new(prefixed))
+				Excluded(prefixed)
 			}
 			Unbounded => Included(prefix.clone()),
 		};
 
 		let end = match self.end_bound() {
 			Included(key) => {
-				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
+				let mut prefixed = EncodedKey::with_capacity(prefix.len() + key.len());
 				prefixed.extend_from_slice(prefix.as_ref());
 				prefixed.extend_from_slice(key.as_ref());
-				Included(EncodedKey::new(prefixed))
+				Included(prefixed)
 			}
 			Excluded(key) => {
-				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
+				let mut prefixed = EncodedKey::with_capacity(prefix.len() + key.len());
 				prefixed.extend_from_slice(prefix.as_ref());
 				prefixed.extend_from_slice(key.as_ref());
-				Excluded(EncodedKey::new(prefixed))
+				Excluded(prefixed)
 			}
 			Unbounded => match prefix.as_ref().iter().rposition(|&b| b != 0xff) {
 				Some(i) => {
@@ -625,15 +796,15 @@ impl EncodedKeyRange {
 			let end_part = &str[dot_pos + 2..];
 
 			if !start_part.is_empty() {
-				start = Bound::Included(EncodedKey(decode_binary(start_part)));
+				start = Bound::Included(EncodedKey::new(decode_binary(start_part)));
 			}
 
 			if let Some(end_str) = end_part.strip_prefix('=') {
 				if !end_str.is_empty() {
-					end = Bound::Included(EncodedKey(decode_binary(end_str)));
+					end = Bound::Included(EncodedKey::new(decode_binary(end_str)));
 				}
 			} else if !end_part.is_empty() {
-				end = Bound::Excluded(EncodedKey(decode_binary(end_part)));
+				end = Bound::Excluded(EncodedKey::new(decode_binary(end_part)));
 			}
 
 			Self {
