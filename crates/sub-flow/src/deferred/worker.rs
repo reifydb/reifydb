@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Mutex;
+use std::{
+	panic::{AssertUnwindSafe, catch_unwind},
+	process,
+	sync::Mutex,
+};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
@@ -72,27 +76,33 @@ impl Actor for FlowWorkerActor {
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
-		match msg {
-			FlowMessage::Process {
-				batch,
-				reply,
-			} => self.handle_process(state, batch, reply),
-			FlowMessage::Tick {
-				flow_ids,
-				timestamp,
-				state_version,
-				reply,
-			} => self.handle_tick(state, flow_ids, timestamp, state_version, reply),
-			FlowMessage::Register {
-				flow_id,
-				reply,
-			} => self.handle_register(state, flow_id, reply),
-			FlowMessage::Rebalance {
-				flow_ids,
-				reply,
-			} => self.handle_rebalance(state, flow_ids, reply),
-		}
-		Directive::Continue
+		catch_unwind(AssertUnwindSafe(|| {
+			match msg {
+				FlowMessage::Process {
+					batch,
+					reply,
+				} => self.handle_process(state, batch, reply),
+				FlowMessage::Tick {
+					flow_ids,
+					timestamp,
+					state_version,
+					reply,
+				} => self.handle_tick(state, flow_ids, timestamp, state_version, reply),
+				FlowMessage::Register {
+					flow_id,
+					reply,
+				} => self.handle_register(state, flow_id, reply),
+				FlowMessage::Rebalance {
+					flow_ids,
+					reply,
+				} => self.handle_rebalance(state, flow_ids, reply),
+			}
+			Directive::Continue
+		}))
+		.unwrap_or_else(|_| {
+			error!("panic in flow worker actor, aborting");
+			process::abort()
+		})
 	}
 
 	fn config(&self) -> ActorConfig {

@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{cmp::min, collections, collections::BTreeMap, fmt, mem, ops::Bound, sync::Arc, time::Duration};
+use std::{
+	cmp::min,
+	collections,
+	collections::BTreeMap,
+	fmt, mem,
+	ops::Bound,
+	panic::{AssertUnwindSafe, catch_unwind},
+	process,
+	sync::Arc,
+	time::Duration,
+};
 
 use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, consumer::CdcConsume},
@@ -45,7 +55,7 @@ use reifydb_type::{
 	error::Error,
 	value::{datetime::DateTime, identity::IdentityId},
 };
-use tracing::{Span, debug, field, info, instrument, warn};
+use tracing::{Span, debug, error, field, info, instrument, warn};
 
 use super::{state::FlowStates, tracker::ShapeVersionTracker};
 use crate::catalog::FlowCatalog;
@@ -298,25 +308,31 @@ impl Actor for CoordinatorActor {
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
-		match msg {
-			FlowCoordinatorMessage::Consume {
-				cdcs,
-				current_version,
-				reply,
-			} => {
-				self.handle_consume(state, ctx, cdcs, current_version, reply);
-			}
-			FlowCoordinatorMessage::PoolReply(response) => {
-				self.handle_pool_reply(state, ctx, response);
-			}
-			FlowCoordinatorMessage::Tick => {
-				if matches!(state.phase, Phase::Idle) {
-					self.handle_tick(state, ctx);
+		catch_unwind(AssertUnwindSafe(|| {
+			match msg {
+				FlowCoordinatorMessage::Consume {
+					cdcs,
+					current_version,
+					reply,
+				} => {
+					self.handle_consume(state, ctx, cdcs, current_version, reply);
 				}
-				ctx.schedule_once(Duration::from_secs(1), || FlowCoordinatorMessage::Tick);
+				FlowCoordinatorMessage::PoolReply(response) => {
+					self.handle_pool_reply(state, ctx, response);
+				}
+				FlowCoordinatorMessage::Tick => {
+					if matches!(state.phase, Phase::Idle) {
+						self.handle_tick(state, ctx);
+					}
+					ctx.schedule_once(Duration::from_secs(1), || FlowCoordinatorMessage::Tick);
+				}
 			}
-		}
-		Directive::Continue
+			Directive::Continue
+		}))
+		.unwrap_or_else(|_| {
+			error!("panic in flow coordinator, aborting");
+			process::abort()
+		})
 	}
 
 	fn config(&self) -> ActorConfig {

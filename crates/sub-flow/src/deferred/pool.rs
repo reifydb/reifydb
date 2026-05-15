@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::BTreeMap, mem::replace};
+use std::{
+	collections::BTreeMap,
+	mem::replace,
+	panic::{AssertUnwindSafe, catch_unwind},
+	process,
+};
 
 use reifydb_core::{
 	actors::{
@@ -23,7 +28,7 @@ use reifydb_runtime::{
 	context::clock::{Clock, Instant},
 };
 use reifydb_type::{util::hex::encode, value::datetime::DateTime};
-use tracing::{Span, field, instrument};
+use tracing::{Span, error, field, instrument};
 
 enum Phase {
 	Idle,
@@ -85,63 +90,69 @@ impl Actor for PoolActor {
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
-		match msg {
-			FlowPoolMessage::RegisterFlow {
-				flow_id,
-				reply,
-			} => {
-				let Some(reply) = reject_if_busy(state, reply) else {
-					return Directive::Continue;
-				};
-				self.handle_register_flow(state, ctx, flow_id, reply);
+		catch_unwind(AssertUnwindSafe(|| {
+			match msg {
+				FlowPoolMessage::RegisterFlow {
+					flow_id,
+					reply,
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_register_flow(state, ctx, flow_id, reply);
+				}
+				FlowPoolMessage::Submit {
+					batches,
+					reply,
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_submit_async(state, ctx, batches, reply);
+				}
+				FlowPoolMessage::SubmitToWorker {
+					worker_id,
+					batch,
+					reply,
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_submit_to_worker(state, ctx, worker_id, batch, reply);
+				}
+				FlowPoolMessage::Rebalance {
+					assignments,
+					reply,
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_rebalance_async(state, ctx, assignments, reply);
+				}
+				FlowPoolMessage::Tick {
+					ticks,
+					timestamp,
+					state_version,
+					reply,
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_tick_async(state, ctx, ticks, timestamp, state_version, reply);
+				}
+				FlowPoolMessage::WorkerReply {
+					worker_id,
+					response,
+				} => {
+					self.handle_worker_reply(state, worker_id, response);
+				}
 			}
-			FlowPoolMessage::Submit {
-				batches,
-				reply,
-			} => {
-				let Some(reply) = reject_if_busy(state, reply) else {
-					return Directive::Continue;
-				};
-				self.handle_submit_async(state, ctx, batches, reply);
-			}
-			FlowPoolMessage::SubmitToWorker {
-				worker_id,
-				batch,
-				reply,
-			} => {
-				let Some(reply) = reject_if_busy(state, reply) else {
-					return Directive::Continue;
-				};
-				self.handle_submit_to_worker(state, ctx, worker_id, batch, reply);
-			}
-			FlowPoolMessage::Rebalance {
-				assignments,
-				reply,
-			} => {
-				let Some(reply) = reject_if_busy(state, reply) else {
-					return Directive::Continue;
-				};
-				self.handle_rebalance_async(state, ctx, assignments, reply);
-			}
-			FlowPoolMessage::Tick {
-				ticks,
-				timestamp,
-				state_version,
-				reply,
-			} => {
-				let Some(reply) = reject_if_busy(state, reply) else {
-					return Directive::Continue;
-				};
-				self.handle_tick_async(state, ctx, ticks, timestamp, state_version, reply);
-			}
-			FlowPoolMessage::WorkerReply {
-				worker_id,
-				response,
-			} => {
-				self.handle_worker_reply(state, worker_id, response);
-			}
-		}
-		Directive::Continue
+			Directive::Continue
+		}))
+		.unwrap_or_else(|_| {
+			error!("panic in flow pool actor, aborting");
+			process::abort()
+		})
 	}
 
 	fn config(&self) -> ActorConfig {

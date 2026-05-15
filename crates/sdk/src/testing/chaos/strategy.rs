@@ -193,37 +193,42 @@ pub mod samplers {
 		Arc::new(move |rng| Value::uint4(rng.random_range(range.clone())))
 	}
 
-	pub fn datetime_range(range: Range<i64>) -> ColumnSampler {
-		assert!(range.start >= 0, "datetime_range start must be >= 0 (epoch seconds)");
+	pub fn datetime_range(range: Range<DateTime>) -> ColumnSampler {
 		assert!(range.start < range.end, "datetime_range start must be < end");
+		let start_nanos = range.start.to_nanos();
+		let end_nanos = range.end.to_nanos();
 		Arc::new(move |rng| {
-			let secs = rng.random_range(range.clone());
-			Value::datetime(DateTime::from_timestamp(secs).expect("datetime_range bounds must be valid"))
+			let nanos = rng.random_range(start_nanos..end_nanos);
+			Value::datetime(DateTime::from_nanos(nanos))
 		})
 	}
 
-	pub fn duration_range(range: Range<i64>) -> ColumnSampler {
-		assert!(range.start < range.end, "duration_range start must be < end");
+	pub fn duration_range(range: Range<Duration>) -> ColumnSampler {
+		let start_nanos = range.start.nanoseconds();
+		let end_nanos = range.end.nanoseconds();
+		assert!(start_nanos < end_nanos, "duration_range start must be < end");
 		Arc::new(move |rng| {
-			let secs = rng.random_range(range.clone());
-			Value::duration(Duration::from_seconds(secs).expect("duration_range bounds must be valid"))
+			let nanos = rng.random_range(start_nanos..end_nanos);
+			Value::duration(Duration::from_nanoseconds(nanos).expect("duration_range bounds must be valid"))
 		})
 	}
 
-	pub fn date_range(range: Range<i32>) -> ColumnSampler {
-		assert!(range.start < range.end, "date_range start must be < end");
+	pub fn date_range(range: Range<Date>) -> ColumnSampler {
+		let start_days = range.start.to_days_since_epoch();
+		let end_days = range.end.to_days_since_epoch();
+		assert!(start_days < end_days, "date_range start must be < end");
 		Arc::new(move |rng| {
-			let days = rng.random_range(range.clone());
+			let days = rng.random_range(start_days..end_days);
 			Value::date(Date::from_days_since_epoch(days).expect("date_range bounds must be valid"))
 		})
 	}
 
-	pub fn time_range(range: Range<u64>) -> ColumnSampler {
-		const NANOS_PER_DAY: u64 = 86_400_000_000_000;
-		assert!(range.start < range.end, "time_range start must be < end");
-		assert!(range.end <= NANOS_PER_DAY, "time_range end must be <= nanos in a day");
+	pub fn time_range(range: Range<Time>) -> ColumnSampler {
+		let start_nanos = range.start.to_nanos_since_midnight();
+		let end_nanos = range.end.to_nanos_since_midnight();
+		assert!(start_nanos < end_nanos, "time_range start must be < end");
 		Arc::new(move |rng| {
-			let nanos = rng.random_range(range.clone());
+			let nanos = rng.random_range(start_nanos..end_nanos);
 			Value::time(Time::from_nanos_since_midnight(nanos).expect("time_range bounds must be valid"))
 		})
 	}
@@ -446,7 +451,9 @@ mod tests {
 
 	#[test]
 	fn samplers_datetime_range_is_in_bounds() {
-		let s = samplers::datetime_range(1_000..2_000);
+		let s = samplers::datetime_range(
+			DateTime::from_timestamp(1_000).unwrap()..DateTime::from_timestamp(2_000).unwrap(),
+		);
 		let mut rng = StdRng::seed_from_u64(0);
 		for _ in 0..1000 {
 			let secs = match s(&mut rng) {
@@ -459,7 +466,9 @@ mod tests {
 
 	#[test]
 	fn samplers_duration_range_is_in_bounds() {
-		let s = samplers::duration_range(0..3_600);
+		let s = samplers::duration_range(
+			Duration::from_seconds(0).unwrap()..Duration::from_seconds(3_600).unwrap(),
+		);
 		let mut rng = StdRng::seed_from_u64(0);
 		for _ in 0..1000 {
 			let secs = match s(&mut rng) {
@@ -472,7 +481,9 @@ mod tests {
 
 	#[test]
 	fn samplers_date_range_is_in_bounds() {
-		let s = samplers::date_range(0..1_000);
+		let s = samplers::date_range(
+			Date::from_days_since_epoch(0).unwrap()..Date::from_days_since_epoch(1_000).unwrap(),
+		);
 		let mut rng = StdRng::seed_from_u64(0);
 		for _ in 0..1000 {
 			let days = match s(&mut rng) {
@@ -486,7 +497,9 @@ mod tests {
 	#[test]
 	fn samplers_time_range_is_in_bounds() {
 		let range = 0..3_600_000_000_000u64;
-		let s = samplers::time_range(range.clone());
+		let time_range = Time::from_nanos_since_midnight(range.start).unwrap()
+			..Time::from_nanos_since_midnight(range.end).unwrap();
+		let s = samplers::time_range(time_range);
 		let mut rng = StdRng::seed_from_u64(0);
 		for _ in 0..1000 {
 			let nanos = match s(&mut rng) {
