@@ -13,6 +13,7 @@ use reifydb_abi::{
 		diff::{DiffFFI, DiffType},
 	},
 };
+use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 #[derive(Clone, Copy)]
 pub struct BorrowedChange<'a> {
@@ -437,6 +438,38 @@ impl<'a> BorrowedColumn<'a> {
 			return None;
 		}
 		unsafe { self.as_slice::<f32>()?.get(index).copied() }
+	}
+
+	#[inline]
+	pub fn date_at(&self, index: usize) -> Option<Date> {
+		if self.type_code() != ColumnTypeCode::Date || !self.is_defined_at(index) {
+			return None;
+		}
+		unsafe { self.as_slice::<Date>()?.get(index).copied() }
+	}
+
+	#[inline]
+	pub fn datetime_at(&self, index: usize) -> Option<DateTime> {
+		if self.type_code() != ColumnTypeCode::DateTime || !self.is_defined_at(index) {
+			return None;
+		}
+		unsafe { self.as_slice::<DateTime>()?.get(index).copied() }
+	}
+
+	#[inline]
+	pub fn time_at(&self, index: usize) -> Option<Time> {
+		if self.type_code() != ColumnTypeCode::Time || !self.is_defined_at(index) {
+			return None;
+		}
+		unsafe { self.as_slice::<Time>()?.get(index).copied() }
+	}
+
+	#[inline]
+	pub fn duration_at(&self, index: usize) -> Option<Duration> {
+		if self.type_code() != ColumnTypeCode::Duration || !self.is_defined_at(index) {
+			return None;
+		}
+		unsafe { self.as_slice::<Duration>()?.get(index).copied() }
 	}
 }
 

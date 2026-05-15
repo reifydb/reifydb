@@ -115,11 +115,10 @@ impl Arena {
 		}
 
 		unsafe {
-			let ptr = ffi.data.ptr as *const i64;
-			let len = ffi.data.len / size_of::<i64>();
+			let ptr = ffi.data.ptr as *const u64;
+			let len = ffi.data.len / size_of::<u64>();
 			let slice = from_raw_parts(ptr, len);
-			let datetimes: Vec<DateTime> =
-				slice.iter().map(|&ts| DateTime::from_timestamp(ts).unwrap_or_default()).collect();
+			let datetimes: Vec<DateTime> = slice.iter().map(|&nanos| DateTime::from_nanos(nanos)).collect();
 			TemporalContainer::new(datetimes)
 		}
 	}
@@ -144,23 +143,15 @@ impl Arena {
 
 	pub(super) fn unmarshal_duration_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Duration> {
 		let row_count = ffi.row_count;
-		if ffi.data.is_empty() || ffi.offsets.is_empty() {
+		if ffi.data.is_empty() {
 			return TemporalContainer::new(vec![Duration::default(); row_count]);
 		}
 
 		unsafe {
-			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
-			let offsets = self.read_offsets(&ffi.offsets);
-
-			let mut durations = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				let start = offsets[i] as usize;
-				let end = offsets[i + 1] as usize;
-				let duration: Duration = from_bytes(&data[start..end]).unwrap_or_default();
-				durations.push(duration);
-			}
-
-			TemporalContainer::new(durations)
+			let ptr = ffi.data.ptr as *const Duration;
+			let len = ffi.data.len / size_of::<Duration>();
+			let slice = from_raw_parts(ptr, len);
+			TemporalContainer::new(slice.to_vec())
 		}
 	}
 
@@ -324,6 +315,98 @@ impl Arena {
 			let ptr = ffi.ptr as *const u64;
 			let len = ffi.len / size_of::<u64>();
 			from_raw_parts(ptr, len).to_vec()
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::value::column::buffer::ColumnBuffer;
+	use reifydb_type::value::{
+		container::temporal::TemporalContainer, date::Date, datetime::DateTime, duration::Duration, time::Time,
+	};
+
+	use crate::ffi::arena::Arena;
+
+	// Regression: DateTime columns marshal zero-copy as raw u64 nanos; unmarshal
+	// must read them back the same way (not via from_timestamp, which treats the
+	// value as epoch seconds).
+	#[test]
+	fn datetime_column_marshal_unmarshal_roundtrip() {
+		let mut arena = Arena::new();
+		let values = vec![
+			DateTime::from_nanos(0),
+			DateTime::from_nanos(1_700_000_000_000_000_000),
+			DateTime::from_nanos(u64::MAX),
+		];
+		let buf = ColumnBuffer::DateTime(TemporalContainer::new(values.clone()));
+		let ffi = arena.marshal_column_data(&buf);
+		match arena.unmarshal_column_data(&ffi, values.len()) {
+			ColumnBuffer::DateTime(container) => {
+				let got: &[DateTime] = &container;
+				assert_eq!(got, values.as_slice());
+			}
+			_ => panic!("expected DateTime column"),
+		}
+	}
+
+	// Regression: Date columns marshal zero-copy as raw i32 days-since-epoch;
+	// unmarshal must read them back the same way.
+	#[test]
+	fn date_column_marshal_unmarshal_roundtrip() {
+		let mut arena = Arena::new();
+		let values = vec![Date::default(), Date::new(2024, 3, 15).unwrap(), Date::new(1970, 1, 1).unwrap()];
+		let buf = ColumnBuffer::Date(TemporalContainer::new(values.clone()));
+		let ffi = arena.marshal_column_data(&buf);
+		match arena.unmarshal_column_data(&ffi, values.len()) {
+			ColumnBuffer::Date(container) => {
+				let got: &[Date] = &container;
+				assert_eq!(got, values.as_slice());
+			}
+			_ => panic!("expected Date column"),
+		}
+	}
+
+	// Regression: Time columns marshal zero-copy as raw u64 nanos-since-midnight;
+	// unmarshal must read them back the same way.
+	#[test]
+	fn time_column_marshal_unmarshal_roundtrip() {
+		let mut arena = Arena::new();
+		let values = vec![
+			Time::default(),
+			Time::new(14, 30, 45, 123_456_789).unwrap(),
+			Time::new(23, 59, 59, 999_999_999).unwrap(),
+		];
+		let buf = ColumnBuffer::Time(TemporalContainer::new(values.clone()));
+		let ffi = arena.marshal_column_data(&buf);
+		match arena.unmarshal_column_data(&ffi, values.len()) {
+			ColumnBuffer::Time(container) => {
+				let got: &[Time] = &container;
+				assert_eq!(got, values.as_slice());
+			}
+			_ => panic!("expected Time column"),
+		}
+	}
+
+	// Regression: Duration columns marshal zero-copy as raw 16-byte structs;
+	// unmarshal must read them back the same way (not via postcard + offsets,
+	// which the zero-copy marshal does not produce).
+	#[test]
+	fn duration_column_marshal_unmarshal_roundtrip() {
+		let mut arena = Arena::new();
+		let values = vec![
+			Duration::default(),
+			Duration::new(13, 5, 3_600_000_000_000).expect("duration"),
+			Duration::from_seconds(-30).expect("duration"),
+		];
+		let buf = ColumnBuffer::Duration(TemporalContainer::new(values.clone()));
+		let ffi = arena.marshal_column_data(&buf);
+		match arena.unmarshal_column_data(&ffi, values.len()) {
+			ColumnBuffer::Duration(container) => {
+				let got: &[Duration] = &container;
+				assert_eq!(got, values.as_slice());
+			}
+			_ => panic!("expected Duration column"),
 		}
 	}
 }

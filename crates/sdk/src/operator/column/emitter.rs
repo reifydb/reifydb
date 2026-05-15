@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 use crate::{
 	error::FFIError,
@@ -10,9 +11,9 @@ use crate::{
 		column::{
 			row::Row,
 			writer::{
-				BlobWriter, BoolWriter, DecimalWriter, F32Writer, F64Writer, I8Writer, I16Writer,
-				I32Writer, I64Writer, I128Writer, U8Writer, U16Writer, U32Writer, U64Writer,
-				U128Writer, Utf8Writer,
+				BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DurationWriter,
+				F32Writer, F64Writer, I8Writer, I16Writer, I32Writer, I64Writer, I128Writer,
+				TimeWriter, U8Writer, U16Writer, U32Writer, U64Writer, U128Writer, Utf8Writer,
 			},
 		},
 	},
@@ -36,6 +37,10 @@ enum AnyWriter<'a> {
 	I128(I128Writer<'a>),
 	F32(F32Writer<'a>),
 	F64(F64Writer<'a>),
+	Date(DateWriter<'a>),
+	DateTime(DateTimeWriter<'a>),
+	Time(TimeWriter<'a>),
+	Duration(DurationWriter<'a>),
 	Bool(BoolWriter<'a>),
 	Utf8(Utf8Writer<'a>),
 	Blob(BlobWriter<'a>),
@@ -64,6 +69,10 @@ impl<'a> AnyWriter<'a> {
 			ColumnTypeCode::Int16 => AnyWriter::I128(builder.i128_writer(row_capacity)?),
 			ColumnTypeCode::Float4 => AnyWriter::F32(builder.f32_writer(row_capacity)?),
 			ColumnTypeCode::Float8 => AnyWriter::F64(builder.f64_writer(row_capacity)?),
+			ColumnTypeCode::Date => AnyWriter::Date(builder.date_writer(row_capacity)?),
+			ColumnTypeCode::DateTime => AnyWriter::DateTime(builder.datetime_writer(row_capacity)?),
+			ColumnTypeCode::Time => AnyWriter::Time(builder.time_writer(row_capacity)?),
+			ColumnTypeCode::Duration => AnyWriter::Duration(builder.duration_writer(row_capacity)?),
 			ColumnTypeCode::Bool => AnyWriter::Bool(builder.bool_writer(row_capacity)?),
 			ColumnTypeCode::Utf8 => AnyWriter::Utf8(builder.utf8_writer(row_capacity, var_bytes_hint)?),
 			ColumnTypeCode::Blob => AnyWriter::Blob(builder.blob_writer(row_capacity, var_bytes_hint)?),
@@ -93,6 +102,10 @@ impl<'a> AnyWriter<'a> {
 			AnyWriter::I128(w) => w.finish(),
 			AnyWriter::F32(w) => w.finish(),
 			AnyWriter::F64(w) => w.finish(),
+			AnyWriter::Date(w) => w.finish(),
+			AnyWriter::DateTime(w) => w.finish(),
+			AnyWriter::Time(w) => w.finish(),
+			AnyWriter::Duration(w) => w.finish(),
 			AnyWriter::Bool(w) => w.finish(),
 			AnyWriter::Utf8(w) => w.finish(),
 			AnyWriter::Blob(w) => w.finish(),
@@ -224,6 +237,38 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
+	pub fn push_date(&mut self, col: usize, v: Date) {
+		match &mut self.writers[col] {
+			AnyWriter::Date(w) => w.push(v),
+			_ => debug_panic("push_date on wrong column type"),
+		}
+	}
+
+	#[inline]
+	pub fn push_datetime(&mut self, col: usize, v: DateTime) {
+		match &mut self.writers[col] {
+			AnyWriter::DateTime(w) => w.push(v),
+			_ => debug_panic("push_datetime on wrong column type"),
+		}
+	}
+
+	#[inline]
+	pub fn push_time(&mut self, col: usize, v: Time) {
+		match &mut self.writers[col] {
+			AnyWriter::Time(w) => w.push(v),
+			_ => debug_panic("push_time on wrong column type"),
+		}
+	}
+
+	#[inline]
+	pub fn push_duration(&mut self, col: usize, v: Duration) {
+		match &mut self.writers[col] {
+			AnyWriter::Duration(w) => w.push(v),
+			_ => debug_panic("push_duration on wrong column type"),
+		}
+	}
+
+	#[inline]
 	pub fn push_bool(&mut self, col: usize, v: bool) {
 		match &mut self.writers[col] {
 			AnyWriter::Bool(w) => w.push(v),
@@ -279,6 +324,10 @@ impl<'a> RowEmitter<'a> {
 			AnyWriter::I128(w) => w.push_none(),
 			AnyWriter::F32(w) => w.push_none(),
 			AnyWriter::F64(w) => w.push_none(),
+			AnyWriter::Date(w) => w.push_none(),
+			AnyWriter::DateTime(w) => w.push_none(),
+			AnyWriter::Time(w) => w.push_none(),
+			AnyWriter::Duration(w) => w.push_none(),
 			AnyWriter::Bool(w) => w.push_none(),
 			AnyWriter::Utf8(w) => return w.push_none(),
 			AnyWriter::Blob(w) => return w.push_none(),
