@@ -59,6 +59,7 @@ pub fn transactional_txn(engine: &TestEngine) -> FlowTransaction {
 		base_pending: Pending::new(),
 		query,
 		state_query,
+		single: engine.inner().single().clone(),
 		catalog: Catalog::testing(),
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(1000)),
@@ -71,6 +72,7 @@ pub fn ephemeral_txn(engine: &TestEngine) -> FlowTransaction {
 	FlowTransaction::ephemeral(
 		CommitVersion(1),
 		query,
+		engine.inner().single().clone(),
 		Catalog::testing(),
 		HashMap::new(),
 		Clock::Mock(MockClock::from_millis(1000)),

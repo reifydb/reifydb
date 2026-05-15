@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_abi::{
-	callbacks::{
-		builder::BuilderCallbacks, catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks,
-		memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
-	},
-	constants::FFI_ERROR_INTERNAL,
-	context::context::ContextFFI,
-	data::buffer::BufferFFI,
+use reifydb_abi::callbacks::{
+	builder::BuilderCallbacks, catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks,
+	memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 };
 use reifydb_extension::{
 	ffi_callbacks::builder,
@@ -16,6 +11,7 @@ use reifydb_extension::{
 };
 
 pub mod catalog;
+pub mod rql;
 pub mod state;
 pub mod state_iterator;
 pub mod store;
@@ -62,7 +58,7 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			free_table: catalog::host_catalog_free_table,
 		},
 		rql: RqlCallbacks {
-			rql: host_rql_unsupported,
+			rql: rql::host_rql,
 		},
 		builder: BuilderCallbacks {
 			acquire: builder::host_builder_acquire,
@@ -75,15 +71,4 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			emit_diff: builder::host_builder_emit_diff,
 		},
 	}
-}
-
-unsafe extern "C" fn host_rql_unsupported(
-	_ctx: *mut ContextFFI,
-	_rql_ptr: *const u8,
-	_rql_len: usize,
-	_params_ptr: *const u8,
-	_params_len: usize,
-	_result_out: *mut BufferFFI,
-) -> i32 {
-	FFI_ERROR_INTERNAL
 }

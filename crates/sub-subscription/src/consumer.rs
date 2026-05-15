@@ -19,7 +19,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_sub_flow::{engine::FlowEngine, transaction::FlowTransaction};
-use reifydb_transaction::multi::transaction::MultiTransaction;
+use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 use reifydb_type::Result;
 
 use crate::sink::DeliveryBuffer;
@@ -27,6 +27,7 @@ use crate::sink::DeliveryBuffer;
 pub struct SubscriptionCdcConsumer {
 	flow_engine: Arc<RwLock<FlowEngine>>,
 	multi: MultiTransaction,
+	single: SingleTransaction,
 	catalog: Catalog,
 
 	flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
@@ -40,6 +41,7 @@ impl SubscriptionCdcConsumer {
 	pub fn new(
 		flow_engine: Arc<RwLock<FlowEngine>>,
 		multi: MultiTransaction,
+		single: SingleTransaction,
 		catalog: Catalog,
 		flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
 		hydration_versions: Arc<DashMap<FlowId, CommitVersion>>,
@@ -48,6 +50,7 @@ impl SubscriptionCdcConsumer {
 		Self {
 			flow_engine,
 			multi,
+			single,
 			catalog,
 			flow_states,
 			hydration_versions,
@@ -118,6 +121,7 @@ impl SubscriptionCdcConsumer {
 			let mut txn = FlowTransaction::ephemeral(
 				version,
 				primitive_query,
+				self.single.clone(),
 				self.catalog.clone(),
 				state,
 				flow_engine.clock().clone(),

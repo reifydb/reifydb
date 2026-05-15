@@ -64,7 +64,7 @@ use crate::{
 
 pub struct QueryTransaction {
 	pub(crate) multi: MultiReadTransaction,
-	pub(crate) single: SingleTransaction,
+	pub(crate) single: Option<SingleTransaction>,
 
 	pub identity: IdentityId,
 
@@ -76,7 +76,16 @@ impl QueryTransaction {
 	pub fn new(multi: MultiReadTransaction, single: SingleTransaction, identity: IdentityId) -> Self {
 		Self {
 			multi,
-			single,
+			single: Some(single),
+			identity,
+			executor: None,
+		}
+	}
+
+	pub fn new_read_only(multi: MultiReadTransaction, identity: IdentityId) -> Self {
+		Self {
+			multi,
+			single: None,
 			identity,
 			executor: None,
 		}
@@ -152,7 +161,7 @@ impl QueryTransaction {
 		F: FnOnce(&mut SingleReadTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
-		self.single.with_query(keys, f)
+		self.single.as_ref().expect("single not available in read-only query context").with_query(keys, f)
 	}
 
 	#[instrument(name = "transaction::query::with_multi_query", level = "trace", skip(self, f))]
@@ -168,7 +177,7 @@ impl QueryTransaction {
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		self.single.begin_query(keys)
+		self.single.as_ref().expect("single not available in read-only query context").begin_query(keys)
 	}
 }
 

@@ -196,6 +196,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		let mut txn = FlowTransaction::ephemeral(
 			version,
 			primitive_query,
+			engine.single().clone(),
 			self.state.catalog.clone(),
 			flow_state,
 			flow_engine.clock().clone(),
@@ -494,6 +495,7 @@ impl SubscriptionSubsystem {
 		let cdc_consumer = SubscriptionCdcConsumer::new(
 			flow_engine,
 			multi,
+			engine.single_owned(),
 			catalog,
 			flow_states,
 			hydration_versions,

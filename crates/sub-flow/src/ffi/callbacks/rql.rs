@@ -9,23 +9,14 @@ use reifydb_abi::{
 	context::context::ContextFFI,
 	data::buffer::BufferFFI,
 };
-use reifydb_transaction::transaction::Transaction;
-use reifydb_type::params::Params;
+use reifydb_engine::vm::executor::Executor;
+use reifydb_extension::procedure::ffi_callbacks::memory::host_alloc;
+use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
+use reifydb_type::{params::Params, value::identity::IdentityId};
 use tracing::error;
 
-use super::memory::host_alloc;
+use crate::ffi::context::get_transaction_mut;
 
-/// Host RQL callback for FFI procedures.
-///
-/// Reconstructs the Transaction and Executor from the ContextFFI pointers,
-/// executes the RQL statement, and serializes the result frames into the output buffer.
-///
-/// # Safety
-///
-/// - `ctx` must be a valid pointer to a `ContextFFI` whose `txn_ptr` points to a live `Transaction`.
-/// - `rql_ptr` must be valid for reading `rql_len` bytes of valid UTF-8.
-/// - `params_ptr` must be valid for reading `params_len` bytes, or null if `params_len` is 0.
-/// - `result_out` must be a valid pointer to a `BufferFFI` for writing.
 pub unsafe extern "C" fn host_rql(
 	ctx: *mut ContextFFI,
 	rql_ptr: *const u8,
@@ -60,10 +51,22 @@ pub unsafe extern "C" fn host_rql(
 			};
 
 			let ctx_ref = &mut *ctx;
-			let tx = &mut *(ctx_ref.txn_ptr as *mut Transaction<'_>);
 
-			let result = tx.rql(rql_str, params);
-			if let Some(ref e) = result.error {
+			if ctx_ref.executor_ptr.is_null() {
+				error!("host_rql: executor_ptr is null");
+				return FFI_ERROR_INTERNAL;
+			}
+
+			let executor = &*(ctx_ref.executor_ptr as *const Executor);
+			let flow_txn = get_transaction_mut(ctx_ref);
+
+			let cloned_multi = flow_txn.inner_mut().query.clone();
+			let single = flow_txn.inner_mut().single.clone();
+			let mut qt = QueryTransaction::new(cloned_multi, single, IdentityId::system());
+
+			let exec_result = executor.rql(&mut Transaction::Query(&mut qt), rql_str, params);
+
+			if let Some(ref e) = exec_result.error {
 				error!("host_rql: rql execution failed: {}", e);
 				let msg = e.to_string();
 				let msg_bytes = msg.as_bytes();
@@ -79,7 +82,7 @@ pub unsafe extern "C" fn host_rql(
 				return FFI_ERROR_INTERNAL;
 			}
 
-			let result_bytes = match to_stdvec(&result.frames) {
+			let result_bytes = match to_stdvec(&exec_result.frames) {
 				Ok(b) => b,
 				Err(e) => {
 					error!("host_rql: failed to serialize result: {}", e);

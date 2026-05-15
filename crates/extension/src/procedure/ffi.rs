@@ -73,7 +73,6 @@ impl NativeProcedureFFI {
 }
 
 // SAFETY: the Mutex around `instance` provides single-actor access; that same
-
 unsafe impl Send for NativeProcedureFFI {}
 unsafe impl Sync for NativeProcedureFFI {}
 

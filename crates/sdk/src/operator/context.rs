@@ -12,7 +12,7 @@ use crate::{
 	catalog::Catalog,
 	error::Result,
 	operator::{builder::ColumnsBuilder, diff::DiffStart},
-	rql::raw_rql,
+	rql::raw_query,
 	state::{InternalState, State, row::RowNumberProvider},
 	store::Store,
 };
@@ -59,8 +59,8 @@ impl OperatorContext {
 		Ok(provider.get_or_create_row_numbers_batch(self, keys.iter())?.into_iter().map(|(rn, _)| rn).collect())
 	}
 
-	pub fn rql(&self, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		raw_rql(self, rql, params)
+	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>> {
+		raw_query(self, query, params)
 	}
 
 	pub fn builder(&mut self) -> ColumnsBuilder<'_> {

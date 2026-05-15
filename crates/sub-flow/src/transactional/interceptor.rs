@@ -192,6 +192,7 @@ fn prepare_level_flow_txns(
 			base_pending: base_pending.clone(),
 			query,
 			state_query,
+			single: engine.single().clone(),
 			catalog: catalog.clone(),
 			interceptors,
 			clock: engine.clock().clone(),

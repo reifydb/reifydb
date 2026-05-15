@@ -51,8 +51,8 @@ impl FFIProcedureContext {
 		}
 	}
 
-	pub fn rql(&self, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		raw_procedure_rql(self, rql, params)
+	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>> {
+		raw_procedure_query(self, query, params)
 	}
 
 	pub fn builder(&mut self) -> ColumnsBuilder<'_> {
@@ -60,7 +60,7 @@ impl FFIProcedureContext {
 	}
 }
 
-pub(crate) fn raw_procedure_rql(ctx: &FFIProcedureContext, rql: &str, params: Params) -> Result<Vec<Frame>> {
+pub(crate) fn raw_procedure_query(ctx: &FFIProcedureContext, query: &str, params: Params) -> Result<Vec<Frame>> {
 	let params_bytes = to_stdvec(&params)
 		.map_err(|e| FFIError::Serialization(format!("failed to serialize params: {}", e)))?;
 
@@ -69,8 +69,8 @@ pub(crate) fn raw_procedure_rql(ctx: &FFIProcedureContext, rql: &str, params: Pa
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.rql.rql)(
 			ctx.ctx,
-			rql.as_ptr(),
-			rql.len(),
+			query.as_ptr(),
+			query.len(),
 			params_bytes.as_ptr(),
 			params_bytes.len(),
 			&mut output,
