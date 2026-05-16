@@ -126,6 +126,10 @@ impl LeftHashJoin {
 
 		let mut result = Vec::new();
 
+		if ctx.operator.snapshot {
+			return Ok(result);
+		}
+
 		if is_first && ctx.state.left.get(txn, key_hash)?.is_some() {
 			let left_columns = pull_left_columns(txn, &ctx.state.left, key_hash)?;
 			if left_columns.has_rows() {
@@ -205,15 +209,20 @@ impl LeftHashJoin {
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let emit_ctx = JoinEmitContext {
-			opposite_store: &ctx.state.left,
-			key_hash,
-			operator: ctx.operator,
-		};
-
 		let mut result = Vec::new();
-		if let Some(diff) = emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Right, &emit_ctx)? {
-			result.push(diff);
+
+		if !ctx.operator.snapshot {
+			let emit_ctx = JoinEmitContext {
+				opposite_store: &ctx.state.left,
+				key_hash,
+				operator: ctx.operator,
+			};
+
+			if let Some(diff) =
+				emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Right, &emit_ctx)?
+			{
+				result.push(diff);
+			}
 		}
 
 		let will_become_empty = if let Some(entry) = ctx.state.right.get(txn, key_hash)? {
@@ -227,7 +236,7 @@ impl LeftHashJoin {
 			remove_from_state_entry(txn, &mut ctx.state.right, key_hash, row_number)?;
 		}
 
-		if will_become_empty && !ctx.state.right.contains_key(txn, key_hash)? {
+		if !ctx.operator.snapshot && will_become_empty && !ctx.state.right.contains_key(txn, key_hash)? {
 			let left_columns = pull_left_columns(txn, &ctx.state.left, key_hash)?;
 			if left_columns.has_rows() {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
@@ -313,6 +322,10 @@ impl LeftHashJoin {
 
 		if !update_row_in_entry(txn, &mut ctx.state.right, keys.pre, pre_row_number, post, row_idx)? {
 			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
+		}
+
+		if ctx.operator.snapshot {
+			return Ok(Vec::new());
 		}
 
 		let emit_ctx = JoinEmitContext {

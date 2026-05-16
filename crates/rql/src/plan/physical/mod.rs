@@ -476,6 +476,7 @@ pub struct JoinInnerNode<'bump> {
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
 	pub ttl: Option<Ttl>,
+	pub snapshot: bool,
 }
 
 #[derive(Debug)]
@@ -485,6 +486,7 @@ pub struct JoinLeftNode<'bump> {
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
 	pub ttl: Option<Ttl>,
+	pub snapshot: bool,
 }
 
 #[derive(Debug)]
@@ -494,6 +496,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
 	pub ttl: Option<Ttl>,
+	pub snapshot: bool,
 }
 
 #[derive(Debug)]
@@ -1716,6 +1719,7 @@ impl<'bump> Compiler<'bump> {
 						on: join.on,
 						alias,
 						ttl: join.ttl,
+						snapshot: join.snapshot,
 					}));
 				}
 
@@ -1740,6 +1744,7 @@ impl<'bump> Compiler<'bump> {
 						on: join.on,
 						alias,
 						ttl: join.ttl,
+						snapshot: join.snapshot,
 					}));
 				}
 
@@ -1764,6 +1769,7 @@ impl<'bump> Compiler<'bump> {
 						join_type: join.join_type,
 						alias,
 						ttl: join.ttl,
+						snapshot: join.snapshot,
 					}));
 				}
 

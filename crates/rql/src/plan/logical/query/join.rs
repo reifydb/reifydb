@@ -75,6 +75,7 @@ impl<'bump> Compiler<'bump> {
 				using_clause,
 				alias,
 				ttl,
+				snapshot,
 				rql,
 				..
 			} => {
@@ -90,6 +91,7 @@ impl<'bump> Compiler<'bump> {
 					on,
 					alias: Some(alias),
 					ttl,
+					snapshot,
 					rql: rql.to_string(),
 				}))
 			}
@@ -98,6 +100,7 @@ impl<'bump> Compiler<'bump> {
 				using_clause,
 				alias,
 				ttl,
+				snapshot,
 				rql,
 				..
 			} => {
@@ -113,6 +116,7 @@ impl<'bump> Compiler<'bump> {
 					on,
 					alias: Some(alias),
 					ttl,
+					snapshot,
 					rql: rql.to_string(),
 				}))
 			}
@@ -121,6 +125,7 @@ impl<'bump> Compiler<'bump> {
 				join_type,
 				alias,
 				ttl,
+				snapshot,
 				rql,
 				..
 			} => {
@@ -135,6 +140,7 @@ impl<'bump> Compiler<'bump> {
 					join_type: join_type.unwrap_or(JoinType::Inner),
 					alias: Some(alias),
 					ttl,
+					snapshot,
 					rql: rql.to_string(),
 				}))
 			}

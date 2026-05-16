@@ -71,6 +71,10 @@ impl InnerHashJoin {
 			}
 		}
 
+		if ctx.operator.snapshot && matches!(ctx.side, JoinSide::Right) {
+			return Ok(result);
+		}
+
 		let emit_ctx = JoinEmitContext {
 			opposite_store: match ctx.side {
 				JoinSide::Left => &ctx.state.right,
@@ -101,17 +105,21 @@ impl InnerHashJoin {
 
 		let mut result = Vec::new();
 
-		let emit_ctx = JoinEmitContext {
-			opposite_store: match ctx.side {
-				JoinSide::Left => &ctx.state.right,
-				JoinSide::Right => &ctx.state.left,
-			},
-			key_hash,
-			operator: ctx.operator,
-		};
+		let snapshot_right = ctx.operator.snapshot && matches!(ctx.side, JoinSide::Right);
 
-		if let Some(diff) = emit_remove_joined_columns_batch(txn, pre, indices, ctx.side, &emit_ctx)? {
-			result.push(diff);
+		if !snapshot_right {
+			let emit_ctx = JoinEmitContext {
+				opposite_store: match ctx.side {
+					JoinSide::Left => &ctx.state.right,
+					JoinSide::Right => &ctx.state.left,
+				},
+				key_hash,
+				operator: ctx.operator,
+			};
+
+			if let Some(diff) = emit_remove_joined_columns_batch(txn, pre, indices, ctx.side, &emit_ctx)? {
+				result.push(diff);
+			}
 		}
 
 		for &idx in indices {
@@ -183,6 +191,10 @@ impl InnerHashJoin {
 
 		if !updated {
 			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
+		}
+
+		if ctx.operator.snapshot && matches!(ctx.side, JoinSide::Right) {
+			return Ok(Vec::new());
 		}
 
 		let emit_ctx = JoinEmitContext {

@@ -53,6 +53,8 @@ pub enum FlowNodeType {
 		alias: Option<String>,
 		#[serde(default)]
 		ttl: Option<Ttl>,
+		#[serde(default)]
+		snapshot: bool,
 	},
 	Aggregate {
 		by: Vec<Expression>,

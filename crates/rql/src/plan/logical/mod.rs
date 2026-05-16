@@ -783,6 +783,7 @@ pub struct JoinInnerNode<'bump> {
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
 	pub ttl: Option<Ttl>,
+	pub snapshot: bool,
 	pub rql: String,
 }
 
@@ -792,6 +793,7 @@ pub struct JoinLeftNode<'bump> {
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
 	pub ttl: Option<Ttl>,
+	pub snapshot: bool,
 	pub rql: String,
 }
 
@@ -801,6 +803,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub join_type: JoinType,
 	pub alias: Option<BumpFragment<'bump>>,
 	pub ttl: Option<Ttl>,
+	pub snapshot: bool,
 	pub rql: String,
 }
 

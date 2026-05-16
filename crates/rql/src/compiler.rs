@@ -372,6 +372,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			on: node.on,
 			alias: node.alias,
 			ttl: node.ttl,
+			snapshot: node.snapshot,
 		}),
 		PhysicalPlan::JoinLeft(node) => QueryPlan::JoinLeft(nodes::JoinLeftNode {
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))?),
@@ -379,6 +380,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			on: node.on,
 			alias: node.alias,
 			ttl: node.ttl,
+			snapshot: node.snapshot,
 		}),
 		PhysicalPlan::JoinNatural(node) => QueryPlan::JoinNatural(nodes::JoinNaturalNode {
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(node.left))?),
@@ -386,6 +388,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			join_type: node.join_type,
 			alias: node.alias,
 			ttl: node.ttl,
+			snapshot: node.snapshot,
 		}),
 		PhysicalPlan::Take(node) => QueryPlan::Take(nodes::TakeNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),

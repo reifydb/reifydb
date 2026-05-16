@@ -25,6 +25,7 @@ pub(crate) struct JoinCompiler {
 	pub on: Vec<Expression>,
 	pub alias: Option<String>,
 	pub ttl: Option<Ttl>,
+	pub snapshot: bool,
 }
 
 impl From<JoinInnerNode> for JoinCompiler {
@@ -36,6 +37,7 @@ impl From<JoinInnerNode> for JoinCompiler {
 			on: node.on,
 			alias: node.alias.map(|f| f.text().to_string()),
 			ttl: node.ttl,
+			snapshot: node.snapshot,
 		}
 	}
 }
@@ -49,6 +51,7 @@ impl From<JoinLeftNode> for JoinCompiler {
 			on: node.on,
 			alias: node.alias.map(|f| f.text().to_string()),
 			ttl: node.ttl,
+			snapshot: node.snapshot,
 		}
 	}
 }
@@ -122,6 +125,7 @@ impl CompileOperator for JoinCompiler {
 				right: right_keys,
 				alias: effective_alias,
 				ttl: self.ttl,
+				snapshot: self.snapshot,
 			},
 		)?;
 

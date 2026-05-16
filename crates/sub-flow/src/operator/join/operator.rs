@@ -86,9 +86,11 @@ pub struct JoinOperator {
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ttl: JoinStateTtl,
+	pub(crate) snapshot: bool,
 }
 
 impl JoinOperator {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		left: JoinSideConfig,
 		right: JoinSideConfig,
@@ -97,6 +99,7 @@ impl JoinOperator {
 		alias: Option<String>,
 		executor: Executor,
 		ttl: JoinStateTtl,
+		snapshot: bool,
 	) -> Self {
 		let left_parent = left.parent;
 		let right_parent = right.parent;
@@ -147,6 +150,7 @@ impl JoinOperator {
 			routines,
 			runtime_context,
 			ttl,
+			snapshot,
 		}
 	}
 

@@ -437,6 +437,7 @@ pub mod tests {
 					right: vec![],
 					alias: None,
 					ttl: None,
+					snapshot: false,
 				},
 				SinkTableView {
 					view: ViewId(700),

@@ -313,6 +313,7 @@ impl FlowEngine {
 				right,
 				alias,
 				ttl,
+				snapshot,
 			} => {
 				if node.inputs.len() != 2 {
 					return Err(Error(Box::new(internal!("Join node must have exactly 2 inputs"))));
@@ -363,6 +364,7 @@ impl FlowEngine {
 						alias,
 						self.executor.clone(),
 						ttl,
+						snapshot,
 					))),
 				);
 			}

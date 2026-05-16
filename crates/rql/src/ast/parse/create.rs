@@ -2648,6 +2648,69 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::CloseCurly)?;
 		Ok(ttl)
 	}
+
+	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstTtl<'bump>>, bool)> {
+		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
+			return Ok((None, false));
+		}
+		self.advance()?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut ttl: Option<AstTtl<'bump>> = None;
+		let mut snapshot: bool = false;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"ttl" => {
+					ttl = Some(self.parse_ttl()?);
+				}
+				"snapshot" => {
+					let value = self.advance()?;
+					snapshot = match value.kind {
+						TokenKind::Literal(Literal::True) => true,
+						TokenKind::Literal(Literal::False) => false,
+						_ => {
+							let fragment = value.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "boolean literal 'true' or 'false'"
+										.to_string(),
+								},
+								message: format!(
+									"expected boolean literal for 'snapshot', got '{}'",
+									value.fragment.text()
+								),
+								fragment,
+							}));
+						}
+					};
+				}
+				other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'ttl' or 'snapshot'".to_string(),
+						},
+						message: format!("unexpected key '{}' in join WITH clause", other),
+						fragment,
+					}));
+				}
+			}
+
+			self.consume_if(TokenKind::Separator(Comma))?;
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok((ttl, snapshot))
+	}
 }
 
 enum ViewStorageKindHint {

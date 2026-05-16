@@ -647,6 +647,7 @@ pub struct JoinInnerNode {
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
 	pub ttl: Option<Ttl>,
+	pub snapshot: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -656,6 +657,7 @@ pub struct JoinLeftNode {
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
 	pub ttl: Option<Ttl>,
+	pub snapshot: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -665,6 +667,7 @@ pub struct JoinNaturalNode {
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
 	pub ttl: Option<Ttl>,
+	pub snapshot: bool,
 }
 
 #[derive(Debug, Clone)]

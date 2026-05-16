@@ -29,7 +29,7 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let ttl = self.parse_with_clause_for_operator()?;
+		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
@@ -37,6 +37,7 @@ impl<'bump> Parser<'bump> {
 			using_clause,
 			alias,
 			ttl,
+			snapshot,
 			rql: self.source_since(start),
 		})
 	}
@@ -61,7 +62,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(As)?;
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
-		let ttl = self.parse_with_clause_for_operator()?;
+		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::NaturalJoin {
 			token,
@@ -69,6 +70,7 @@ impl<'bump> Parser<'bump> {
 			join_type,
 			alias,
 			ttl,
+			snapshot,
 			rql: self.source_since(start),
 		})
 	}
@@ -84,7 +86,7 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let ttl = self.parse_with_clause_for_operator()?;
+		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
@@ -92,6 +94,7 @@ impl<'bump> Parser<'bump> {
 			using_clause,
 			alias,
 			ttl,
+			snapshot,
 			rql: self.source_since(start),
 		})
 	}
@@ -107,7 +110,7 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let ttl = self.parse_with_clause_for_operator()?;
+		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::LeftJoin {
 			token,
@@ -115,6 +118,7 @@ impl<'bump> Parser<'bump> {
 			using_clause,
 			alias,
 			ttl,
+			snapshot,
 			rql: self.source_since(start),
 		})
 	}
