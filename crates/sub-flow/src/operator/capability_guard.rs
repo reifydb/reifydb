@@ -5,7 +5,7 @@ use std::process::abort;
 
 use Diff::*;
 use reifydb_abi::operator::capabilities::{
-	CAPABILITY_DELETE, CAPABILITY_INSERT, CAPABILITY_PULL, CAPABILITY_TICK, CAPABILITY_UPDATE, has_capability,
+	CAPABILITY_DELETE, CAPABILITY_INSERT, CAPABILITY_TICK, CAPABILITY_UPDATE, has_capability,
 };
 use reifydb_core::interface::{
 	catalog::flow::FlowNodeId,
@@ -19,7 +19,6 @@ pub enum CapabilityViolation {
 		kind: &'static str,
 		missing_bit: u32,
 	},
-	Pull,
 	Tick,
 }
 
@@ -56,14 +55,6 @@ pub fn check_apply(caps: u32, change: &Change) -> Result<(), CapabilityViolation
 	Ok(())
 }
 
-pub fn check_pull(caps: u32) -> Result<(), CapabilityViolation> {
-	if has_capability(caps, CAPABILITY_PULL) {
-		Ok(())
-	} else {
-		Err(CapabilityViolation::Pull)
-	}
-}
-
 pub fn check_tick(caps: u32) -> Result<(), CapabilityViolation> {
 	if has_capability(caps, CAPABILITY_TICK) {
 		Ok(())
@@ -91,16 +82,6 @@ pub fn enforce_apply_capabilities(operator_id: FlowNodeId, caps: u32, change: &C
 			}
 			_ => unreachable!(),
 		}
-	}
-}
-
-pub fn enforce_pull_capability(operator_id: FlowNodeId, caps: u32) {
-	if check_pull(caps).is_err() {
-		error!(
-			operator_id = operator_id.0,
-			"operator was asked to pull rows but does not declare CAPABILITY_PULL. Aborting.",
-		);
-		abort();
 	}
 }
 
@@ -207,14 +188,6 @@ mod tests {
 	fn empty_diffs_accepted_with_zero_caps() {
 		let c = change(vec![]);
 		assert_eq!(check_apply(0, &c), Ok(()));
-	}
-
-	#[test]
-	fn check_pull_requires_pull_bit() {
-		assert_eq!(check_pull(0), Err(CapabilityViolation::Pull));
-		assert_eq!(check_pull(CAPABILITY_INSERT), Err(CapabilityViolation::Pull));
-		assert_eq!(check_pull(CAPABILITY_PULL), Ok(()));
-		assert_eq!(check_pull(CAPABILITY_ALL_STANDARD), Ok(()));
 	}
 
 	#[test]

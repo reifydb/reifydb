@@ -232,6 +232,10 @@ impl DistinctOperator {
 		)
 	}
 
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.parent.output_schema()
+	}
+
 	fn compute_hashes(&self, columns: &Columns) -> Result<Vec<Hash128>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -729,10 +733,6 @@ impl Operator for DistinctOperator {
 
 		Ok(None)
 	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		self.parent.pull(txn, rows)
-	}
 }
 
 #[cfg(test)]
@@ -768,10 +768,6 @@ mod ttl_tests {
 
 		fn apply(&self, _: &mut FlowTransaction, change: Change) -> Result<Change> {
 			Ok(change)
-		}
-
-		fn pull(&self, _: &mut FlowTransaction, _: &[RowNumber]) -> Result<Columns> {
-			Ok(Columns::empty())
 		}
 	}
 

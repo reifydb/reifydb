@@ -11,7 +11,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	internal,
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	util::encoding::keycode::serializer::KeySerializer,
 	value::column::columns::Columns,
 };
 use reifydb_type::{Result, error::Error, value::row_number::RowNumber};
@@ -44,6 +44,10 @@ impl AppendOperator {
 		}
 	}
 
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.parents[0].output_schema()
+	}
+
 	fn parent_index_for_origin(&self, origin: &ChangeOrigin) -> Option<usize> {
 		match origin {
 			ChangeOrigin::Flow(from_node) => self.input_nodes.iter().position(|n| n == from_node),
@@ -56,18 +60,6 @@ impl AppendOperator {
 		serializer.extend_u8(parent_index);
 		serializer.extend_u64(source_row.0);
 		serializer.finish()
-	}
-
-	fn parse_composite_key(key_bytes: &[u8]) -> Option<(usize, RowNumber)> {
-		if key_bytes.is_empty() {
-			return None;
-		}
-
-		let mut de = KeyDeserializer::from_bytes(key_bytes);
-		let parent_index = de.read_u8().ok()?;
-		let source_row = de.read_u64().ok()?;
-
-		Some((parent_index as usize, RowNumber(source_row)))
 	}
 }
 
@@ -119,48 +111,6 @@ impl Operator for AppendOperator {
 		}
 
 		Ok(Change::from_flow(self.node, change.version, result_diffs, change.changed_at))
-	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		let mut found_columns: Vec<Columns> = Vec::new();
-
-		for &row_number in rows {
-			let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number)? else {
-				continue;
-			};
-
-			let Some((parent_index, source_row_number)) = Self::parse_composite_key(key.as_ref()) else {
-				continue;
-			};
-
-			if parent_index >= self.parents.len() {
-				continue;
-			}
-
-			let parent_cols = self.parents[parent_index].pull(txn, &[source_row_number])?;
-
-			if !parent_cols.is_empty() {
-				let updated = parent_cols.with_row_numbers(vec![row_number]);
-				found_columns.push(updated);
-			}
-		}
-
-		if found_columns.is_empty() {
-			self.parents[0].pull(txn, &[])
-		} else if found_columns.len() == 1 {
-			Ok(found_columns.remove(0))
-		} else {
-			let mut result = found_columns.remove(0);
-			for cols in found_columns {
-				result.row_numbers.make_mut().extend(cols.row_numbers.iter().copied());
-				for (i, col) in cols.columns.into_iter().enumerate() {
-					result.columns.make_mut()[i]
-						.extend(col)
-						.expect("shape mismatch in append pull");
-				}
-			}
-			Ok(result)
-		}
 	}
 }
 

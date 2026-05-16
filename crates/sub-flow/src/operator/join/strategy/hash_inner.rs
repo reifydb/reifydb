@@ -78,10 +78,6 @@ impl InnerHashJoin {
 			},
 			key_hash,
 			operator: ctx.operator,
-			opposite_parent: match ctx.side {
-				JoinSide::Left => &ctx.operator.right_parent,
-				JoinSide::Right => &ctx.operator.left_parent,
-			},
 		};
 
 		if let Some(diff) = emit_joined_columns_batch(txn, post, indices, ctx.side, &emit_ctx)? {
@@ -112,10 +108,6 @@ impl InnerHashJoin {
 			},
 			key_hash,
 			operator: ctx.operator,
-			opposite_parent: match ctx.side {
-				JoinSide::Left => &ctx.operator.right_parent,
-				JoinSide::Right => &ctx.operator.left_parent,
-			},
 		};
 
 		if let Some(diff) = emit_remove_joined_columns_batch(txn, pre, indices, ctx.side, &emit_ctx)? {
@@ -179,23 +171,14 @@ impl InnerHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let pre_row_number = pre.row_numbers[row_idx];
-		let post_row_number = post.row_numbers[row_idx];
 
 		let updated = match ctx.side {
-			JoinSide::Left => update_row_in_entry(
-				txn,
-				&mut ctx.state.left,
-				keys.pre,
-				pre_row_number,
-				post_row_number,
-			)?,
-			JoinSide::Right => update_row_in_entry(
-				txn,
-				&mut ctx.state.right,
-				keys.pre,
-				pre_row_number,
-				post_row_number,
-			)?,
+			JoinSide::Left => {
+				update_row_in_entry(txn, &mut ctx.state.left, keys.pre, pre_row_number, post, row_idx)?
+			}
+			JoinSide::Right => {
+				update_row_in_entry(txn, &mut ctx.state.right, keys.pre, pre_row_number, post, row_idx)?
+			}
 		};
 
 		if !updated {
@@ -209,10 +192,6 @@ impl InnerHashJoin {
 			},
 			key_hash: keys.pre,
 			operator: ctx.operator,
-			opposite_parent: match ctx.side {
-				JoinSide::Left => &ctx.operator.right_parent,
-				JoinSide::Right => &ctx.operator.left_parent,
-			},
 		};
 
 		match emit_update_joined_columns(txn, pre, post, row_idx, ctx.side, &emit_ctx)? {

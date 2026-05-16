@@ -25,7 +25,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	Result,
 	params::Params,
-	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{Value, identity::IdentityId, r#type::Type},
 };
 
 use crate::{
@@ -161,14 +161,14 @@ impl Operator for FilterOperator {
 
 		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
 	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		self.parent.pull(txn, rows)
-	}
 }
 
 impl FilterOperator {
 	#[inline]
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.parent.output_schema()
+	}
+
 	fn apply_filter_insert(&self, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
 		let mask = self.evaluate(post)?;
 		let passing = self.filter_passing(post, &mask);

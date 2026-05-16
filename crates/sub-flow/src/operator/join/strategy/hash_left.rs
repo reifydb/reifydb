@@ -103,7 +103,6 @@ impl LeftHashJoin {
 			opposite_store: &ctx.state.right,
 			key_hash,
 			operator: ctx.operator,
-			opposite_parent: &ctx.operator.right_parent,
 		};
 
 		if let Some(diff) = emit_joined_columns_batch(txn, post, indices, JoinSide::Left, &emit_ctx)? {
@@ -128,8 +127,7 @@ impl LeftHashJoin {
 		let mut result = Vec::new();
 
 		if is_first && ctx.state.left.get(txn, key_hash)?.is_some() {
-			let left_columns =
-				pull_left_columns(txn, &ctx.state.left, key_hash, &ctx.operator.left_parent)?;
+			let left_columns = pull_left_columns(txn, &ctx.state.left, key_hash)?;
 			if left_columns.has_rows() {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
 				let unmatched =
@@ -142,7 +140,6 @@ impl LeftHashJoin {
 			opposite_store: &ctx.state.left,
 			key_hash,
 			operator: ctx.operator,
-			opposite_parent: &ctx.operator.left_parent,
 		};
 
 		if let Some(diff) = emit_joined_columns_batch(txn, post, indices, JoinSide::Right, &emit_ctx)? {
@@ -181,7 +178,6 @@ impl LeftHashJoin {
 			opposite_store: &ctx.state.right,
 			key_hash,
 			operator: ctx.operator,
-			opposite_parent: &ctx.operator.right_parent,
 		};
 
 		let mut result = Vec::new();
@@ -213,7 +209,6 @@ impl LeftHashJoin {
 			opposite_store: &ctx.state.left,
 			key_hash,
 			operator: ctx.operator,
-			opposite_parent: &ctx.operator.left_parent,
 		};
 
 		let mut result = Vec::new();
@@ -233,8 +228,7 @@ impl LeftHashJoin {
 		}
 
 		if will_become_empty && !ctx.state.right.contains_key(txn, key_hash)? {
-			let left_columns =
-				pull_left_columns(txn, &ctx.state.left, key_hash, &ctx.operator.left_parent)?;
+			let left_columns = pull_left_columns(txn, &ctx.state.left, key_hash)?;
 			if left_columns.has_rows() {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
 				let unmatched =
@@ -286,9 +280,8 @@ impl LeftHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let pre_row_number = pre.row_numbers[row_idx];
-		let post_row_number = post.row_numbers[row_idx];
 
-		if !update_row_in_entry(txn, &mut ctx.state.left, keys.pre, pre_row_number, post_row_number)? {
+		if !update_row_in_entry(txn, &mut ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
 			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
 		}
 
@@ -296,7 +289,6 @@ impl LeftHashJoin {
 			opposite_store: &ctx.state.right,
 			key_hash: keys.pre,
 			operator: ctx.operator,
-			opposite_parent: &ctx.operator.right_parent,
 		};
 
 		if let Some(diff) = emit_update_joined_columns(txn, pre, post, row_idx, JoinSide::Left, &emit_ctx)? {
@@ -318,9 +310,8 @@ impl LeftHashJoin {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		let pre_row_number = pre.row_numbers[row_idx];
-		let post_row_number = post.row_numbers[row_idx];
 
-		if !update_row_in_entry(txn, &mut ctx.state.right, keys.pre, pre_row_number, post_row_number)? {
+		if !update_row_in_entry(txn, &mut ctx.state.right, keys.pre, pre_row_number, post, row_idx)? {
 			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
 		}
 
@@ -328,7 +319,6 @@ impl LeftHashJoin {
 			opposite_store: &ctx.state.left,
 			key_hash: keys.pre,
 			operator: ctx.operator,
-			opposite_parent: &ctx.operator.left_parent,
 		};
 
 		match emit_update_joined_columns(txn, pre, post, row_idx, JoinSide::Right, &emit_ctx)? {

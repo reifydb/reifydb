@@ -2,14 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
-use reifydb_core::{
-	interface::{
-		catalog::flow::{Flow, FlowNodeId},
-		change::Change,
-	},
-	value::column::columns::Columns,
+use reifydb_core::interface::{
+	catalog::flow::{Flow, FlowNodeId},
+	change::Change,
 };
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::Result;
 
 use crate::{Operator, transaction::FlowTransaction};
 
@@ -39,10 +36,5 @@ impl Operator for PrimitiveFlowOperator {
 
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		Ok(change)
-	}
-
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
-		// TODO: Implement flow pull
-		unimplemented!()
 	}
 }

@@ -5,7 +5,7 @@ use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
-		shape::RowShape,
+		shape::{RowShape, RowShapeField},
 	},
 	interface::catalog::flow::FlowNodeId,
 	internal,
@@ -22,17 +22,19 @@ use crate::{
 pub(crate) struct Store {
 	node_id: FlowNodeId,
 	prefix: Vec<u8>,
+	schema_key: EncodedKey,
 }
 
 impl Store {
 	pub(crate) fn new(node_id: FlowNodeId, side: JoinSide) -> Self {
-		let prefix = match side {
-			JoinSide::Left => vec![0x01],
-			JoinSide::Right => vec![0x02],
+		let (prefix, schema_byte) = match side {
+			JoinSide::Left => (vec![0x01], 0x03u8),
+			JoinSide::Right => (vec![0x02], 0x04u8),
 		};
 		Self {
 			node_id,
 			prefix,
+			schema_key: EncodedKey::new(vec![schema_byte]),
 		}
 	}
 
@@ -131,6 +133,48 @@ impl Store {
 		Ok(())
 	}
 
+	pub(crate) fn get_row_shape(&self, txn: &mut FlowTransaction) -> Result<Option<RowShape>> {
+		match state_get(self.node_id, txn, &self.schema_key)? {
+			Some(row) => {
+				let op = RowShape::operator_state();
+				let blob = op.get_blob(&row, 0);
+				if blob.is_empty() {
+					return Ok(None);
+				}
+				let fields: Vec<RowShapeField> = from_bytes(blob.as_ref()).map_err(|e| {
+					Error(Box::new(internal!("Failed to deserialize row shape: {}", e)))
+				})?;
+				Ok(Some(RowShape::new(fields)))
+			}
+			None => Ok(None),
+		}
+	}
+
+	pub(crate) fn set_row_shape(&self, txn: &mut FlowTransaction, shape: &RowShape) -> Result<()> {
+		let serialized = to_stdvec(&shape.fields().to_vec())
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize row shape: {}", e))))?;
+		let op = RowShape::operator_state();
+		let now_nanos = txn.clock().now_nanos();
+		let (mut row, created_at) = match state_get(self.node_id, txn, &self.schema_key)? {
+			Some(existing) => {
+				let c = existing.created_at_nanos();
+				(
+					existing,
+					if c == 0 {
+						now_nanos
+					} else {
+						c
+					},
+				)
+			}
+			None => (op.allocate(), now_nanos),
+		};
+		op.set_blob(&mut row, 0, &Blob::from(serialized));
+		row.set_timestamps(created_at, now_nanos);
+		state_set(self.node_id, txn, &self.schema_key, row)?;
+		Ok(())
+	}
+
 	pub(crate) fn tick_evict(&self, txn: &mut FlowTransaction, cutoff_nanos: u64) -> Result<usize> {
 		let prefix_range = EncodedKeyRange::prefix(&self.prefix);
 		let entries: Vec<(EncodedKey, _)> = state_range(self.node_id, txn, prefix_range)?.collect();
@@ -151,7 +195,7 @@ mod tests {
 	use reifydb_core::common::CommitVersion;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::value::{identity::IdentityId, row_number::RowNumber};
+	use reifydb_type::value::identity::IdentityId;
 
 	use super::*;
 
@@ -174,25 +218,11 @@ mod tests {
 		let store = Store::new(FlowNodeId(7), JoinSide::Left);
 
 		// Write bucket A at t=1000ms
-		store.set(
-			&mut txn,
-			&h(0xAAA),
-			&JoinSideEntry {
-				rows: vec![RowNumber(1)],
-			},
-		)
-		.unwrap();
+		store.set(&mut txn, &h(0xAAA), &JoinSideEntry::default()).unwrap();
 
 		// Advance to t=1050ms, write bucket B
 		mock_clock.advance_millis(50);
-		store.set(
-			&mut txn,
-			&h(0xBBB),
-			&JoinSideEntry {
-				rows: vec![RowNumber(2)],
-			},
-		)
-		.unwrap();
+		store.set(&mut txn, &h(0xBBB), &JoinSideEntry::default()).unwrap();
 
 		// Cutoff at t=1020ms - A (t=1000) is stale, B (t=1050) is fresh
 		let cutoff = mock_clock.now_nanos() - 30_000_000;
@@ -217,14 +247,7 @@ mod tests {
 		);
 		let store = Store::new(FlowNodeId(8), JoinSide::Left);
 
-		store.set(
-			&mut txn,
-			&h(0xAAA),
-			&JoinSideEntry {
-				rows: vec![RowNumber(1)],
-			},
-		)
-		.unwrap();
+		store.set(&mut txn, &h(0xAAA), &JoinSideEntry::default()).unwrap();
 
 		// Cutoff far in the past so nothing is stale
 		let evicted = store.tick_evict(&mut txn, 0).unwrap();
@@ -247,22 +270,8 @@ mod tests {
 		let left = Store::new(node, JoinSide::Left);
 		let right = Store::new(node, JoinSide::Right);
 
-		left.set(
-			&mut txn,
-			&h(0xAAA),
-			&JoinSideEntry {
-				rows: vec![RowNumber(1)],
-			},
-		)
-		.unwrap();
-		right.set(
-			&mut txn,
-			&h(0xBBB),
-			&JoinSideEntry {
-				rows: vec![RowNumber(2)],
-			},
-		)
-		.unwrap();
+		left.set(&mut txn, &h(0xAAA), &JoinSideEntry::default()).unwrap();
+		right.set(&mut txn, &h(0xBBB), &JoinSideEntry::default()).unwrap();
 
 		// Evict everything on the left side (cutoff = u64::MAX)
 		let evicted = left.tick_evict(&mut txn, u64::MAX).unwrap();

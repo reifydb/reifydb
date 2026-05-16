@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::Result;
 
 use crate::{
 	operator::{Operator, Operators},
@@ -32,6 +32,12 @@ impl SortOperator {
 	}
 }
 
+impl SortOperator {
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.parent.output_schema()
+	}
+}
+
 impl Operator for SortOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
@@ -45,9 +51,5 @@ impl Operator for SortOperator {
 		// TODO: Implement single-encoded sort processing
 
 		Ok(Change::from_flow(self.node, change.version, change.diffs, change.changed_at))
-	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		self.parent.pull(txn, rows)
 	}
 }

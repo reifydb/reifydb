@@ -27,10 +27,7 @@ use reifydb_core::{
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_sdk::{error::FFIError, ffi::arena::Arena, operator::Tick};
-use reifydb_type::{
-	Result,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
+use reifydb_type::{Result, value::datetime::DateTime};
 use tracing::{Span, error, field, instrument};
 
 use crate::{
@@ -242,33 +239,6 @@ impl Operator for FFIOperator {
 		Span::current().record("output_diff_count", output_change.diffs.len());
 
 		Ok(output_change)
-	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		self.ensure_txn_setup(txn)?;
-
-		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
-		let ffi_ctx_ptr = self.cached_ctx.get();
-
-		let result_code = self.invoke_under_panic_guard("pull", || unsafe {
-			(self.vtable.pull)(self.instance, ffi_ctx_ptr, row_numbers.as_ptr(), row_numbers.len())
-		});
-
-		if result_code != 0 {
-			let _ = self.builder_registry.drain();
-			return Err(
-				FFIError::Other(format!("FFI operator pull failed with code: {}", result_code)).into()
-			);
-		}
-
-		let mut diffs = self.builder_registry.drain();
-		let columns = if let Some(first) = diffs.drain(..).next() {
-			first.post.or(first.pre).unwrap_or_else(Columns::empty)
-		} else {
-			Columns::empty()
-		};
-
-		Ok(columns)
 	}
 
 	#[instrument(name = "flow::ffi::tick", level = "debug", skip_all, fields(

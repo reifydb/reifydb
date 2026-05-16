@@ -246,8 +246,4 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 
 		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
 	}
-
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
-		unreachable!("EphemeralSinkSubscriptionOperator does not support pull")
-	}
 }

@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_sdk::operator::Tick;
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::Result;
 
 use crate::transaction::FlowTransaction;
 
@@ -27,7 +27,7 @@ pub mod window;
 
 use append::AppendOperator;
 use apply::ApplyOperator;
-use capability_guard::{enforce_apply_capabilities, enforce_pull_capability, enforce_tick_capability};
+use capability_guard::{enforce_apply_capabilities, enforce_tick_capability};
 use distinct::DistinctOperator;
 use extend::ExtendOperator;
 use filter::FilterOperator;
@@ -56,8 +56,6 @@ pub trait Operator: Send + Sync {
 	fn tick(&self, _txn: &mut FlowTransaction, _tick: Tick) -> Result<Option<Change>> {
 		Ok(None)
 	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns>;
 }
 
 pub type BoxedOperator = Box<dyn Operator + Send + Sync>;
@@ -188,29 +186,28 @@ impl Operators {
 		}
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		enforce_pull_capability(self.id(), self.capabilities());
+	pub fn output_schema(&self) -> Option<Columns> {
 		match self {
-			Operators::Filter(op) => op.pull(txn, rows),
-			Operators::Gate(op) => op.pull(txn, rows),
-			Operators::Map(op) => op.pull(txn, rows),
-			Operators::Extend(op) => op.pull(txn, rows),
-			Operators::Join(op) => op.pull(txn, rows),
-			Operators::Sort(op) => op.pull(txn, rows),
-			Operators::Take(op) => op.pull(txn, rows),
-			Operators::Distinct(op) => op.pull(txn, rows),
-			Operators::Append(op) => op.pull(txn, rows),
-			Operators::Apply(op) => op.pull(txn, rows),
-			Operators::SinkTableView(op) => op.pull(txn, rows),
-			Operators::SinkRingBufferView(op) => op.pull(txn, rows),
-			Operators::SinkSeriesView(op) => op.pull(txn, rows),
-			Operators::Window(op) => op.pull(txn, rows),
-			Operators::SourceTable(op) => op.pull(txn, rows),
-			Operators::SourceView(op) => op.pull(txn, rows),
-			Operators::SourceFlow(op) => op.pull(txn, rows),
-			Operators::SourceRingBuffer(op) => op.pull(txn, rows),
-			Operators::SourceSeries(op) => op.pull(txn, rows),
-			Operators::Custom(op) => op.pull(txn, rows),
+			Operators::SourceTable(op) => Some(op.output_schema()),
+			Operators::SourceView(op) => Some(op.output_schema()),
+			Operators::SourceRingBuffer(op) => Some(op.output_schema()),
+			Operators::SourceSeries(_) => Some(Columns::empty()),
+			Operators::SourceFlow(_) => Some(Columns::empty()),
+			Operators::Filter(op) => op.output_schema(),
+			Operators::Gate(op) => op.output_schema(),
+			Operators::Map(op) => op.output_schema(),
+			Operators::Extend(op) => op.output_schema(),
+			Operators::Sort(op) => op.output_schema(),
+			Operators::Take(op) => op.output_schema(),
+			Operators::Distinct(op) => op.output_schema(),
+			Operators::Append(op) => op.output_schema(),
+			Operators::Window(op) => op.parent.output_schema(),
+			Operators::Apply(op) => op.output_schema(),
+			Operators::Join(_) => None,
+			Operators::SinkTableView(_) => None,
+			Operators::SinkRingBufferView(_) => None,
+			Operators::SinkSeriesView(_) => None,
+			Operators::Custom(_) => None,
 		}
 	}
 }

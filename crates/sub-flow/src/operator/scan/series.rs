@@ -9,11 +9,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_type::{
-	Result,
-	fragment::Fragment,
-	value::{row_number::RowNumber, r#type::Type},
-};
+use reifydb_type::{Result, fragment::Fragment, value::r#type::Type};
 
 use crate::{Operator, transaction::FlowTransaction};
 
@@ -42,14 +38,6 @@ impl Operator for PrimitiveSeriesOperator {
 
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		Ok(Change::from_flow(self.node, change.version, change.diffs, change.changed_at))
-	}
-
-	fn pull(&self, _txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		if rows.is_empty() {
-			return Ok(self.empty_columns());
-		}
-
-		Ok(self.empty_columns())
 	}
 }
 

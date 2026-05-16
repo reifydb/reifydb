@@ -4,8 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_abi::operator::capabilities::{
-	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_PULL, CAPABILITY_TICK, CAPABILITY_UPDATE,
-	has_capability,
+	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_TICK, CAPABILITY_UPDATE, has_capability,
 };
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
@@ -57,7 +56,6 @@ impl BaseVTable for SystemFlowOperators {
 		let mut cap_inserts = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_updates = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_deletes = ColumnBuffer::bool_with_capacity(capacity);
-		let mut cap_pull_list = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_drops = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_ticks = ColumnBuffer::bool_with_capacity(capacity);
 
@@ -69,7 +67,6 @@ impl BaseVTable for SystemFlowOperators {
 			cap_inserts.push(has_capability(info.capabilities, CAPABILITY_INSERT));
 			cap_updates.push(has_capability(info.capabilities, CAPABILITY_UPDATE));
 			cap_deletes.push(has_capability(info.capabilities, CAPABILITY_DELETE));
-			cap_pull_list.push(has_capability(info.capabilities, CAPABILITY_PULL));
 			cap_drops.push(has_capability(info.capabilities, CAPABILITY_DROP));
 			cap_ticks.push(has_capability(info.capabilities, CAPABILITY_TICK));
 		}
@@ -81,7 +78,6 @@ impl BaseVTable for SystemFlowOperators {
 			ColumnWithName::new(Fragment::internal("cap_insert"), cap_inserts),
 			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates),
 			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes),
-			ColumnWithName::new(Fragment::internal("cap_pull"), cap_pull_list),
 			ColumnWithName::new(Fragment::internal("cap_drop"), cap_drops),
 			ColumnWithName::new(Fragment::internal("cap_tick"), cap_ticks),
 		];

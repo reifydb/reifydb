@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::Result;
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
@@ -28,6 +28,10 @@ impl ExtendOperator {
 			expressions,
 		}
 	}
+
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.parent.output_schema()
+	}
 }
 
 impl Operator for ExtendOperator {
@@ -43,9 +47,5 @@ impl Operator for ExtendOperator {
 		// TODO: Implement single-encoded extend processing
 
 		Ok(Change::from_flow(self.node, change.version, change.diffs, change.changed_at))
-	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		self.parent.pull(txn, rows)
 	}
 }

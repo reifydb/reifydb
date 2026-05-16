@@ -21,12 +21,7 @@ use reifydb_engine::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_type::{
-	Result,
-	fragment::Fragment,
-	params::Params,
-	value::{identity::IdentityId, row_number::RowNumber},
-};
+use reifydb_type::{Result, fragment::Fragment, params::Params, value::identity::IdentityId};
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
@@ -67,6 +62,10 @@ impl MapOperator {
 			routines,
 			runtime_context,
 		}
+	}
+
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.parent.output_schema()
 	}
 
 	fn project(&self, columns: &Columns) -> Result<Columns> {
@@ -173,9 +172,5 @@ impl Operator for MapOperator {
 		}
 
 		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
-	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		self.parent.pull(txn, rows)
 	}
 }

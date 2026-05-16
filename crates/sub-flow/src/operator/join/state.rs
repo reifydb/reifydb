@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::{encoded::row::EncodedRow, interface::catalog::flow::FlowNodeId};
 use reifydb_type::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize};
 
@@ -21,9 +21,9 @@ impl JoinState {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub(crate) struct JoinSideEntry {
-	pub(crate) rows: Vec<RowNumber>,
+	pub(crate) rows: Vec<(RowNumber, EncodedRow)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

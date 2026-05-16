@@ -345,11 +345,15 @@ impl FlowEngine {
 					node.id,
 					Arc::new(Operators::Join(JoinOperator::new(
 						JoinSideConfig {
+							schema: left_parent.output_schema().unwrap_or_default(),
 							parent: left_parent,
 							node: left_node,
 							exprs: left,
 						},
 						JoinSideConfig {
+							schema: right_parent.output_schema().expect(
+								"right side of join must have a statically known schema",
+							),
 							parent: right_parent,
 							node: right_node,
 							exprs: right,

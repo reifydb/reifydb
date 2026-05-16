@@ -73,6 +73,10 @@ impl GateOperator {
 		}
 	}
 
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.parent.output_schema()
+	}
+
 	fn evaluate(&self, columns: &Columns) -> Result<Vec<bool>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -166,10 +170,6 @@ impl Operator for GateOperator {
 		}
 
 		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
-	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		self.parent.pull(txn, rows)
 	}
 }
 

@@ -6,14 +6,13 @@ pub mod test {
 	use reifydb_core::{
 		encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 		interface::{catalog::flow::FlowNodeId, change::Change},
-		value::column::columns::Columns,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_type::{
 		Result,
 		util::cowvec::CowVec,
-		value::{identity::IdentityId, row_number::RowNumber, r#type::Type},
+		value::{identity::IdentityId, r#type::Type},
 	};
 
 	use crate::{operator::Operator, transaction::FlowTransaction};
@@ -61,10 +60,6 @@ pub mod test {
 
 		fn apply(&self, _txn: &mut FlowTransaction, _change: Change) -> Result<Change> {
 			todo!()
-		}
-
-		fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
-			unimplemented!()
 		}
 	}
 

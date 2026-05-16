@@ -1093,8 +1093,4 @@ impl Operator for WindowOperator {
 			)))
 		}
 	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		self.parent.pull(txn, rows)
-	}
 }

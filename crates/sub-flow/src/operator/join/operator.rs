@@ -33,9 +33,7 @@ use reifydb_sdk::operator::Tick;
 use reifydb_type::{
 	Result,
 	error::Error,
-	fragment::Fragment,
 	params::Params,
-	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
@@ -66,6 +64,7 @@ pub struct JoinSideConfig {
 	pub parent: Arc<Operators>,
 	pub node: FlowNodeId,
 	pub exprs: Vec<Expression>,
+	pub schema: Columns,
 }
 
 pub struct JoinOperator {
@@ -81,6 +80,7 @@ pub struct JoinOperator {
 	compiled_right_exprs: Vec<CompiledExpr>,
 	alias: Option<String>,
 	shape: RowShape,
+	right_schema: Columns,
 	row_number_provider: RowNumberProvider,
 	executor: Executor,
 	routines: Routines,
@@ -104,6 +104,7 @@ impl JoinOperator {
 		let right_node = right.node;
 		let left_exprs = left.exprs;
 		let right_exprs = right.exprs;
+		let right_schema = right.schema;
 		let strategy = JoinStrategy::from(join_type);
 		let shape = Self::state_shape();
 		let row_number_provider = RowNumberProvider::new(node);
@@ -140,6 +141,7 @@ impl JoinOperator {
 			compiled_right_exprs,
 			alias,
 			shape,
+			right_schema,
 			row_number_provider,
 			executor,
 			routines,
@@ -236,10 +238,8 @@ impl JoinOperator {
 		let (result_row_number, _is_new) =
 			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
 
-		let right_shape = self.right_parent.pull(txn, &[])?;
-
-		let builder = JoinedColumnsBuilder::new(left, &right_shape, &self.alias);
-		Ok(builder.unmatched_left(result_row_number, left, left_idx, &right_shape))
+		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias);
+		Ok(builder.unmatched_left(result_row_number, left, left_idx, &self.right_schema))
 	}
 
 	pub(crate) fn unmatched_left_columns_batch(
@@ -267,10 +267,8 @@ impl JoinOperator {
 			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
-		let right_shape = self.right_parent.pull(txn, &[])?;
-
-		let builder = JoinedColumnsBuilder::new(left, &right_shape, &self.alias);
-		Ok(builder.unmatched_left_batch(&row_numbers, left, left_indices, &right_shape))
+		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias);
+		Ok(builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema))
 	}
 
 	pub(crate) fn cleanup_left_row_joins(&self, txn: &mut FlowTransaction, left_number: u64) -> Result<()> {
@@ -526,89 +524,6 @@ impl Operator for JoinOperator {
 		}
 
 		Ok(None)
-	}
-
-	// FIXME #244 The issue is that when we need to reconstruct an unmatched left row, we need the right side's
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		let mut found_columns: Vec<Columns> = Vec::new();
-
-		for &row_number in rows {
-			if let Some(joined) = self.pull_one_joined_row(txn, row_number)? {
-				found_columns.push(joined);
-			}
-		}
-
-		if found_columns.is_empty() {
-			return self.empty_joined_shape(txn);
-		}
-		if found_columns.len() == 1 {
-			return Ok(found_columns.remove(0));
-		}
-
-		let mut result = found_columns.remove(0);
-		for cols in found_columns {
-			result.row_numbers.make_mut().extend(cols.row_numbers.iter().copied());
-			for (i, col) in cols.columns.into_iter().enumerate() {
-				result.columns.make_mut()[i].extend(col).expect("shape mismatch in join pull");
-			}
-		}
-		Ok(result)
-	}
-}
-
-impl JoinOperator {
-	#[inline]
-	fn pull_one_joined_row(&self, txn: &mut FlowTransaction, row_number: RowNumber) -> Result<Option<Columns>> {
-		let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number)? else {
-			return Ok(None);
-		};
-		let Some((left_row_number, right_row_number)) = Self::parse_composite_key(key.as_ref()) else {
-			return Ok(None);
-		};
-
-		let left_cols = self.left_parent.pull(txn, &[left_row_number])?;
-		if left_cols.is_empty() {
-			return Ok(None);
-		}
-
-		if let Some(right_row_num) = right_row_number {
-			let right_cols = self.right_parent.pull(txn, &[right_row_num])?;
-			if right_cols.is_empty() {
-				return Ok(None);
-			}
-			let builder = JoinedColumnsBuilder::new(&left_cols, &right_cols, &self.alias);
-			let mut joined = builder.join_single(row_number, &left_cols, &right_cols);
-			joined.row_numbers = CowVec::new(vec![row_number]);
-			Ok(Some(joined))
-		} else {
-			let right_shape = self.right_parent.pull(txn, &[])?;
-			let builder = JoinedColumnsBuilder::new(&left_cols, &right_shape, &self.alias);
-			let mut unmatched = builder.unmatched_left(row_number, &left_cols, 0, &right_shape);
-			unmatched.row_numbers = CowVec::new(vec![row_number]);
-			Ok(Some(unmatched))
-		}
-	}
-
-	#[inline]
-	fn empty_joined_shape(&self, txn: &mut FlowTransaction) -> Result<Columns> {
-		let left_shape = self.left_parent.pull(txn, &[])?;
-		let right_shape = self.right_parent.pull(txn, &[])?;
-		let builder = JoinedColumnsBuilder::new(&left_shape, &right_shape, &self.alias);
-		let right_names = builder.right_column_names();
-
-		let mut all_columns: Vec<ColumnWithName> = left_shape
-			.names
-			.iter()
-			.zip(left_shape.columns.iter())
-			.map(|(name, data)| ColumnWithName::new(name.clone(), data.clone()))
-			.collect();
-
-		for (col, aliased_name) in right_shape.columns.into_iter().zip(right_names.iter()) {
-			all_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col));
-		}
-
-		Ok(Columns::new(all_columns))
 	}
 }
 

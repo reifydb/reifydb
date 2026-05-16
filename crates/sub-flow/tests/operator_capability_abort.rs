@@ -3,7 +3,7 @@
 
 use std::{env, process::Command};
 
-use reifydb_abi::operator::capabilities::{CAPABILITY_INSERT, CAPABILITY_PULL, CAPABILITY_UPDATE};
+use reifydb_abi::operator::capabilities::{CAPABILITY_INSERT, CAPABILITY_UPDATE};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -56,7 +56,7 @@ fn run_child() {
 	diffs.push(Diff::update(Columns::empty(), Columns::empty()));
 	let change = Change::from_flow(FlowNodeId(42), CommitVersion(0), diffs, DateTime::default());
 
-	let caps = CAPABILITY_INSERT | CAPABILITY_PULL;
+	let caps = CAPABILITY_INSERT;
 	assert_eq!(caps & CAPABILITY_UPDATE, 0);
 
 	enforce_apply_capabilities(FlowNodeId(42), caps, &change);
