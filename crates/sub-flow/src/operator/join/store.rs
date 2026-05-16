@@ -5,19 +5,27 @@ use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 		shape::{RowShape, RowShapeField},
 	},
 	interface::catalog::flow::FlowNodeId,
 	internal,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::{Result, error::Error, value::blob::Blob};
+use reifydb_type::{
+	Result,
+	error::Error,
+	value::{blob::Blob, row_number::RowNumber},
+};
 
-use super::state::{JoinSide, JoinSideEntry};
+use super::state::JoinSide;
 use crate::{
 	operator::stateful::utils::{state_get, state_range, state_remove, state_set},
 	transaction::FlowTransaction,
 };
+
+const HASH_BYTES: usize = 16;
+const ROW_NUMBER_BYTES: usize = 8;
 
 pub(crate) struct Store {
 	node_id: FlowNodeId,
@@ -38,99 +46,99 @@ impl Store {
 		}
 	}
 
-	fn make_key(&self, hash: &Hash128) -> EncodedKey {
-		let mut key_bytes = self.prefix.clone();
-
-		key_bytes.extend_from_slice(&hash.0.to_le_bytes());
-		EncodedKey::new(key_bytes)
+	fn hash_prefix(&self, hash: &Hash128) -> Vec<u8> {
+		let mut bytes = Vec::with_capacity(self.prefix.len() + HASH_BYTES);
+		bytes.extend_from_slice(&self.prefix);
+		bytes.extend_from_slice(&hash.0.to_le_bytes());
+		bytes
 	}
 
-	pub(crate) fn get(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<JoinSideEntry>> {
-		let key = self.make_key(hash);
-		match state_get(self.node_id, txn, &key)? {
-			Some(row) => {
-				let shape = RowShape::operator_state();
-				let blob = shape.get_blob(&row, 0);
-				if blob.is_empty() {
-					return Ok(None);
-				}
-				let entry: JoinSideEntry = from_bytes(blob.as_ref()).map_err(|e| {
-					Error(Box::new(internal!("Failed to deserialize JoinSideEntry: {}", e)))
-				})?;
-				Ok(Some(entry))
-			}
-			None => Ok(None),
-		}
+	fn row_key(&self, hash: &Hash128, row_number: RowNumber) -> EncodedKey {
+		let mut bytes = Vec::with_capacity(self.prefix.len() + HASH_BYTES + ROW_NUMBER_BYTES);
+		bytes.extend_from_slice(&self.prefix);
+		bytes.extend_from_slice(&hash.0.to_le_bytes());
+		bytes.extend_from_slice(&row_number.0.to_be_bytes());
+		EncodedKey::new(bytes)
 	}
 
-	pub(crate) fn set(&self, txn: &mut FlowTransaction, hash: &Hash128, entry: &JoinSideEntry) -> Result<()> {
-		let key = self.make_key(hash);
-
-		let serialized = to_stdvec(entry)
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize JoinSideEntry: {}", e))))?;
-
-		let shape = RowShape::operator_state();
-		let now_nanos = txn.clock().now_nanos();
-		let (mut row, created_at) = match state_get(self.node_id, txn, &key)? {
-			Some(existing) => {
-				let created = existing.created_at_nanos();
-				(
-					existing,
-					if created == 0 {
-						now_nanos
-					} else {
-						created
-					},
-				)
-			}
-			None => (shape.allocate(), now_nanos),
-		};
-		let blob = Blob::from(serialized);
-		shape.set_blob(&mut row, 0, &blob);
-		row.set_timestamps(created_at, now_nanos);
-
-		state_set(self.node_id, txn, &key, row)?;
-		Ok(())
-	}
-
-	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<bool> {
-		let key = self.make_key(hash);
-		Ok(state_get(self.node_id, txn, &key)?.is_some())
-	}
-
-	pub(crate) fn remove(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<()> {
-		let key = self.make_key(hash);
-		state_remove(self.node_id, txn, &key)?;
-		Ok(())
-	}
-
-	pub(crate) fn get_or_insert_with<F>(
+	pub(crate) fn put_row(
 		&self,
 		txn: &mut FlowTransaction,
 		hash: &Hash128,
-		f: F,
-	) -> Result<JoinSideEntry>
-	where
-		F: FnOnce() -> JoinSideEntry,
-	{
-		if let Some(entry) = self.get(txn, hash)? {
-			Ok(entry)
-		} else {
-			let entry = f();
-			self.set(txn, hash, &entry)?;
-			Ok(entry)
-		}
+		row_number: RowNumber,
+		encoded: &EncodedRow,
+	) -> Result<()> {
+		let key = self.row_key(hash, row_number);
+		let mut row = encoded.clone();
+		let now_nanos = txn.clock().now_nanos();
+		row.set_timestamps(now_nanos, now_nanos);
+		state_set(self.node_id, txn, &key, row)
 	}
 
-	pub(crate) fn update_entry<F>(&self, txn: &mut FlowTransaction, hash: &Hash128, f: F) -> Result<()>
-	where
-		F: FnOnce(&mut JoinSideEntry),
-	{
-		if let Some(mut entry) = self.get(txn, hash)? {
-			f(&mut entry);
-			self.set(txn, hash, &entry)?;
+	pub(crate) fn update_row(
+		&self,
+		txn: &mut FlowTransaction,
+		hash: &Hash128,
+		row_number: RowNumber,
+		encoded: &EncodedRow,
+	) -> Result<bool> {
+		let key = self.row_key(hash, row_number);
+		if state_get(self.node_id, txn, &key)?.is_none() {
+			return Ok(false);
 		}
-		Ok(())
+		let mut row = encoded.clone();
+		let now_nanos = txn.clock().now_nanos();
+		row.set_timestamps(now_nanos, now_nanos);
+		state_set(self.node_id, txn, &key, row)?;
+		Ok(true)
+	}
+
+	pub(crate) fn remove_row(
+		&self,
+		txn: &mut FlowTransaction,
+		hash: &Hash128,
+		row_number: RowNumber,
+	) -> Result<bool> {
+		let key = self.row_key(hash, row_number);
+		let existed = state_get(self.node_id, txn, &key)?.is_some();
+		if existed {
+			state_remove(self.node_id, txn, &key)?;
+		}
+		Ok(existed)
+	}
+
+	pub(crate) fn remove_all_for_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<usize> {
+		let prefix = self.hash_prefix(hash);
+		let range = EncodedKeyRange::prefix(&prefix);
+		let entries: Vec<(EncodedKey, EncodedRow)> = state_range(self.node_id, txn, range)?.collect();
+		let count = entries.len();
+		for (key, _) in entries {
+			state_remove(self.node_id, txn, &key)?;
+		}
+		Ok(count)
+	}
+
+	pub(crate) fn rows_for_key(
+		&self,
+		txn: &mut FlowTransaction,
+		hash: &Hash128,
+	) -> Result<Vec<(RowNumber, EncodedRow)>> {
+		let prefix = self.hash_prefix(hash);
+		let range = EncodedKeyRange::prefix(&prefix);
+		let entries: Vec<(EncodedKey, EncodedRow)> = state_range(self.node_id, txn, range)?.collect();
+		let mut out = Vec::with_capacity(entries.len());
+		for (full_key, row) in entries {
+			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
+				out.push((rn, row));
+			}
+		}
+		Ok(out)
+	}
+
+	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<bool> {
+		let prefix = self.hash_prefix(hash);
+		let range = EncodedKeyRange::prefix(&prefix);
+		Ok(state_range(self.node_id, txn, range)?.next().is_some())
 	}
 
 	pub(crate) fn get_row_shape(&self, txn: &mut FlowTransaction) -> Result<Option<RowShape>> {
@@ -177,7 +185,7 @@ impl Store {
 
 	pub(crate) fn tick_evict(&self, txn: &mut FlowTransaction, cutoff_nanos: u64) -> Result<usize> {
 		let prefix_range = EncodedKeyRange::prefix(&self.prefix);
-		let entries: Vec<(EncodedKey, _)> = state_range(self.node_id, txn, prefix_range)?.collect();
+		let entries: Vec<(EncodedKey, EncodedRow)> = state_range(self.node_id, txn, prefix_range)?.collect();
 		let mut evicted = 0;
 		for (key, row) in entries {
 			if row.updated_at_nanos() < cutoff_nanos {
@@ -189,10 +197,18 @@ impl Store {
 	}
 }
 
+fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
+	if bytes.len() < ROW_NUMBER_BYTES {
+		return None;
+	}
+	let suffix: [u8; ROW_NUMBER_BYTES] = bytes[bytes.len() - ROW_NUMBER_BYTES..].try_into().ok()?;
+	Some(RowNumber(u64::from_be_bytes(suffix)))
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::common::CommitVersion;
+	use reifydb_core::{common::CommitVersion, encoded::row::EncodedRow};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_type::value::identity::IdentityId;
@@ -203,8 +219,135 @@ mod tests {
 		Hash128(v)
 	}
 
+	fn rn(v: u64) -> RowNumber {
+		RowNumber(v)
+	}
+
+	fn row(payload: u8) -> EncodedRow {
+		let shape = RowShape::operator_state();
+		let mut r = shape.allocate();
+		shape.set_blob(&mut r, 0, &Blob::from(vec![payload]));
+		r
+	}
+
 	#[test]
-	fn tick_evict_removes_stale_buckets_only() {
+	fn put_row_then_rows_for_key_returns_inserted() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(1), JoinSide::Left);
+
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
+		store.put_row(&mut txn, &h(0xBBB), rn(3), &row(0x30)).unwrap();
+
+		let rows_a = store.rows_for_key(&mut txn, &h(0xAAA)).unwrap();
+		assert_eq!(rows_a.len(), 2);
+		assert_eq!(rows_a[0].0, rn(1));
+		assert_eq!(rows_a[1].0, rn(2));
+
+		let rows_b = store.rows_for_key(&mut txn, &h(0xBBB)).unwrap();
+		assert_eq!(rows_b.len(), 1);
+		assert_eq!(rows_b[0].0, rn(3));
+	}
+
+	#[test]
+	fn update_row_overwrites_existing_returns_true() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(2), JoinSide::Right);
+
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		assert!(store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x99)).unwrap());
+
+		let rows = store.rows_for_key(&mut txn, &h(0xAAA)).unwrap();
+		assert_eq!(rows.len(), 1);
+		let shape = RowShape::operator_state();
+		let blob = shape.get_blob(&rows[0].1, 0);
+		assert_eq!(blob.as_bytes(), &[0x99u8][..]);
+	}
+
+	#[test]
+	fn update_row_returns_false_when_missing() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(3), JoinSide::Left);
+
+		assert!(!store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap());
+		assert!(store.rows_for_key(&mut txn, &h(0xAAA)).unwrap().is_empty());
+	}
+
+	#[test]
+	fn remove_row_returns_existence_and_contains_key_reports_empty() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(4), JoinSide::Left);
+
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
+		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap());
+
+		assert!(store.remove_row(&mut txn, &h(0xAAA), rn(1)).unwrap());
+		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap());
+
+		assert!(store.remove_row(&mut txn, &h(0xAAA), rn(2)).unwrap());
+		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
+
+		assert!(!store.remove_row(&mut txn, &h(0xAAA), rn(99)).unwrap());
+	}
+
+	#[test]
+	fn remove_all_for_key_clears_only_that_hash() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(5), JoinSide::Left);
+
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
+		store.put_row(&mut txn, &h(0xBBB), rn(3), &row(0x30)).unwrap();
+
+		let removed = store.remove_all_for_key(&mut txn, &h(0xAAA)).unwrap();
+		assert_eq!(removed, 2);
+		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
+		assert!(store.contains_key(&mut txn, &h(0xBBB)).unwrap());
+	}
+
+	#[test]
+	fn tick_evict_drops_stale_rows_only_per_row() {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let admin = engine.begin_admin(IdentityId::system()).unwrap();
@@ -215,27 +358,23 @@ mod tests {
 			Interceptors::new(),
 			engine.clock().clone(),
 		);
-		let store = Store::new(FlowNodeId(7), JoinSide::Left);
+		let store = Store::new(FlowNodeId(6), JoinSide::Left);
 
-		// Write bucket A at t=1000ms
-		store.set(&mut txn, &h(0xAAA), &JoinSideEntry::default()).unwrap();
-
-		// Advance to t=1050ms, write bucket B
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
 		mock_clock.advance_millis(50);
-		store.set(&mut txn, &h(0xBBB), &JoinSideEntry::default()).unwrap();
+		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
 
-		// Cutoff at t=1020ms - A (t=1000) is stale, B (t=1050) is fresh
 		let cutoff = mock_clock.now_nanos() - 30_000_000;
 		let evicted = store.tick_evict(&mut txn, cutoff).unwrap();
-		assert_eq!(evicted, 1, "exactly bucket A should be evicted");
+		assert_eq!(evicted, 1, "only the older row should be evicted");
 
-		// A is gone, B remains
-		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
-		assert!(store.contains_key(&mut txn, &h(0xBBB)).unwrap());
+		let remaining = store.rows_for_key(&mut txn, &h(0xAAA)).unwrap();
+		assert_eq!(remaining.len(), 1);
+		assert_eq!(remaining[0].0, rn(2));
 	}
 
 	#[test]
-	fn tick_evict_is_noop_when_no_buckets_are_stale() {
+	fn tick_evict_is_noop_when_nothing_stale() {
 		let engine = TestEngine::new();
 		let admin = engine.begin_admin(IdentityId::system()).unwrap();
 		let mut txn = FlowTransaction::deferred(
@@ -245,13 +384,10 @@ mod tests {
 			Interceptors::new(),
 			engine.clock().clone(),
 		);
-		let store = Store::new(FlowNodeId(8), JoinSide::Left);
+		let store = Store::new(FlowNodeId(7), JoinSide::Left);
 
-		store.set(&mut txn, &h(0xAAA), &JoinSideEntry::default()).unwrap();
-
-		// Cutoff far in the past so nothing is stale
-		let evicted = store.tick_evict(&mut txn, 0).unwrap();
-		assert_eq!(evicted, 0);
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		assert_eq!(store.tick_evict(&mut txn, 0).unwrap(), 0);
 		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap());
 	}
 
@@ -266,18 +402,16 @@ mod tests {
 			Interceptors::new(),
 			engine.clock().clone(),
 		);
-		let node = FlowNodeId(9);
+		let node = FlowNodeId(8);
 		let left = Store::new(node, JoinSide::Left);
 		let right = Store::new(node, JoinSide::Right);
 
-		left.set(&mut txn, &h(0xAAA), &JoinSideEntry::default()).unwrap();
-		right.set(&mut txn, &h(0xBBB), &JoinSideEntry::default()).unwrap();
+		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		right.put_row(&mut txn, &h(0xBBB), rn(2), &row(0x20)).unwrap();
 
-		// Evict everything on the left side (cutoff = u64::MAX)
 		let evicted = left.tick_evict(&mut txn, u64::MAX).unwrap();
 		assert_eq!(evicted, 1);
 
-		// Left bucket gone, right bucket survives
 		assert!(!left.contains_key(&mut txn, &h(0xAAA)).unwrap());
 		assert!(right.contains_key(&mut txn, &h(0xBBB)).unwrap());
 	}

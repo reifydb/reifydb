@@ -130,7 +130,7 @@ impl LeftHashJoin {
 			return Ok(result);
 		}
 
-		if is_first && ctx.state.left.get(txn, key_hash)?.is_some() {
+		if is_first && ctx.state.left.contains_key(txn, key_hash)? {
 			let left_columns = pull_left_columns(txn, &ctx.state.left, key_hash)?;
 			if left_columns.has_rows() {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
@@ -225,18 +225,12 @@ impl LeftHashJoin {
 			}
 		}
 
-		let will_become_empty = if let Some(entry) = ctx.state.right.get(txn, key_hash)? {
-			entry.rows.len() <= indices.len()
-		} else {
-			false
-		};
-
 		for &idx in indices {
 			let row_number = pre.row_numbers[idx];
 			remove_from_state_entry(txn, &mut ctx.state.right, key_hash, row_number)?;
 		}
 
-		if !ctx.operator.snapshot && will_become_empty && !ctx.state.right.contains_key(txn, key_hash)? {
+		if !ctx.operator.snapshot && !ctx.state.right.contains_key(txn, key_hash)? {
 			let left_columns = pull_left_columns(txn, &ctx.state.left, key_hash)?;
 			if left_columns.has_rows() {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();

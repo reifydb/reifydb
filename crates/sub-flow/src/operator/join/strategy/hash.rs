@@ -18,11 +18,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	operator::join::{
-		operator::JoinOperator,
-		state::{JoinSide, JoinSideEntry},
-		store::Store,
-	},
+	operator::join::{operator::JoinOperator, state::JoinSide, store::Store},
 	transaction::FlowTransaction,
 };
 
@@ -43,17 +39,6 @@ fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedRow
 	encoded
 }
 
-fn decode_entry(txn: &mut FlowTransaction, store: &Store, entry: &JoinSideEntry) -> Result<Columns> {
-	if entry.rows.is_empty() {
-		return Ok(Columns::empty());
-	}
-	let shape =
-		store.get_row_shape(txn)?.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
-	let ids: Vec<RowNumber> = entry.rows.iter().map(|(rn, _)| *rn).collect();
-	let encoded: Vec<EncodedRow> = entry.rows.iter().map(|(_, r)| r.clone()).collect();
-	Ok(Columns::from_encoded_rows(&shape, &ids, &encoded))
-}
-
 pub(crate) fn add_to_state_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
@@ -64,10 +49,7 @@ pub(crate) fn add_to_state_entry(
 	let shape = build_shape(columns);
 	store.set_row_shape(txn, &shape)?;
 	let encoded = encode_row(&shape, columns, row_idx);
-	let mut entry = store.get_or_insert_with(txn, key_hash, JoinSideEntry::default)?;
-	entry.rows.push((columns.row_numbers[row_idx], encoded));
-	store.set(txn, key_hash, &entry)?;
-	Ok(())
+	store.put_row(txn, key_hash, columns.row_numbers[row_idx], &encoded)
 }
 
 pub(crate) fn add_to_state_entry_batch(
@@ -77,13 +59,15 @@ pub(crate) fn add_to_state_entry_batch(
 	columns: &Columns,
 	indices: &[usize],
 ) -> Result<()> {
+	if indices.is_empty() {
+		return Ok(());
+	}
 	let shape = build_shape(columns);
 	store.set_row_shape(txn, &shape)?;
-	let mut entry = store.get_or_insert_with(txn, key_hash, JoinSideEntry::default)?;
 	for &idx in indices {
-		entry.rows.push((columns.row_numbers[idx], encode_row(&shape, columns, idx)));
+		let encoded = encode_row(&shape, columns, idx);
+		store.put_row(txn, key_hash, columns.row_numbers[idx], &encoded)?;
 	}
-	store.set(txn, key_hash, &entry)?;
 	Ok(())
 }
 
@@ -93,19 +77,11 @@ pub(crate) fn remove_from_state_entry(
 	key_hash: &Hash128,
 	row_number: RowNumber,
 ) -> Result<bool> {
-	if let Some(mut entry) = store.get(txn, key_hash)? {
-		entry.rows.retain(|(rn, _)| *rn != row_number);
-
-		if entry.rows.is_empty() {
-			store.remove(txn, key_hash)?;
-			Ok(true)
-		} else {
-			store.set(txn, key_hash, &entry)?;
-			Ok(false)
-		}
-	} else {
-		Ok(false)
+	let removed = store.remove_row(txn, key_hash, row_number)?;
+	if !removed {
+		return Ok(false);
 	}
+	Ok(!store.contains_key(txn, key_hash)?)
 }
 
 pub(crate) fn update_row_in_entry(
@@ -116,16 +92,19 @@ pub(crate) fn update_row_in_entry(
 	post: &Columns,
 	row_idx: usize,
 ) -> Result<bool> {
-	if let Some(mut entry) = store.get(txn, key_hash)?
-		&& let Some(slot) = entry.rows.iter_mut().find(|(rn, _)| *rn == pre_row_number)
-	{
-		let shape = build_shape(post);
-		store.set_row_shape(txn, &shape)?;
-		*slot = (post.row_numbers[row_idx], encode_row(&shape, post, row_idx));
-		store.set(txn, key_hash, &entry)?;
-		return Ok(true);
+	let shape = build_shape(post);
+	store.set_row_shape(txn, &shape)?;
+	let encoded = encode_row(&shape, post, row_idx);
+	let post_row_number = post.row_numbers[row_idx];
+	if pre_row_number == post_row_number {
+		store.update_row(txn, key_hash, post_row_number, &encoded)
+	} else {
+		if !store.remove_row(txn, key_hash, pre_row_number)? {
+			return Ok(false);
+		}
+		store.put_row(txn, key_hash, post_row_number, &encoded)?;
+		Ok(true)
 	}
-	Ok(false)
 }
 
 pub(crate) fn has_right_rows(txn: &mut FlowTransaction, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
@@ -137,11 +116,15 @@ pub(crate) fn is_first_right_row(txn: &mut FlowTransaction, right_store: &Store,
 }
 
 pub(crate) fn pull_from_store(txn: &mut FlowTransaction, store: &Store, key_hash: &Hash128) -> Result<Columns> {
-	if let Some(entry) = store.get(txn, key_hash)? {
-		decode_entry(txn, store, &entry)
-	} else {
-		Ok(Columns::empty())
+	let rows = store.rows_for_key(txn, key_hash)?;
+	if rows.is_empty() {
+		return Ok(Columns::empty());
 	}
+	let shape =
+		store.get_row_shape(txn)?.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
+	let ids: Vec<RowNumber> = rows.iter().map(|(rn, _)| *rn).collect();
+	let encoded: Vec<EncodedRow> = rows.into_iter().map(|(_, r)| r).collect();
+	Ok(Columns::from_encoded_rows(&shape, &ids, &encoded))
 }
 
 pub(crate) struct JoinEmitContext<'a> {
