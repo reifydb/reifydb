@@ -173,16 +173,16 @@ impl<'bump> Parser<'bump> {
 		} else if self.current()?.is_keyword(Keyword::Drop) {
 			self.consume_keyword(Keyword::Drop)?;
 			self.consume_keyword(Keyword::Column)?;
-			let col_name = self.consume(TokenKind::Identifier)?;
+			let col_name = self.consume_identifier()?;
 			AstAlterTableAction::DropColumn {
 				column: col_name.fragment,
 			}
 		} else if self.current()?.is_keyword(Keyword::Rename) {
 			self.consume_keyword(Keyword::Rename)?;
 			self.consume_keyword(Keyword::Column)?;
-			let old_name = self.consume(TokenKind::Identifier)?;
+			let old_name = self.consume_identifier()?;
 			self.consume_keyword(Keyword::To)?;
-			let new_name = self.consume(TokenKind::Identifier)?;
+			let new_name = self.consume_identifier()?;
 			AstAlterTableAction::RenameColumn {
 				old_name: old_name.fragment,
 				new_name: new_name.fragment,
@@ -228,7 +228,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume(TokenKind::Identifier)?;
+			let key = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {

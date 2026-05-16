@@ -8,14 +8,14 @@ use crate::{
 		identifier::MaybeQualifiedFunctionIdentifier,
 		parse::Parser,
 	},
-	token::{keyword::Keyword, operator::Operator, token::TokenKind},
+	token::{keyword::Keyword, operator::Operator},
 };
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_call(&mut self) -> Result<AstCall<'bump>> {
 		let token = self.consume_keyword(Keyword::Call)?;
 
-		let first_ident = self.consume(TokenKind::Identifier)?;
+		let first_ident = self.consume_identifier()?;
 		let mut namespace_fragments = Vec::new();
 
 		let mut current = first_ident;
@@ -23,9 +23,9 @@ impl<'bump> Parser<'bump> {
 			namespace_fragments.push(current.fragment);
 			self.advance()?;
 			current = if self.current()?.is_identifier() {
-				self.consume(TokenKind::Identifier)?
+				self.consume_identifier()?
 			} else {
-				self.consume_name()?
+				self.consume_identifier()?
 			};
 		}
 
@@ -45,7 +45,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn parse_function_call(&mut self) -> Result<AstCallFunction<'bump>> {
-		let first_ident_token = self.consume(TokenKind::Identifier)?;
+		let first_ident_token = self.consume_identifier()?;
 		let start_token = first_ident_token;
 
 		if self.current()?.is_operator(Operator::OpenParen) {
@@ -70,9 +70,9 @@ impl<'bump> Parser<'bump> {
 
 			self.advance()?;
 			let next_ident_token = if self.current()?.is_identifier() {
-				self.consume(TokenKind::Identifier)?
+				self.consume_identifier()?
 			} else {
-				self.consume_name()?
+				self.consume_identifier()?
 			};
 
 			if self.current()?.is_operator(Operator::OpenParen) {

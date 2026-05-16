@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::{
-	bootstrap::load_materialized_catalog, catalog::relationship::RelationshipToCreate,
-	materialized::MaterializedCatalog,
+	bootstrap::load_catalog_cache, catalog::relationship::RelationshipToCreate,
+	cache::CatalogCache,
 };
 use reifydb_core::interface::catalog::relationship::RelationshipCardinality;
 use reifydb_engine::test_prelude::*;
@@ -64,7 +64,7 @@ fn committed_create_is_visible_via_materialized_in_new_txn() {
 	let rel = catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 	txn.commit().unwrap();
 
-	// New txn -> the post-commit interceptor must have populated MaterializedCatalog.
+	// New txn -> the post-commit interceptor must have populated CatalogCache.
 	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
 	let found = catalog
 		.find_relationship_by_name(&mut Transaction::Admin(&mut probe), f.namespace, f.source_table, "owns")
@@ -74,9 +74,9 @@ fn committed_create_is_visible_via_materialized_in_new_txn() {
 
 	// Materialized cache holds the entry directly (not via storage fallback).
 	let mat = catalog
-		.materialized
+		.cache()
 		.find_relationship_by_name(f.namespace, f.source_table, "owns")
-		.expect("relationship missing in materialized cache after commit");
+		.expect("relationship missing in catalog cache after commit");
 	assert_eq!(mat.id, rel.id);
 }
 
@@ -116,13 +116,13 @@ fn restart_recovery_repopulates_materialized_catalog() {
 	let rel = catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 	txn.commit().unwrap();
 
-	// Simulate a restart: fresh MaterializedCatalog, run loader against the same stores.
-	let fresh = MaterializedCatalog::new();
-	load_materialized_catalog(t.inner().multi(), t.inner().single(), &fresh).unwrap();
+	// Simulate a restart: fresh CatalogCache, run loader against the same stores.
+	let fresh = CatalogCache::new();
+	load_catalog_cache(t.inner().multi(), t.inner().single(), &fresh).unwrap();
 
 	let by_name = fresh
 		.find_relationship_by_name(f.namespace, f.source_table, "owns")
-		.expect("relationship missing in rebuilt MaterializedCatalog");
+		.expect("relationship missing in rebuilt CatalogCache");
 	assert_eq!(by_name.id, rel.id);
 }
 

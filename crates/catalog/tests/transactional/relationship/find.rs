@@ -19,7 +19,7 @@ fn admin_txn_find_short_circuits_on_pending_create() {
 	let rel = catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 
 	// Materialized cache is empty until commit.
-	assert!(catalog.materialized.find_relationship_by_name(f.namespace, f.source_table, "owns").is_none());
+	assert!(catalog.cache().find_relationship_by_name(f.namespace, f.source_table, "owns").is_none());
 
 	// But the txn-local lookup sees the pending entry.
 	let found = catalog
@@ -41,13 +41,13 @@ fn admin_txn_find_returns_none_after_pending_drop_even_if_materialized_has_it() 
 	}
 
 	// Cache has it.
-	assert!(catalog.materialized.find_relationship_by_name(f.namespace, f.source_table, "owns").is_some());
+	assert!(catalog.cache().find_relationship_by_name(f.namespace, f.source_table, "owns").is_some());
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	catalog.drop_relationship(&mut txn, f.namespace, f.source_table, "owns").unwrap();
 
 	// In-txn lookup must observe the pending delete and return None even though
-	// MaterializedCatalog still holds the prior version.
+	// CatalogCache still holds the prior version.
 	let found = catalog
 		.find_relationship_by_name(&mut Transaction::Admin(&mut txn), f.namespace, f.source_table, "owns")
 		.unwrap();

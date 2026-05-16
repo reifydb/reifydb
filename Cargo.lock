@@ -2876,9 +2876,11 @@ version = "0.5.6"
 dependencies = [
  "bumpalo",
  "reifydb",
+ "reifydb-catalog",
  "reifydb-core",
  "reifydb-rql",
  "reifydb-testing",
+ "reifydb-transaction",
  "reifydb-type",
  "serde",
  "serde_json",

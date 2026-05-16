@@ -34,7 +34,7 @@ impl<'bump> Parser<'bump> {
 		if self.position + 1 < self.tokens.len()
 			&& self.tokens[self.position + 1].is_operator(Operator::OpenParen)
 		{
-			let first_ident_token = self.consume_name()?;
+			let first_ident_token = self.consume_identifier()?;
 			let open_paren_token = self.advance()?;
 			let arguments = self.parse_tuple_call(open_paren_token)?;
 			let function = MaybeQualifiedFunctionIdentifier::new(first_ident_token.fragment);

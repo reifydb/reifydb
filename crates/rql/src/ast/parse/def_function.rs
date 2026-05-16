@@ -81,7 +81,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn parse_type_annotation(&mut self) -> Result<AstType<'bump>> {
-		let ty_token = self.consume(TokenKind::Identifier)?;
+		let ty_token = self.consume_identifier()?;
 
 		if ty_token.fragment.text().eq_ignore_ascii_case("option") {
 			self.consume_operator(Operator::OpenParen)?;

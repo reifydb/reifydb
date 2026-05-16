@@ -28,7 +28,7 @@ impl<'bump> Parser<'bump> {
 		self.skip_new_line()?;
 
 		self.consume_keyword(Keyword::From)?;
-		let connector = self.consume(TokenKind::Identifier)?.fragment;
+		let connector = self.consume_identifier()?.fragment;
 
 		let config = self.parse_config_block()?;
 
@@ -65,7 +65,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume(TokenKind::Identifier)?.fragment;
+			let key = self.consume_identifier()?.fragment;
 			self.consume_operator(Operator::Colon)?;
 
 			let value = self.parse_node(Precedence::None)?;

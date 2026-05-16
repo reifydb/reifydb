@@ -2,13 +2,18 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Scenario: Field aliasing
-# Why: Tests that the GraphQL alias syntax (alias: name) correctly maps to RQL aliases.
+# Why: Tests that the GraphQL alias syntax (alias: name) carries through into
+#      the inline object literal keys produced by the new compiler.
+(admin 'CREATE TABLE transactions { id: int4, hash: utf8 }')
 query 'CALL graphql::explain("query { txs: transactions { tx_hash: hash } }")'
 ---
-> +-------+--------+-----------------------+
-> |  idx  |  kind  |        detail         |
-> +-------+--------+-----------------------+
-> |   0   |  From  |  transactions as txs  |
-> |   1   |  Map   |    hash as tx_hash    |
-> +-------+--------+-----------------------+
+> +-------+------------+--------------------------------------+
+> |  idx  |    kind    |                detail                |
+> +-------+------------+--------------------------------------+
+> |   0   |    Let     |     $level0 = from transactions      |
+> |   1   |    Let     |              $rows = []              |
+> |   2   |    For     |            $r0 in $level0            |
+> |   3   |   Append   |    $rows from [{tx_hash: $r0.hash}]  |
+> |   4   |  Variable  |                $rows                 |
+> +-------+------------+--------------------------------------+
 >

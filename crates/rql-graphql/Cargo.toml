@@ -12,8 +12,10 @@ default = []
 
 [dependencies]
 bumpalo = { workspace = true }
+reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-rql = { workspace = true }
+reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

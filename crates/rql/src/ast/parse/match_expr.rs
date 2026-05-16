@@ -121,19 +121,19 @@ impl<'bump> Parser<'bump> {
 	fn parse_match_is_variant_arm(&mut self) -> Result<AstMatchArm<'bump>> {
 		self.advance()?;
 
-		let first = self.consume(TokenKind::Identifier)?;
+		let first = self.consume_identifier()?;
 
 		let (namespace, sumtype_name) = if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon)
 		{
 			self.consume_operator(Operator::DoubleColon)?;
-			let sumtype_token = self.consume(TokenKind::Identifier)?;
+			let sumtype_token = self.consume_identifier()?;
 			(Some(first.fragment), sumtype_token.fragment)
 		} else {
 			(None, first.fragment)
 		};
 
 		self.consume_operator(Operator::DoubleColon)?;
-		let variant_token = self.consume(TokenKind::Identifier)?;
+		let variant_token = self.consume_identifier()?;
 		let variant_name = variant_token.fragment;
 
 		let destructure = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
@@ -144,7 +144,7 @@ impl<'bump> Parser<'bump> {
 				if self.is_eof() || self.current()?.is_operator(Operator::CloseCurly) {
 					break;
 				}
-				let field_token = self.consume(TokenKind::Identifier)?;
+				let field_token = self.consume_identifier()?;
 				fields.push(field_token.fragment);
 
 				if !self.is_eof() && self.current()?.is_separator(Separator::Comma) {
@@ -181,7 +181,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_match_variant_arm(&mut self) -> Result<AstMatchArm<'bump>> {
-		let variant_token = self.consume(TokenKind::Identifier)?;
+		let variant_token = self.consume_identifier()?;
 		let variant_name = variant_token.fragment;
 
 		let destructure = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
@@ -192,7 +192,7 @@ impl<'bump> Parser<'bump> {
 				if self.is_eof() || self.current()?.is_operator(Operator::CloseCurly) {
 					break;
 				}
-				let field_token = self.consume(TokenKind::Identifier)?;
+				let field_token = self.consume_identifier()?;
 				fields.push(field_token.fragment);
 
 				if !self.is_eof() && self.current()?.is_separator(Separator::Comma) {

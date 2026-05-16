@@ -19,7 +19,7 @@ use crate::{
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_create_authentication(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::For)?;
-		let user_token = self.consume(TokenKind::Identifier)?;
+		let user_token = self.consume_identifier()?;
 		let entries = self.parse_authentication_body()?;
 
 		Ok(AstCreate::Authentication(AstCreateAuthentication {
@@ -32,7 +32,7 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_drop_authentication(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 		self.consume_keyword(Keyword::For)?;
-		let user_token = self.consume(TokenKind::Identifier)?;
+		let user_token = self.consume_identifier()?;
 		let entries = self.parse_authentication_body()?;
 
 		let method = entries
@@ -62,7 +62,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key_token = self.consume_name()?;
+			let key_token = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 			let value = self.parse_node(Precedence::None)?;
 

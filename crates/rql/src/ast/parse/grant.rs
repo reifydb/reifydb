@@ -7,15 +7,15 @@ use crate::{
 		ast::{AstGrant, AstRevoke},
 		parse::Parser,
 	},
-	token::{keyword::Keyword, token::TokenKind},
+	token::keyword::Keyword,
 };
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_grant(&mut self) -> Result<AstGrant<'bump>> {
 		let token = self.consume_keyword(Keyword::Grant)?;
-		let role_token = self.consume(TokenKind::Identifier)?;
+		let role_token = self.consume_identifier()?;
 		self.consume_keyword(Keyword::To)?;
-		let user_token = self.consume(TokenKind::Identifier)?;
+		let user_token = self.consume_identifier()?;
 
 		Ok(AstGrant {
 			token,
@@ -26,9 +26,9 @@ impl<'bump> Parser<'bump> {
 
 	pub(crate) fn parse_revoke(&mut self) -> Result<AstRevoke<'bump>> {
 		let token = self.consume_keyword(Keyword::Revoke)?;
-		let role_token = self.consume(TokenKind::Identifier)?;
+		let role_token = self.consume_identifier()?;
 		self.consume_keyword(Keyword::From)?;
-		let user_token = self.consume(TokenKind::Identifier)?;
+		let user_token = self.consume_identifier()?;
 
 		Ok(AstRevoke {
 			token,

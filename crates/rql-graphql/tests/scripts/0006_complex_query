@@ -1,18 +1,23 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-# Scenario: Complex query with filters, pagination, and nesting
-# Why: Validates the combination of filtering, pagination (skip/first), and one level of field nesting in a single operation.
+# Scenario: Complex query with filters, pagination, and one level of nesting
+# Why: Validates the combination of filtering, pagination (skip/first), and a
+#      relationship-driven nested field in a single operation.
+(admin 'CREATE TABLE transactions { id: int4, hash: utf8, blockNumber: int4, from_id: int4 }')
+(admin 'CREATE TABLE accounts { id: int4, address: utf8 }')
+(admin 'CREATE RELATIONSHIP from ON transactions(from_id) REFERENCES accounts(id) WITH { cardinality: "N:1" }')
 query 'CALL graphql::explain("query { transactions(where: { blockNumber_gt: 100 }, skip: 5, first: 10) { hash from { address } } }")'
 ---
-> +-------+----------+----------------------+
-> |  idx  |   kind   |        detail        |
-> +-------+----------+----------------------+
-> |   0   |   From   |     transactions     |
-> |   1   |   Join   |     natural from     |
-> |   2   |  Filter  |  blockNumber > 100   |
-> |   3   |   Skip   |          5           |
-> |   4   |   Take   |          10          |
-> |   5   |   Map    |  hash, from_address  |
-> +-------+----------+----------------------+
+> +-------+------------+-----------------------------------------------------------------------------+
+> |  idx  |    kind    |                                   detail                                    |
+> +-------+------------+-----------------------------------------------------------------------------+
+> |   0   |    Let     |  $level0 = from transactions | filter blockNumber > 100 | skip 5 | take 10  |
+> |   1   |    Let     |     $level1 = from accounts | filter id in (from $level0 | map from_id)     |
+> |   2   |    Let     |                                 $rows = []                                  |
+> |   3   |    For     |                               $r0 in $level0                                |
+> |   4   |    Let     |                 $r1 = from $level1 | filter id == $r0.from_id               |
+> |   5   |   Append   |          $rows from [{hash: $r0.hash, from: {address: $r1.address}}]        |
+> |   6   |  Variable  |                                    $rows                                    |
+> +-------+------------+-----------------------------------------------------------------------------+
 >

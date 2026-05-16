@@ -54,7 +54,7 @@ impl<'bump> Parser<'bump> {
 			let op_token = if self.current()?.is_identifier() {
 				self.advance()?
 			} else {
-				self.consume_name()?
+				self.consume_identifier()?
 			};
 
 			self.consume_operator(Operator::Colon)?;
@@ -135,7 +135,7 @@ impl<'bump> Parser<'bump> {
 		token: Token<'bump>,
 		target_type: AstPolicyTargetType,
 	) -> Result<AstAlter<'bump>> {
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		let action = if (self.consume_if(TokenKind::Keyword(Keyword::Enable))?).is_some() {
 			AstAlterPolicyAction::Enable
@@ -158,7 +158,7 @@ impl<'bump> Parser<'bump> {
 		target_type: AstPolicyTargetType,
 	) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		Ok(AstDrop::Policy(AstDropPolicy {
 			token,

@@ -89,7 +89,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 		.find_relationship_by_name(&mut Transaction::Admin(&mut probe), f.namespace, f.source_table, "owns")
 		.unwrap();
 	assert!(found.is_none());
-	assert!(catalog.materialized.find_relationship_by_name(f.namespace, f.source_table, "owns").is_none());
+	assert!(catalog.cache().find_relationship_by_name(f.namespace, f.source_table, "owns").is_none());
 }
 
 fn mk_rel(f: &SourceFixture, name: &str) -> RelationshipToCreate {

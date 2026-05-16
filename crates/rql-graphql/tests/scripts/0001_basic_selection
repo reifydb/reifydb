@@ -2,6 +2,18 @@
 # This file is licensed under the Apache-2.0, see license.md file
 
 # Scenario: Basic field selection
-# Why: Ensures that simple GraphQL queries correctly map to RQL From and Map nodes.
+# Why: Ensures that simple GraphQL queries correctly map to a relationship-aware
+#      LET/FOR/APPEND pipeline (with no nested fields, just leaf columns).
+(admin 'CREATE TABLE transactions { id: int4, hash: utf8, index: int4 }')
 query 'CALL graphql::explain("query { transactions { hash index } }")'
 ---
+> +-------+------------+-----------------------------------------------------+
+> |  idx  |    kind    |                       detail                        |
+> +-------+------------+-----------------------------------------------------+
+> |   0   |    Let     |             $level0 = from transactions             |
+> |   1   |    Let     |                     $rows = []                      |
+> |   2   |    For     |                   $r0 in $level0                    |
+> |   3   |   Append   |    $rows from [{hash: $r0.hash, index: $r0.index}]  |
+> |   4   |  Variable  |                        $rows                        |
+> +-------+------------+-----------------------------------------------------+
+>

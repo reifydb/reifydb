@@ -15,7 +15,7 @@ use crate::{
 	bump::BumpFragment,
 	nodes::{CreateRelationshipNode, RelationshipJunction},
 	plan::{
-		logical,
+		logical::{self, resolver::DEFAULT_NAMESPACE},
 		physical::{Compiler, PhysicalPlan},
 	},
 };
@@ -83,11 +83,16 @@ fn resolve_relationship_namespace<'bump>(
 ) -> Result<NamespaceId> {
 	let segments: Vec<&str> = source.namespace.iter().map(|n| n.text()).collect();
 	if segments.is_empty() {
-		return Err(CatalogError::InvalidRelationship {
-			reason: "relationship source must be qualified with a namespace".to_string(),
-			fragment: source.name.to_owned(),
-		}
-		.into());
+		let Some(ns) = compiler.catalog.find_namespace_by_name(rx, DEFAULT_NAMESPACE)? else {
+			return Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::Namespace,
+				namespace: DEFAULT_NAMESPACE.to_string(),
+				name: String::new(),
+				fragment: Fragment::internal(DEFAULT_NAMESPACE),
+			}
+			.into());
+		};
+		return Ok(ns.id());
 	}
 	let Some(ns) = compiler.catalog.find_namespace_by_segments(rx, &segments)? else {
 		return Err(CatalogError::NotFound {

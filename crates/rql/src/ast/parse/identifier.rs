@@ -17,12 +17,12 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
-		let token = self.consume(TokenKind::Identifier)?;
+		let token = self.consume_identifier()?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
 	pub(crate) fn parse_as_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
-		let token = self.consume_name()?;
+		let token = self.consume_identifier()?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 

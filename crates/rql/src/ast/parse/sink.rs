@@ -8,11 +8,7 @@ use crate::{
 		identifier::{MaybeQualifiedIdentifier, MaybeQualifiedSinkIdentifier},
 		parse::Parser,
 	},
-	token::{
-		keyword::Keyword,
-		operator::Operator,
-		token::{Token, TokenKind},
-	},
+	token::{keyword::Keyword, operator::Operator, token::Token},
 };
 
 impl<'bump> Parser<'bump> {
@@ -35,7 +31,7 @@ impl<'bump> Parser<'bump> {
 		self.skip_new_line()?;
 
 		self.consume_keyword(Keyword::To)?;
-		let connector = self.consume(TokenKind::Identifier)?.fragment;
+		let connector = self.consume_identifier()?.fragment;
 
 		let config = self.parse_config_block()?;
 

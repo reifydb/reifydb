@@ -1,14 +1,23 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
+# Scenario: skip + nested relationship
+# Why: Ensures that the `skip` argument and one level of nesting compile to the
+#      relationship-aware LET/FOR/APPEND pipeline using sys.relationships.
+(admin 'CREATE TABLE transactions { id: int4, hash: utf8, from_id: int4 }')
+(admin 'CREATE TABLE accounts { id: int4, address: utf8 }')
+(admin 'CREATE RELATIONSHIP from ON transactions(from_id) REFERENCES accounts(id) WITH { cardinality: "N:1" }')
 query 'CALL graphql::explain("query { transactions(skip: 10) { hash from { address } } }")'
 ---
-> +-------+--------+----------------------+
-> |  idx  |  kind  |        detail        |
-> +-------+--------+----------------------+
-> |   0   |  From  |     transactions     |
-> |   1   |  Join  |     natural from     |
-> |   2   |  Skip  |          10          |
-> |   3   |  Map   |  hash, from_address  |
-> +-------+--------+----------------------+
+> +-------+------------+-----------------------------------------------------------------------+
+> |  idx  |    kind    |                                detail                                 |
+> +-------+------------+-----------------------------------------------------------------------+
+> |   0   |    Let     |                 $level0 = from transactions | skip 10                 |
+> |   1   |    Let     |  $level1 = from accounts | filter id in (from $level0 | map from_id)  |
+> |   2   |    Let     |                              $rows = []                               |
+> |   3   |    For     |                            $r0 in $level0                             |
+> |   4   |    Let     |              $r1 = from $level1 | filter id == $r0.from_id            |
+> |   5   |   Append   |       $rows from [{hash: $r0.hash, from: {address: $r1.address}}]     |
+> |   6   |  Variable  |                                 $rows                                 |
+> +-------+------------+-----------------------------------------------------------------------+
 >

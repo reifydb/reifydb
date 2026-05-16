@@ -421,7 +421,7 @@ impl<'bump> Parser<'bump> {
 
 	fn parse_drop_relationship(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 		let name = name_token.fragment;
 
 		self.consume_keyword(Keyword::On)?;

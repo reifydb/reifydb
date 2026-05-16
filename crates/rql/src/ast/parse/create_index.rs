@@ -27,7 +27,7 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_create_index(&mut self, create_token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let index_type = self.parse_index_type()?;
 
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		self.consume_keyword(On)?;
 

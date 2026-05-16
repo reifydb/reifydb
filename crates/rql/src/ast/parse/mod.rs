@@ -469,7 +469,11 @@ impl<'bump> Parser<'bump> {
 		self.advance()
 	}
 
-	pub(crate) fn consume_name(&mut self) -> Result<Token<'bump>> {
+	/// Consume a token that is either an Identifier or a Keyword, returning it as an Identifier.
+	/// Used in name positions where keyword-colliding names (e.g. enum variant `Pending`,
+	/// relationship `from`) are valid. Prefer over `consume(TokenKind::Identifier)` for any
+	/// name position that is not itself the keyword being matched.
+	pub(crate) fn consume_identifier(&mut self) -> Result<Token<'bump>> {
 		let token = self.advance()?;
 		if matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
 			Ok(Token {
@@ -638,19 +642,19 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_is(&mut self, left: Ast<'bump>) -> Result<Ast<'bump>> {
 		let is_token = self.consume_keyword(Keyword::Is)?;
 
-		let first = self.consume_name()?;
+		let first = self.consume_identifier()?;
 
 		let (namespace, sumtype_name) = if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon)
 		{
 			self.consume_operator(Operator::DoubleColon)?;
-			let sumtype_token = self.consume_name()?;
+			let sumtype_token = self.consume_identifier()?;
 			(Some(first.fragment), sumtype_token.fragment)
 		} else {
 			(None, first.fragment)
 		};
 
 		self.consume_operator(Operator::DoubleColon)?;
-		let variant_token = self.consume_name()?;
+		let variant_token = self.consume_identifier()?;
 
 		Ok(Ast::IsVariant(AstIsVariant {
 			token: is_token,

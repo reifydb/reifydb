@@ -33,6 +33,12 @@ impl testscript::runner::Runner for Runner {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
+			"admin" => {
+				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
+				for frame in self.instance.admin_as_root(rql.as_str(), Params::None)? {
+					writeln!(output, "{}", frame).unwrap();
+				}
+			}
 			name => {
 				return Err(format!("invalid command {name}").into());
 			}

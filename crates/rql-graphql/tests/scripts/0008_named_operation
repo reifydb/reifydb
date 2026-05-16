@@ -3,12 +3,16 @@
 
 # Scenario: Named GraphQL operation
 # Why: Ensures the parser correctly handles the 'query Name' syntax.
+(admin 'CREATE TABLE transactions { id: int4, hash: utf8 }')
 query 'CALL graphql::explain("query GetTxs { transactions { hash } }")'
 ---
-> +-------+--------+----------------+
-> |  idx  |  kind  |     detail     |
-> +-------+--------+----------------+
-> |   0   |  From  |  transactions  |
-> |   1   |  Map   |      hash      |
-> +-------+--------+----------------+
+> +-------+------------+-----------------------------------+
+> |  idx  |    kind    |              detail               |
+> +-------+------------+-----------------------------------+
+> |   0   |    Let     |    $level0 = from transactions    |
+> |   1   |    Let     |            $rows = []             |
+> |   2   |    For     |          $r0 in $level0           |
+> |   3   |   Append   |    $rows from [{hash: $r0.hash}]  |
+> |   4   |  Variable  |               $rows               |
+> +-------+------------+-----------------------------------+
 >

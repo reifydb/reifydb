@@ -7,12 +7,12 @@ use crate::{
 		ast::{AstCreate, AstCreateIdentity, AstCreateRole, AstDrop, AstDropIdentity, AstDropRole},
 		parse::Parser,
 	},
-	token::token::{Token, TokenKind},
+	token::token::Token,
 };
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_create_identity(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		Ok(AstCreate::Identity(AstCreateIdentity {
 			token,
@@ -21,7 +21,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn parse_create_role(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		Ok(AstCreate::Role(AstCreateRole {
 			token,
@@ -31,7 +31,7 @@ impl<'bump> Parser<'bump> {
 
 	pub(crate) fn parse_drop_identity(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		Ok(AstDrop::Identity(AstDropIdentity {
 			token,
@@ -42,7 +42,7 @@ impl<'bump> Parser<'bump> {
 
 	pub(crate) fn parse_drop_role(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		Ok(AstDrop::Role(AstDropRole {
 			token,
