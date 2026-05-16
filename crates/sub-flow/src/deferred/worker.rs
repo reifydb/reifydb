@@ -34,7 +34,11 @@ use reifydb_type::{
 use smallvec::smallvec;
 use tracing::{Span, error, field, instrument};
 
-use crate::{catalog::FlowCatalog, engine::FlowEngine, transaction::FlowTransaction};
+use crate::{
+	catalog::FlowCatalog,
+	engine::FlowEngine,
+	transaction::{DeferredParams, FlowTransaction},
+};
 
 pub type FlowEngineFactory = Box<dyn FnOnce() -> FlowEngine + Send>;
 
@@ -221,16 +225,16 @@ impl FlowWorkerActor {
 		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
 		let interceptors = self.engine.create_interceptors();
 
-		let mut txn = FlowTransaction::deferred_from_parts(
-			state_version,
-			Pending::new(),
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version: state_version,
+			pending: Pending::new(),
 			query,
 			state_query,
-			self.engine.single().clone(),
-			self.catalog.clone(),
+			single: self.engine.single().clone(),
+			catalog: self.catalog.clone(),
 			interceptors,
-			self.engine.clock().clone(),
-		);
+			clock: self.engine.clock().clone(),
+		});
 
 		for flow_id in flow_ids {
 			if let Err(e) = flow_engine.process_tick(&mut txn, flow_id, timestamp) {
@@ -274,16 +278,16 @@ impl FlowWorkerActor {
 			query.read_as_of_version_inclusive(primitive_version);
 			let state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
 
-			let mut txn = FlowTransaction::deferred_from_parts(
-				primitive_version,
+			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+				version: primitive_version,
 				pending,
 				query,
 				state_query,
-				self.engine.single().clone(),
-				self.catalog.clone(),
-				interceptors.clone(),
-				self.engine.clock().clone(),
-			);
+				single: self.engine.single().clone(),
+				catalog: self.catalog.clone(),
+				interceptors: interceptors.clone(),
+				clock: self.engine.clock().clone(),
+			});
 
 			if let Err(e) = flow_engine.process_batch(&mut txn, instruction.changes.clone(), flow_id) {
 				error!(flow_id = flow_id.0, error = %e, "failed to process flow");

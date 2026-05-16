@@ -17,6 +17,11 @@ use tracing::error;
 
 use crate::ffi::context::get_transaction_mut;
 
+/// # Safety
+///
+/// `ctx`, `rql_ptr`, and `result_out` must be valid non-null pointers for the duration of the
+/// call. `rql_ptr` must point to `rql_len` valid UTF-8 bytes. If `params_ptr` is non-null it
+/// must point to `params_len` valid postcard-encoded bytes.
 pub unsafe extern "C" fn host_rql(
 	ctx: *mut ContextFFI,
 	rql_ptr: *const u8,

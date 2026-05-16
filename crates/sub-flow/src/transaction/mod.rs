@@ -107,6 +107,17 @@ pub struct TransactionalParams {
 	pub view_overlay: Arc<Vec<Change>>,
 }
 
+pub struct DeferredParams {
+	pub version: CommitVersion,
+	pub pending: Pending,
+	pub query: MultiReadTransaction,
+	pub state_query: MultiReadTransaction,
+	pub single: SingleTransaction,
+	pub catalog: Catalog,
+	pub interceptors: Interceptors,
+	pub clock: Clock,
+}
+
 pub struct FlowTransactionInner {
 	pub version: CommitVersion,
 	pub pending: Pending,
@@ -206,28 +217,19 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn deferred_from_parts(
-		version: CommitVersion,
-		pending: Pending,
-		query: MultiReadTransaction,
-		state_query: MultiReadTransaction,
-		single: SingleTransaction,
-		catalog: Catalog,
-		interceptors: Interceptors,
-		clock: Clock,
-	) -> Self {
+	pub fn deferred_from_parts(params: DeferredParams) -> Self {
 		Self::Deferred {
 			inner: FlowTransactionInner {
-				version,
-				pending,
+				version: params.version,
+				pending: params.pending,
 				pending_shapes: Vec::new(),
-				query,
-				state_query: Some(state_query),
-				single,
-				catalog,
-				interceptors,
+				query: params.query,
+				state_query: Some(params.state_query),
+				single: params.single,
+				catalog: params.catalog,
+				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
-				clock,
+				clock: params.clock,
 				operator_states: HashMap::new(),
 			},
 		}
