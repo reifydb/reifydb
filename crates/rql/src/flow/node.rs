@@ -9,7 +9,7 @@ use reifydb_core::{
 		series::SeriesKey,
 		shape::ShapeId,
 	},
-	row::Ttl,
+	row::{JoinTtl, Ttl},
 	sort::SortKey,
 };
 use serde::{Deserialize, Serialize};
@@ -52,7 +52,7 @@ pub enum FlowNodeType {
 		right: Vec<Expression>,
 		alias: Option<String>,
 		#[serde(default)]
-		ttl: Option<Ttl>,
+		ttl: Option<JoinTtl>,
 		#[serde(default)]
 		snapshot: bool,
 	},
@@ -60,7 +60,10 @@ pub enum FlowNodeType {
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 	},
-	Append,
+	Append {
+		#[serde(default)]
+		ttl: Option<Ttl>,
+	},
 	Sort {
 		by: Vec<SortKey>,
 	},
@@ -143,7 +146,9 @@ impl FlowNodeType {
 			FlowNodeType::Aggregate {
 				..
 			} => "Aggregate".into(),
-			FlowNodeType::Append => "Append".into(),
+			FlowNodeType::Append {
+				..
+			} => "Append".into(),
 			FlowNodeType::Sort {
 				..
 			} => "Sort".into(),
@@ -204,7 +209,9 @@ impl FlowNodeType {
 			FlowNodeType::Aggregate {
 				..
 			} => 8,
-			FlowNodeType::Append => 9,
+			FlowNodeType::Append {
+				..
+			} => 9,
 			FlowNodeType::Sort {
 				..
 			} => 10,
@@ -282,7 +289,9 @@ impl FlowNodeType {
 			| FlowNodeType::Aggregate {
 				..
 			}
-			| FlowNodeType::Append
+			| FlowNodeType::Append {
+				..
+			}
 			| FlowNodeType::Sort {
 				..
 			}

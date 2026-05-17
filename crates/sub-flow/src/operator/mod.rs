@@ -182,6 +182,10 @@ impl Operators {
 				enforce_tick_capability(op.id(), op.capabilities());
 				op.tick(txn, tick)
 			}
+			Operators::Append(op) => {
+				enforce_tick_capability(op.id(), op.capabilities());
+				op.tick(txn, tick)
+			}
 			_ => Ok(None),
 		}
 	}

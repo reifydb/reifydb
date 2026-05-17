@@ -31,7 +31,7 @@ use reifydb_core::{
 		catalog::{property::ColumnPropertyKind, series::SeriesKey, subscription::HydrationConfig},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedShape},
 	},
-	row::Ttl,
+	row::{JoinTtl, Ttl},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
@@ -782,7 +782,7 @@ pub struct JoinInnerNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 	pub rql: String,
 }
@@ -792,7 +792,7 @@ pub struct JoinLeftNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 	pub rql: String,
 }
@@ -802,7 +802,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub join_type: JoinType,
 	pub alias: Option<BumpFragment<'bump>>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 	pub rql: String,
 }
@@ -886,6 +886,7 @@ pub enum AppendNode<'bump> {
 	},
 	Query {
 		with: BumpVec<'bump, LogicalPlan<'bump>>,
+		ttl: Option<Ttl>,
 	},
 }
 

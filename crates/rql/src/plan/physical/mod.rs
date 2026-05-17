@@ -27,7 +27,7 @@ use reifydb_core::{
 			ResolvedShape, ResolvedTable, ResolvedView,
 		},
 	},
-	row::Ttl,
+	row::{JoinTtl, Ttl},
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -362,6 +362,7 @@ pub enum AppendPhysicalNode<'bump> {
 	Query {
 		left: BumpBox<'bump, PhysicalPlan<'bump>>,
 		right: BumpBox<'bump, PhysicalPlan<'bump>>,
+		ttl: Option<Ttl>,
 	},
 }
 
@@ -475,7 +476,7 @@ pub struct JoinInnerNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 }
 
@@ -485,7 +486,7 @@ pub struct JoinLeftNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 }
 
@@ -495,7 +496,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 }
 
@@ -2174,12 +2175,14 @@ impl<'bump> Compiler<'bump> {
 					}
 					logical::AppendNode::Query {
 						with,
+						ttl,
 					} => {
 						let left = stack.pop().unwrap();
 						let right = self.compile(rx, with)?.unwrap();
 						stack.push(PhysicalPlan::Append(AppendPhysicalNode::Query {
 							left: self.bump_box(left),
 							right: self.bump_box(right),
+							ttl,
 						}));
 					}
 				},

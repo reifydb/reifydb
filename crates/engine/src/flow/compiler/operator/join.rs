@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::store::ttl::create::create_operator_ttl;
 use reifydb_core::{
 	common::JoinType::{self, Inner, Left},
 	interface::catalog::flow::FlowNodeId,
-	row::Ttl,
+	row::JoinTtl,
 };
 use reifydb_rql::{
 	expression::Expression,
@@ -24,7 +23,7 @@ pub(crate) struct JoinCompiler {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<String>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 }
 
@@ -116,7 +115,6 @@ impl CompileOperator for JoinCompiler {
 
 		let effective_alias = self.alias.or(source_name).or_else(|| Some("other".to_string()));
 
-		let ttl = self.ttl.clone();
 		let node_id = compiler.add_node(
 			txn,
 			FlowNodeType::Join {
@@ -128,12 +126,6 @@ impl CompileOperator for JoinCompiler {
 				snapshot: self.snapshot,
 			},
 		)?;
-
-		if let Some(ttl) = ttl
-			&& let Transaction::Admin(admin) = txn
-		{
-			create_operator_ttl(admin, node_id, &ttl)?;
-		}
 
 		compiler.add_edge(txn, &left_node, &node_id)?;
 		compiler.add_edge(txn, &right_node, &node_id)?;

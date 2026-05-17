@@ -767,6 +767,12 @@ pub struct AstTtl<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstJoinTtl<'bump> {
+	pub left: Option<AstTtl<'bump>>,
+	pub right: Option<AstTtl<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstHydrationConfig {
 	pub enabled: bool,
 	pub max_rows: Option<u64>,
@@ -1293,7 +1299,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
-		ttl: Option<AstTtl<'bump>>,
+		ttl: Option<AstJoinTtl<'bump>>,
 		snapshot: bool,
 		rql: &'bump str,
 	},
@@ -1302,7 +1308,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
-		ttl: Option<AstTtl<'bump>>,
+		ttl: Option<AstJoinTtl<'bump>>,
 		snapshot: bool,
 		rql: &'bump str,
 	},
@@ -1311,7 +1317,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		join_type: Option<JoinType>,
 		alias: BumpFragment<'bump>,
-		ttl: Option<AstTtl<'bump>>,
+		ttl: Option<AstJoinTtl<'bump>>,
 		snapshot: bool,
 		rql: &'bump str,
 	},
@@ -1858,6 +1864,7 @@ pub enum AstAppend<'bump> {
 	Query {
 		token: Token<'bump>,
 		with: AstSubQuery<'bump>,
+		ttl: Option<AstTtl<'bump>>,
 	},
 }
 

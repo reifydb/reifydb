@@ -36,3 +36,10 @@ pub enum TtlCleanupMode {
 
 	Drop,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JoinTtl {
+	pub left: Option<Ttl>,
+
+	pub right: Option<Ttl>,
+}

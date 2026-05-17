@@ -216,6 +216,7 @@ impl PhysicalWalker {
 			PhysicalPlan::Append(AppendPhysicalNode::Query {
 				left,
 				right,
+				..
 			}) => {
 				self.walk(left, depth, parent);
 				self.walk(right, depth, parent);

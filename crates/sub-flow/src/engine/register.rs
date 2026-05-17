@@ -351,8 +351,8 @@ impl FlowEngine {
 
 				let ttl = match ttl {
 					Some(t) => JoinStateTtl {
-						left_nanos: Some(t.duration_nanos),
-						right_nanos: Some(t.duration_nanos),
+						left_nanos: t.left.as_ref().map(|s| s.duration_nanos),
+						right_nanos: t.right.as_ref().map(|s| s.duration_nanos),
 					},
 					None => JoinStateTtl::default(),
 				};
@@ -404,7 +404,9 @@ impl FlowEngine {
 					))),
 				);
 			}
-			Append => {
+			Append {
+				ttl,
+			} => {
 				if node.inputs.len() < 2 {
 					return Err(Error(Box::new(internal!(
 						"Append node must have at least 2 inputs"
@@ -427,12 +429,17 @@ impl FlowEngine {
 					parents.push(parent);
 				}
 
+				let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
+				let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
+
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::Append(AppendOperator::new(
 						node.id,
 						parents,
 						node.inputs.clone(),
+						ttl_nanos,
+						ttl_anchor,
 					))),
 				);
 			}

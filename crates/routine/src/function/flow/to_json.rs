@@ -153,7 +153,9 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				by: by.iter().map(|e| e.into()).collect(),
 				map: map.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::Append => JsonFlowNodeType::Append,
+			FlowNodeType::Append {
+				..
+			} => JsonFlowNodeType::Append,
 			FlowNodeType::Sort {
 				by,
 			} => JsonFlowNodeType::Sort {

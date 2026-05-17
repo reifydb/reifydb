@@ -18,7 +18,7 @@ use crate::{
 			AstCreateDictionary, AstCreateEvent, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer,
 			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
-			AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn,
+			AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn, AstJoinTtl,
 			AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstStatement, AstTimestampPrecision,
 			AstTtl, AstType, AstVariant, AstViewStorageKind,
 		},
@@ -2608,6 +2608,100 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
+	fn parse_join_ttl(&mut self) -> Result<AstJoinTtl<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut left: Option<AstTtl<'bump>> = None;
+		let mut right: Option<AstTtl<'bump>> = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"left" => {
+					if left.is_some() {
+						let fragment = key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "single 'left' entry".to_string(),
+							},
+							message: "'left' specified more than once in join ttl"
+								.to_string(),
+							fragment,
+						}));
+					}
+					left = Some(self.parse_ttl()?);
+				}
+				"right" => {
+					if right.is_some() {
+						let fragment = key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "single 'right' entry".to_string(),
+							},
+							message: "'right' specified more than once in join ttl"
+								.to_string(),
+							fragment,
+						}));
+					}
+					right = Some(self.parse_ttl()?);
+				}
+				other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'left' or 'right'".to_string(),
+						},
+						message: format!(
+							"unexpected key '{}' in join ttl; expected 'left' or 'right'",
+							other
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		if left.is_none() && right.is_none() {
+			let fragment = self
+				.current()
+				.ok()
+				.map(|t| t.fragment.to_owned())
+				.unwrap_or_else(|| Fragment::internal("end of input"));
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "at least one of 'left' or 'right'".to_string(),
+				},
+				message: "join ttl must specify at least one side ('left' or 'right')".to_string(),
+				fragment,
+			}));
+		}
+
+		Ok(AstJoinTtl {
+			left,
+			right,
+		})
+	}
+
 	pub(crate) fn parse_with_clause_for_operator(&mut self) -> Result<Option<AstTtl<'bump>>> {
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
 			return Ok(None);
@@ -2649,14 +2743,14 @@ impl<'bump> Parser<'bump> {
 		Ok(ttl)
 	}
 
-	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstTtl<'bump>>, bool)> {
+	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinTtl<'bump>>, bool)> {
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
 			return Ok((None, false));
 		}
 		self.advance()?;
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut ttl: Option<AstTtl<'bump>> = None;
+		let mut ttl: Option<AstJoinTtl<'bump>> = None;
 		let mut snapshot: bool = false;
 
 		loop {
@@ -2670,7 +2764,7 @@ impl<'bump> Parser<'bump> {
 
 			match key.fragment.text() {
 				"ttl" => {
-					ttl = Some(self.parse_ttl()?);
+					ttl = Some(self.parse_join_ttl()?);
 				}
 				"snapshot" => {
 					let value = self.advance()?;

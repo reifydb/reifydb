@@ -132,6 +132,7 @@ impl LogicalWalker {
 			}
 			LogicalPlan::Append(AppendNode::Query {
 				with,
+				..
 			}) => {
 				for child in with.iter() {
 					self.walk(child, depth, parent);

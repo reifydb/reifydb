@@ -44,11 +44,17 @@ impl<'bump> Compiler<'bump> {
 			}
 			AstAppend::Query {
 				with,
+				ttl,
 				..
 			} => {
 				let with = self.compile(with.statement, tx)?;
+				let ttl = match ttl {
+					Some(ast_ttl) => Some(Self::compile_operator_ttl(ast_ttl)?),
+					None => None,
+				};
 				Ok(LogicalPlan::Append(AppendNode::Query {
 					with,
+					ttl,
 				}))
 			}
 		}

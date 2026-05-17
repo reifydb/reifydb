@@ -151,6 +151,7 @@ pub fn walk_expressions_mut(
 			AppendPhysicalNode::Query {
 				left,
 				right,
+				..
 			} => {
 				walk_expressions_mut(left, internal, projection);
 				walk_expressions_mut(right, internal, projection);

@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::row::{Ttl, TtlAnchor, TtlCleanupMode};
+use reifydb_core::row::{JoinTtl, Ttl, TtlAnchor, TtlCleanupMode};
 
-use crate::{Result, ast::ast::AstTtl, diagnostic::AstError, plan::logical::Compiler};
+use crate::{
+	Result,
+	ast::ast::{AstJoinTtl, AstTtl},
+	diagnostic::AstError,
+	plan::logical::Compiler,
+};
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_operator_ttl(ast: AstTtl<'bump>) -> Result<Ttl> {
@@ -17,6 +22,21 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 		Self::compile_ttl(ast)
+	}
+
+	pub(crate) fn compile_join_ttl(ast: AstJoinTtl<'bump>) -> Result<JoinTtl> {
+		let left = match ast.left {
+			Some(side) => Some(Self::compile_operator_ttl(side)?),
+			None => None,
+		};
+		let right = match ast.right {
+			Some(side) => Some(Self::compile_operator_ttl(side)?),
+			None => None,
+		};
+		Ok(JoinTtl {
+			left,
+			right,
+		})
 	}
 
 	pub(crate) fn compile_ttl(ast: AstTtl<'bump>) -> Result<Ttl> {

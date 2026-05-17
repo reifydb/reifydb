@@ -24,7 +24,7 @@ use reifydb_core::{
 			ResolvedSeries, ResolvedShape, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
-	row::Ttl,
+	row::{JoinTtl, Ttl},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_type::{
@@ -646,7 +646,7 @@ pub struct JoinInnerNode {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 }
 
@@ -656,7 +656,7 @@ pub struct JoinLeftNode {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 }
 
@@ -666,7 +666,7 @@ pub struct JoinNaturalNode {
 	pub right: Box<QueryPlan>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<Ttl>,
+	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 }
 
@@ -674,6 +674,7 @@ pub struct JoinNaturalNode {
 pub struct AppendQueryNode {
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
+	pub ttl: Option<Ttl>,
 }
 
 #[derive(Debug, Clone)]
