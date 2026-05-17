@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Current API version
-///
-/// This version must be incremented when making breaking changes to the FFI interface.
-/// Operators compiled against different API versions will be rejected.
 pub const CURRENT_API: u32 = 1;
 
 pub const OPERATOR_MAGIC: u32 = 231123;

@@ -1,26 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Generic FFI driver for [`TumblingOperator`] / [`FFITumblingOperator`] impls.
-//!
-//! The driver consumes a `FFITumblingOperator` and exposes it as a runnable
-//! `FFIOperator`. It owns:
-//!
-//! - A `StateCache<RowNumber, WindowSlots<A>>` mapping each `(group, window_start)` (allocated to a `RowNumber` via the
-//!   operator's row-key encoder) to its per-slot contribution map.
-//! - A `StateCache<A::GroupKey, A::SlotKey>` recording the highest emitted `window_start` per group, so late events for
-//!   closed windows are dropped.
-//!
-//! All four historical defect classes (Update double-count, Remove drop,
-//! running-extrema, off-by-one) are unrepresentable here:
-//!
-//! - Insert and Update both route through `fold_into_slot` and replace the slot's contribution; a duplicate same-slot
-//!   event is idempotent.
-//! - Remove drops the slot from the per-window map; the next `combine` reflects its absence.
-//! - Extrema can only be computed by `combine` over `slots.values()`; there is no running min/max field for a stale
-//!   read to come from.
-//! - Window membership goes through [`super::WindowSpan::for_slot`], which is unconditionally half-open `[start, end)`.
-
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_abi::flow::diff::DiffType;

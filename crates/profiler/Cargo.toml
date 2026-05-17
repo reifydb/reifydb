@@ -9,6 +9,7 @@ description = "Always-on database profiler primitives: tracing layer, per-scope 
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
 
 tracing = { workspace = true }

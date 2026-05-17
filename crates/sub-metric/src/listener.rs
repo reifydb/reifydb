@@ -5,7 +5,10 @@ use reifydb_core::{
 	actors::metric::MetricMessage,
 	event::{
 		EventListener,
-		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent},
+		metric::{
+			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, ProfilerSnapshotEvent,
+			RequestExecutedEvent,
+		},
 	},
 };
 use reifydb_runtime::actor::mailbox::ActorRef;
@@ -86,6 +89,27 @@ impl EventListener<CdcEvictedEvent> for CdcEvictedListener {
 	fn on(&self, event: &CdcEvictedEvent) {
 		if !event.entries().is_empty() {
 			let _ = self.actor_ref.send(MetricMessage::CdcEvicted(event.clone()));
+		}
+	}
+}
+
+#[derive(Clone)]
+pub struct ProfilerSnapshotListener {
+	actor_ref: ActorRef<MetricMessage>,
+}
+
+impl ProfilerSnapshotListener {
+	pub fn new(actor_ref: ActorRef<MetricMessage>) -> Self {
+		Self {
+			actor_ref,
+		}
+	}
+}
+
+impl EventListener<ProfilerSnapshotEvent> for ProfilerSnapshotListener {
+	fn on(&self, event: &ProfilerSnapshotEvent) {
+		if !event.rows().is_empty() {
+			let _ = self.actor_ref.send(MetricMessage::ProfilerSnapshot(event.clone()));
 		}
 	}
 }

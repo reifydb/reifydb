@@ -1,19 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Canonical half-open `[start, end)` window arithmetic over a generic slot
-//! coordinate type.
-//!
-//! Every windowed operator in the ecosystem must use this type for slot/window
-//! membership checks. Hand-rolled `start..=end` or `>=`/`<=` comparisons have
-//! repeatedly produced off-by-one bugs at window boundaries (cf. chaindex
-//! commit `b56ad0ad`). Concentrating the inclusivity rule in one place lets
-//! reviewers and tests verify it once.
-//!
-//! `T` is the coordinate type used to address slots: a unix-timestamp `u64`,
-//! a Solana slot number, a `DateTime` newtype, etc. `T` only has to support
-//! the small algebra needed for tumbling-grid alignment.
-
 use std::{
 	fmt::Debug,
 	ops::{Add, Rem, Sub},

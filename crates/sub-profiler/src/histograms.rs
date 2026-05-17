@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Static per-category latency histograms. One `LazyLock<Histogram>` per `ProfileCategory`; all six are registered
-//! with `STATIC_REGISTRY` exactly once at subsystem start so they show up in the existing metric snapshot/OTLP
-//! pipeline without further wiring. Boundaries are curated per category and tunable via the configurator.
-
 use std::sync::{LazyLock, Once};
 
-use reifydb_metric::{histogram::Histogram, registry::STATIC_REGISTRY};
-use reifydb_profiler::category::ProfileCategory;
+use reifydb_metric::{counter::Counter, gauge::Gauge, histogram::Histogram, registry::STATIC_REGISTRY};
+use reifydb_profiler::category::ProfilerCategory;
 
 static QUERY_BOUNDS: &[f64] = &[
 	100.0,
@@ -78,49 +74,87 @@ static FLOW_BOUNDS: &[f64] = &[
 	1_000_000.0,
 ];
 
-pub static PROFILE_QUERY_HIST: LazyLock<Histogram> = LazyLock::new(|| {
-	Histogram::new("profile.query.duration_us", "Profile category Query duration (us)", QUERY_BOUNDS)
+pub static PROFILER_QUERY_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.query.duration_us", "Profiler category Query duration (us)", QUERY_BOUNDS)
 });
 
-pub static PROFILE_TXN_HIST: LazyLock<Histogram> =
-	LazyLock::new(|| Histogram::new("profile.txn.duration_us", "Profile category Txn duration (us)", TXN_BOUNDS));
+pub static PROFILER_TXN_HIST: LazyLock<Histogram> =
+	LazyLock::new(|| Histogram::new("profiler.txn.duration_us", "Profiler category Txn duration (us)", TXN_BOUNDS));
 
-pub static PROFILE_STORAGE_HIST: LazyLock<Histogram> = LazyLock::new(|| {
-	Histogram::new("profile.storage.duration_us", "Profile category Storage duration (us)", STORAGE_BOUNDS)
+pub static PROFILER_STORAGE_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.storage.duration_us", "Profiler category Storage duration (us)", STORAGE_BOUNDS)
 });
 
-pub static PROFILE_PLAN_HIST: LazyLock<Histogram> = LazyLock::new(|| {
-	Histogram::new("profile.plan.duration_us", "Profile category Plan duration (us)", PLAN_BOUNDS)
+pub static PROFILER_PLAN_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.plan.duration_us", "Profiler category Plan duration (us)", PLAN_BOUNDS)
 });
 
-pub static PROFILE_CDC_HIST: LazyLock<Histogram> =
-	LazyLock::new(|| Histogram::new("profile.cdc.duration_us", "Profile category Cdc duration (us)", CDC_BOUNDS));
+pub static PROFILER_CDC_HIST: LazyLock<Histogram> =
+	LazyLock::new(|| Histogram::new("profiler.cdc.duration_us", "Profiler category Cdc duration (us)", CDC_BOUNDS));
 
-pub static PROFILE_FLOW_HIST: LazyLock<Histogram> = LazyLock::new(|| {
-	Histogram::new("profile.flow.duration_us", "Profile category Flow duration (us)", FLOW_BOUNDS)
+pub static PROFILER_FLOW_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.flow.duration_us", "Profiler category Flow duration (us)", FLOW_BOUNDS)
 });
 
-pub fn histogram_for(category: ProfileCategory) -> &'static Histogram {
+pub fn histogram_for(category: ProfilerCategory) -> &'static Histogram {
 	match category {
-		ProfileCategory::Query => &PROFILE_QUERY_HIST,
-		ProfileCategory::Txn => &PROFILE_TXN_HIST,
-		ProfileCategory::Storage => &PROFILE_STORAGE_HIST,
-		ProfileCategory::Plan => &PROFILE_PLAN_HIST,
-		ProfileCategory::Cdc => &PROFILE_CDC_HIST,
-		ProfileCategory::Flow => &PROFILE_FLOW_HIST,
+		ProfilerCategory::Query => &PROFILER_QUERY_HIST,
+		ProfilerCategory::Txn => &PROFILER_TXN_HIST,
+		ProfilerCategory::Storage => &PROFILER_STORAGE_HIST,
+		ProfilerCategory::Plan => &PROFILER_PLAN_HIST,
+		ProfilerCategory::Cdc => &PROFILER_CDC_HIST,
+		ProfilerCategory::Flow => &PROFILER_FLOW_HIST,
 	}
 }
+
+pub static PROFILER_ACCUMULATOR_SIZE: Gauge = Gauge::new(
+	"profiler.accumulator.size",
+	"Current number of distinct (category, callsite, dimensions) records held by the profile accumulator",
+);
+
+pub static PROFILER_ACCUMULATOR_CAPACITY: Gauge = Gauge::new(
+	"profiler.accumulator.capacity",
+	"Configured maximum number of records the profile accumulator will hold",
+);
+
+pub static PROFILER_ACCUMULATOR_EVICTIONS: Counter = Counter::new(
+	"profiler.accumulator.evictions_total",
+	"Number of records evicted by the LFU policy because the accumulator capacity was reached",
+);
+
+pub static PROFILER_SNAPSHOT_LAST_FLUSH_RECORDS: Gauge = Gauge::new(
+	"profiler.snapshot.last_flush_records",
+	"Number of aggregate records persisted in the most recent successful snapshot flush",
+);
+
+pub static PROFILER_SNAPSHOT_LAST_FLUSH_TS_MS: Gauge = Gauge::new(
+	"profiler.snapshot.last_flush_ts_ms",
+	"Wall-clock timestamp (ms since epoch) of the most recent successful snapshot flush",
+);
+
+pub static PROFILER_SNAPSHOT_FLUSH_ERRORS: Counter = Counter::new(
+	"profiler.snapshot.flush_errors_total",
+	"Number of snapshot flush attempts that failed during bulk insert into the history Series",
+);
 
 static REGISTERED: Once = Once::new();
 
 pub fn register_all() {
 	REGISTERED.call_once(|| {
-		STATIC_REGISTRY.register_histogram(&PROFILE_QUERY_HIST);
-		STATIC_REGISTRY.register_histogram(&PROFILE_TXN_HIST);
-		STATIC_REGISTRY.register_histogram(&PROFILE_STORAGE_HIST);
-		STATIC_REGISTRY.register_histogram(&PROFILE_PLAN_HIST);
-		STATIC_REGISTRY.register_histogram(&PROFILE_CDC_HIST);
-		STATIC_REGISTRY.register_histogram(&PROFILE_FLOW_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_QUERY_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_TXN_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_STORAGE_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_PLAN_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_CDC_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_FLOW_HIST);
+
+		STATIC_REGISTRY.register_gauge(&PROFILER_ACCUMULATOR_SIZE);
+		STATIC_REGISTRY.register_gauge(&PROFILER_ACCUMULATOR_CAPACITY);
+		STATIC_REGISTRY.register_counter(&PROFILER_ACCUMULATOR_EVICTIONS);
+
+		STATIC_REGISTRY.register_gauge(&PROFILER_SNAPSHOT_LAST_FLUSH_RECORDS);
+		STATIC_REGISTRY.register_gauge(&PROFILER_SNAPSHOT_LAST_FLUSH_TS_MS);
+		STATIC_REGISTRY.register_counter(&PROFILER_SNAPSHOT_FLUSH_ERRORS);
 	});
 }
 

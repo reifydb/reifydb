@@ -1,47 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Generic invariant suite for [`crate::operator::windowed::TumblingOperator`]
-//! implementations. A sibling `RollingAggregator` contract harness lives next
-//! to this one once the rolling trait ships.
-//!
-//! # Scope
-//!
-//! Most of the bug classes the windowed framework exists to prevent are
-//! prevented *structurally* by the trait shape itself, not by tests:
-//!
-//! - **Update double-counts**: prevented because the framework's driver (slice 2) routes Insert and Update through the
-//!   same `fold_into_slot` call, so there is no second code path that could double-count.
-//! - **DiffType::Remove silently dropped**: prevented because the driver exhaustively matches all three `DiffType`
-//!   variants in one place; missing arms are compile errors.
-//! - **Per-slot extrema computed as running max/min**: prevented because `combine` is the only code path that produces
-//!   an `Output`, and it receives the per-slot map by reference; there is no separate "running extrema" field anywhere
-//!   for a stale read to come from.
-//!
-//! That leaves one invariant that *is* a per-aggregator authoring concern
-//! and worth testing: **`window_for` returns half-open `[start, end)` spans
-//! that contain the slot they were derived from**.
-//!
-//! # Use
-//!
-//! Every tumbling operator should add a `tests/contract.rs` of the form:
-//!
-//! ```ignore
-//! use reifydb_sdk::testing::windowed::{ContractCase, RowKind, assert_tumbling_contract};
-//!
-//! #[test]
-//! fn obeys_tumbling_contract() {
-//!     let agg = my_operator::Aggregator::new(/* config */);
-//!     // Cover at least one slot at the boundary of a window so the check
-//!     // exercises the inclusivity rule, not just the interior case.
-//!     let case = ContractCase::new()
-//!         .push(RowKind::Insert, "BTC".into(), 0,   my_input(...))
-//!         .push(RowKind::Insert, "BTC".into(), 59,  my_input(...))
-//!         .push(RowKind::Insert, "BTC".into(), 60,  my_input(...));
-//!     assert_tumbling_contract(&agg, case);
-//! }
-//! ```
-
 use std::fmt::{self, Debug, Formatter, Write};
 
 use crate::operator::windowed::TumblingOperator;

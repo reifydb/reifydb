@@ -119,6 +119,21 @@ impl Catalog {
 		}
 	}
 
+	#[instrument(name = "catalog::identity::find_by_solana_pubkey", level = "trace", skip(self, txn))]
+	pub fn find_identity_by_solana_pubkey(
+		&self,
+		txn: &mut Transaction<'_>,
+		pubkey: &str,
+	) -> Result<Option<Identity>> {
+		let solana_auths = self.list_authentications_by_method(txn, "solana")?;
+		for auth in solana_auths {
+			if auth.properties.get("public_key").map(String::as_str) == Some(pubkey) {
+				return self.find_identity(txn, auth.identity);
+			}
+		}
+		Ok(None)
+	}
+
 	#[instrument(name = "catalog::identity::find", level = "trace", skip(self, txn))]
 	pub fn find_identity(&self, txn: &mut Transaction<'_>, identity: IdentityId) -> Result<Option<Identity>> {
 		match txn.reborrow() {

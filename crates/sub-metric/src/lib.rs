@@ -18,4 +18,6 @@ pub mod actor;
 pub mod factory;
 pub mod interceptor;
 pub mod listener;
+pub mod profiler_gauges;
+pub mod profiler_vtable;
 pub mod subsystem;

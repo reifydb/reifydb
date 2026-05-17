@@ -2,17 +2,17 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::event::EventListener;
-use reifydb_profiler::event::{ProfileScopeBatchEvent, ProfileScopeClosedEvent};
+use reifydb_profiler::event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent};
 use reifydb_runtime::actor::mailbox::ActorRef;
 
 use crate::actor::ProfilerMessage;
 
 #[derive(Clone)]
-pub struct ProfileScopeClosedListener {
+pub struct ProfilerScopeClosedListener {
 	actor_ref: ActorRef<ProfilerMessage>,
 }
 
-impl ProfileScopeClosedListener {
+impl ProfilerScopeClosedListener {
 	pub fn new(actor_ref: ActorRef<ProfilerMessage>) -> Self {
 		Self {
 			actor_ref,
@@ -20,18 +20,18 @@ impl ProfileScopeClosedListener {
 	}
 }
 
-impl EventListener<ProfileScopeClosedEvent> for ProfileScopeClosedListener {
-	fn on(&self, event: &ProfileScopeClosedEvent) {
+impl EventListener<ProfilerScopeClosedEvent> for ProfilerScopeClosedListener {
+	fn on(&self, event: &ProfilerScopeClosedEvent) {
 		let _ = self.actor_ref.send(ProfilerMessage::ScopeClosed(event.summary().clone()));
 	}
 }
 
 #[derive(Clone)]
-pub struct ProfileScopeBatchListener {
+pub struct ProfilerScopeBatchListener {
 	actor_ref: ActorRef<ProfilerMessage>,
 }
 
-impl ProfileScopeBatchListener {
+impl ProfilerScopeBatchListener {
 	pub fn new(actor_ref: ActorRef<ProfilerMessage>) -> Self {
 		Self {
 			actor_ref,
@@ -39,8 +39,8 @@ impl ProfileScopeBatchListener {
 	}
 }
 
-impl EventListener<ProfileScopeBatchEvent> for ProfileScopeBatchListener {
-	fn on(&self, event: &ProfileScopeBatchEvent) {
+impl EventListener<ProfilerScopeBatchEvent> for ProfilerScopeBatchListener {
+	fn on(&self, event: &ProfilerScopeBatchEvent) {
 		let _ = self.actor_ref.send(ProfilerMessage::ScopeBatch(event.summary().clone()));
 	}
 }

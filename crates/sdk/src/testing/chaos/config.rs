@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Which diff kinds the chaos generator may emit.
-///
-/// Default is `all()`. The default is independent of the operator's
-/// `CAPABILITIES` advertisement on purpose: an operator that advertises
-/// Insert-only but silently processes Updates is exactly the bug class this
-/// harness is designed to catch.
 #[derive(Debug, Clone, Copy)]
 pub struct SupportedOps {
 	pub insert: bool,

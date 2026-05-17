@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Per-callsite percentile estimator backed by the vendored `tdigest` crate (v0.2.3). Each `PercentileHistogram`
-//! owns a `TDigest` with a small pending buffer; `observe` appends a single duration into the buffer and flushes
-//! into the digest in batches to amortise the merge cost (`TDigest::merge_unsorted` takes `&self` and returns a
-//! new digest, so per-value merges would re-clone the centroid vector on every observation). Reads (`percentile`,
-//! `percentiles`) merge any pending values into a cloned digest so the caller never mutates state.
-//!
-//! Compared to the prior fixed-bucket histogram, t-digest gives near-exact percentiles even at the tails (p99 won't
-//! overshoot the true max within a power-of-two bucket) at the cost of ~2 KB per record (100 centroids x 16 B plus
-//! Vec headers). At the 4096-row accumulator capacity that's ~8 MB total — acceptable for always-on profiling.
+use std::mem;
 
+use reifydb_type::value::duration::Duration;
 use serde::{Deserialize, Serialize};
 use tdigest::TDigest;
 
@@ -102,11 +95,27 @@ impl PercentileHistogram {
 		}
 	}
 
+	pub fn percentiles_duration(&self) -> ProfilerPercentiles {
+		let raw = self.percentiles();
+		ProfilerPercentiles {
+			p50: Duration::from_micros_infallible(raw.p50 as u64),
+			p60: Duration::from_micros_infallible(raw.p60 as u64),
+			p70: Duration::from_micros_infallible(raw.p70 as u64),
+			p75: Duration::from_micros_infallible(raw.p75 as u64),
+			p80: Duration::from_micros_infallible(raw.p80 as u64),
+			p85: Duration::from_micros_infallible(raw.p85 as u64),
+			p90: Duration::from_micros_infallible(raw.p90 as u64),
+			p95: Duration::from_micros_infallible(raw.p95 as u64),
+			p98: Duration::from_micros_infallible(raw.p98 as u64),
+			p99: Duration::from_micros_infallible(raw.p99 as u64),
+		}
+	}
+
 	fn flush(&mut self) {
 		if self.pending.is_empty() {
 			return;
 		}
-		let values = std::mem::take(&mut self.pending);
+		let values = mem::take(&mut self.pending);
 		self.digest = self.digest.clone().merge_unsorted(values);
 	}
 }
@@ -123,6 +132,20 @@ pub struct Percentiles {
 	pub p95: u32,
 	pub p98: u32,
 	pub p99: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct ProfilerPercentiles {
+	pub p50: Duration,
+	pub p60: Duration,
+	pub p70: Duration,
+	pub p75: Duration,
+	pub p80: Duration,
+	pub p85: Duration,
+	pub p90: Duration,
+	pub p95: Duration,
+	pub p98: Duration,
+	pub p99: Duration,
 }
 
 #[cfg(test)]

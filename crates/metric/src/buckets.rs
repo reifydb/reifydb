@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Microsecond latency buckets (10us → 10s).
 pub const LATENCY_US: &[f64] = &[
 	10.0,
 	50.0,

@@ -17,7 +17,7 @@
 
 use reifydb_core::{
 	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
-	profile::ProfileCategoryId,
+	profiler::ProfilerCategoryId,
 };
 
 pub mod accumulator;
@@ -38,5 +38,5 @@ pub enum MetricId {
 
 	System,
 
-	Profile(ProfileCategoryId),
+	Profiler(ProfilerCategoryId),
 }

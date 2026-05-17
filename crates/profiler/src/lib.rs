@@ -3,9 +3,9 @@
 
 //! Always-on profiler primitives. Builds on `tracing` to capture per-scope span records without allocating on the hot
 //! path. `ProfilerLayer` is a `tracing_subscriber::Layer` that intercepts spans matching a curated set of
-//! `ProfileCategory` prefixes, extracts numeric fields through reusable thread-local visitors, and appends a
-//! fixed-size `MinimalSpanRecord` to scope-local state. `ProfileScope::start` opens a scope; `ScopeHandle::finish`
-//! drains the accumulated records, builds a `ProfileSummary` for the caller, and hands the batch to a `ProfileSink`
+//! `ProfilerCategory` prefixes, extracts numeric fields through reusable thread-local visitors, and appends a
+//! fixed-size `MinimalSpanRecord` to scope-local state. `ProfilerScope::start` opens a scope; `ScopeHandle::finish`
+//! drains the accumulated records, builds a `ProfilerSummary` for the caller, and hands the batch to a `ProfilerSink`
 //! for downstream delivery (in production this is `sub-profiler`'s EventBus bridge).
 //!
 //! This crate stays free of any metric or IoC dependency so the layer can be embedded in tests with a `NoopSink` and

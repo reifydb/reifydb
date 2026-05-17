@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Global registry mapping `callsite_id` (a `tracing::Metadata` pointer cast to u64) back to the span's
-//! `&'static str` name. The layer populates this on `on_new_span` per call site (idempotent via DashMap::entry,
-//! amortized to a single insert per unique callsite for the lifetime of the process). The sub-profiler actor
-//! reads it when promoting `MinimalSpanRecord` to `AggregateRecord` so the accumulator carries the actual span
-//! name (`flow::engine::apply`, `store::multi::write`, ...) rather than the category label.
-
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 

@@ -1,30 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Read-only handle over the `ProfileAccumulator`. Returned by `ProfilerSubsystem::reader()`. Cheap to clone (it's
-//! just an `Arc<RwLock<_>>`). Reads see whatever the actor has folded so far; the accumulator itself is transient
-//! and is reset/drained by the metric subsystem on its own cadence.
-
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use reifydb_profiler::{category::ProfileCategory, record::AggregateRecord};
+use reifydb_profiler::{category::ProfilerCategory, record::AggregateRecord};
 
-use crate::accumulator::ProfileAccumulator;
+use crate::accumulator::ProfilerAccumulator;
 
 #[derive(Clone)]
 pub struct ProfilerReader {
-	accumulator: Arc<RwLock<ProfileAccumulator>>,
+	accumulator: Arc<RwLock<ProfilerAccumulator>>,
 }
 
 impl ProfilerReader {
-	pub fn new(accumulator: Arc<RwLock<ProfileAccumulator>>) -> Self {
+	pub fn new(accumulator: Arc<RwLock<ProfilerAccumulator>>) -> Self {
 		Self {
 			accumulator,
 		}
 	}
 
-	pub fn top_n(&self, category: ProfileCategory, n: usize) -> Vec<AggregateRecord> {
+	pub fn top_n(&self, category: ProfilerCategory, n: usize) -> Vec<AggregateRecord> {
 		self.accumulator.read().top_n(category, n)
 	}
 

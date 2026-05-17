@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Configuration for WASM execution resource limits.
 #[derive(Debug, Clone)]
 pub struct WasmConfig {
 	pub max_memory_pages: u32,

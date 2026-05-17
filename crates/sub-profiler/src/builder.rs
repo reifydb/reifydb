@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! `ProfilerConfigurator` mirrors the shape of `TracingConfigurator`: a builder fluent API the subsystem factory
-//! invokes to assemble the live `ProfilerSubsystem`. Only configuration knobs live here; the actual lifecycle and
-//! wiring (event bus listeners, actor spawn, layer construction) sit in `factory.rs`.
-
-use reifydb_profiler::category::{CategorySet, ProfileCategory, ProfileLevel};
+use reifydb_profiler::category::{CategorySet, ProfilerCategory, ProfilerLevel};
 
 pub struct ProfilerConfigurator {
 	pub enabled: bool,
@@ -37,22 +33,22 @@ impl ProfilerConfigurator {
 		self
 	}
 
-	pub fn with_category(mut self, c: ProfileCategory) -> Self {
+	pub fn with_category(mut self, c: ProfilerCategory) -> Self {
 		self.categories.insert(c);
 		self
 	}
 
-	pub fn with_category_level(mut self, c: ProfileCategory, level: ProfileLevel) -> Self {
+	pub fn with_category_level(mut self, c: ProfilerCategory, level: ProfilerLevel) -> Self {
 		self.categories.insert_at(c, level);
 		self
 	}
 
-	pub fn without_category(mut self, c: ProfileCategory) -> Self {
+	pub fn without_category(mut self, c: ProfilerCategory) -> Self {
 		self.categories.remove(c);
 		self
 	}
 
-	pub fn with_categories(mut self, cs: impl IntoIterator<Item = ProfileCategory>) -> Self {
+	pub fn with_categories(mut self, cs: impl IntoIterator<Item = ProfilerCategory>) -> Self {
 		let mut set = CategorySet::empty();
 		for c in cs {
 			set.insert(c);
@@ -61,7 +57,10 @@ impl ProfilerConfigurator {
 		self
 	}
 
-	pub fn with_categories_levels(mut self, cs: impl IntoIterator<Item = (ProfileCategory, ProfileLevel)>) -> Self {
+	pub fn with_categories_levels(
+		mut self,
+		cs: impl IntoIterator<Item = (ProfilerCategory, ProfilerLevel)>,
+	) -> Self {
 		let mut set = CategorySet::empty();
 		for (c, level) in cs {
 			set.insert_at(c, level);
@@ -98,39 +97,39 @@ mod tests {
 		assert!(cfg.enabled);
 		for c in ALL_CATEGORIES {
 			assert!(cfg.categories.contains(c));
-			assert_eq!(cfg.categories.level_for(c), Some(ProfileLevel::Trace));
+			assert_eq!(cfg.categories.level_for(c), Some(ProfilerLevel::Trace));
 		}
 	}
 
 	#[test]
 	fn with_categories_replaces_set_at_trace() {
-		let cfg =
-			ProfilerConfigurator::new().with_categories([ProfileCategory::Query, ProfileCategory::Storage]);
-		assert!(cfg.categories.contains(ProfileCategory::Query));
-		assert!(cfg.categories.contains(ProfileCategory::Storage));
-		assert!(!cfg.categories.contains(ProfileCategory::Flow));
-		assert_eq!(cfg.categories.level_for(ProfileCategory::Query), Some(ProfileLevel::Trace));
-		assert_eq!(cfg.categories.level_for(ProfileCategory::Storage), Some(ProfileLevel::Trace));
+		let cfg = ProfilerConfigurator::new()
+			.with_categories([ProfilerCategory::Query, ProfilerCategory::Storage]);
+		assert!(cfg.categories.contains(ProfilerCategory::Query));
+		assert!(cfg.categories.contains(ProfilerCategory::Storage));
+		assert!(!cfg.categories.contains(ProfilerCategory::Flow));
+		assert_eq!(cfg.categories.level_for(ProfilerCategory::Query), Some(ProfilerLevel::Trace));
+		assert_eq!(cfg.categories.level_for(ProfilerCategory::Storage), Some(ProfilerLevel::Trace));
 	}
 
 	#[test]
 	fn with_category_level_round_trips() {
 		let cfg = ProfilerConfigurator::new()
-			.with_category_level(ProfileCategory::Query, ProfileLevel::Debug)
-			.with_category_level(ProfileCategory::Plan, ProfileLevel::Info);
-		assert_eq!(cfg.categories.level_for(ProfileCategory::Query), Some(ProfileLevel::Debug));
-		assert_eq!(cfg.categories.level_for(ProfileCategory::Plan), Some(ProfileLevel::Info));
-		assert_eq!(cfg.categories.level_for(ProfileCategory::Flow), Some(ProfileLevel::Trace));
+			.with_category_level(ProfilerCategory::Query, ProfilerLevel::Debug)
+			.with_category_level(ProfilerCategory::Plan, ProfilerLevel::Info);
+		assert_eq!(cfg.categories.level_for(ProfilerCategory::Query), Some(ProfilerLevel::Debug));
+		assert_eq!(cfg.categories.level_for(ProfilerCategory::Plan), Some(ProfilerLevel::Info));
+		assert_eq!(cfg.categories.level_for(ProfilerCategory::Flow), Some(ProfilerLevel::Trace));
 	}
 
 	#[test]
 	fn with_categories_levels_bulk_set() {
 		let cfg = ProfilerConfigurator::new().with_categories_levels([
-			(ProfileCategory::Flow, ProfileLevel::Trace),
-			(ProfileCategory::Storage, ProfileLevel::Debug),
+			(ProfilerCategory::Flow, ProfilerLevel::Trace),
+			(ProfilerCategory::Storage, ProfilerLevel::Debug),
 		]);
-		assert_eq!(cfg.categories.level_for(ProfileCategory::Flow), Some(ProfileLevel::Trace));
-		assert_eq!(cfg.categories.level_for(ProfileCategory::Storage), Some(ProfileLevel::Debug));
-		assert_eq!(cfg.categories.level_for(ProfileCategory::Query), None);
+		assert_eq!(cfg.categories.level_for(ProfilerCategory::Flow), Some(ProfilerLevel::Trace));
+		assert_eq!(cfg.categories.level_for(ProfilerCategory::Storage), Some(ProfilerLevel::Debug));
+		assert_eq!(cfg.categories.level_for(ProfilerCategory::Query), None);
 	}
 }

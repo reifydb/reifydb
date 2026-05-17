@@ -1,35 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Multi-row rolling-aggregator authoring surface and FFI driver.
-//!
-//! The chaindex multi-row rolling operators (`top-trader-rolling`,
-//! `volume-profile-rolling`) share the same shape as the single-row
-//! [`super::rolling::RollingOperator`] family: an upstream feeds a buffered
-//! per-`(group, window_key)` map, and the operator re-aggregates the buffer
-//! on every change. The difference is that the rolling re-aggregation
-//! materialises a *set* of output rows per group (one row per ranked trader,
-//! one row per merged histogram bucket, etc.) rather than a single row.
-//!
-//! Hand-rolled, the diff machinery for emitting that set has shipped the
-//! same recurring bugs as the single-row operators - silently dropped
-//! Removes, Update folded twice, buried-window panics - plus an additional
-//! "secondary-key disappears" class: when the previous emit had rank-K
-//! filled but the new emit has only ranks 1..K-1 (e.g. a trader fell out of
-//! the rolling window), the stale rank-K row must be Removed. Forgetting
-//! the Remove is the bug.
-//!
-//! [`MultiRollingOperator`] is the *pure* aggregation surface: extract
-//! event/remove rows, fold per-window, combine the buffer into a
-//! `BTreeMap<SecondaryKey, Output>`. The driver
-//! [`MultiRollingDriver`] handles diff routing, capacity-bound eviction,
-//! buried-window updates, AND the prior-emit-vs-new-emit diff that drives
-//! Insert/Update/Remove batches at the per-`(group, secondary)` row level.
-//!
-//! The trait split mirrors the single-row side: `MultiRollingOperator` for
-//! the math (testable in isolation), [`FFIMultiRollingOperator`] for the
-//! registration shim. Authors implement BOTH in adjacent `impl` blocks.
-
 use std::{
 	collections::{BTreeMap, HashMap},
 	fmt::{self, Debug, Formatter},

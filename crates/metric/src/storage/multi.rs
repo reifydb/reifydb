@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Size of the MVCC version suffix in bytes.
-///
-/// Each versioned key in storage has format: `[escaped_key][terminator][version]`
-/// where terminator is 2 bytes and version is 8 bytes (big-endian u64).
 const MVCC_VERSION_SIZE: usize = 10;
 
 use std::ops::AddAssign;

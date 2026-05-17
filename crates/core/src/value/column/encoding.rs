@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-// Identifier for a column encoding. Canonical encodings (identity wraps) and
-// compressed encoding ids are listed here so they can be referenced from the
-// `ColumnData` trait defaults in reifydb-core. The matching `Encoding` trait
-// implementations live in `reifydb-column`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EncodingId(pub &'static str);
 

@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! `tracing_subscriber::Layer` that drives the profiler. On `on_new_span` for a tracked category it discovers the
-//! ancestor `ScopeId` (from the task-local or the span ancestor chain), stashes a per-span extension carrying the
-//! resolved scope and a category-specific field visitor, and on `on_close` builds a `MinimalSpanRecord` and pushes
-//! it into the scope state. The sink is called per record (lock-free histogram observation) and again at scope
-//! batch / close via the scope itself.
+use std::sync::Arc;
 
-use std::{sync::Arc, time::Instant};
-
+use reifydb_runtime::context::clock::{Clock, Instant};
 use tracing::{
 	Metadata, Subscriber,
 	span::{Attributes, Id, Record},
@@ -18,36 +13,43 @@ use tracing_subscriber::{Layer, layer::Context, registry::LookupSpan};
 
 use crate::{
 	callsite,
-	category::{CategorySet, ProfileCategory},
+	category::{CategorySet, ProfilerCategory},
 	intern::DimInterner,
 	record::{DimIdx, MAX_EXTRAS, MinimalSpanRecord},
-	scope::{ProfileScope, REGISTRY, ScopeState, active_scope},
-	sink::ProfileSink,
+	scope::{ProfilerScope, REGISTRY, ScopeState, active_scope},
+	sink::ProfilerSink,
 	visit::FlowApplyFields,
 };
 
 pub struct ProfilerLayer {
-	sink: Arc<dyn ProfileSink>,
+	sink: Arc<dyn ProfilerSink>,
 	categories: CategorySet,
 	interner: Arc<DimInterner>,
 	ambient_scope: Arc<ScopeState>,
+	clock: Clock,
 }
 
 impl ProfilerLayer {
-	pub fn new(sink: Arc<dyn ProfileSink>, categories: CategorySet, interner: Arc<DimInterner>) -> Self {
-		let ambient_scope = ProfileScope::ambient("profile.global", Arc::clone(&sink));
+	pub fn new(
+		sink: Arc<dyn ProfilerSink>,
+		categories: CategorySet,
+		interner: Arc<DimInterner>,
+		clock: Clock,
+	) -> Self {
+		let ambient_scope = ProfilerScope::ambient("profiler.global", Arc::clone(&sink), &clock);
 		Self {
 			sink,
 			categories,
 			interner,
 			ambient_scope,
+			clock,
 		}
 	}
 }
 
 #[derive(Clone)]
 struct SpanExt {
-	category: ProfileCategory,
+	category: ProfilerCategory,
 	scope: Arc<ScopeState>,
 	callsite_id: u64,
 	started_at: Instant,
@@ -83,7 +85,7 @@ where
 		if !metadata.is_span() {
 			return Interest::never();
 		}
-		let Some(c) = ProfileCategory::from_span_name(metadata.name()) else {
+		let Some(c) = ProfilerCategory::from_span_name(metadata.name()) else {
 			return Interest::never();
 		};
 		let Some(max) = self.categories.level_for(c) else {
@@ -100,7 +102,7 @@ where
 		if !metadata.is_span() {
 			return false;
 		}
-		let Some(c) = ProfileCategory::from_span_name(metadata.name()) else {
+		let Some(c) = ProfilerCategory::from_span_name(metadata.name()) else {
 			return false;
 		};
 		self.categories.level_for(c).map(|max| max.admits(metadata.level())).unwrap_or(false)
@@ -108,7 +110,7 @@ where
 
 	fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
 		let metadata = attrs.metadata();
-		let Some(category) = ProfileCategory::from_span_name(metadata.name()) else {
+		let Some(category) = ProfilerCategory::from_span_name(metadata.name()) else {
 			return;
 		};
 		let level_admitted =
@@ -120,7 +122,7 @@ where
 		let callsite_id = metadata_callsite_id(metadata);
 		callsite::register(callsite_id, metadata.name());
 		let mut flow_fields = None;
-		if category == ProfileCategory::Flow && metadata.name() == "flow::engine::apply" {
+		if category == ProfilerCategory::Flow && metadata.name() == "flow::engine::apply" {
 			let mut v = FlowApplyFields::default();
 			attrs.record(&mut v);
 			flow_fields = Some(v);
@@ -129,7 +131,7 @@ where
 			category,
 			scope,
 			callsite_id,
-			started_at: Instant::now(),
+			started_at: self.clock.instant(),
 			flow_fields,
 		};
 		if let Some(span) = ctx.span(id) {
@@ -142,10 +144,10 @@ where
 			return;
 		};
 		let mut ext = span.extensions_mut();
-		if let Some(entry) = ext.get_mut::<SpanExt>() {
-			if let Some(fields) = entry.flow_fields.as_mut() {
-				values.record(fields);
-			}
+		if let Some(entry) = ext.get_mut::<SpanExt>()
+			&& let Some(fields) = entry.flow_fields.as_mut()
+		{
+			values.record(fields);
 		}
 	}
 
@@ -167,7 +169,7 @@ where
 
 		let mut record = MinimalSpanRecord::new(category, callsite_id, 0);
 		match (category, &flow_fields) {
-			(ProfileCategory::Flow, Some(f)) => {
+			(ProfilerCategory::Flow, Some(f)) => {
 				record.duration_us = u32::try_from(f.apply_time_us).unwrap_or(u32::MAX);
 				let mut dims: [DimIdx; 2] = [0, 0];
 				if !f.node_type.is_empty() {
@@ -199,33 +201,34 @@ where
 mod tests {
 	use std::sync::{Arc, Mutex as StdMutex};
 
+	use reifydb_runtime::context::clock::Clock;
 	use tracing::{debug_span, subscriber::with_default, trace_span};
 	use tracing_subscriber::{Registry, layer::SubscriberExt};
 
 	use super::*;
-	use crate::{category::ProfileLevel, scope::ProfileScope, sink::ProfileSink, summary::ProfileSummary};
+	use crate::{category::ProfilerLevel, scope::ProfilerScope, sink::ProfilerSink, summary::ProfilerSummary};
 
 	#[derive(Default)]
 	struct RecordingSink {
 		records: StdMutex<Vec<MinimalSpanRecord>>,
-		summaries: StdMutex<Vec<ProfileSummary>>,
+		summaries: StdMutex<Vec<ProfilerSummary>>,
 	}
 
-	impl ProfileSink for RecordingSink {
+	impl ProfilerSink for RecordingSink {
 		fn on_span_record(&self, record: &MinimalSpanRecord) {
 			self.records.lock().unwrap().push(*record);
 		}
-		fn on_scope_closed(&self, summary: &ProfileSummary) {
+		fn on_scope_closed(&self, summary: &ProfilerSummary) {
 			self.summaries.lock().unwrap().push(summary.clone());
 		}
-		fn on_scope_batch(&self, summary: &ProfileSummary) {
+		fn on_scope_batch(&self, summary: &ProfilerSummary) {
 			self.summaries.lock().unwrap().push(summary.clone());
 		}
 	}
 
-	fn build_layer(sink: Arc<dyn ProfileSink>, categories: CategorySet) -> (ProfilerLayer, Arc<DimInterner>) {
+	fn build_layer(sink: Arc<dyn ProfilerSink>, categories: CategorySet) -> (ProfilerLayer, Arc<DimInterner>) {
 		let interner = Arc::new(DimInterner::new());
-		(ProfilerLayer::new(sink, categories, interner.clone()), interner)
+		(ProfilerLayer::new(sink, categories, interner.clone(), Clock::Real), interner)
 	}
 
 	#[test]
@@ -244,12 +247,12 @@ mod tests {
 	#[test]
 	fn admits_at_or_below_category_level() {
 		let sink: Arc<RecordingSink> = Arc::new(RecordingSink::default());
-		let categories = CategorySet::empty().with_level(ProfileCategory::Flow, ProfileLevel::Debug);
+		let categories = CategorySet::empty().with_level(ProfilerCategory::Flow, ProfilerLevel::Debug);
 		let (layer, _interner) = build_layer(sink.clone(), categories);
 		let subscriber = Registry::default().with(layer);
 
 		with_default(subscriber, || {
-			let handle = ProfileScope::start_with_sink("scope", sink.clone());
+			let handle = ProfilerScope::start_with_sink("scope", sink.clone(), Clock::Real);
 			handle.run_sync(|| {
 				let trace_span =
 					trace_span!("flow::engine::apply", node_id = "n", node_type = "trace_op");
@@ -272,10 +275,10 @@ mod tests {
 	#[test]
 	fn disabled_category_short_circuits() {
 		let sink: Arc<RecordingSink> = Arc::new(RecordingSink::default());
-		let (layer, _interner) = build_layer(sink.clone(), CategorySet::empty().with(ProfileCategory::Query));
+		let (layer, _interner) = build_layer(sink.clone(), CategorySet::empty().with(ProfilerCategory::Query));
 		let subscriber = Registry::default().with(layer);
 		with_default(subscriber, || {
-			let handle = ProfileScope::start_with_sink("scope", sink.clone());
+			let handle = ProfilerScope::start_with_sink("scope", sink.clone(), Clock::Real);
 			handle.run_sync(|| {
 				let _ = trace_span!("flow::engine::apply", node_id = "n", node_type = "m");
 			});
@@ -290,7 +293,7 @@ mod tests {
 		let (layer, _interner) = build_layer(sink.clone(), CategorySet::all());
 		let subscriber = Registry::default().with(layer);
 		with_default(subscriber, || {
-			let handle = ProfileScope::start_with_sink("scope", sink.clone());
+			let handle = ProfilerScope::start_with_sink("scope", sink.clone(), Clock::Real);
 			handle.run_sync(|| {
 				let span = trace_span!(
 					"flow::engine::apply",
@@ -308,7 +311,7 @@ mod tests {
 		let recs = sink.records.lock().unwrap();
 		assert_eq!(recs.len(), 1);
 		let rec = recs[0];
-		assert_eq!(rec.category(), ProfileCategory::Flow);
+		assert_eq!(rec.category(), ProfilerCategory::Flow);
 		assert_eq!(rec.duration_us, 200);
 		assert_eq!(rec.extras[0], 10);
 		assert_eq!(rec.extras[1], 5);
@@ -321,7 +324,7 @@ mod tests {
 		let (layer, _interner) = build_layer(sink.clone(), CategorySet::all());
 		let subscriber = Registry::default().with(layer);
 		with_default(subscriber, || {
-			let handle = ProfileScope::start_with_sink("scope", sink.clone());
+			let handle = ProfilerScope::start_with_sink("scope", sink.clone(), Clock::Real);
 			handle.run_sync(|| {
 				let outer = debug_span!("flow::engine::process_batch", batch_size = 3u64);
 				let _g = outer.enter();

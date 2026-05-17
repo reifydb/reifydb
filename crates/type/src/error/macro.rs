@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Macro to create an Error from a diagnostic function call
-///
-/// Usage:
-/// - `error!(diagnostic_function(args))` - Creates an error without fragment
-/// - `error!(diagnostic_function(args), fragment)` - Creates an error with fragment
-///
-/// Expands to: `Error(diagnostic_function(args))` or
-/// `Error(diagnostic_function(args).with_fragment(fragment))`
 #[macro_export]
 macro_rules! error {
 	($diagnostic:expr) => {

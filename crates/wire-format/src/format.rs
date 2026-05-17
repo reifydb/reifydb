@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Magic bytes: "RBCF" in ASCII (0x52, 0x42, 0x43, 0x46).
 pub const RBCF_MAGIC: u32 = 0x46434252;
 
 pub const RBCF_VERSION: u16 = 1;

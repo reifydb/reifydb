@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-// This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
-// originally licensed under the Apache License, Version 2.0.
-// Original copyright:
-//   Copyright (c) 2024 Erik Grinaker
-//
-// The original Apache License can be found at:
-//   http://www.apache.org/licenses/LICENSE-2.0
-
 use std::{env::temp_dir, error::Error, fs, io, io::Write as _, panic, path, process, time};
 
 use fs::read_to_string;

@@ -6,10 +6,14 @@ use std::sync::Arc;
 use reifydb_core::{
 	event::{
 		EventBus,
-		metric::{CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, RequestExecutedEvent},
+		metric::{
+			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, ProfilerSnapshotEvent,
+			RequestExecutedEvent,
+		},
 	},
 	util::ioc::IocContainer,
 };
+use reifydb_engine::engine::StandardEngine;
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
@@ -19,10 +23,15 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_type::Result;
+use tracing::warn;
 
 use crate::{
 	actor::MetricCollectorActor,
-	listener::{CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, RequestMetricsEventListener},
+	listener::{
+		CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, ProfilerSnapshotListener,
+		RequestMetricsEventListener,
+	},
+	profiler_vtable::MetricsProfilerCategoriesVTable,
 	subsystem::MetricSubsystem,
 };
 
@@ -68,7 +77,23 @@ impl SubsystemFactory for MetricSubsystemFactory {
 		event_bus.register::<RequestExecutedEvent, _>(RequestMetricsEventListener::new(actor_ref.clone()));
 		event_bus.register::<MultiCommittedEvent, _>(MultiCommittedListener::new(actor_ref.clone()));
 		event_bus.register::<CdcWrittenEvent, _>(CdcWrittenListener::new(actor_ref.clone()));
-		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref));
+		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref.clone()));
+		event_bus.register::<ProfilerSnapshotEvent, _>(ProfilerSnapshotListener::new(actor_ref));
+
+		match ioc.resolve::<StandardEngine>() {
+			Ok(engine) => {
+				engine.register_virtual_table(
+					"system::metrics::profiler",
+					"categories",
+					MetricsProfilerCategoriesVTable::new(),
+				)?;
+			}
+			Err(e) => {
+				warn!(
+					"StandardEngine not available in IoC; profiler categories vtable not registered: {e}"
+				);
+			}
+		}
 
 		Ok(Box::new(MetricSubsystem::new()))
 	}

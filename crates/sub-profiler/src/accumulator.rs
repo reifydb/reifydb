@@ -1,28 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Transient bounded HashMap of per-(category, callsite, dimensions) folded aggregates. Single-writer
-//! (`ProfileCollectorActor`); the metric subsystem reads or drains this on its own cadence and is responsible for
-//! long-term storage. Eviction (approximate LFU) protects against high-cardinality dimension explosions; it is not
-//! a retention policy. Records carry interned dimension indices that get resolved to strings only at read time.
-
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
 use reifydb_profiler::{
-	category::ProfileCategory,
+	category::ProfilerCategory,
 	intern::DimInterner,
 	percentile::PercentileHistogram,
 	record::{AggregateRecord, MAX_EXTRAS, SpanIdent},
 };
 
-pub struct ProfileAccumulator {
+use crate::histograms::{PROFILER_ACCUMULATOR_CAPACITY, PROFILER_ACCUMULATOR_EVICTIONS, PROFILER_ACCUMULATOR_SIZE};
+
+pub struct ProfilerAccumulator {
 	records: HashMap<SpanIdent, AggregateRecord>,
 	capacity: usize,
 	min_calls_for_retention: u64,
 }
 
-impl ProfileAccumulator {
+impl ProfilerAccumulator {
 	pub fn new(capacity: usize, min_calls_for_retention: u64) -> Self {
+		PROFILER_ACCUMULATOR_CAPACITY.set(capacity as f64);
 		Self {
 			records: HashMap::with_capacity(capacity.min(4096)),
 			capacity,
@@ -56,9 +54,10 @@ impl ProfileAccumulator {
 		};
 		new_record.fold(duration_us, extras);
 		self.records.insert(ident, new_record);
+		PROFILER_ACCUMULATOR_SIZE.set(self.records.len() as f64);
 	}
 
-	pub fn top_n(&self, category: ProfileCategory, n: usize) -> Vec<AggregateRecord> {
+	pub fn top_n(&self, category: ProfilerCategory, n: usize) -> Vec<AggregateRecord> {
 		let mut filtered: Vec<&AggregateRecord> =
 			self.records.values().filter(|r| r.category == category).collect();
 		filtered.sort_by(|a, b| b.total_us.cmp(&a.total_us));
@@ -81,6 +80,14 @@ impl ProfileAccumulator {
 		self.records.clear();
 	}
 
+	pub fn drain(&mut self) -> Vec<AggregateRecord> {
+		mem::take(&mut self.records).into_values().collect()
+	}
+
+	pub fn snapshot(&self) -> Vec<AggregateRecord> {
+		self.records.values().cloned().collect()
+	}
+
 	fn evict_lfu(&mut self) {
 		let mut victim: Option<(SpanIdent, u64)> = None;
 		for (ident, record) in &self.records {
@@ -96,10 +103,12 @@ impl ProfileAccumulator {
 		}
 		if let Some((ident, _)) = victim {
 			self.records.remove(&ident);
+			PROFILER_ACCUMULATOR_EVICTIONS.inc();
 		} else if let Some((ident, _)) =
 			self.records.iter().min_by_key(|(_, r)| r.calls).map(|(k, v)| (*k, v.calls))
 		{
 			self.records.remove(&ident);
+			PROFILER_ACCUMULATOR_EVICTIONS.inc();
 		}
 	}
 }
@@ -125,15 +134,15 @@ mod tests {
 
 	use super::*;
 
-	fn make_ident(category: ProfileCategory, callsite: u64) -> SpanIdent {
+	fn make_ident(category: ProfilerCategory, callsite: u64) -> SpanIdent {
 		SpanIdent::new(category, callsite, [DIM_UNSET; 2])
 	}
 
 	#[test]
 	fn upsert_folds_repeats() {
 		let interner = DimInterner::new();
-		let mut acc = ProfileAccumulator::new(8, 0);
-		let ident = make_ident(ProfileCategory::Query, 1);
+		let mut acc = ProfilerAccumulator::new(8, 0);
+		let ident = make_ident(ProfilerCategory::Query, 1);
 		acc.upsert(ident, "vm::execute", 100, &[0; MAX_EXTRAS], &interner);
 		acc.upsert(ident, "vm::execute", 50, &[0; MAX_EXTRAS], &interner);
 		acc.upsert(ident, "vm::execute", 200, &[0; MAX_EXTRAS], &interner);
@@ -147,9 +156,9 @@ mod tests {
 	#[test]
 	fn capacity_cap_triggers_eviction() {
 		let interner = DimInterner::new();
-		let mut acc = ProfileAccumulator::new(2, 0);
+		let mut acc = ProfilerAccumulator::new(2, 0);
 		for i in 1..=3 {
-			let ident = make_ident(ProfileCategory::Storage, i);
+			let ident = make_ident(ProfilerCategory::Storage, i);
 			acc.upsert(ident, "store::single::get", 10, &[0; MAX_EXTRAS], &interner);
 		}
 		assert!(acc.len() <= 2);
@@ -158,14 +167,14 @@ mod tests {
 	#[test]
 	fn top_n_orders_by_total_us() {
 		let interner = DimInterner::new();
-		let mut acc = ProfileAccumulator::new(8, 0);
-		let a = make_ident(ProfileCategory::Flow, 1);
-		let b = make_ident(ProfileCategory::Flow, 2);
+		let mut acc = ProfilerAccumulator::new(8, 0);
+		let a = make_ident(ProfilerCategory::Flow, 1);
+		let b = make_ident(ProfilerCategory::Flow, 2);
 		acc.upsert(a, "flow::engine::apply", 100, &[0; MAX_EXTRAS], &interner);
 		acc.upsert(a, "flow::engine::apply", 100, &[0; MAX_EXTRAS], &interner);
 		acc.upsert(b, "flow::engine::apply", 500, &[0; MAX_EXTRAS], &interner);
 
-		let top = acc.top_n(ProfileCategory::Flow, 5);
+		let top = acc.top_n(ProfilerCategory::Flow, 5);
 		assert_eq!(top.len(), 2);
 		assert_eq!(top[0].total_us, 500);
 		assert_eq!(top[1].total_us, 200);

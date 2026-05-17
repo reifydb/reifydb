@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Filter for matching entities by namespace and name.
-///
-/// Supports patterns like:
-/// - `"namespace.table"` - exact match
-/// - `"namespace.*"` - all entities in namespace
-/// - `"*.table"` - entity name in any namespace
-/// - `"*"` - match all (wildcard)
 #[derive(Debug, Clone)]
 pub struct InterceptFilter {
 	pub namespace: Option<String>,

@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Non-inverting varint decoders used ONLY by the keycode codec in `super` (`mod.rs`).
-//!
-//! These read raw varint bytes. The public order-preserving decoders in
-//! `super::decode_u64_varint` / `super::decode_i64_varint` un-invert the on-disk
-//! bytes first, then delegate here. Do not call these helpers directly from
-//! outside the `keycode` module.
-
 pub(super) fn decode_u64_varint(input: &mut &[u8]) -> Option<u64> {
 	if input.is_empty() {
 		return None;

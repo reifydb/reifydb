@@ -3,6 +3,8 @@
 
 use std::{path::PathBuf, sync::Arc};
 
+#[cfg(feature = "sub_profiler")]
+use parking_lot::RwLock;
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
 use reifydb_core::interface::catalog::config::ConfigKey;
@@ -13,10 +15,10 @@ use reifydb_metric::{
 };
 #[cfg(feature = "sub_profiler")]
 use reifydb_profiler::{
-	event::{ProfileScopeBatchEvent, ProfileScopeClosedEvent},
+	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
 	intern::DimInterner,
 	layer::ProfilerLayer,
-	sink::{NoopSink, ProfileSink},
+	sink::{NoopSink, ProfilerSink},
 };
 use reifydb_routine::routine::registry::RoutinesConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
@@ -30,11 +32,11 @@ use reifydb_sub_flow::builder::FlowConfigurator;
 use reifydb_sub_metric::{factory::MetricSubsystemFactory, interceptor::RequestMetricsInterceptor};
 #[cfg(feature = "sub_profiler")]
 use reifydb_sub_profiler::{
-	accumulator::ProfileAccumulator,
-	actor::ProfileCollectorActor,
+	accumulator::ProfilerAccumulator,
+	actor::ProfilerCollectorActor,
 	builder::ProfilerConfigurator,
 	factory::ProfilerSubsystemFactory,
-	listener::{ProfileScopeBatchListener, ProfileScopeClosedListener},
+	listener::{ProfilerScopeBatchListener, ProfilerScopeClosedListener},
 	sink::EventBusSink,
 	subsystem::ProfilerSubsystem,
 };
@@ -398,26 +400,32 @@ impl ServerBuilder {
 		let profiler_layer: Option<ProfilerLayer> = if let Some(configurator_fn) = self.profiler_configurator.take() {
 			let cfg = configurator_fn(ProfilerConfigurator::new());
 			let interner = Arc::new(DimInterner::new());
-			let accumulator = Arc::new(parking_lot::RwLock::new(ProfileAccumulator::new(
+			let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(
 				cfg.accumulator_capacity,
 				cfg.min_calls_for_retention,
 			)));
-			let sink: Arc<dyn ProfileSink> = if cfg.enabled {
-				let actor = ProfileCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
+			let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
+				let actor = ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
 				let handle = runtime.actor_system().spawn_system("profile-collector", actor);
 				let actor_ref = handle.actor_ref().clone();
-				eventbus.register::<ProfileScopeClosedEvent, _>(ProfileScopeClosedListener::new(
+				eventbus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
 					actor_ref.clone(),
 				));
-				eventbus.register::<ProfileScopeBatchEvent, _>(ProfileScopeBatchListener::new(
+				eventbus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
 					actor_ref,
 				));
 				Arc::new(EventBusSink::new(eventbus.clone()))
 			} else {
 				Arc::new(NoopSink)
 			};
-			let subsystem =
-				ProfilerSubsystem::new(cfg.enabled, cfg.categories, interner, accumulator, sink);
+			let subsystem = ProfilerSubsystem::new(
+				cfg.enabled,
+				cfg.categories,
+				interner,
+				accumulator,
+				sink,
+				runtime.clock().clone(),
+			);
 			let layer = subsystem.layer();
 			database_builder = database_builder
 				.add_subsystem_factory(Box::new(ProfilerSubsystemFactory::with_subsystem(subsystem)));

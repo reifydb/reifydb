@@ -41,6 +41,7 @@ pub mod binding;
 pub mod identity;
 pub mod metric;
 pub mod procedure;
+pub mod profiler;
 
 pub fn bootstrap_system_objects(
 	multi: &MultiTransaction,
@@ -52,6 +53,8 @@ pub fn bootstrap_system_objects(
 	procedure::bootstrap_system_procedures(multi, single, catalog, eventbus)?;
 	binding::bootstrap_system_bindings(multi, single, catalog, eventbus)?;
 	metric::bootstrap_metric_ringbuffers(multi, single, catalog, eventbus)?;
+	profiler::bootstrap_profiler(multi, single, catalog, eventbus)?;
+	load_catalog_cache(multi, single, catalog)?;
 	Ok(())
 }
 

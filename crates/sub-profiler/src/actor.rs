@@ -1,54 +1,49 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Single-writer actor that owns the deep-dive store and processes profile events off the worker threads. The layer
-//! observes histograms and pushes records into the shared scope state on the hot path; the sink emits one event per
-//! scope close. This actor consumes those events and folds records into the `ProfileAccumulator` (a transient
-//! in-memory buffer; long-term storage is the metric subsystem's responsibility).
-
 use std::sync::Arc;
 
 use parking_lot::RwLock;
 use reifydb_profiler::{
 	callsite,
-	category::{ProfileCategory, ProfileCategory::*},
+	category::{ProfilerCategory, ProfilerCategory::*},
 	intern::DimInterner,
 	record::{MAX_EXTRAS, MinimalSpanRecord, SpanIdent},
-	summary::ProfileSummary,
+	summary::ProfilerSummary,
 };
 use reifydb_runtime::actor::{
 	context::Context,
 	traits::{Actor, Directive},
 };
 
-use crate::{accumulator::ProfileAccumulator, histograms::histogram_for};
+use crate::{accumulator::ProfilerAccumulator, histograms::histogram_for};
 
 #[derive(Clone, Debug)]
 pub enum ProfilerMessage {
-	ScopeClosed(Arc<ProfileSummary>),
-	ScopeBatch(Arc<ProfileSummary>),
+	ScopeClosed(Arc<ProfilerSummary>),
+	ScopeBatch(Arc<ProfilerSummary>),
 }
 
-pub struct ProfileCollectorActor {
-	accumulator: Arc<RwLock<ProfileAccumulator>>,
+pub struct ProfilerCollectorActor {
+	accumulator: Arc<RwLock<ProfilerAccumulator>>,
 	interner: Arc<DimInterner>,
 }
 
-pub struct ProfileActorState {
+pub struct ProfilerActorState {
 	processed_summaries: u64,
 	processed_batches: u64,
 	processed_records: u64,
 }
 
-impl ProfileCollectorActor {
-	pub fn new(accumulator: Arc<RwLock<ProfileAccumulator>>, interner: Arc<DimInterner>) -> Self {
+impl ProfilerCollectorActor {
+	pub fn new(accumulator: Arc<RwLock<ProfilerAccumulator>>, interner: Arc<DimInterner>) -> Self {
 		Self {
 			accumulator,
 			interner,
 		}
 	}
 
-	fn apply_summary(&self, summary: &ProfileSummary, state: &mut ProfileActorState) {
+	fn apply_summary(&self, summary: &ProfilerSummary, state: &mut ProfilerActorState) {
 		let mut acc = self.accumulator.write();
 		for record in &summary.records {
 			let category = record.category();
@@ -61,7 +56,7 @@ impl ProfileCollectorActor {
 	}
 }
 
-fn span_name_for(category: ProfileCategory) -> &'static str {
+fn span_name_for(category: ProfilerCategory) -> &'static str {
 	match category {
 		Query => "query",
 		Txn => "txn",
@@ -72,12 +67,12 @@ fn span_name_for(category: ProfileCategory) -> &'static str {
 	}
 }
 
-impl Actor for ProfileCollectorActor {
+impl Actor for ProfilerCollectorActor {
 	type Message = ProfilerMessage;
-	type State = ProfileActorState;
+	type State = ProfilerActorState;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
-		ProfileActorState {
+		ProfilerActorState {
 			processed_summaries: 0,
 			processed_batches: 0,
 			processed_records: 0,

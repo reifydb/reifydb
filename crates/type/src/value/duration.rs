@@ -89,6 +89,22 @@ impl Duration {
 		Self::normalized(0, 0, microseconds * 1_000)
 	}
 
+	pub fn from_micros_infallible(microseconds: u64) -> Self {
+		const US_PER_DAY: u64 = 86_400_000_000;
+		let whole_days = microseconds / US_PER_DAY;
+		let remainder_us = microseconds % US_PER_DAY;
+		let days = if whole_days > i32::MAX as u64 {
+			i32::MAX
+		} else {
+			whole_days as i32
+		};
+		Self {
+			months: 0,
+			days,
+			nanos: (remainder_us * 1_000) as i64,
+		}
+	}
+
 	pub fn from_nanoseconds(nanoseconds: i64) -> Result<Self, Box<TypeError>> {
 		Self::normalized(0, 0, nanoseconds)
 	}

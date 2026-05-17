@@ -2831,6 +2831,7 @@ dependencies = [
  "parking_lot",
  "paste",
  "reifydb-core",
+ "reifydb-runtime",
  "reifydb-testing",
  "reifydb-type",
  "serde",
@@ -3062,8 +3063,10 @@ version = "0.5.6"
 dependencies = [
  "crossbeam-channel",
  "futures-util",
+ "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
+ "reifydb-engine",
  "reifydb-extension",
  "reifydb-metric",
  "reifydb-routine",
@@ -3086,7 +3089,9 @@ name = "reifydb-sub-profiler"
 version = "0.5.6"
 dependencies = [
  "parking_lot",
+ "reifydb-catalog",
  "reifydb-core",
+ "reifydb-engine",
  "reifydb-metric",
  "reifydb-profiler",
  "reifydb-runtime",

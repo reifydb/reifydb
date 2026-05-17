@@ -3,10 +3,11 @@
 
 use std::sync::Arc;
 
+use reifydb_type::value::duration::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	category::ProfileCategory,
+	category::ProfilerCategory,
 	intern::DimInterner,
 	record::{MAX_EXTRAS, MinimalSpanRecord},
 	scope::ScopeId,
@@ -32,14 +33,30 @@ impl CategorySummary {
 		if duration_us > self.max_us {
 			self.max_us = duration_us;
 		}
-		for i in 0..MAX_EXTRAS {
-			self.extras_sum[i] = self.extras_sum[i].saturating_add(extras[i]);
+		for (i, &extra) in extras.iter().enumerate() {
+			self.extras_sum[i] = self.extras_sum[i].saturating_add(extra);
 		}
+	}
+
+	pub fn total(&self) -> Duration {
+		Duration::from_micros_infallible(self.total_us)
+	}
+
+	pub fn min(&self) -> Duration {
+		Duration::from_micros_infallible(self.min_us as u64)
+	}
+
+	pub fn max(&self) -> Duration {
+		Duration::from_micros_infallible(self.max_us as u64)
+	}
+
+	pub fn extras(&self) -> &[u64; MAX_EXTRAS] {
+		&self.extras_sum
 	}
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ProfileSummary {
+pub struct ProfilerSummary {
 	pub scope_id: ScopeId,
 	pub scope_name: &'static str,
 	pub started_at_nanos: u128,
@@ -50,8 +67,8 @@ pub struct ProfileSummary {
 	pub interner: Option<Arc<DimInterner>>,
 }
 
-impl ProfileSummary {
-	pub fn category(&self, c: ProfileCategory) -> CategorySummary {
+impl ProfilerSummary {
+	pub fn category(&self, c: ProfilerCategory) -> CategorySummary {
 		self.per_category[c as usize]
 	}
 
@@ -85,8 +102,8 @@ impl ProfileSummary {
 		}
 	}
 
-	pub fn flow_category() -> ProfileCategory {
-		ProfileCategory::Flow
+	pub fn flow_category() -> ProfilerCategory {
+		ProfilerCategory::Flow
 	}
 }
 
@@ -111,15 +128,15 @@ mod tests {
 	#[test]
 	fn summary_from_records_aggregates_per_category() {
 		let records = vec![
-			MinimalSpanRecord::new(ProfileCategory::Flow, 1, 100).with_extras([10, 20, 0, 0]),
-			MinimalSpanRecord::new(ProfileCategory::Flow, 2, 50).with_extras([5, 10, 0, 0]),
-			MinimalSpanRecord::new(ProfileCategory::Query, 3, 30),
+			MinimalSpanRecord::new(ProfilerCategory::Flow, 1, 100).with_extras([10, 20, 0, 0]),
+			MinimalSpanRecord::new(ProfilerCategory::Flow, 2, 50).with_extras([5, 10, 0, 0]),
+			MinimalSpanRecord::new(ProfilerCategory::Query, 3, 30),
 		];
-		let summary = ProfileSummary::from_records(ScopeId(7), "test", 0, 1000, records, None);
-		assert_eq!(summary.category(ProfileCategory::Flow).calls, 2);
-		assert_eq!(summary.category(ProfileCategory::Flow).total_us, 150);
-		assert_eq!(summary.category(ProfileCategory::Query).calls, 1);
-		assert_eq!(summary.category(ProfileCategory::Storage).calls, 0);
+		let summary = ProfilerSummary::from_records(ScopeId(7), "test", 0, 1000, records, None);
+		assert_eq!(summary.category(ProfilerCategory::Flow).calls, 2);
+		assert_eq!(summary.category(ProfilerCategory::Flow).total_us, 150);
+		assert_eq!(summary.category(ProfilerCategory::Query).calls, 1);
+		assert_eq!(summary.category(ProfilerCategory::Storage).calls, 0);
 		assert_eq!(summary.total_calls(), 3);
 	}
 

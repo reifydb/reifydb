@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 #[allow(unused_imports)]
-use std::{collections::HashSet, mem, sync::Arc, time::Duration as StdDuration};
+use std::{collections::HashMap, collections::HashSet, mem, sync::Arc, time::Duration as StdDuration};
 
 use reifydb_core::{
 	actors::metric::MetricMessage,
@@ -12,7 +12,7 @@ use reifydb_core::{
 		EventBus,
 		metric::{
 			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiDelete, MultiDrop, MultiWrite,
-			RequestExecutedEvent,
+			ProfilerSnapshotEvent, RequestExecutedEvent,
 		},
 		store::StatsProcessedEvent,
 	},
@@ -20,6 +20,7 @@ use reifydb_core::{
 		catalog::ringbuffer::RingBuffer,
 		store::{MultiVersionGetPrevious, Tier},
 	},
+	profiler::ProfilerCategoryId,
 };
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
@@ -34,6 +35,8 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_type::value::datetime::DateTime;
 use tracing::{error, trace};
+
+use crate::profiler_gauges;
 
 #[allow(dead_code)]
 pub struct MetricCollectorActor {
@@ -143,6 +146,51 @@ impl MetricCollectorActor {
 		}
 		advance_max_version(&mut state.max_version, version);
 	}
+
+	fn process_profile_snapshot(&self, event: ProfilerSnapshotEvent) {
+		#[derive(Default)]
+		struct CategoryRollup {
+			calls: u64,
+			p50: u32,
+			p75: u32,
+			p90: u32,
+			p95: u32,
+			p99: u32,
+		}
+		let rows = event.rows();
+		let mut by_category: HashMap<u8, CategoryRollup> = HashMap::new();
+		for row in rows {
+			let entry = by_category.entry(row.category.0).or_default();
+			entry.calls = entry.calls.saturating_add(row.calls);
+			if row.p50_us > entry.p50 {
+				entry.p50 = row.p50_us;
+			}
+			if row.p75_us > entry.p75 {
+				entry.p75 = row.p75_us;
+			}
+			if row.p90_us > entry.p90 {
+				entry.p90 = row.p90_us;
+			}
+			if row.p95_us > entry.p95 {
+				entry.p95 = row.p95_us;
+			}
+			if row.p99_us > entry.p99 {
+				entry.p99 = row.p99_us;
+			}
+		}
+		for (cat_byte, rollup) in by_category {
+			let cat_id = ProfilerCategoryId(cat_byte);
+			profiler_gauges::ensure_registered(&self.registry, cat_id);
+			if let Some(g) = profiler_gauges::gauges_for(cat_id) {
+				g.calls.set(rollup.calls as f64);
+				g.p50.set(rollup.p50 as f64);
+				g.p75.set(rollup.p75 as f64);
+				g.p90.set(rollup.p90 as f64);
+				g.p95.set(rollup.p95 as f64);
+				g.p99.set(rollup.p99 as f64);
+			}
+		}
+	}
 }
 
 #[inline]
@@ -209,6 +257,7 @@ impl Actor for MetricCollectorActor {
 			MetricMessage::MultiCommitted(event) => self.process_multi_committed(state, event),
 			MetricMessage::CdcWritten(event) => self.process_cdc_written(state, event),
 			MetricMessage::CdcEvicted(event) => self.process_cdc_evicted(state, event),
+			MetricMessage::ProfilerSnapshot(event) => self.process_profile_snapshot(event),
 		}
 		Directive::Continue
 	}

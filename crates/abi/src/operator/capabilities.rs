@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Capability: Operator can process inserts
 pub const CAPABILITY_INSERT: u32 = 1 << 0;
 
 pub const CAPABILITY_UPDATE: u32 = 1 << 1;

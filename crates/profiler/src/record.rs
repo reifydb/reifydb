@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::profile::ProfileCategoryId;
+use reifydb_core::profiler::ProfilerCategoryId;
+use reifydb_type::value::duration::Duration;
 use serde::{Deserialize, Serialize};
 
-use crate::{category::ProfileCategory, percentile::PercentileHistogram};
+use crate::{
+	category::ProfilerCategory,
+	percentile::{PercentileHistogram, ProfilerPercentiles},
+};
 
 pub type DimIdx = u32;
 pub const DIM_UNSET: DimIdx = 0;
@@ -22,7 +26,7 @@ pub struct MinimalSpanRecord {
 }
 
 impl MinimalSpanRecord {
-	pub const fn new(category: ProfileCategory, callsite_id: u64, duration_us: u32) -> Self {
+	pub const fn new(category: ProfilerCategory, callsite_id: u64, duration_us: u32) -> Self {
 		Self {
 			category_id: category as u8,
 			callsite_id,
@@ -42,21 +46,21 @@ impl MinimalSpanRecord {
 		self
 	}
 
-	pub fn category(&self) -> ProfileCategory {
-		ProfileCategory::from_id(ProfileCategoryId(self.category_id))
-			.expect("MinimalSpanRecord must hold a valid ProfileCategory id")
+	pub fn category(&self) -> ProfilerCategory {
+		ProfilerCategory::from_id(ProfilerCategoryId(self.category_id))
+			.expect("MinimalSpanRecord must hold a valid ProfilerCategory id")
 	}
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct SpanIdent {
-	pub category: ProfileCategory,
+	pub category: ProfilerCategory,
 	pub callsite_id: u64,
 	pub dim_indices: [DimIdx; MAX_DIMENSIONS],
 }
 
 impl SpanIdent {
-	pub const fn new(category: ProfileCategory, callsite_id: u64, dim_indices: [DimIdx; MAX_DIMENSIONS]) -> Self {
+	pub const fn new(category: ProfilerCategory, callsite_id: u64, dim_indices: [DimIdx; MAX_DIMENSIONS]) -> Self {
 		Self {
 			category,
 			callsite_id,
@@ -67,7 +71,7 @@ impl SpanIdent {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AggregateRecord {
-	pub category: ProfileCategory,
+	pub category: ProfilerCategory,
 	pub span_name: String,
 	pub dimensions: Vec<String>,
 	pub calls: u64,
@@ -81,9 +85,29 @@ impl AggregateRecord {
 		self.calls = self.calls.saturating_add(1);
 		self.total_us = self.total_us.saturating_add(duration_us as u64);
 		self.histogram.observe(duration_us);
-		for i in 0..MAX_EXTRAS {
-			self.extras_sum[i] = self.extras_sum[i].saturating_add(extras[i]);
+		for (i, &extra) in extras.iter().enumerate() {
+			self.extras_sum[i] = self.extras_sum[i].saturating_add(extra);
 		}
+	}
+
+	pub fn total(&self) -> Duration {
+		Duration::from_micros_infallible(self.total_us)
+	}
+
+	pub fn min(&self) -> Duration {
+		Duration::from_micros_infallible(self.histogram.percentile(0.0) as u64)
+	}
+
+	pub fn max(&self) -> Duration {
+		Duration::from_micros_infallible(self.histogram.percentile(1.0) as u64)
+	}
+
+	pub fn percentiles(&self) -> ProfilerPercentiles {
+		self.histogram.percentiles_duration()
+	}
+
+	pub fn extras(&self) -> &[u64; MAX_EXTRAS] {
+		&self.extras_sum
 	}
 }
 
@@ -102,7 +126,7 @@ mod tests {
 	#[test]
 	fn aggregate_fold_tracks_calls_and_distribution() {
 		let mut agg = AggregateRecord {
-			category: ProfileCategory::Flow,
+			category: ProfilerCategory::Flow,
 			span_name: "flow::engine::apply".to_string(),
 			dimensions: vec!["map".to_string(), "n1".to_string()],
 			calls: 0,

@@ -11,20 +11,22 @@ use std::{
 
 use parking_lot::RwLock;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_profiler::{category::CategorySet, intern::DimInterner, layer::ProfilerLayer, sink::ProfileSink};
+use reifydb_profiler::{category::CategorySet, intern::DimInterner, layer::ProfilerLayer, sink::ProfilerSink};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
 use tracing::{info, instrument};
 
-use crate::{accumulator::ProfileAccumulator, histograms, reader::ProfilerReader};
+use crate::{accumulator::ProfilerAccumulator, histograms, reader::ProfilerReader};
 
 pub struct ProfilerSubsystem {
 	running: AtomicBool,
 	enabled: bool,
 	categories: CategorySet,
 	interner: Arc<DimInterner>,
-	accumulator: Arc<RwLock<ProfileAccumulator>>,
-	sink: Arc<dyn ProfileSink>,
+	accumulator: Arc<RwLock<ProfilerAccumulator>>,
+	sink: Arc<dyn ProfilerSink>,
+	clock: Clock,
 }
 
 impl ProfilerSubsystem {
@@ -32,8 +34,9 @@ impl ProfilerSubsystem {
 		enabled: bool,
 		categories: CategorySet,
 		interner: Arc<DimInterner>,
-		accumulator: Arc<RwLock<ProfileAccumulator>>,
-		sink: Arc<dyn ProfileSink>,
+		accumulator: Arc<RwLock<ProfilerAccumulator>>,
+		sink: Arc<dyn ProfilerSink>,
+		clock: Clock,
 	) -> Self {
 		Self {
 			running: AtomicBool::new(false),
@@ -42,11 +45,17 @@ impl ProfilerSubsystem {
 			interner,
 			accumulator,
 			sink,
+			clock,
 		}
 	}
 
 	pub fn layer(&self) -> ProfilerLayer {
-		ProfilerLayer::new(Arc::clone(&self.sink), self.categories, Arc::clone(&self.interner))
+		ProfilerLayer::new(
+			Arc::clone(&self.sink),
+			self.categories,
+			Arc::clone(&self.interner),
+			self.clock.clone(),
+		)
 	}
 
 	pub fn reader(&self) -> ProfilerReader {
@@ -61,7 +70,7 @@ impl ProfilerSubsystem {
 		Arc::clone(&self.interner)
 	}
 
-	pub fn accumulator(&self) -> Arc<RwLock<ProfileAccumulator>> {
+	pub fn accumulator(&self) -> Arc<RwLock<ProfilerAccumulator>> {
 		Arc::clone(&self.accumulator)
 	}
 }

@@ -1,26 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Human-readable summary formatters. Two entry points:
-//!
-//! - `summary` produces the byte-identical one-line output that chaindex's `commit-profiler` used. The line is the
-//!   public contract for chaindex's bulk-commit log scraping and stays stable.
-//! - `summary_table` produces a multi-line aligned table for ad-hoc human inspection - not for log lines.
-//!
-//! Both resolve operator dimension labels (`node_type`/`node_id` for Flow records) via the optional `DimInterner`
-//! carried on `ProfileSummary`. When the interner is absent or the index is uninterned, labels fall back to `?`
-//! plus the dimension index for visibility.
-
 use std::{cmp::Reverse, collections::HashMap, fmt::Write};
 
 use crate::{
-	category::{ALL_CATEGORIES, ProfileCategory},
+	category::{ALL_CATEGORIES, ProfilerCategory},
 	intern::DimInterner,
 	record::{AggregateRecord, DimIdx},
-	summary::ProfileSummary,
+	summary::ProfilerSummary,
 };
 
-pub fn summary(summary: &ProfileSummary, top_n: usize) -> String {
+pub fn summary(summary: &ProfilerSummary, top_n: usize) -> String {
 	let (totals, mut hot) = flow_aggregates(summary);
 
 	let mut out = format!(
@@ -55,7 +45,7 @@ pub fn summary(summary: &ProfileSummary, top_n: usize) -> String {
 	out
 }
 
-pub fn summary_table(summary: &ProfileSummary, top_n: usize) -> String {
+pub fn summary_table(summary: &ProfilerSummary, top_n: usize) -> String {
 	let mut out = String::new();
 	let _ = writeln!(out, "profile scope={} total={}", summary.scope_name, fmt_us(summary.total_duration_us));
 
@@ -66,7 +56,7 @@ pub fn summary_table(summary: &ProfileSummary, top_n: usize) -> String {
 		}
 
 		match cat {
-			ProfileCategory::Flow => {
+			ProfilerCategory::Flow => {
 				let _ = writeln!(
 					out,
 					"  {}: {} calls, apply={}, lock={}",
@@ -230,12 +220,12 @@ struct HotEntry {
 
 type FlowKey = (DimIdx, DimIdx);
 
-fn flow_aggregates(summary: &ProfileSummary) -> (FlowTotals, Vec<(FlowKey, HotEntry)>) {
+fn flow_aggregates(summary: &ProfilerSummary) -> (FlowTotals, Vec<(FlowKey, HotEntry)>) {
 	let mut totals = FlowTotals::default();
 	let mut aggregates: HashMap<FlowKey, HotEntry> = HashMap::new();
 
 	for r in &summary.records {
-		if r.category_id != ProfileCategory::Flow as u8 {
+		if r.category_id != ProfilerCategory::Flow as u8 {
 			continue;
 		}
 		let is_apply = r.dim_indices[0] != 0 || r.dim_indices[1] != 0;
@@ -258,7 +248,7 @@ fn flow_aggregates(summary: &ProfileSummary) -> (FlowTotals, Vec<(FlowKey, HotEn
 	(totals, aggregates.into_iter().collect())
 }
 
-fn render_flow_rows(out: &mut String, summary: &ProfileSummary, top_n: usize) {
+fn render_flow_rows(out: &mut String, summary: &ProfilerSummary, top_n: usize) {
 	let (_, mut hot) = flow_aggregates(summary);
 	hot.sort_by(|a, b| b.1.apply_us.cmp(&a.1.apply_us));
 	hot.truncate(top_n);
@@ -292,7 +282,7 @@ fn render_flow_rows(out: &mut String, summary: &ProfileSummary, top_n: usize) {
 	}
 }
 
-fn render_non_flow_rows(out: &mut String, summary: &ProfileSummary, cat: ProfileCategory, top_n: usize) {
+fn render_non_flow_rows(out: &mut String, summary: &ProfilerSummary, cat: ProfilerCategory, top_n: usize) {
 	let mut agg: HashMap<u64, (u64, u64)> = HashMap::new();
 	for r in &summary.records {
 		if r.category_id != cat as u8 {
@@ -337,14 +327,14 @@ fn resolve_id(interner: Option<&DimInterner>, idx: DimIdx) -> String {
 	interner.and_then(|i| i.resolve(idx)).filter(|s| !s.is_empty()).unwrap_or_else(|| idx.to_string())
 }
 
-fn category_label(c: ProfileCategory) -> &'static str {
+fn category_label(c: ProfilerCategory) -> &'static str {
 	match c {
-		ProfileCategory::Query => "Query",
-		ProfileCategory::Txn => "Txn",
-		ProfileCategory::Storage => "Storage",
-		ProfileCategory::Plan => "Plan",
-		ProfileCategory::Cdc => "Cdc",
-		ProfileCategory::Flow => "Flow",
+		ProfilerCategory::Query => "Query",
+		ProfilerCategory::Txn => "Txn",
+		ProfilerCategory::Storage => "Storage",
+		ProfilerCategory::Plan => "Plan",
+		ProfilerCategory::Cdc => "Cdc",
+		ProfilerCategory::Flow => "Flow",
 	}
 }
 
@@ -354,7 +344,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		category::ProfileCategory,
+		category::ProfilerCategory,
 		intern::DimInterner,
 		percentile::PercentileHistogram,
 		record::{AggregateRecord, DIM_UNSET, MAX_EXTRAS, MinimalSpanRecord},
@@ -362,8 +352,8 @@ mod tests {
 		summary::CategorySummary,
 	};
 
-	fn empty_summary() -> ProfileSummary {
-		ProfileSummary {
+	fn empty_summary() -> ProfilerSummary {
+		ProfilerSummary {
 			scope_id: ScopeId(1),
 			scope_name: "x",
 			started_at_nanos: 0,
@@ -374,8 +364,8 @@ mod tests {
 		}
 	}
 
-	fn summary_with(records: Vec<MinimalSpanRecord>, interner: Option<Arc<DimInterner>>) -> ProfileSummary {
-		ProfileSummary::from_records(ScopeId(1), "chaindex.batch_commit", 0, 12_345, records, interner)
+	fn summary_with(records: Vec<MinimalSpanRecord>, interner: Option<Arc<DimInterner>>) -> ProfilerSummary {
+		ProfilerSummary::from_records(ScopeId(1), "chaindex.batch_commit", 0, 12_345, records, interner)
 	}
 
 	#[test]
@@ -390,7 +380,7 @@ mod tests {
 		let type_idx = interner.intern("map");
 		let id_idx = interner.intern("n1");
 
-		let apply_rec = MinimalSpanRecord::new(ProfileCategory::Flow, 100, 500)
+		let apply_rec = MinimalSpanRecord::new(ProfilerCategory::Flow, 100, 500)
 			.with_dimensions([type_idx, id_idx])
 			.with_extras([10, 7, 50, 0]);
 		let s = summary_with(vec![apply_rec], Some(Arc::clone(&interner)));
@@ -401,7 +391,7 @@ mod tests {
 
 	#[test]
 	fn summary_falls_back_to_placeholder_when_interner_missing() {
-		let apply_rec = MinimalSpanRecord::new(ProfileCategory::Flow, 100, 500)
+		let apply_rec = MinimalSpanRecord::new(ProfilerCategory::Flow, 100, 500)
 			.with_dimensions([42, 43])
 			.with_extras([1, 1, 1, 0]);
 		let s = summary_with(vec![apply_rec], None);
@@ -412,8 +402,8 @@ mod tests {
 
 	#[test]
 	fn summary_separates_process_and_apply() {
-		let process_rec = MinimalSpanRecord::new(ProfileCategory::Flow, 200, 1000);
-		let apply_rec = MinimalSpanRecord::new(ProfileCategory::Flow, 100, 400)
+		let process_rec = MinimalSpanRecord::new(ProfilerCategory::Flow, 200, 1000);
+		let apply_rec = MinimalSpanRecord::new(ProfilerCategory::Flow, 100, 400)
 			.with_dimensions([1, 2])
 			.with_extras([5, 3, 25, 0]);
 		let s = summary_with(vec![process_rec, apply_rec], None);
@@ -429,10 +419,10 @@ mod tests {
 		let i = interner.intern("n2");
 
 		let recs = vec![
-			MinimalSpanRecord::new(ProfileCategory::Flow, 100, 100)
+			MinimalSpanRecord::new(ProfilerCategory::Flow, 100, 100)
 				.with_dimensions([t, i])
 				.with_extras([5, 3, 10, 0]),
-			MinimalSpanRecord::new(ProfileCategory::Flow, 100, 200)
+			MinimalSpanRecord::new(ProfilerCategory::Flow, 100, 200)
 				.with_dimensions([t, i])
 				.with_extras([7, 5, 15, 0]),
 		];
@@ -451,14 +441,14 @@ mod tests {
 		let filter_id = interner.intern("n2");
 
 		let recs = vec![
-			MinimalSpanRecord::new(ProfileCategory::Flow, 100, 5000)
+			MinimalSpanRecord::new(ProfilerCategory::Flow, 100, 5000)
 				.with_dimensions([map_t, map_id])
 				.with_extras([10, 7, 100, 0]),
-			MinimalSpanRecord::new(ProfileCategory::Flow, 100, 3000)
+			MinimalSpanRecord::new(ProfilerCategory::Flow, 100, 3000)
 				.with_dimensions([filter_t, filter_id])
 				.with_extras([5, 3, 50, 0]),
-			MinimalSpanRecord::new(ProfileCategory::Storage, 200, 1500),
-			MinimalSpanRecord::new(ProfileCategory::Storage, 201, 600),
+			MinimalSpanRecord::new(ProfilerCategory::Storage, 200, 1500),
+			MinimalSpanRecord::new(ProfilerCategory::Storage, 201, 600),
 		];
 		let s = summary_with(recs, Some(Arc::clone(&interner)));
 		let table = summary_table(&s, 5);
@@ -481,10 +471,10 @@ mod tests {
 		let long_id = interner.intern("z");
 
 		let recs = vec![
-			MinimalSpanRecord::new(ProfileCategory::Flow, 100, 100)
+			MinimalSpanRecord::new(ProfilerCategory::Flow, 100, 100)
 				.with_dimensions([short, short_id])
 				.with_extras([0, 0, 0, 0]),
-			MinimalSpanRecord::new(ProfileCategory::Flow, 100, 200)
+			MinimalSpanRecord::new(ProfilerCategory::Flow, 100, 200)
 				.with_dimensions([long, long_id])
 				.with_extras([0, 0, 0, 0]),
 		];
@@ -516,7 +506,7 @@ mod tests {
 	fn aggregates_table_renders_per_category() {
 		let records = vec![
 			AggregateRecord {
-				category: ProfileCategory::Flow,
+				category: ProfilerCategory::Flow,
 				span_name: "flow::engine::process_batch".to_string(),
 				dimensions: Vec::new(),
 				calls: 6,
@@ -525,7 +515,7 @@ mod tests {
 				extras_sum: [0; MAX_EXTRAS],
 			},
 			AggregateRecord {
-				category: ProfileCategory::Flow,
+				category: ProfilerCategory::Flow,
 				span_name: "flow::engine::apply".to_string(),
 				dimensions: vec!["map".to_string(), "n1".to_string()],
 				calls: 3,
@@ -534,7 +524,7 @@ mod tests {
 				extras_sum: [0; MAX_EXTRAS],
 			},
 			AggregateRecord {
-				category: ProfileCategory::Flow,
+				category: ProfilerCategory::Flow,
 				span_name: "flow::engine::apply".to_string(),
 				dimensions: vec!["filter".to_string(), "n2".to_string()],
 				calls: 2,
@@ -543,7 +533,7 @@ mod tests {
 				extras_sum: [0; MAX_EXTRAS],
 			},
 			AggregateRecord {
-				category: ProfileCategory::Storage,
+				category: ProfilerCategory::Storage,
 				span_name: "store::multi::write".to_string(),
 				dimensions: Vec::new(),
 				calls: 30,
@@ -566,7 +556,7 @@ mod tests {
 	#[test]
 	fn aggregates_table_groups_flow_apply_by_operator() {
 		let mk = |op: &str, total: u64| AggregateRecord {
-			category: ProfileCategory::Flow,
+			category: ProfilerCategory::Flow,
 			span_name: "flow::engine::apply".to_string(),
 			dimensions: vec![op.to_string()],
 			calls: 1,
@@ -586,7 +576,7 @@ mod tests {
 	#[test]
 	fn aggregates_table_single_no_dim_record_renders_inline() {
 		let records = vec![AggregateRecord {
-			category: ProfileCategory::Flow,
+			category: ProfilerCategory::Flow,
 			span_name: "flow::engine::process_batch".to_string(),
 			dimensions: Vec::new(),
 			calls: 5,
@@ -608,7 +598,7 @@ mod tests {
 	#[test]
 	fn summary_table_skips_empty_categories() {
 		let recs =
-			vec![MinimalSpanRecord::new(ProfileCategory::Flow, 100, 0)
+			vec![MinimalSpanRecord::new(ProfilerCategory::Flow, 100, 0)
 				.with_dimensions([DIM_UNSET, DIM_UNSET])];
 		let s = summary_with(recs, None);
 		let table = summary_table(&s, 5);

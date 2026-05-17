@@ -35,8 +35,16 @@ impl AuthService {
 		let ident = match catalog.find_identity_by_name(&mut Transaction::Query(&mut txn), identifier)? {
 			Some(u) => u,
 			None => {
-				drop(txn);
-				return self.handle_missing_identity(method, identifier, &credentials);
+				if method == "solana"
+					&& let Some(u) = catalog.find_identity_by_solana_pubkey(
+						&mut Transaction::Query(&mut txn),
+						identifier,
+					)? {
+					u
+				} else {
+					drop(txn);
+					return self.handle_missing_identity(method, identifier, &credentials);
+				}
 			}
 		};
 		if !ident.enabled {
@@ -157,7 +165,17 @@ impl AuthService {
 			.find_identity_by_name(&mut Transaction::Query(&mut txn), &challenge.identifier)?
 		{
 			Some(u) if u.enabled => u,
-			_ => return Ok(invalid_credentials()),
+			Some(_) => return Ok(invalid_credentials()),
+			None if challenge.method == "solana" => {
+				match catalog.find_identity_by_solana_pubkey(
+					&mut Transaction::Query(&mut txn),
+					&challenge.identifier,
+				)? {
+					Some(u) if u.enabled => u,
+					_ => return Ok(invalid_credentials()),
+				}
+			}
+			None => return Ok(invalid_credentials()),
 		};
 
 		let Some(stored_auth) = catalog.find_authentication_by_identity_and_method(

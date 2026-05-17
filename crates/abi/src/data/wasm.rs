@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Size of the ColumnsWasm header in bytes.
 pub const COLUMNS_WASM_HEADER_SIZE: usize = 16;
 
 pub const COLUMN_WASM_SIZE: usize = 40;

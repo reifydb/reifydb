@@ -14,6 +14,13 @@ impl NamespaceId {
 	pub const SYSTEM_PROCEDURES: NamespaceId = NamespaceId(7);
 	pub const SYSTEM_BINDINGS: NamespaceId = NamespaceId(8);
 	pub const RQL: NamespaceId = NamespaceId(9);
+	pub const SYSTEM_METRICS_PROFILER: NamespaceId = NamespaceId(10);
+	pub const SYSTEM_METRICS_PROFILER_QUERY: NamespaceId = NamespaceId(11);
+	pub const SYSTEM_METRICS_PROFILER_TXN: NamespaceId = NamespaceId(12);
+	pub const SYSTEM_METRICS_PROFILER_STORAGE: NamespaceId = NamespaceId(13);
+	pub const SYSTEM_METRICS_PROFILER_PLAN: NamespaceId = NamespaceId(14);
+	pub const SYSTEM_METRICS_PROFILER_CDC: NamespaceId = NamespaceId(15);
+	pub const SYSTEM_METRICS_PROFILER_FLOW: NamespaceId = NamespaceId(16);
 }
 
 #[derive(Debug, Clone, PartialEq)]

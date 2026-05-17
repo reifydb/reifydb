@@ -1,34 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Rolling-aggregator authoring surface and FFI driver.
-//!
-//! The chaindex rolling operators (e.g. `volume-rolling`, `ta-sma-rolling`,
-//! every `ta-*-rolling`) all share the same shape: the upstream is a tumbling
-//! operator emitting one row per `(group, window_start)`, and the rolling op
-//! buffers the last N such rows per group and re-aggregates over the buffer.
-//! Hand-rolled, this state machine has shipped a recurring set of bugs:
-//!
-//! 1. **`DiffType::Remove` silently dropped.** The operator's `apply` only matches Insert and Update; the buffer never
-//!    shrinks when the upstream deletes a window.
-//! 2. **`debug_assert!` panic on buried-window updates.** The buffer is a `VecDeque` only the newest entry can mutate;
-//!    an Update for a buried window trips an invariant assertion and panics.
-//! 3. **Update-as-accumulate.** Update is treated like another Insert, so a same-`(group, window_start)` Update folds
-//!    twice into the buffer.
-//!
-//! [`RollingOperator`] is the *pure* aggregation surface: implementations
-//! describe their math as four pure functions over a typed `(group,
-//! window_key)` keyspace. [`FFIRollingOperator`] adds the FFI metadata and
-//! constructor needed for runtime registration. [`RollingDriver`] glues both
-//! to [`crate::operator::FFIOperator`], handling diff routing, capacity-bound
-//! eviction, and Remove plumbing in one place. The buried-window panic class
-//! disappears entirely: the buffer is a `BTreeMap<WindowKey, Buffered>`, so
-//! mutating any key is a routine lookup, not a violation.
-//!
-//! The trait split mirrors the tumbling side: `RollingOperator` for the math
-//! (testable in isolation), `FFIRollingOperator` for the registration shim.
-//! Authors implement BOTH in adjacent `impl` blocks.
-
 use std::{
 	collections::{BTreeMap, HashMap},
 	fmt::Debug,

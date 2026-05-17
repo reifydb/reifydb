@@ -194,6 +194,7 @@ impl TestEngineBuilder {
 		ioc = ioc.register(catalog_cache.clone());
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
+		ioc = ioc.register(eventbus.clone());
 
 		#[cfg(not(target_arch = "wasm32"))]
 		let cdc_store = match self.sqlite_cdc {

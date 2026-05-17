@@ -44,7 +44,7 @@ while ($i < $n) {
     $i++ while $i < $n && substr($content, $i, 1) ne "\n";
     my $line = substr($content, $sol, $i - $sol);
     (my $t = $line) =~ s/^\s+|\s+$//g;
-    if ($t eq "" || $t =~ m{^//}) {
+    if ($t eq "" || $t =~ m{SPDX-License-Identifier|Copyright}) {
         $out .= $line . ($i < $n ? "\n" : "");
         $i++ if $i < $n;
     } else {

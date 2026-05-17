@@ -1,19 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! `ProfileSink` implementation that bridges the profiler primitives to the reifydb event bus and the static
-//! per-category histograms. Per-span observations go straight to the lock-free histogram on the hot path; per-scope
-//! summaries are emitted as `ProfileScopeClosedEvent`/`ProfileScopeBatchEvent` so the listener can forward them to
-//! the collector actor.
-
 use std::sync::Arc;
 
 use reifydb_core::event::EventBus;
 use reifydb_profiler::{
-	event::{ProfileScopeBatchEvent, ProfileScopeClosedEvent},
+	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
 	record::MinimalSpanRecord,
-	sink::ProfileSink,
-	summary::ProfileSummary,
+	sink::ProfilerSink,
+	summary::ProfilerSummary,
 };
 
 use crate::actor::observe_record;
@@ -30,16 +25,16 @@ impl EventBusSink {
 	}
 }
 
-impl ProfileSink for EventBusSink {
+impl ProfilerSink for EventBusSink {
 	fn on_span_record(&self, record: &MinimalSpanRecord) {
 		observe_record(record);
 	}
 
-	fn on_scope_closed(&self, summary: &ProfileSummary) {
-		self.event_bus.emit(ProfileScopeClosedEvent::new(Arc::new(summary.clone())));
+	fn on_scope_closed(&self, summary: &ProfilerSummary) {
+		self.event_bus.emit(ProfilerScopeClosedEvent::new(Arc::new(summary.clone())));
 	}
 
-	fn on_scope_batch(&self, summary: &ProfileSummary) {
-		self.event_bus.emit(ProfileScopeBatchEvent::new(Arc::new(summary.clone())));
+	fn on_scope_batch(&self, summary: &ProfilerSummary) {
+		self.event_bus.emit(ProfilerScopeBatchEvent::new(Arc::new(summary.clone())));
 	}
 }

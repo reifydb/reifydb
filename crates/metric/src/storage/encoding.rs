@@ -12,6 +12,7 @@ use reifydb_core::{
 		store::Tier,
 	},
 	key::kind::KeyKind,
+	profiler::ProfilerCategoryId,
 };
 use reifydb_type::value::dictionary::DictionaryId;
 
@@ -169,7 +170,7 @@ fn encode_object_id(buf: &mut Vec<u8>, id: MetricId) {
 		MetricId::System => {
 			buf.push(ID_SYSTEM);
 		}
-		MetricId::Profile(cat_id) => {
+		MetricId::Profiler(cat_id) => {
 			buf.push(ID_PROFILE);
 			buf.push(cat_id.0);
 		}
@@ -200,7 +201,7 @@ fn decode_object_id(bytes: &[u8]) -> Option<MetricId> {
 			if bytes.len() < 2 {
 				return None;
 			}
-			Some(MetricId::Profile(reifydb_core::profile::ProfileCategoryId(bytes[1])))
+			Some(MetricId::Profiler(ProfilerCategoryId(bytes[1])))
 		}
 		_ => None,
 	}

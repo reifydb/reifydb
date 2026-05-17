@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Row shape for the persistent procedure record.
-/// Covers both `Procedure::Rql` and `Procedure::Test` - discriminated by `VARIANT`.
-/// Native/Ffi/Wasm variants are ephemeral and never written to storage.
 pub(crate) mod procedure {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};

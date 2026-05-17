@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Format f64 with at most 15 significant digits for cross-platform consistency.
-///
-/// f64 has ~15.95 decimal digits of precision. Cross-platform differences in
-/// `f64::exp()` and similar math functions only appear in the 16th-17th digit.
-/// By limiting to 15 significant digits, we get identical output on Linux x86-64,
-/// WASM, and macOS ARM.
 pub fn format_f64(v: f64) -> String {
 	if !v.is_finite() {
 		return v.to_string();

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Category-specific field visitors for `tracing::span::Attributes`. Each visitor extracts the fields a category
-//! cares about into a fixed-size scratch struct; the layer stamps the populated visitor onto the span's extensions
-//! at `on_new_span` and reads it back at `on_close` to build a `MinimalSpanRecord`. No `String` lifetimes leak past
-//! the layer's own scope.
-
 use std::fmt;
 
 use tracing::field::{Field, Visit};

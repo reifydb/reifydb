@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Per-request profiling scope. A `ProfileScope::start` opens a scope and returns a `ScopeHandle`; the layer
-//! discovers the scope via two paths: a `tokio::task_local!` (`ACTIVE_SCOPE`) carrying the `ScopeId` for spans
-//! created on the same task, or via an ancestor span's extension stamped by the layer on its first sighting. State
-//! lives behind `Arc<ScopeState>` so spans on any thread that reach the same scope contribute to the same buffer.
-//! `ScopeHandle::finish` drains the buffer, builds the `ProfileSummary`, and dispatches it to the configured sink.
-
 use std::{
 	future::Future,
 	mem,
@@ -14,20 +8,20 @@ use std::{
 		Arc, OnceLock,
 		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
-	time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
+use reifydb_runtime::context::clock::{Clock, Instant};
 use serde::{Deserialize, Serialize};
 use tokio::task_local;
 
 use crate::{
 	intern::DimInterner,
 	record::MinimalSpanRecord,
-	sink::{NoopSink, ProfileSink},
-	summary::ProfileSummary,
+	sink::{NoopSink, ProfilerSink},
+	summary::ProfilerSummary,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -47,7 +41,7 @@ pub struct ScopeState {
 	pub records: Mutex<Vec<MinimalSpanRecord>>,
 	pub batch_threshold: usize,
 	pub closed: AtomicBool,
-	pub sink: Arc<dyn ProfileSink>,
+	pub sink: Arc<dyn ProfilerSink>,
 	pub interner: OnceLock<Arc<DimInterner>>,
 }
 
@@ -62,7 +56,7 @@ impl ScopeState {
 			let drained: Vec<MinimalSpanRecord> = mem::take(&mut *guard);
 			drop(guard);
 			let elapsed_us = self.started_at.elapsed().as_micros() as u64;
-			let summary = ProfileSummary::from_records(
+			let summary = ProfilerSummary::from_records(
 				self.id,
 				self.name,
 				self.started_at_nanos,
@@ -115,7 +109,7 @@ task_local! {
 	pub(crate) static ACTIVE_SCOPE: ScopeId;
 }
 
-pub struct ProfileScope;
+pub struct ProfilerScope;
 
 pub struct ScopeHandle {
 	state: Arc<ScopeState>,
@@ -123,34 +117,33 @@ pub struct ScopeHandle {
 
 const DEFAULT_BATCH_THRESHOLD: usize = 256;
 
-impl ProfileScope {
-	pub fn start(name: &'static str) -> ScopeHandle {
-		Self::start_with_sink(name, Arc::new(NoopSink))
+impl ProfilerScope {
+	pub fn start(name: &'static str, clock: Clock) -> ScopeHandle {
+		Self::start_with_sink(name, Arc::new(NoopSink), clock)
 	}
 
-	pub fn start_with_sink(name: &'static str, sink: Arc<dyn ProfileSink>) -> ScopeHandle {
-		let state = build_scope_state(name, sink);
+	pub fn start_with_sink(name: &'static str, sink: Arc<dyn ProfilerSink>, clock: Clock) -> ScopeHandle {
+		let state = build_scope_state(name, sink, &clock);
 		REGISTRY.insert(Arc::clone(&state));
 		ScopeHandle {
 			state,
 		}
 	}
 
-	pub fn ambient(name: &'static str, sink: Arc<dyn ProfileSink>) -> Arc<ScopeState> {
-		let state = build_scope_state(name, sink);
+	pub fn ambient(name: &'static str, sink: Arc<dyn ProfilerSink>, clock: &Clock) -> Arc<ScopeState> {
+		let state = build_scope_state(name, sink, clock);
 		REGISTRY.insert(Arc::clone(&state));
 		state
 	}
 }
 
-fn build_scope_state(name: &'static str, sink: Arc<dyn ProfileSink>) -> Arc<ScopeState> {
+fn build_scope_state(name: &'static str, sink: Arc<dyn ProfilerSink>, clock: &Clock) -> Arc<ScopeState> {
 	let id = next_scope_id();
-	let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
 	Arc::new(ScopeState {
 		id,
 		name,
-		started_at: Instant::now(),
-		started_at_nanos: nanos,
+		started_at: clock.instant(),
+		started_at_nanos: clock.now_nanos() as u128,
 		records: Mutex::new(Vec::with_capacity(DEFAULT_BATCH_THRESHOLD)),
 		batch_threshold: DEFAULT_BATCH_THRESHOLD,
 		closed: AtomicBool::new(false),
@@ -182,12 +175,12 @@ impl ScopeHandle {
 		ACTIVE_SCOPE.sync_scope(self.state.id, f)
 	}
 
-	pub fn finish(self) -> ProfileSummary {
+	pub fn finish(self) -> ProfilerSummary {
 		self.state.closed.store(true, Ordering::Release);
 		REGISTRY.remove(self.state.id);
 		let records: Vec<MinimalSpanRecord> = mem::take(&mut *self.state.records.lock());
 		let elapsed_us = self.state.started_at.elapsed().as_micros() as u64;
-		let summary = ProfileSummary::from_records(
+		let summary = ProfilerSummary::from_records(
 			self.state.id,
 			self.state.name,
 			self.state.started_at_nanos,
@@ -212,8 +205,10 @@ pub fn lookup_scope(id: ScopeId) -> Option<Arc<ScopeState>> {
 mod tests {
 	use std::sync::atomic::{AtomicUsize, Ordering};
 
+	use reifydb_runtime::context::clock::Clock;
+
 	use super::*;
-	use crate::{category::ProfileCategory, record::MinimalSpanRecord};
+	use crate::{category::ProfilerCategory, record::MinimalSpanRecord};
 
 	#[test]
 	fn scope_id_monotonic() {
@@ -224,24 +219,24 @@ mod tests {
 
 	#[test]
 	fn finish_drains_records_and_marks_closed() {
-		let handle = ProfileScope::start("test.scope");
+		let handle = ProfilerScope::start("test.scope", Clock::Real);
 		let id = handle.id();
 		let state = lookup_scope(id).expect("scope registered");
-		state.push(MinimalSpanRecord::new(ProfileCategory::Query, 1, 100));
-		state.push(MinimalSpanRecord::new(ProfileCategory::Query, 2, 200));
+		state.push(MinimalSpanRecord::new(ProfilerCategory::Query, 1, 100));
+		state.push(MinimalSpanRecord::new(ProfilerCategory::Query, 2, 200));
 
 		let summary = handle.finish();
 		assert_eq!(summary.records.len(), 2);
-		assert_eq!(summary.category(ProfileCategory::Query).calls, 2);
+		assert_eq!(summary.category(ProfilerCategory::Query).calls, 2);
 		assert!(lookup_scope(id).is_none());
 	}
 
 	#[test]
 	fn push_after_finish_is_ignored() {
-		let handle = ProfileScope::start("test.scope");
+		let handle = ProfilerScope::start("test.scope", Clock::Real);
 		let state = lookup_scope(handle.id()).unwrap();
 		let _ = handle.finish();
-		state.push(MinimalSpanRecord::new(ProfileCategory::Storage, 1, 50));
+		state.push(MinimalSpanRecord::new(ProfilerCategory::Storage, 1, 50));
 		assert!(state.records.lock().is_empty());
 	}
 
@@ -251,17 +246,17 @@ mod tests {
 		struct CountingSink {
 			batches: AtomicUsize,
 		}
-		impl ProfileSink for CountingSink {
-			fn on_scope_closed(&self, _s: &ProfileSummary) {}
-			fn on_scope_batch(&self, _s: &ProfileSummary) {
+		impl ProfilerSink for CountingSink {
+			fn on_scope_closed(&self, _s: &ProfilerSummary) {}
+			fn on_scope_batch(&self, _s: &ProfilerSummary) {
 				self.batches.fetch_add(1, Ordering::Relaxed);
 			}
 		}
 		let sink: Arc<CountingSink> = Arc::new(CountingSink::default());
-		let handle = ProfileScope::start_with_sink("test.scope", sink.clone());
+		let handle = ProfilerScope::start_with_sink("test.scope", sink.clone(), Clock::Real);
 		let state = lookup_scope(handle.id()).unwrap();
 		for i in 0..DEFAULT_BATCH_THRESHOLD {
-			state.push(MinimalSpanRecord::new(ProfileCategory::Flow, i as u64, 10));
+			state.push(MinimalSpanRecord::new(ProfilerCategory::Flow, i as u64, 10));
 		}
 		assert_eq!(sink.batches.load(Ordering::Relaxed), 1);
 		assert!(state.records.lock().is_empty());
@@ -270,7 +265,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn run_sets_active_scope() {
-		let handle = ProfileScope::start("async.scope");
+		let handle = ProfilerScope::start("async.scope", Clock::Real);
 		let id = handle.id();
 		let observed: ScopeId = handle.run(async move { active_scope().unwrap() }).await;
 		assert_eq!(observed, id);
@@ -279,7 +274,7 @@ mod tests {
 
 	#[test]
 	fn run_sync_sets_active_scope() {
-		let handle = ProfileScope::start("sync.scope");
+		let handle = ProfilerScope::start("sync.scope", Clock::Real);
 		let id = handle.id();
 		let observed = handle.run_sync(active_scope);
 		assert_eq!(observed, Some(id));

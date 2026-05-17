@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Two-sided string interner for dimension values. `intern` is eager: it inserts on the hot path so subsequent
-//! callers see a stable `DimIdx`. `resolve` maps an index back to its original string.
-
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use dashmap::DashMap;
