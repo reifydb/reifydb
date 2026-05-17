@@ -40,6 +40,7 @@ pub use reifydb_core::{
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
+pub use reifydb_profiler as profiler;
 pub use reifydb_routine::{function, procedure, routine};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime::{
@@ -65,6 +66,8 @@ pub use reifydb_sub_flow::{
 	operator::{BoxedOperator, Operator, Operators},
 	transaction::FlowTransaction,
 };
+#[cfg(feature = "sub_profiler")]
+pub use reifydb_sub_profiler as sub_profiler;
 #[cfg(feature = "sub_replication")]
 pub use reifydb_sub_replication as sub_replication;
 #[cfg(feature = "sub_server")]

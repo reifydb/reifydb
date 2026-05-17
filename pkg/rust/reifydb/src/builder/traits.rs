@@ -4,6 +4,8 @@
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
+#[cfg(feature = "sub_profiler")]
+use reifydb_sub_profiler::builder::ProfilerConfigurator;
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(feature = "sub_tracing")]
@@ -19,6 +21,11 @@ pub trait WithSubsystem: Sized {
 	fn with_flow<F>(self, configurator: F) -> Self
 	where
 		F: FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static;
+
+	#[cfg(feature = "sub_profiler")]
+	fn with_profiler<F>(self, configurator: F) -> Self
+	where
+		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static;
 
 	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 	fn with_replication<F, C>(self, configurator: F) -> Self

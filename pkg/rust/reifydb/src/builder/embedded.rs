@@ -13,6 +13,8 @@ use reifydb_store_multi::buffer::tier::MultiBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
+#[cfg(feature = "sub_profiler")]
+use reifydb_sub_profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
@@ -308,6 +310,15 @@ impl WithSubsystem for EmbeddedBuilder {
 		F: FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static,
 	{
 		self.flow_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	#[cfg(feature = "sub_profiler")]
+	fn with_profiler<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,
+	{
+		self.subsystem_factories.push(Box::new(ProfilerSubsystemFactory::with_configurator(configurator)));
 		self
 	}
 

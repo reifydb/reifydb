@@ -11,6 +11,13 @@ use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
 };
+#[cfg(feature = "sub_profiler")]
+use reifydb_profiler::{
+	event::{ProfileScopeBatchEvent, ProfileScopeClosedEvent},
+	intern::DimInterner,
+	layer::ProfilerLayer,
+	sink::{NoopSink, ProfileSink},
+};
 use reifydb_routine::routine::registry::RoutinesConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_runtime::context::clock::Clock;
@@ -21,6 +28,16 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_metric::{factory::MetricSubsystemFactory, interceptor::RequestMetricsInterceptor};
+#[cfg(feature = "sub_profiler")]
+use reifydb_sub_profiler::{
+	accumulator::ProfileAccumulator,
+	actor::ProfileCollectorActor,
+	builder::ProfilerConfigurator,
+	factory::ProfilerSubsystemFactory,
+	listener::{ProfileScopeBatchListener, ProfileScopeClosedListener},
+	sink::EventBusSink,
+	subsystem::ProfilerSubsystem,
+};
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
@@ -41,6 +58,8 @@ use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_type::value::Value;
+#[cfg(feature = "sub_profiler")]
+use tracing_subscriber::filter::LevelFilter;
 
 fn pool_config_from_sources(
 	factory: &StorageFactory,
@@ -100,6 +119,8 @@ pub struct ServerBuilder {
 	procedure_dir: Option<PathBuf>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>>,
+	#[cfg(feature = "sub_profiler")]
+	profiler_configurator: Option<Box<dyn FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_replication")]
@@ -128,6 +149,8 @@ impl ServerBuilder {
 			procedure_dir: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
+			#[cfg(feature = "sub_profiler")]
+			profiler_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
 			#[cfg(feature = "sub_replication")]
@@ -370,6 +393,39 @@ impl ServerBuilder {
 			database_builder = database_builder.with_configs(self.bootstrap_configs);
 		}
 
+		#[cfg(feature = "sub_profiler")]
+		#[allow(unused_variables)]
+		let profiler_layer: Option<ProfilerLayer> = if let Some(configurator_fn) = self.profiler_configurator.take() {
+			let cfg = configurator_fn(ProfilerConfigurator::new());
+			let interner = Arc::new(DimInterner::new());
+			let accumulator = Arc::new(parking_lot::RwLock::new(ProfileAccumulator::new(
+				cfg.accumulator_capacity,
+				cfg.min_calls_for_retention,
+			)));
+			let sink: Arc<dyn ProfileSink> = if cfg.enabled {
+				let actor = ProfileCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
+				let handle = runtime.actor_system().spawn_system("profile-collector", actor);
+				let actor_ref = handle.actor_ref().clone();
+				eventbus.register::<ProfileScopeClosedEvent, _>(ProfileScopeClosedListener::new(
+					actor_ref.clone(),
+				));
+				eventbus.register::<ProfileScopeBatchEvent, _>(ProfileScopeBatchListener::new(
+					actor_ref,
+				));
+				Arc::new(EventBusSink::new(eventbus.clone()))
+			} else {
+				Arc::new(NoopSink)
+			};
+			let subsystem =
+				ProfilerSubsystem::new(cfg.enabled, cfg.categories, interner, accumulator, sink);
+			let layer = subsystem.layer();
+			database_builder = database_builder
+				.add_subsystem_factory(Box::new(ProfilerSubsystemFactory::with_subsystem(subsystem)));
+			Some(layer)
+		} else {
+			None
+		};
+
 		if let Some(configurator) = self.routines_configurator {
 			database_builder = database_builder.with_routines_configurator(configurator);
 		}
@@ -395,10 +451,16 @@ impl ServerBuilder {
 			let tracer =
 				otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");
 
+			#[cfg(feature = "sub_profiler")]
+			let profiler_layer_otel = profiler_layer;
 			database_builder = database_builder.with_tracing(move |builder| {
 				let otel_layer = otel_layer_fn().with_tracer(tracer);
-				let builder_with_otel = builder.with_layer(otel_layer);
-				tracing_configurator(builder_with_otel)
+				let mut b = builder.with_layer(otel_layer);
+				#[cfg(feature = "sub_profiler")]
+				if let Some(layer) = profiler_layer_otel {
+					b = b.with_layer(layer).with_layer_filter(LevelFilter::TRACE);
+				}
+				tracing_configurator(b)
 			});
 
 			let factory = OtelSubsystemFactory::with_subsystem(otel_subsystem);
@@ -406,18 +468,40 @@ impl ServerBuilder {
 		} else {
 			#[cfg(feature = "sub_tracing")]
 			{
-				let configurator = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
+				let inner = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
+				#[cfg(feature = "sub_profiler")]
+				let configurator: Box<
+					dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send,
+				> = if let Some(layer) = profiler_layer {
+					Box::new(move |t| {
+						inner(t.with_layer(layer).with_layer_filter(LevelFilter::TRACE))
+					})
+				} else {
+					inner
+				};
+				#[cfg(not(feature = "sub_profiler"))]
+				let configurator = inner;
 				database_builder = database_builder.with_tracing(configurator);
 			}
 		}
 
-		#[cfg(not(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded))))]
+		#[cfg(all(
+			feature = "sub_tracing",
+			not(all(feature = "sub_server_otel", not(reifydb_single_threaded)))
+		))]
 		{
-			#[cfg(feature = "sub_tracing")]
+			let inner = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
+			#[cfg(feature = "sub_profiler")]
+			let configurator: Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send> = if let Some(layer) =
+				profiler_layer
 			{
-				let configurator = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
-				database_builder = database_builder.with_tracing(configurator);
-			}
+				Box::new(move |t| inner(t.with_layer(layer).with_layer_filter(LevelFilter::TRACE)))
+			} else {
+				inner
+			};
+			#[cfg(not(feature = "sub_profiler"))]
+			let configurator = inner;
+			database_builder = database_builder.with_tracing(configurator);
 		}
 
 		#[cfg(feature = "sub_flow")]
@@ -454,6 +538,15 @@ impl WithSubsystem for ServerBuilder {
 		F: FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static,
 	{
 		self.flow_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	#[cfg(feature = "sub_profiler")]
+	fn with_profiler<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,
+	{
+		self.profiler_configurator = Some(Box::new(configurator));
 		self
 	}
 

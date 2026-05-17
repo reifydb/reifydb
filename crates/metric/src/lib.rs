@@ -15,7 +15,10 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb_core::interface::catalog::{flow::FlowNodeId, shape::ShapeId};
+use reifydb_core::{
+	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
+	profile::ProfileCategoryId,
+};
 
 pub mod accumulator;
 pub mod buckets;
@@ -34,4 +37,6 @@ pub enum MetricId {
 	FlowNode(FlowNodeId),
 
 	System,
+
+	Profile(ProfileCategoryId),
 }

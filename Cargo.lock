@@ -2111,6 +2111,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordered-float"
+version = "2.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f19d67e5a2795c94e73e0bb1cc1a7edeb2e28efd39e2e1c9b7a40c1108b11c"
+dependencies = [
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2515,6 +2525,7 @@ dependencies = [
  "libc",
  "num_cpus",
  "opentelemetry",
+ "parking_lot",
  "rayon",
  "reifydb-auth",
  "reifydb-build",
@@ -2525,6 +2536,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-extension",
  "reifydb-metric",
+ "reifydb-profiler",
  "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
@@ -2535,6 +2547,7 @@ dependencies = [
  "reifydb-sub-column",
  "reifydb-sub-flow",
  "reifydb-sub-metric",
+ "reifydb-sub-profiler",
  "reifydb-sub-replication",
  "reifydb-sub-server",
  "reifydb-sub-server-admin",
@@ -2552,6 +2565,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-opentelemetry",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2809,6 +2823,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-profiler"
+version = "0.5.6"
+dependencies = [
+ "dashmap",
+ "once_cell",
+ "parking_lot",
+ "paste",
+ "reifydb-core",
+ "reifydb-testing",
+ "reifydb-type",
+ "serde",
+ "tdigest",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "reifydb-remote-proxy"
 version = "0.5.6"
 dependencies = [
@@ -3046,6 +3078,22 @@ dependencies = [
  "reifydb-type",
  "serde",
  "test_each_file",
+ "tracing",
+]
+
+[[package]]
+name = "reifydb-sub-profiler"
+version = "0.5.6"
+dependencies = [
+ "parking_lot",
+ "reifydb-core",
+ "reifydb-metric",
+ "reifydb-profiler",
+ "reifydb-runtime",
+ "reifydb-sub-api",
+ "reifydb-testing",
+ "reifydb-type",
+ "serde",
  "tracing",
 ]
 
@@ -3895,6 +3943,16 @@ name = "target-lexicon"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+
+[[package]]
+name = "tdigest"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c45d225a08ebccf0e0c7d46db4066ea8ab05b29d3750ecc1a04f1675978bf3c8"
+dependencies = [
+ "ordered-float",
+ "serde",
+]
 
 [[package]]
 name = "tempfile"

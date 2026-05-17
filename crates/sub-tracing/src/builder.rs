@@ -4,6 +4,7 @@
 use tracing::Subscriber;
 use tracing_subscriber::{
 	EnvFilter, Layer, Registry,
+	filter::LevelFilter,
 	fmt::{self, format::FmtSpan},
 	layer::SubscriberExt,
 	registry,
@@ -18,6 +19,7 @@ pub struct TracingConfigurator {
 	console_config: Option<ConsoleBuilder>,
 	with_spans: bool,
 	external_layer: Option<Box<dyn Layer<Registry> + Send + Sync>>,
+	external_layer_filter: Option<LevelFilter>,
 }
 
 impl Default for TracingConfigurator {
@@ -33,6 +35,7 @@ impl TracingConfigurator {
 			console_config: None,
 			with_spans: false,
 			external_layer: None,
+			external_layer_filter: None,
 		}
 	}
 
@@ -68,11 +71,31 @@ impl TracingConfigurator {
 		self
 	}
 
+	pub fn with_layer_filter(mut self, filter: LevelFilter) -> Self {
+		self.external_layer_filter = Some(filter);
+		self
+	}
+
 	pub fn configure(self) -> TracingSubsystem {
-		let filter = build_filter(self.filter.as_deref());
-		let fmt_layer = build_console_layer(self.console_config.as_ref(), self.with_spans);
-		let subscriber = registry().with(self.external_layer).with(filter).with(fmt_layer);
-		let _ = subscriber.try_init();
+		let env_filter = build_filter(self.filter.as_deref());
+		let console_config = self.console_config;
+		let with_spans = self.with_spans;
+		let _ = match (self.external_layer, self.external_layer_filter) {
+			(Some(layer), Some(layer_filter)) => registry()
+				.with(layer.with_filter(layer_filter))
+				.with(build_console_layer(console_config.as_ref(), with_spans)
+					.map(|f| f.with_filter(env_filter)))
+				.try_init(),
+			(Some(layer), None) => registry()
+				.with(layer)
+				.with(build_console_layer(console_config.as_ref(), with_spans)
+					.map(|f| f.with_filter(env_filter)))
+				.try_init(),
+			(None, _) => registry()
+				.with(build_console_layer(console_config.as_ref(), with_spans)
+					.map(|f| f.with_filter(env_filter)))
+				.try_init(),
+		};
 		TracingSubsystem::new()
 	}
 }

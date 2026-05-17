@@ -29,6 +29,7 @@ const SUBKEY_CDC: u8 = 0x03;
 const ID_SHAPE: u8 = 0x00;
 const ID_FLOW_NODE: u8 = 0x01;
 const ID_SYSTEM: u8 = 0x02;
+const ID_PROFILE: u8 = 0x03;
 
 pub fn encode_type_stats_key(tier: Tier, kind: KeyKind) -> Vec<u8> {
 	vec![KEY_VERSION, KeyKind::Metric as u8, SUBKEY_BY_TYPE, tier_to_byte(tier), kind as u8]
@@ -168,6 +169,10 @@ fn encode_object_id(buf: &mut Vec<u8>, id: MetricId) {
 		MetricId::System => {
 			buf.push(ID_SYSTEM);
 		}
+		MetricId::Profile(cat_id) => {
+			buf.push(ID_PROFILE);
+			buf.push(cat_id.0);
+		}
 	}
 }
 
@@ -191,6 +196,12 @@ fn decode_object_id(bytes: &[u8]) -> Option<MetricId> {
 			Some(MetricId::FlowNode(FlowNodeId(id)))
 		}
 		ID_SYSTEM => Some(MetricId::System),
+		ID_PROFILE => {
+			if bytes.len() < 2 {
+				return None;
+			}
+			Some(MetricId::Profile(reifydb_core::profile::ProfileCategoryId(bytes[1])))
+		}
 		_ => None,
 	}
 }

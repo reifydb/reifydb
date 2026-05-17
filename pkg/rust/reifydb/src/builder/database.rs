@@ -60,6 +60,8 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 use reifydb_sub_column::factory::StorageSubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowConfigurator, subsystem::factory::FlowSubsystemFactory};
+#[cfg(feature = "sub_profiler")]
+use reifydb_sub_profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
@@ -184,6 +186,15 @@ impl DatabaseBuilder {
 		F: FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static,
 	{
 		self.tracing_factory = Some(Box::new(TracingSubsystemFactory::with_configurator(configurator)));
+		self
+	}
+
+	#[cfg(feature = "sub_profiler")]
+	pub fn with_profiler<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,
+	{
+		self.factories.push(Box::new(ProfilerSubsystemFactory::with_configurator(configurator)));
 		self
 	}
 

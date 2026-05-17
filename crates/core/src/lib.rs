@@ -56,6 +56,7 @@ pub mod fingerprint;
 pub mod interface;
 pub mod key;
 pub mod metric;
+pub mod profile;
 pub mod retention;
 pub mod row;
 pub mod sort;
